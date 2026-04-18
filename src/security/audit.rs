@@ -143,15 +143,22 @@ fn get_last_log_hash(path: &Path) -> String {
             return "0".repeat(64);
         }
 
-        let mut buffer = Vec::new();
-        let read_size = std::cmp::min(size, 4096);
+        // Increase buffer size to handle large PQC signatures and long outputs
+        let read_size = std::cmp::min(size, 32768); 
+        let mut buffer = vec![0; read_size as usize];
         let _ = file.seek(SeekFrom::End(-(read_size as i64)));
-        let _ = file.read_to_end(&mut buffer);
+        let _ = file.read_exact(&mut buffer);
 
         let content = String::from_utf8_lossy(&buffer);
-        let lines: Vec<&str> = content.trim().split('\n').collect();
-        if let Some(last_line) = lines.last() {
-            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(last_line) {
+        let lines: Vec<&str> = content.split('\n').collect();
+        
+        // Iterate backwards to find the last valid JSON entry with a hash
+        for line in lines.iter().rev() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(trimmed) {
                 if let Some(hash) = entry.get("hash").and_then(|v| v.as_str()) {
                     return hash.to_string();
                 }
