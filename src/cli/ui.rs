@@ -78,14 +78,6 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
             println!("    {} {}: {}", "•".bright_black(), "path".cyan(), path);
-            if let Some(exp) = explanation {
-                println!(
-                    "    {} {}: {}",
-                    "•".bright_black(),
-                    "explanation".cyan(),
-                    exp
-                );
-            }
             println!("    {} {}:", "•".bright_black(), "diff".cyan());
 
             let diff = difflib::unified_diff(
@@ -115,7 +107,7 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                 }
             }
 
-            // Print other arguments if any
+            // Print other arguments if any (except explanation which we want last)
             for (k, v) in obj {
                 if k != "path" && k != "search" && k != "replace" && k != "explanation" {
                     let val_str = if v.is_string() {
@@ -126,15 +118,36 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                     println!("    {} {}: {}", "•".bright_black(), k.cyan(), val_str);
                 }
             }
+
+            // Print explanation last for edit_file
+            if let Some(exp) = explanation {
+                println!(
+                    "    {} {}: {}",
+                    "•".bright_black(),
+                    "explanation".cyan(),
+                    exp
+                );
+            }
         } else {
+            // Print all arguments except explanation
             for (k, v) in obj {
+                if k != "explanation" {
+                    let val_str = if v.is_string() {
+                        v.as_str().unwrap().to_string()
+                    } else {
+                        v.to_string()
+                    };
+                    println!("    {} {}: {}", "•".bright_black(), k.cyan(), val_str);
+                }
+            }
+            // Print explanation last
+            if let Some(v) = obj.get("explanation") {
                 let val_str = if v.is_string() {
                     v.as_str().unwrap().to_string()
                 } else {
                     v.to_string()
                 };
-                // Indent and use a softer bullet
-                println!("    {} {}: {}", "•".bright_black(), k.cyan(), val_str);
+                println!("    {} {}: {}", "•".bright_black(), "explanation".cyan(), val_str);
             }
         }
     } else {

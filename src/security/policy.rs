@@ -18,7 +18,10 @@ impl PolicyEngine {
         context: &EvaluationContext,
     ) -> bool {
         let risk_level = CASS_ORCHESTRATOR.evaluate_risk(tool_name);
-        let security_level = "high"; // Default
+        
+        let config = crate::config::CONFIG_MANAGER.get_config();
+        let security_level = std::env::var("LLM_CLI_SECURITY_LEVEL")
+            .unwrap_or_else(|_| config.security.security_level.clone());
 
         // 1. Identity Requirement
         if risk_level == RiskLevel::High && !context.has_pqc_proof && security_level == "high" {

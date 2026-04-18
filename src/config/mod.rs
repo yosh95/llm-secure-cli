@@ -124,6 +124,9 @@ impl ConfigManager {
         if let Some(val) = over.security.dual_llm_verification {
             base.security.dual_llm_verification = Some(val);
         }
+        if over.security.security_level != "high" {
+            base.security.security_level = over.security.security_level;
+        }
 
         // Merge MCP
         if !over.mcp_servers.is_empty() {

@@ -117,6 +117,8 @@ pub struct SecurityConfig {
     pub dual_llm_provider: String,
     #[serde(default = "default_dual_llm_model")]
     pub dual_llm_model: String,
+    #[serde(default = "default_security_level")]
+    pub security_level: String,
 }
 
 fn default_roles() -> Vec<String> {
@@ -130,6 +132,9 @@ fn default_allowed_paths() -> Vec<String> {
 }
 fn default_dual_llm_model() -> String {
     "lite".to_string()
+}
+fn default_security_level() -> String {
+    "high".to_string()
 }
 
 impl Default for SecurityConfig {
@@ -150,6 +155,7 @@ impl Default for SecurityConfig {
             dual_llm_verification: None,
             dual_llm_provider: "google".to_string(),
             dual_llm_model: "lite".to_string(),
+            security_level: default_security_level(),
         }
     }
 }

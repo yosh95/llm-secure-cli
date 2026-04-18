@@ -1,8 +1,9 @@
+use std::fs;
 use crate::cli::ui;
 use crate::consts::KEY_DIR;
 use crate::security::identity::IdentityManager;
+use crate::security::integrity::IntegrityVerifier;
 use crate::security::merkle_anchor::SessionAnchorManager;
-use std::fs;
 
 pub fn run_keygen() {
     ui::report_success("Generating Secure Identity Keys (RSA + Post-Quantum)...");
@@ -25,14 +26,34 @@ pub fn run_keygen() {
 
 pub fn run_manifest() {
     ui::report_success("Generating Integrity Manifest...");
-    // Porting integrity manifest generation if needed, or keep as success report if it's handled elsewhere
-    println!("Integrity manifest saved to ~/.llm_secure_cli/integrity/manifest.json");
+    let verifier = IntegrityVerifier::new();
+    match verifier.rebuild_manifest() {
+        Ok(_) => {
+            ui::report_success(&format!(
+                "Integrity manifest saved to {}",
+                verifier.manifest_path.display()
+            ));
+        }
+        Err(e) => {
+            ui::report_error(&format!("Failed to generate manifest: {}", e));
+        }
+    }
 }
 
 pub fn run_verify(_tail: Option<usize>) {
     ui::report_success("Running full integrity check...");
-    // Porting full integrity check
-    println!("OK Integrity check passed.");
+    let verifier = IntegrityVerifier::new();
+    match verifier.verify() {
+        Ok(true) => {
+            ui::report_success("OK: System integrity verified.");
+        }
+        Ok(false) => {
+            ui::report_error("FAILED: System integrity failure detected (Binary or Config mismatch).");
+        }
+        Err(e) => {
+            ui::report_error(&format!("ERROR: Verification error: {}", e));
+        }
+    }
 }
 
 pub fn run_verify_session(trace_id: &str) {

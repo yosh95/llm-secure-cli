@@ -2,6 +2,7 @@ pub mod audit;
 pub mod cass;
 pub mod dual_llm_verifier;
 pub mod identity;
+pub mod integrity;
 pub mod merkle;
 pub mod merkle_anchor;
 pub mod path_validator;
