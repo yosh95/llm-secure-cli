@@ -141,7 +141,9 @@ async fn main() {
                     if security_level == "high" {
                         ui::report_error("CRITICAL: SYSTEM INTEGRITY FAILURE");
                         eprintln!("Unauthorized modifications detected in binary or config.");
-                        eprintln!("Run 'llm-secure-cli-security manifest' if this was intentional.");
+                        eprintln!(
+                            "Run 'llm-secure-cli-security manifest' if this was intentional."
+                        );
                         std::process::exit(1);
                     } else {
                         ui::report_warning("Integrity Failure: System does not match manifest, but security_level is 'standard'.");

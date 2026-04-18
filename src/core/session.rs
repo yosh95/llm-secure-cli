@@ -1,10 +1,13 @@
+use crate::cli::interactive::completion::ChatCompleter;
 use crate::cli::ui;
 use crate::consts::HISTORY_LOG_PATH;
 use crate::llm::base::LlmClient;
 use crate::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
 use rustyline::error::ReadlineError;
-use rustyline::DefaultEditor;
+use rustyline::history::FileHistory;
+use rustyline::Editor;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 pub struct ChatSession {
     pub client: Box<dyn LlmClient>,
@@ -76,7 +79,10 @@ impl ChatSession {
 
         println!("Use Ctrl+C or /q to exit, /h for help.");
 
-        let mut rl = DefaultEditor::new().expect("Failed to create editor");
+        let current_provider = Arc::new(Mutex::new(self.client.get_state().provider.clone()));
+        let mut rl = Editor::<ChatCompleter, FileHistory>::new().expect("Failed to create editor");
+        rl.set_helper(Some(ChatCompleter::new(current_provider.clone())));
+
         if let Some(parent) = HISTORY_LOG_PATH.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -85,6 +91,12 @@ impl ChatSession {
         let mut line_buffer = Vec::new();
 
         loop {
+            // Update current provider in completer in case it changed
+            {
+                let mut cp = current_provider.lock().unwrap();
+                *cp = self.client.get_state().provider.clone();
+            }
+
             let prompt = if line_buffer.is_empty() { "> " } else { ">> " };
             let readline = rl.readline(prompt);
             match readline {
@@ -234,13 +246,58 @@ impl ChatSession {
                                 let mut verifier_handle = None;
                                 let config = crate::config::CONFIG_MANAGER.get_config();
                                 if config.security.dual_llm_verification.unwrap_or(false) {
-                                    let intent = self.intent.clone();
+                                    // 1. Extract recent USER messages (Sliding Window: last 5)
+                                    // 2. Truncate long messages to focus on intent, not data (UTF-8 safe)
+                                    let user_history: Vec<String> = self
+                                        .client
+                                        .get_state()
+                                        .conversation
+                                        .iter()
+                                        .filter(|m| m.role == Role::User)
+                                        .rev()
+                                        .take(5)
+                                        .map(|m| {
+                                            let text = m.get_text(true);
+                                            if text.chars().count() > 1000 {
+                                                let head: String = text.chars().take(500).collect();
+                                                let tail: String = text
+                                                    .chars()
+                                                    .rev()
+                                                    .take(500)
+                                                    .collect::<String>()
+                                                    .chars()
+                                                    .rev()
+                                                    .collect();
+                                                format!("{}...[TRUNCATED]...{}", head, tail)
+                                            } else {
+                                                text
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .into_iter()
+                                        .rev()
+                                        .collect();
+
+                                    let mut intent_context = user_history.join("\n---\n");
+
+                                    // 3. Final total length safety check
+                                    if intent_context.chars().count() > 4000 {
+                                        intent_context = intent_context
+                                            .chars()
+                                            .rev()
+                                            .take(4000)
+                                            .collect::<String>()
+                                            .chars()
+                                            .rev()
+                                            .collect();
+                                    }
+
                                     let name_clone = name.to_string();
                                     let args_clone = serde_json::json!(args);
 
                                     verifier_handle = Some(tokio::spawn(async move {
                                         crate::security::dual_llm_verifier::verify_tool_call(
-                                            &intent,
+                                            &intent_context,
                                             &name_clone,
                                             &args_clone,
                                             None,

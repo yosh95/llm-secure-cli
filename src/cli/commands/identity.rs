@@ -1,9 +1,9 @@
-use std::fs;
 use crate::cli::ui;
 use crate::consts::KEY_DIR;
 use crate::security::identity::IdentityManager;
 use crate::security::integrity::IntegrityVerifier;
 use crate::security::merkle_anchor::SessionAnchorManager;
+use std::fs;
 
 pub fn run_keygen() {
     ui::report_success("Generating Secure Identity Keys (RSA + Post-Quantum)...");
@@ -48,7 +48,9 @@ pub fn run_verify(_tail: Option<usize>) {
             ui::report_success("OK: System integrity verified.");
         }
         Ok(false) => {
-            ui::report_error("FAILED: System integrity failure detected (Binary or Config mismatch).");
+            ui::report_error(
+                "FAILED: System integrity failure detected (Binary or Config mismatch).",
+            );
         }
         Err(e) => {
             ui::report_error(&format!("ERROR: Verification error: {}", e));

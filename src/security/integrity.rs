@@ -1,8 +1,8 @@
-use base64::{engine::general_purpose, Engine as _};
 use crate::consts::{CONFIG_FILE_PATH, LLM_CLI_BASE_DIR};
 use crate::security::identity::IdentityManager;
 use crate::security::pqc::{MldsaVariant, PqcProvider};
 use anyhow::{anyhow, Result};
+use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -69,7 +69,7 @@ impl IntegrityVerifier {
         // Sign the manifest data with the PQC private key
         let sk = IdentityManager::get_pqc_private_key(MldsaVariant::Mldsa65)
             .map_err(|_| anyhow!("Identity keys not found. Run 'keygen' first."))?;
-        
+
         let signature = PqcProvider::sign_mldsa(json_data.as_bytes(), &sk, MldsaVariant::Mldsa65);
 
         let manifest = IntegrityManifest {
@@ -92,7 +92,9 @@ impl IntegrityVerifier {
     /// Returns true if integrity is confirmed, false if tampering is detected.
     pub fn verify(&self) -> Result<bool> {
         if !self.manifest_path.exists() {
-            return Err(anyhow!("Integrity manifest not found. Run 'manifest' to establish a baseline."));
+            return Err(anyhow!(
+                "Integrity manifest not found. Run 'manifest' to establish a baseline."
+            ));
         }
 
         let content = fs::read_to_string(&self.manifest_path)?;
@@ -107,7 +109,8 @@ impl IntegrityVerifier {
         let pk = IdentityManager::get_pqc_public_key(MldsaVariant::Mldsa65)?;
         let signature = general_purpose::STANDARD.decode(&manifest.pqc_signature)?;
 
-        if !PqcProvider::verify_mldsa(json_data.as_bytes(), &signature, &pk, MldsaVariant::Mldsa65) {
+        if !PqcProvider::verify_mldsa(json_data.as_bytes(), &signature, &pk, MldsaVariant::Mldsa65)
+        {
             return Ok(false); // Manifest signature mismatch (Manifest itself tampered)
         }
 

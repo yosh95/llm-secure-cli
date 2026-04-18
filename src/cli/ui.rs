@@ -147,7 +147,12 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                 } else {
                     v.to_string()
                 };
-                println!("    {} {}: {}", "•".bright_black(), "explanation".cyan(), val_str);
+                println!(
+                    "    {} {}: {}",
+                    "•".bright_black(),
+                    "explanation".cyan(),
+                    val_str
+                );
             }
         }
     } else {
