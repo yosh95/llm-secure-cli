@@ -273,11 +273,8 @@ impl ChatSession {
                                 }
 
                                 if !approved {
-                                    let prompt = format!("Execute {}? (y/N): ", name);
-                                    let input = ui::get_user_input(&prompt);
-                                    if input.to_lowercase() == "y" {
-                                        approved = true;
-                                    }
+                                    let prompt = format!("Execute {}", name);
+                                    approved = ui::ask_confirm(&prompt);
                                 }
 
                                 if !approved {

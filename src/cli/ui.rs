@@ -1,5 +1,6 @@
 use colored::*;
 use console::Term;
+use std::io::{self, Read, Write};
 use termimad::MadSkin;
 use textwrap::wrap;
 
@@ -10,7 +11,7 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
 
     if let Some(t) = title {
         let rule_color = style.unwrap_or("cyan");
-        let rule = "-".repeat(width);
+        let rule = "─".repeat(width);
         println!("{}", rule.color(rule_color));
         println!("{}", t.bold().color(rule_color));
     }
@@ -22,7 +23,7 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
 
     if title.is_some() {
         let rule_color = style.unwrap_or("cyan");
-        let rule = "-".repeat(width);
+        let rule = "─".repeat(width);
         println!("{}", rule.color(rule_color));
     }
 }
@@ -56,7 +57,13 @@ pub fn print_key_value(key: &str, value: &str) {
 }
 
 pub fn print_tool_call(name: &str, args: &serde_json::Value) {
+    let term = Term::stdout();
+    let (_, width) = term.size();
+    let width = (width as usize).min(100);
+    let color = "yellow";
+
     println!();
+    println!("{}", "─".repeat(width).color(color));
     println!(
         "{} {}{}",
         "->".yellow().bold(),
@@ -133,6 +140,7 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
     } else {
         println!("    {}", args);
     }
+    println!("{}", "─".repeat(width).color(color));
 }
 
 pub fn print_tool_result(result: &str) {
@@ -214,13 +222,10 @@ pub fn print_panel(
         let remaining = width.saturating_sub(title_str.len() + 2);
         println!(
             "{}",
-            format!("-{}-{}-", title_str, "-".repeat(remaining)).color(border_color)
+            format!("─{}─{}", title_str, "─".repeat(remaining)).color(border_color)
         );
     } else {
-        println!(
-            "{}",
-            format!("-{}-", "-".repeat(width - 2)).color(border_color)
-        );
+        println!("{}", "─".repeat(width).color(border_color));
     }
 
     // Content with wrapping
@@ -228,21 +233,12 @@ pub fn print_panel(
     for line in content.lines() {
         let wrapped = wrap(line, inner_width);
         for w_line in wrapped {
-            println!(
-                "{} {:inner_width$} {}",
-                "│".color(border_color),
-                w_line,
-                "│".color(border_color),
-                inner_width = inner_width
-            );
+            println!("    {}", w_line);
         }
     }
 
     // Bottom border
-    println!(
-        "{}",
-        format!("-{}-", "-".repeat(width - 2)).color(border_color)
-    );
+    println!("{}", "─".repeat(width).color(border_color));
 }
 
 pub fn report_error(message: &str) {
@@ -257,8 +253,29 @@ pub fn report_success(message: &str) {
     println!("{} {}", "OK".green().bold(), message.green());
 }
 
+pub fn ask_confirm(prompt: &str) -> bool {
+    let term = Term::stdout();
+    print!("{} (y/N): ", prompt);
+    let _ = io::stdout().flush();
+
+    loop {
+        if let Ok(key) = term.read_char() {
+            match key {
+                'y' | 'Y' | 'ｙ' | 'Ｙ' => {
+                    println!("{}", "yes".green());
+                    return true;
+                }
+                'n' | 'N' | 'ｎ' | 'Ｎ' | '\r' | '\n' => {
+                    println!("{}", "no".red());
+                    return false;
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 pub fn get_user_input(prompt: &str) -> String {
-    use std::io::{self, Write};
     print!("{}", prompt);
     let _ = io::stdout().flush();
     let mut input = String::new();
@@ -267,7 +284,6 @@ pub fn get_user_input(prompt: &str) -> String {
 }
 
 pub fn open_external_editor(initial_content: &str) -> anyhow::Result<String> {
-    use std::io::{Read, Write};
     use std::process::Command;
     use tempfile::NamedTempFile;
 
