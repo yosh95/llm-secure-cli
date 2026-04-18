@@ -334,57 +334,76 @@ impl ChatSession {
                                     approved = ui::ask_confirm(&prompt);
                                 }
 
+                                let mut final_result = None;
+
                                 if !approved {
                                     ui::report_warning("Execution cancelled by user.");
-                                    continue;
+                                    final_result = Some(serde_json::Value::String(
+                                        "Error: Execution cancelled by user.".to_string(),
+                                    ));
                                 }
 
                                 // Wait for Dual LLM Verifier if it was started
-                                if let Some(handle) = verifier_handle {
-                                    let pb = ProgressBar::new_spinner();
-                                    pb.set_style(
-                                        ProgressStyle::default_spinner()
-                                            .template("{spinner:.yellow} {msg}")?,
-                                    );
+                                if final_result.is_none() {
+                                    if let Some(handle) = verifier_handle {
+                                        let pb = ProgressBar::new_spinner();
+                                        pb.set_style(
+                                            ProgressStyle::default_spinner()
+                                                .template("{spinner:.yellow} {msg}")?,
+                                        );
 
-                                    let config = crate::config::CONFIG_MANAGER.get_config();
-                                    let v_provider = config.security.dual_llm_provider.clone();
-                                    let v_model_alias = config.security.dual_llm_model.clone();
-                                    let v_model_name = {
-                                        let registry =
-                                            crate::llm::registry::CLIENT_REGISTRY.lock().unwrap();
-                                        registry
-                                            .create_client(&v_provider, &v_model_alias, false, true)
-                                            .map(|c| c.get_state().model.clone())
-                                            .unwrap_or(v_model_alias)
-                                    };
+                                        let config = crate::config::CONFIG_MANAGER.get_config();
+                                        let v_provider = config.security.dual_llm_provider.clone();
+                                        let v_model_alias = config.security.dual_llm_model.clone();
+                                        let v_model_name = {
+                                            let registry = crate::llm::registry::CLIENT_REGISTRY
+                                                .lock()
+                                                .unwrap();
+                                            registry
+                                                .create_client(
+                                                    &v_provider,
+                                                    &v_model_alias,
+                                                    false,
+                                                    true,
+                                                )
+                                                .map(|c| c.get_state().model.clone())
+                                                .unwrap_or(v_model_alias)
+                                        };
 
-                                    pb.set_message(format!(
-                                        "Finalizing intent verification... ({})",
-                                        v_model_name
-                                    ));
-                                    pb.enable_steady_tick(std::time::Duration::from_millis(100));
-
-                                    let (safe, reason) = handle.await.unwrap_or_else(|_| {
-                                        (false, "Verification task panicked".to_string())
-                                    });
-                                    pb.finish_and_clear();
-                                    if !safe {
-                                        ui::report_error(&format!(
-                                            "Dual LLM Verification failed: {}",
-                                            reason
+                                        pb.set_message(format!(
+                                            "Finalizing intent verification... ({})",
+                                            v_model_name
                                         ));
-                                        continue;
-                                    } else {
-                                        ui::report_success(&format!("Intent Verified: {}", reason));
+                                        pb.enable_steady_tick(std::time::Duration::from_millis(
+                                            100,
+                                        ));
+
+                                        let (safe, reason) = handle.await.unwrap_or_else(|_| {
+                                            (false, "Verification task panicked".to_string())
+                                        });
+                                        pb.finish_and_clear();
+                                        if !safe {
+                                            ui::report_error(&format!(
+                                                "Dual LLM Verification failed: {}",
+                                                reason
+                                            ));
+                                            final_result = Some(serde_json::Value::String(
+                                                format!("Security Policy Violation: {}", reason),
+                                            ));
+                                        } else {
+                                            ui::report_success(&format!(
+                                                "Intent Verified: {}",
+                                                reason
+                                            ));
+                                        }
                                     }
                                 }
 
                                 // Execute tool
-                                let mut final_result = None;
-
                                 // 1. Static Analysis (Space)
-                                if name == "execute_command" || name == "execute_python" {
+                                if final_result.is_none()
+                                    && (name == "execute_command" || name == "execute_python")
+                                {
                                     let mut check_contents = Vec::new();
                                     if let Some(c) = args.get("command").and_then(|v| v.as_str()) {
                                         check_contents.push(c.to_string());
@@ -401,7 +420,10 @@ impl ChatSession {
                                     }
 
                                     for code in check_contents {
-                                        let (safe, violations, warnings) = crate::security::static_analyzer::StaticAnalyzer::analyze_python_safety(&code);
+                                        let (safe, violations, warnings) =
+                                            crate::security::static_analyzer::StaticAnalyzer::analyze_python_safety(
+                                                &code,
+                                            );
                                         if !safe {
                                             let err = format!(
                                                 "Static Analysis Blocked: {}",
