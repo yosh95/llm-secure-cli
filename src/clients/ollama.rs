@@ -1,0 +1,126 @@
+use crate::clients::base::{BaseLlmClientData, LlmClient, ProviderSpec};
+use crate::clients::config::CONFIG_MANAGER;
+use crate::modules::models::{ClientState, DataSource, Role};
+use async_trait::async_trait;
+use once_cell::sync::Lazy;
+use reqwest::Client;
+use serde_json::json;
+
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(Client::new);
+
+pub struct OllamaClient {
+    pub base: BaseLlmClientData,
+    pub api_url: String,
+}
+
+impl OllamaClient {
+    pub fn new(model: &str, stdout: bool, raw: bool) -> Self {
+        let spec = ProviderSpec {
+            api_key_name: "api_key".to_string(),
+            config_section: "ollama".to_string(),
+            pdf_as_base64: false,
+        };
+        let mut base = BaseLlmClientData::new(model, spec, stdout, raw);
+
+        // Ollama might not need an API key, but BaseLlmClientData tries to get one.
+        // If it's None, we might still want to proceed.
+        if base.api_key.is_none() {
+            base.api_key = Some("ollama".to_string());
+        }
+
+        let config = CONFIG_MANAGER.get_config();
+        let api_url = config
+            .providers
+            .get("ollama")
+            .and_then(|p| p.api_url.clone())
+            .unwrap_or_else(|| "http://localhost:11434/v1/chat/completions".to_string());
+
+        Self { base, api_url }
+    }
+
+    fn build_messages(&self, data: &[DataSource]) -> Vec<serde_json::Value> {
+        let mut messages = Vec::new();
+
+        for m in &self.base.state.conversation {
+            let role = match m.role {
+                Role::System => "system",
+                Role::User => "user",
+                Role::Assistant | Role::Model => "assistant",
+                Role::Tool => "tool",
+            };
+            messages.push(json!({
+                "role": role,
+                "content": m.get_text(false)
+            }));
+        }
+
+        for d in data {
+            if d.content_type == "text/plain" {
+                messages.push(json!({
+                    "role": "user",
+                    "content": d.content.as_str().unwrap_or("")
+                }));
+            }
+        }
+
+        messages
+    }
+}
+
+#[async_trait]
+impl LlmClient for OllamaClient {
+    fn get_state(&self) -> &ClientState {
+        &self.base.state
+    }
+    fn get_state_mut(&mut self) -> &mut ClientState {
+        &mut self.base.state
+    }
+    fn get_config_section(&self) -> &str {
+        &self.base.config_section
+    }
+
+    async fn send(
+        &mut self,
+        data: Vec<DataSource>,
+    ) -> anyhow::Result<(Option<String>, Option<String>)> {
+        let messages = self.build_messages(&data);
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(key) = &self.base.api_key {
+            if key != "ollama" && key != "local_bypass" {
+                headers.insert(
+                    reqwest::header::AUTHORIZATION,
+                    format!("Bearer {}", key).parse()?,
+                );
+            }
+        }
+
+        let payload = json!({
+            "model": self.base.state.model,
+            "messages": messages,
+        });
+
+        let res = HTTP_CLIENT
+            .post(&self.api_url)
+            .headers(headers)
+            .json(&payload)
+            .send()
+            .await?;
+
+        let res_json: serde_json::Value = res.json().await?;
+
+        let text = res_json["choices"][0]["message"]["content"]
+            .as_str()
+            .map(|s| s.to_string());
+
+        let model_msg = crate::modules::models::Message {
+            role: Role::Assistant,
+            parts: vec![crate::modules::models::MessagePart::Text(
+                text.clone().unwrap_or_default(),
+            )],
+        };
+        self.update_history(&data, model_msg);
+
+        Ok((text, None))
+    }
+}

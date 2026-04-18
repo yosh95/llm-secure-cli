@@ -1,0 +1,182 @@
+use crate::clients::config::CONFIG_MANAGER;
+use crate::consts::AUDIT_LOG_PATH;
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::fs::{self, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::Path;
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AuditEntry {
+    pub timestamp: String,
+    pub trace_id: String,
+    pub subject: String,
+    pub audience: String,
+    pub model: String,
+    pub event_type: String,
+    pub tool: String,
+    pub args: serde_json::Value,
+    pub pqc_confidential: bool,
+    pub output: Option<String>,
+    pub status: String,
+    pub exit_code: Option<i32>,
+    pub prev_hash: String,
+    pub hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pqc_signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pqc_algorithm: Option<String>,
+}
+
+pub fn log_audit(
+    tool_name: &str,
+    args: serde_json::Value,
+    output: Option<&str>,
+    exit_code: Option<i32>,
+    error: Option<&str>,
+    context: Option<&serde_json::Value>,
+) {
+    let path = &*AUDIT_LOG_PATH;
+    let config = CONFIG_MANAGER.get_config();
+    let max_lines = config.general.max_audit_log_lines;
+
+    // Ensure directory exists
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            let _ = fs::create_dir_all(parent);
+        }
+    }
+
+    let timestamp = Utc::now().to_rfc3339();
+    let empty_map = serde_json::Map::new();
+    let ctx = context.and_then(|c| c.as_object()).unwrap_or(&empty_map);
+
+    let trace_id = ctx
+        .get("trace_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("-")
+        .to_string();
+    let subject = ctx
+        .get("user_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let audience = ctx
+        .get("audience")
+        .and_then(|v| v.as_str())
+        .unwrap_or("-")
+        .to_string();
+    let model = ctx
+        .get("model")
+        .and_then(|v| v.as_str())
+        .unwrap_or("-")
+        .to_string();
+
+    let prev_hash = get_last_log_hash(path);
+
+    // TODO: Implement PQC encryption for args if tool is high-risk
+    let pqc_encrypted = false;
+    let final_args = args;
+
+    let mut log_entry = AuditEntry {
+        timestamp,
+        trace_id,
+        subject,
+        audience,
+        model,
+        event_type: "tool_call".to_string(),
+        tool: tool_name.to_string(),
+        args: final_args,
+        pqc_confidential: pqc_encrypted,
+        output: output.map(|s| {
+            if s.len() > 256 {
+                format!("{}...", &s[..256])
+            } else {
+                s.to_string()
+            }
+        }),
+        status: match error {
+            None => "SUCCESS".to_string(),
+            Some(e) => format!("FAILED: {}", e),
+        },
+        exit_code,
+        prev_hash,
+        hash: String::new(),
+        pqc_signature: None,
+        pqc_algorithm: None,
+    };
+
+    // Calculate hash
+    let entry_json = serde_json::to_string(&log_entry).unwrap();
+    let mut hasher = Sha256::new();
+    hasher.update(entry_json.as_bytes());
+    log_entry.hash = hex::encode(hasher.finalize());
+
+    // TODO: Implement PQC signing
+
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        if let Ok(line) = serde_json::to_string(&log_entry) {
+            let _ = writeln!(file, "{}", line);
+        }
+    }
+
+    trim_log_file(path, max_lines);
+}
+
+fn get_last_log_hash(path: &Path) -> String {
+    if !path.exists() {
+        return "0".repeat(64);
+    }
+
+    if let Ok(mut file) = fs::File::open(path) {
+        let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+        if size == 0 {
+            return "0".repeat(64);
+        }
+
+        let mut buffer = Vec::new();
+        let read_size = std::cmp::min(size, 4096);
+        let _ = file.seek(SeekFrom::End(-(read_size as i64)));
+        let _ = file.read_to_end(&mut buffer);
+
+        let content = String::from_utf8_lossy(&buffer);
+        let lines: Vec<&str> = content.trim().split('\n').collect();
+        if let Some(last_line) = lines.last() {
+            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(last_line) {
+                if let Some(hash) = entry.get("hash").and_then(|v| v.as_str()) {
+                    return hash.to_string();
+                }
+            }
+        }
+    }
+
+    "0".repeat(64)
+}
+
+fn trim_log_file(path: &Path, max_lines: usize) {
+    if !path.exists() {
+        return;
+    }
+
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.len() <= max_lines {
+        return;
+    }
+
+    let kept_lines = &lines[lines.len() - max_lines..];
+
+    // Simplifed rotation: just rewrite the file
+    // In Python version, it rotates to an archive and adds a snapshot entry.
+    // For now, let's just truncate to keep it simple.
+    if let Ok(mut file) = fs::File::create(path) {
+        for line in kept_lines {
+            let _ = writeln!(file, "{}", line);
+        }
+    }
+}

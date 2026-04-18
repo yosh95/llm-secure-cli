@@ -1,0 +1,69 @@
+\begin{tikzpicture}[
+    node distance=0.8cm and 1.2cm,
+    auto,
+    component/.style={rectangle, draw, fill=white, text width=8.5em, text centered, rounded corners, minimum height=2.5em, font=\scriptsize},
+    tierbox/.style={rectangle, draw, dashed, inner sep=0.4cm, rounded corners, font=\footnotesize\bfseries},
+    data/.style={ellipse, draw, fill=yellow!5, text width=6em, text centered, font=\scriptsize},
+    line/.style={draw, -latex', thick},
+    title/.style={font=\small\bfseries}
+]
+
+    % Input
+    \node [data] (request) {LLM Tool Call \\ (Prompt/Context)};
+
+    % CASS
+    \node [diamond, draw, fill=orange!10, text width=6em, text centered, right=1.2cm of request, font=\scriptsize\bfseries] (cass) {CASS \\ Orchestrator};
+    \node [below=0.1cm of cass, font=\tiny, text width=5em, text centered] {(Risk-Adaptive Scaling)};
+    \path [line] (request) -- (cass);
+
+    % Tier 1: Space
+    \node [component, fill=green!5, right=1.2cm of cass, yshift=3.2cm] (ast) {AST Static Analysis \\ \textit{(Strict Whitelist)}};
+    \node [component, fill=green!5, right=of ast] (path) {Path Guardrails \\ \textit{(Normalization)}};
+    \node [component, fill=green!5, right=of path] (isolated_env) {Isolated Environment \\ \textit{(Container via MCP)}};
+    
+    \node [tierbox, fit=(ast) (path) (isolated_env), label={[title]above:Tier 1: Structural Guardrails (Space)}] (t1box) {};
+
+    % Tier 2: Behavior
+    \node [component, fill=purple!5, right=1.2cm of cass, yshift=0.3cm] (identity) {Workload Identity \\ \textit{(ABAC / COSE Token)}};
+    \node [component, fill=purple!5, right=of identity] (workspace) {Workspace Binding \\ \textit{(SHA-256 Context)}};
+
+\node [tierbox, fit=(identity) (workspace), label={[title]above:Tier 2: Behavioral Zero-Trust (Behavior)}] (t2box) {};
+
+
+    % Tier 3: Time
+    \node [component, fill=red!5, right=1.2cm of cass, yshift=-2.8cm] (pqc_sig) {Hybrid PQC Sign \\ \textit{(ML-DSA-44/65/87)}};
+    \node [component, fill=red!5, right=of pqc_sig] (pqc_kem) {Audit Encryption \\ \textit{(ML-KEM-768)}};
+    \node [component, fill=red!5, right=of pqc_kem] (attest) {Remote Attestation \\ \textit{(Security Manifest)}};
+    
+    \node [tierbox, fit=(pqc_sig) (pqc_kem) (attest), label={[title]above:Tier 3: Post-Quantum Resilience (Time)}] (t3box) {};
+
+    % Routing from CASS
+    \path [line] (cass.east) -- +(0.4,0) |- (ast.west);
+    \path [line] (cass.east) -- (identity.west);
+    \path [line] (cass.east) -- +(0.4,0) |- (pqc_sig.west);
+
+    % Flows within tiers
+    \path [line] (ast) -- (path);
+    \path [line] (path) -- (isolated_env);
+    \path [line] (identity) -- (workspace);
+    \path [line] (pqc_sig) -- (pqc_kem);
+    \path [line] (pqc_kem) -- (attest);
+
+    % Final Execution
+    \node [rectangle, draw, fill=blue!10, text width=7em, text centered, rounded corners, minimum height=3em, right=5.5cm of workspace, font=\small\bfseries] (exec) {Secure \\ Tool \\ Execution};
+
+    \path [line] (isolated_env.east) -- +(0.6,0) |- (exec.160);
+    \path [line] (workspace.east) -- (exec.west);
+    \path [line] (attest.east) -- +(0.6,0) |- (exec.200);
+
+    % MCP Server-Side (Zero Trust)
+    \node [rectangle, draw, fill=gray!10, text width=8em, text centered, dotted, right=1.2cm of exec, font=\scriptsize] (server) {MCP Server-Side \\ \textbf{Secure Wrapper} \\ \textit{(Independent ABAC/Audit)}};
+    
+    \path [line, dashed] (exec) -- node[above, font=\tiny]{MCP/JSON-RPC} (server);
+
+    % Response Loop
+    \node [component, fill=orange!5, below=1.2cm of exec] (resp) {ResponseSigner \\ \textit{(Bi-directional Integrity)}};
+    \path [line] (server.south) |- (resp.east);
+    \path [line] (resp.south) -- +(0,-2.5) -| (request.west);
+
+\end{tikzpicture}
