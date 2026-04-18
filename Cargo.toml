@@ -4,25 +4,25 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "llm-secure-cli"
+name = "llsc"
 path = "src/bin/llm-secure-cli.rs"
 
 [[bin]]
-name = "llm-secure-cli-security"
+name = "llsc-security"
 path = "src/bin/llm-secure-cli-security.rs"
 
 [[bin]]
-name = "llm-secure-cli-models"
+name = "llsc-models"
 path = "src/bin/llm-secure-cli-models.rs"
 
 [[bin]]
-name = "llm-secure-cli-benchmark-dual"
+name = "llsc-benchmark-dual"
 path = "src/bin/llm-secure-cli-benchmark-dual.rs"
 
 [dependencies]
 clap = { version = "3.2.25", features = ["derive"] }
 tokio = { version = "1.43", features = ["full"] }
-reqwest = { version = "0.11", features = ["json", "stream", "gzip"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "stream", "gzip", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"
@@ -57,7 +57,11 @@ html2text = "0.6"
 difflib = "0.4"
 urlencoding = "2.1"
 rustyline = "12.0"
-rust-mcp-sdk = { version = "0.9", features = ["client", "server"] }
+# PQC support (Reference implementations)
+pqcrypto-mldsa = "0.1"
+pqcrypto-mlkem = "0.1"
+pqcrypto-traits = "0.3"
+aes-gcm = "0.10"
 
 
 [dev-dependencies]

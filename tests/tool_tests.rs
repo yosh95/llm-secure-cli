@@ -1,4 +1,4 @@
-use llm_secure_cli::modules::tools::file_modification::{create_or_overwrite_file, edit_file};
+use llm_secure_cli::tools::builtin::file_modification::{create_or_overwrite_file, edit_file};
 use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
@@ -17,7 +17,10 @@ fn test_file_modification_tools() {
 
     let res = create_or_overwrite_file(args).expect("create_or_overwrite_file failed");
     assert!(res["success"].as_bool().unwrap());
-    assert_eq!(fs::read_to_string(&file_path).unwrap(), "line1\nline2\nline3");
+    assert_eq!(
+        fs::read_to_string(&file_path).unwrap(),
+        "line1\nline2\nline3"
+    );
 
     // 2. Edit file (exact)
     let mut args = HashMap::new();
@@ -28,7 +31,10 @@ fn test_file_modification_tools() {
     let res = edit_file(args).expect("edit_file failed");
     assert!(res["success"].as_bool().unwrap());
     assert_eq!(res["match_type"].as_str().unwrap(), "exact");
-    assert_eq!(fs::read_to_string(&file_path).unwrap(), "line1\nline2 modified\nline3");
+    assert_eq!(
+        fs::read_to_string(&file_path).unwrap(),
+        "line1\nline2 modified\nline3"
+    );
 
     // 3. Edit file (fuzzy)
     let mut args = HashMap::new();
@@ -40,7 +46,10 @@ fn test_file_modification_tools() {
     assert!(res["success"].as_bool().unwrap());
     assert_eq!(res["match_type"].as_str().unwrap(), "fuzzy");
     // Indentation from search block is preserved
-    assert_eq!(fs::read_to_string(&file_path).unwrap(), "line1\nline2 modified\n  line3 modified");
+    assert_eq!(
+        fs::read_to_string(&file_path).unwrap(),
+        "line1\nline2 modified\n  line3 modified"
+    );
 }
 
 #[test]

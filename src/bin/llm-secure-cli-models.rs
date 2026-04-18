@@ -1,5 +1,5 @@
 use clap::Parser;
-use llm_secure_cli::apps::model_listing;
+use llm_secure_cli::cli::commands::models;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -18,7 +18,7 @@ struct Args {
 async fn main() {
     let args = Args::parse();
     if let Some(p) = args.provider {
-        model_listing::list_models(&p, args.models, args.verbose).await;
+        models::list_models(&p, args.models, args.verbose).await;
     } else {
         println!("Please specify a provider.");
     }

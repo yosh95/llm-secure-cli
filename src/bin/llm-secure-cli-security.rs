@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use llm_secure_cli::apps::identity_tool;
+use llm_secure_cli::cli::commands::identity;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -33,13 +33,13 @@ fn main() {
     let args = Args::parse();
 
     match args.subcommand {
-        Some(IdentityCommands::Keygen) => identity_tool::run_keygen(),
-        Some(IdentityCommands::Manifest) => identity_tool::run_manifest(),
-        Some(IdentityCommands::Verify { tail }) => identity_tool::run_verify(tail),
+        Some(IdentityCommands::Keygen) => identity::run_keygen(),
+        Some(IdentityCommands::Manifest) => identity::run_manifest(),
+        Some(IdentityCommands::Verify { tail }) => identity::run_verify(tail),
         Some(IdentityCommands::VerifySession { trace_id }) => {
-            identity_tool::run_verify_session(&trace_id);
+            identity::run_verify_session(&trace_id);
         }
-        Some(IdentityCommands::ListAnchors) => identity_tool::list_anchors(),
+        Some(IdentityCommands::ListAnchors) => identity::list_anchors(),
         None => println!("Please specify a subcommand. Use --help for details."),
     }
 }

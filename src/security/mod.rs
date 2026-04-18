@@ -4,4 +4,6 @@ pub mod dual_llm_verifier;
 pub mod path_validator;
 pub mod permissions;
 pub mod policy;
+pub mod pqc;
 pub mod resource_manager;
+pub mod static_analyzer;

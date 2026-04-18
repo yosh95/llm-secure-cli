@@ -1,4 +1,4 @@
-use crate::clients::config::CONFIG_MANAGER;
+use crate::config::CONFIG_MANAGER;
 use crate::consts::LLM_CLI_BASE_DIR;
 use path_clean::PathClean;
 use std::path::PathBuf;

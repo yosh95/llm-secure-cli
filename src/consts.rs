@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use dirs::home_dir;
 use once_cell::sync::Lazy;
 use std::path::PathBuf;

@@ -1,10 +1,10 @@
 use clap::{Parser, Subcommand};
-use llm_secure_cli::clients::claude::ClaudeClient;
-use llm_secure_cli::clients::gemini::GeminiClient;
-use llm_secure_cli::clients::ollama::OllamaClient;
-use llm_secure_cli::clients::openai::OpenAiClient;
-use llm_secure_cli::clients::session::ChatSession;
-use llm_secure_cli::ui;
+use llm_secure_cli::cli::ui;
+use llm_secure_cli::core::session::ChatSession;
+use llm_secure_cli::llm::providers::anthropic::ClaudeClient;
+use llm_secure_cli::llm::providers::google::GeminiClient;
+use llm_secure_cli::llm::providers::ollama::OllamaClient;
+use llm_secure_cli::llm::providers::openai::OpenAiClient;
 use std::process;
 
 #[derive(Parser, Debug)]
@@ -122,12 +122,17 @@ async fn main() {
     llm_secure_cli::security::permissions::setup_permissions();
 
     if !llm_secure_cli::consts::CONFIG_FILE_PATH.exists() {
-        llm_secure_cli::apps::config_init::init_config();
+        llm_secure_cli::config::init::init_config();
     }
+
+    // Initialize remote MCP tools if configured
+    let _ = llm_secure_cli::tools::initialize_remote_tools().await;
 
     // Register clients
     {
-        let mut registry = llm_secure_cli::clients::registry::CLIENT_REGISTRY.lock().unwrap();
+        let mut registry = llm_secure_cli::llm::registry::CLIENT_REGISTRY
+            .lock()
+            .unwrap();
         registry.register("openai", |model, stdout, raw| {
             Box::new(OpenAiClient::new(model, stdout, raw))
         });
@@ -161,7 +166,7 @@ async fn main() {
                 verbose,
             } => {
                 if let Some(p) = provider {
-                    llm_secure_cli::apps::model_listing::list_models(&p, models, verbose).await;
+                    llm_secure_cli::cli::commands::models::list_models(&p, models, verbose).await;
                 } else {
                     println!("Please specify a provider.");
                 }
@@ -172,30 +177,35 @@ async fn main() {
                 model,
                 iterations,
             } => {
-                llm_secure_cli::apps::benchmark::run_benchmark(&provider, &model, iterations).await;
+                llm_secure_cli::cli::commands::benchmark::run_benchmark(
+                    &provider, &model, iterations,
+                )
+                .await;
                 return;
             }
             Commands::Identity { subcommand } => {
                 match subcommand {
-                    Some(IdentityCommands::Keygen) => llm_secure_cli::apps::identity_tool::run_keygen(),
+                    Some(IdentityCommands::Keygen) => {
+                        llm_secure_cli::cli::commands::identity::run_keygen()
+                    }
                     Some(IdentityCommands::Manifest) => {
-                        llm_secure_cli::apps::identity_tool::run_manifest()
+                        llm_secure_cli::cli::commands::identity::run_manifest()
                     }
                     Some(IdentityCommands::Verify { tail }) => {
-                        llm_secure_cli::apps::identity_tool::run_verify(tail)
+                        llm_secure_cli::cli::commands::identity::run_verify(tail)
                     }
                     Some(IdentityCommands::VerifySession { trace_id }) => {
-                        llm_secure_cli::apps::identity_tool::run_verify_session(&trace_id);
+                        llm_secure_cli::cli::commands::identity::run_verify_session(&trace_id);
                     }
                     Some(IdentityCommands::ListAnchors) => {
-                        llm_secure_cli::apps::identity_tool::list_anchors()
+                        llm_secure_cli::cli::commands::identity::list_anchors()
                     }
                     None => println!("Please specify an identity subcommand."),
                 }
                 return;
             }
             Commands::DecryptLog { input, output } => {
-                llm_secure_cli::apps::pqc_decrypt::decrypt_log_file(
+                llm_secure_cli::cli::commands::pqc_decrypt::decrypt_log_file(
                     input.into(),
                     output.map(|o| o.into()),
                 );
@@ -205,12 +215,15 @@ async fn main() {
     }
 
     if args.mcp_server {
-        llm_secure_cli::apps::mcp_server::run_mcp_server().await;
+        if let Err(e) = llm_secure_cli::cli::commands::mcp_server::run_mcp_server().await {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
         return;
     }
 
     // Standard chat
-    let config_manager = &llm_secure_cli::clients::config::CONFIG_MANAGER;
+    let config_manager = &llm_secure_cli::config::CONFIG_MANAGER;
     let config = config_manager.get_config();
     let active_providers = config_manager.get_active_providers();
 
@@ -248,7 +261,9 @@ async fn main() {
     let stdout = args.stdout || !is_atty;
 
     let client = {
-        let registry = llm_secure_cli::clients::registry::CLIENT_REGISTRY.lock().unwrap();
+        let registry = llm_secure_cli::llm::registry::CLIENT_REGISTRY
+            .lock()
+            .unwrap();
         registry.create_client(&provider, &model, stdout, args.raw)
     };
 
@@ -270,7 +285,7 @@ async fn main() {
         let sources = if all_sources.is_empty() {
             None
         } else {
-            Some(llm_secure_cli::modules::media_utils::process_sources(all_sources).await)
+            Some(llm_secure_cli::utils::media::process_sources(all_sources).await)
         };
         session.run(sources, None).await;
     } else {

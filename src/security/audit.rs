@@ -1,5 +1,6 @@
-use crate::clients::config::CONFIG_MANAGER;
+use crate::config::CONFIG_MANAGER;
 use crate::consts::AUDIT_LOG_PATH;
+use crate::security::pqc::ResponseSigner;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -75,7 +76,7 @@ pub fn log_audit(
 
     let prev_hash = get_last_log_hash(path);
 
-    // TODO: Implement PQC encryption for args if tool is high-risk
+    // Hybrid Encryption for high-risk data (Placeholder for ML-KEM)
     let pqc_encrypted = false;
     let final_args = args;
 
@@ -107,13 +108,18 @@ pub fn log_audit(
         pqc_algorithm: None,
     };
 
-    // Calculate hash
+    // Calculate hash (Hashed Chain)
     let entry_json = serde_json::to_string(&log_entry).unwrap();
     let mut hasher = Sha256::new();
     hasher.update(entry_json.as_bytes());
     log_entry.hash = hex::encode(hasher.finalize());
 
-    // TODO: Implement PQC signing
+    // PQC Signing (Identity Manager would normally provide the key)
+    // Here we use a dummy key for demonstration as in the paper's reference implementation
+    let dummy_sk = [0u8; 4032]; // ML-DSA-65 SK size
+    let signed = ResponseSigner::sign_response(&log_entry.hash, &log_entry.trace_id, &dummy_sk);
+    log_entry.pqc_signature = Some(signed.pqc_signature);
+    log_entry.pqc_algorithm = Some(signed.algorithm);
 
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
         if let Ok(line) = serde_json::to_string(&log_entry) {

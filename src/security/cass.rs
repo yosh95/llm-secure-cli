@@ -1,4 +1,4 @@
-use crate::clients::config::CONFIG_MANAGER;
+use crate::config::CONFIG_MANAGER;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -6,6 +6,7 @@ pub enum RiskLevel {
     Low,
     Medium,
     High,
+    Critical,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,7 +23,9 @@ pub struct CASSOrchestrator;
 impl CASSOrchestrator {
     pub fn evaluate_risk(&self, tool_name: &str) -> RiskLevel {
         let config = CONFIG_MANAGER.get_config();
-        if config
+        if tool_name == "execute_command" {
+            RiskLevel::Critical
+        } else if config
             .security
             .high_risk_tools
             .iter()
@@ -47,6 +50,13 @@ impl CASSOrchestrator {
         let dual_llm_enabled = config.security.dual_llm_verification.unwrap_or(false);
 
         match risk_level {
+            RiskLevel::Critical => SecurityPosture {
+                require_pqc_signature: true,
+                pqc_variant: "ML-DSA-87".to_string(),
+                require_pqc_audit_encryption: true,
+                ast_strictness: "strict".to_string(),
+                require_dual_llm_verification: dual_llm_enabled,
+            },
             RiskLevel::High => SecurityPosture {
                 require_pqc_signature: true,
                 pqc_variant: "ML-DSA-87".to_string(),

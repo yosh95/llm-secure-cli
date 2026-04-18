@@ -1,6 +1,8 @@
-pub mod apps;
-pub mod clients;
+pub mod cli;
+pub mod config;
 pub mod consts;
-pub mod modules;
+pub mod core;
+pub mod llm;
 pub mod security;
-pub mod ui;
+pub mod tools;
+pub mod utils;

@@ -1,7 +1,7 @@
+use llm_secure_cli::config::CONFIG_MANAGER;
 use llm_secure_cli::security::path_validator::validate_path;
-use llm_secure_cli::clients::config::CONFIG_MANAGER;
-use std::fs;
 use std::env;
+use std::fs;
 use tempfile::tempdir;
 
 #[test]
@@ -24,7 +24,11 @@ blocked_filenames = ["*.key", ".env"]
 
     // 1. Allowed path (current directory)
     let res = validate_path("test.txt");
-    assert!(res.is_ok(), "Should allow test.txt in CWD, got {:?}", res.err());
+    assert!(
+        res.is_ok(),
+        "Should allow test.txt in CWD, got {:?}",
+        res.err()
+    );
 
     // 2. Blocked by traversal
     let res = validate_path("../outside.txt");
@@ -55,7 +59,7 @@ blocked_filenames = ["*.key", ".env"]
 #[test]
 fn test_audit_entry_serialization() {
     use llm_secure_cli::security::audit::AuditEntry;
-    
+
     let entry = AuditEntry {
         timestamp: "2023-01-01T00:00:00Z".to_string(),
         trace_id: "test-trace".to_string(),

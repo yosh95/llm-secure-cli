@@ -1,5 +1,5 @@
 use clap::Parser;
-use llm_secure_cli::apps::benchmark;
+use llm_secure_cli::cli::commands::benchmark;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]

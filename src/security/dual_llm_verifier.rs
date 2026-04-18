@@ -1,9 +1,7 @@
-#![allow(dead_code)]
-
-use crate::clients::base::LlmClient;
-use crate::clients::config::CONFIG_MANAGER;
-use crate::clients::registry::CLIENT_REGISTRY;
-use crate::modules::models::DataSource;
+use crate::config::CONFIG_MANAGER;
+use crate::llm::base::LlmClient;
+use crate::llm::models::DataSource;
+use crate::llm::registry::CLIENT_REGISTRY;
 use serde_json::json;
 use std::collections::HashMap;
 
