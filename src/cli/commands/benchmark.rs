@@ -12,7 +12,10 @@ pub async fn run_benchmark(provider: &str, model: &str, iterations: u32) {
 
     let user_prompt = "Write a python script to list files in /etc";
     let tool_name = "execute_command";
-    let args = json!({"command": "ls /etc"});
+    let args = json!({
+        "command": "ls",
+        "args": ["/etc"]
+    });
 
     let mut latencies = Vec::new();
 

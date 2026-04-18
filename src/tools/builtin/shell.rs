@@ -4,26 +4,25 @@ use std::collections::HashMap;
 use std::process::Command;
 
 pub fn execute_command(args: HashMap<String, Value>) -> anyhow::Result<Value> {
-    let command = args
+    let program = args
         .get("command")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("Missing 'command' argument"))?;
 
-    // 1. Static Analysis (Basic keyword check)
-    static_analyze(command)?;
+    let cmd_args: Vec<&str> = match args.get("args") {
+        Some(Value::Array(arr)) => arr.iter().filter_map(|v| v.as_str()).collect(),
+        _ => Vec::new(),
+    };
 
-    // 2. Dual LLM Verification
-    // (Note: This should ideally be called before this tool function is invoked,
-    // but we can add a hook here or in the session runner.)
+    // 1. Static Analysis (Basic keyword check on the entire command)
+    let full_command = format!("{} {}", program, cmd_args.join(" "));
+    static_analyze(&full_command)?;
 
-    // 3. Resource Limits & Execution
-    // For now, simple Command execution.
-    // In production, we'd use setrlimit or a sandbox.
-    #[cfg(unix)]
-    let output = Command::new("sh").arg("-c").arg(command).output()?;
-
-    #[cfg(windows)]
-    let output = Command::new("cmd").arg("/C").arg(command).output()?;
+    // 2. Resource Limits & Execution
+    // Directly execute the command without a shell to avoid injection and quoting issues.
+    let output = Command::new(program)
+        .args(&cmd_args)
+        .output()?;
 
     Ok(json!({
         "stdout": String::from_utf8_lossy(&output.stdout),

@@ -379,18 +379,23 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
 
     r.register(
         "execute_command",
-        "Execute a system command. Use this for ANY system interaction, including tasks \
-         traditionally done via shell (e.g., 'ls', 'git', 'grep', 'find'). \
-         You MUST write complete, self-contained commands.",
+        "Execute a system command directly without a shell. \
+         Use 'command' for the executable (e.g., 'ls', 'git') and 'args' for its arguments. \
+         This is secure against shell injection and handles special characters like backticks or quotes correctly.",
         json!({
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "Complete command to execute."
+                    "description": "The executable to run."
+                },
+                "args": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "List of arguments to pass to the executable."
                 }
             },
-            "required": ["command"]
+            "required": ["command", "args"]
         }),
         Arc::new(crate::tools::builtin::shell::execute_command),
         true,

@@ -331,12 +331,23 @@ impl ChatSession {
 
                                 // 1. Static Analysis (Space)
                                 if name == "execute_command" || name == "execute_python" {
-                                    if let Some(code) = args
-                                        .get("command")
-                                        .or_else(|| args.get("code"))
-                                        .and_then(|v| v.as_str())
-                                    {
-                                        let (safe, violations, warnings) = crate::security::static_analyzer::StaticAnalyzer::analyze_python_safety(code);
+                                    let mut check_contents = Vec::new();
+                                    if let Some(c) = args.get("command").and_then(|v| v.as_str()) {
+                                        check_contents.push(c.to_string());
+                                    }
+                                    if let Some(c) = args.get("code").and_then(|v| v.as_str()) {
+                                        check_contents.push(c.to_string());
+                                    }
+                                    if let Some(serde_json::Value::Array(arr)) = args.get("args") {
+                                        for v in arr {
+                                            if let Some(s) = v.as_str() {
+                                                check_contents.push(s.to_string());
+                                            }
+                                        }
+                                    }
+
+                                    for code in check_contents {
+                                        let (safe, violations, warnings) = crate::security::static_analyzer::StaticAnalyzer::analyze_python_safety(&code);
                                         if !safe {
                                             let err = format!(
                                                 "Static Analysis Blocked: {}",
@@ -344,6 +355,7 @@ impl ChatSession {
                                             );
                                             ui::report_error(&err);
                                             final_result = Some(serde_json::Value::String(err));
+                                            break;
                                         } else if !warnings.is_empty() {
                                             ui::report_warning(&format!(
                                                 "Static Analysis Warning: {}",
