@@ -114,12 +114,14 @@ pub fn log_audit(
     hasher.update(entry_json.as_bytes());
     log_entry.hash = hex::encode(hasher.finalize());
 
-    // PQC Signing (Identity Manager would normally provide the key)
-    // Here we use a dummy key for demonstration as in the paper's reference implementation
-    let dummy_sk = [0u8; 4032]; // ML-DSA-65 SK size
-    let signed = ResponseSigner::sign_response(&log_entry.hash, &log_entry.trace_id, &dummy_sk);
-    log_entry.pqc_signature = Some(signed.pqc_signature);
-    log_entry.pqc_algorithm = Some(signed.algorithm);
+    // PQC Signing (Identity Manager now provides the key)
+    let variant = crate::security::pqc::MldsaVariant::Mldsa65;
+    if let Ok(sk) = crate::security::identity::IdentityManager::get_pqc_private_key(variant) {
+        let signed =
+            ResponseSigner::sign_response(&log_entry.hash, &log_entry.trace_id, &sk, variant);
+        log_entry.pqc_signature = Some(signed.pqc_signature);
+        log_entry.pqc_algorithm = Some(signed.algorithm);
+    }
 
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
         if let Ok(line) = serde_json::to_string(&log_entry) {

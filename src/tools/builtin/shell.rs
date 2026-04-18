@@ -20,9 +20,7 @@ pub fn execute_command(args: HashMap<String, Value>) -> anyhow::Result<Value> {
 
     // 2. Resource Limits & Execution
     // Directly execute the command without a shell to avoid injection and quoting issues.
-    let output = Command::new(program)
-        .args(&cmd_args)
-        .output()?;
+    let output = Command::new(program).args(&cmd_args).output()?;
 
     Ok(json!({
         "stdout": String::from_utf8_lossy(&output.stdout),

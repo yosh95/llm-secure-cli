@@ -1,9 +1,13 @@
 pub mod audit;
 pub mod cass;
 pub mod dual_llm_verifier;
+pub mod identity;
+pub mod merkle;
+pub mod merkle_anchor;
 pub mod path_validator;
 pub mod permissions;
 pub mod policy;
 pub mod pqc;
+pub mod pqc_cose;
 pub mod resource_manager;
 pub mod static_analyzer;

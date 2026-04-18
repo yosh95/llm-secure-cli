@@ -1,0 +1,204 @@
+use crate::consts::KEY_DIR;
+use crate::security::pqc::{MldsaVariant, MlkemVariant, PQCAgilityManager, PqcProvider};
+use crate::security::pqc_cose::HybridSigner;
+use anyhow::Result;
+use base64::{engine::general_purpose, Engine as _};
+use chrono::Utc;
+use once_cell::sync::Lazy;
+use rsa::{
+    pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding},
+    RsaPrivateKey, RsaPublicKey,
+};
+use serde_json::json;
+use std::collections::HashMap;
+use std::fs;
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use uuid::Uuid;
+
+pub struct IdentityManager;
+
+static KEY_CACHE: Lazy<Mutex<HashMap<String, Vec<u8>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static KEYS_ENSURED: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
+
+impl IdentityManager {
+    const PRIVATE_KEY_PATH: &str = "id_rsa";
+    const PUBLIC_KEY_PATH: &str = "id_rsa.pub";
+    const PQC_KEM_PRIVATE_KEY_PATH: &str = "id_kem.key";
+    const PQC_KEM_PUBLIC_KEY_PATH: &str = "id_kem.pub";
+
+    fn get_pqc_paths(variant: MldsaVariant) -> (PathBuf, PathBuf) {
+        let (priv_name, pub_name) = match variant {
+            MldsaVariant::Mldsa44 => ("id_pqc_l2.key", "id_pqc_l2.pub"),
+            MldsaVariant::Mldsa65 => ("id_pqc_l3.key", "id_pqc_l3.pub"),
+            MldsaVariant::Mldsa87 => ("id_pqc_l5.key", "id_pqc_l5.pub"),
+        };
+        (KEY_DIR.join(priv_name), KEY_DIR.join(pub_name))
+    }
+
+    pub fn ensure_keys(force: bool) -> Result<()> {
+        let mut ensured = KEYS_ENSURED.lock().unwrap();
+        if *ensured && !force {
+            return Ok(());
+        }
+
+        if !KEY_DIR.exists() {
+            fs::create_dir_all(&*KEY_DIR)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&*KEY_DIR, fs::Permissions::from_mode(0o700))?;
+            }
+        }
+
+        // Classical RSA Keys
+        let rsa_priv_path = KEY_DIR.join(Self::PRIVATE_KEY_PATH);
+        let rsa_pub_path = KEY_DIR.join(Self::PUBLIC_KEY_PATH);
+
+        if force || !rsa_priv_path.exists() || !rsa_pub_path.exists() {
+            let mut rng = rand::thread_rng();
+            let priv_key = RsaPrivateKey::new(&mut rng, 3072)?;
+            let pub_key = RsaPublicKey::from(&priv_key);
+
+            let priv_pem = priv_key.to_pkcs8_pem(LineEnding::LF)?;
+            let pub_pem = pub_key.to_public_key_pem(LineEnding::LF)?;
+
+            Self::write_private_file(&rsa_priv_path, priv_pem.as_bytes())?;
+            Self::write_public_file(&rsa_pub_path, pub_pem.as_bytes())?;
+        }
+
+        // ML-DSA Keys
+        for variant in [
+            MldsaVariant::Mldsa44,
+            MldsaVariant::Mldsa65,
+            MldsaVariant::Mldsa87,
+        ] {
+            let (priv_p, pub_p) = Self::get_pqc_paths(variant);
+            if force || !priv_p.exists() || !pub_p.exists() {
+                let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant);
+                Self::write_private_file(&priv_p, &sk)?;
+                Self::write_public_file(&pub_p, &pk)?;
+            }
+        }
+
+        // ML-KEM Keys
+        let kem_priv_path = KEY_DIR.join(Self::PQC_KEM_PRIVATE_KEY_PATH);
+        let kem_pub_path = KEY_DIR.join(Self::PQC_KEM_PUBLIC_KEY_PATH);
+        if force || !kem_priv_path.exists() || !kem_pub_path.exists() {
+            let (pk, sk) = PqcProvider::generate_mlkem_keypair(MlkemVariant::Mlkem768);
+            Self::write_private_file(&kem_priv_path, &sk)?;
+            Self::write_public_file(&kem_pub_path, &pk)?;
+        }
+
+        *ensured = true;
+        if force {
+            KEY_CACHE.lock().unwrap().clear();
+        }
+        Ok(())
+    }
+
+    fn write_private_file(path: &Path, content: &[u8]) -> Result<()> {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        file.write_all(content)?;
+        Ok(())
+    }
+
+    fn write_public_file(path: &Path, content: &[u8]) -> Result<()> {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o644)
+            .open(path)?;
+        file.write_all(content)?;
+        Ok(())
+    }
+
+    pub fn get_rsa_private_key_pem() -> Result<String> {
+        Self::ensure_keys(false)?;
+        let path = KEY_DIR.join(Self::PRIVATE_KEY_PATH);
+        Ok(fs::read_to_string(path)?)
+    }
+
+    pub fn get_pqc_private_key(variant: MldsaVariant) -> Result<Vec<u8>> {
+        Self::ensure_keys(false)?;
+        let (path, _) = Self::get_pqc_paths(variant);
+        Ok(fs::read(path)?)
+    }
+
+    pub fn get_pqc_public_key(variant: MldsaVariant) -> Result<Vec<u8>> {
+        Self::ensure_keys(false)?;
+        let (_, path) = Self::get_pqc_paths(variant);
+        Ok(fs::read(path)?)
+    }
+
+    pub fn get_kem_public_key() -> Result<Vec<u8>> {
+        Self::ensure_keys(false)?;
+        let path = KEY_DIR.join(Self::PQC_KEM_PUBLIC_KEY_PATH);
+        Ok(fs::read(path)?)
+    }
+
+    pub fn get_kem_private_key() -> Result<Vec<u8>> {
+        Self::ensure_keys(false)?;
+        let path = KEY_DIR.join(Self::PQC_KEM_PRIVATE_KEY_PATH);
+        Ok(fs::read(path)?)
+    }
+
+    pub fn get_local_identity() -> String {
+        let user = std::env::var("USER").unwrap_or_else(|_| "unknown_user".to_string());
+        let hostname = hostname::get()
+            .map(|h| h.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| "unknown_host".to_string());
+        format!("{}@{}", user, hostname)
+    }
+
+    pub fn generate_token(
+        user_id: Option<&str>,
+        audience: Option<&str>,
+        tool_name: Option<&str>,
+        args: Option<&serde_json::Value>,
+    ) -> Result<String> {
+        let uid = user_id
+            .map(|s| s.to_string())
+            .unwrap_or_else(Self::get_local_identity);
+        let now = Utc::now().timestamp();
+
+        let mut payload = json!({
+            "iss": "llm-cli-client",
+            "sub": uid,
+            "iat": now,
+            "exp": now + 600,
+            "jti": Uuid::new_v4().to_string(),
+            "pqc": true,
+            "pqc_kem_pub": general_purpose::STANDARD.encode(Self::get_kem_public_key()?),
+        });
+
+        if let Some(tool) = tool_name {
+            payload["tool"] = json!(tool);
+        }
+        if let Some(aud) = audience {
+            payload["aud"] = json!(aud);
+        }
+
+        let variant = if let Some(tool) = tool_name {
+            PQCAgilityManager::get_required_level(tool, args, "standard")
+        } else {
+            MldsaVariant::Mldsa65
+        };
+
+        let rsa_priv = Self::get_rsa_private_key_pem()?;
+        let pqc_priv = Self::get_pqc_private_key(variant)?;
+
+        let cose_token_bytes =
+            HybridSigner::create_hybrid_token(&payload, &rsa_priv, &pqc_priv, variant);
+
+        Ok(general_purpose::URL_SAFE_NO_PAD.encode(cose_token_bytes))
+    }
+}
