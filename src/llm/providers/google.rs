@@ -223,10 +223,34 @@ impl LlmClient for GeminiClient {
             }
         }
 
-        if self.base.state.tools_enabled && !tool_declarations.is_empty() {
-            payload["tools"] = json!([{
-                "function_declarations": tool_declarations
-            }]);
+        if self.base.state.tools_enabled {
+            let mut tools = Vec::new();
+
+            if !tool_declarations.is_empty() {
+                tools.push(json!({
+                    "function_declarations": tool_declarations
+                }));
+            }
+
+            // Include native Google Search grounding if brave_search is not registered
+            let registry = crate::tools::registry::REGISTRY.lock().unwrap();
+            let has_brave = registry.tools.contains_key("brave_search");
+            drop(registry);
+
+            if !has_brave {
+                tools.push(json!({
+                    "google_search_retrieval": {
+                        "dynamic_retrieval_config": {
+                            "mode": "unspecified",
+                            "dynamic_threshold": 0.06
+                        }
+                    }
+                }));
+            }
+
+            if !tools.is_empty() {
+                payload["tools"] = json!(tools);
+            }
         }
 
         log::debug!(

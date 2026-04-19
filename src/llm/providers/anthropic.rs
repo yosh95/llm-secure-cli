@@ -208,14 +208,14 @@ impl LlmClient for ClaudeClient {
         }
         headers.insert("anthropic-version", "2023-06-01".parse()?);
         headers.insert("content-type", "application/json".parse()?);
-        // Enable prompt caching beta
-        headers.insert("anthropic-beta", "prompt-caching-2024-07-31".parse()?);
 
         // Build tool schemas (Anthropic format)
         let tool_schemas = crate::tools::registry::REGISTRY
             .lock()
             .unwrap()
             .get_tool_schemas_anthropic();
+
+        let mut beta_headers = vec!["prompt-caching-2024-07-31".to_string()];
 
         let mut payload = json!({
             "model": self.base.state.model,
@@ -235,7 +235,7 @@ impl LlmClient for ClaudeClient {
         }
 
         // Tools
-        if self.base.state.tools_enabled && !tool_schemas.is_empty() {
+        if self.base.state.tools_enabled {
             // Include native web_search tool if brave_search is not registered
             let registry = crate::tools::registry::REGISTRY.lock().unwrap();
             let has_brave = registry.tools.contains_key("brave_search");
@@ -250,9 +250,15 @@ impl LlmClient for ClaudeClient {
                 })];
                 all_tools.extend(tools);
                 tools = all_tools;
+                // Add required beta header for native web search
+                beta_headers.push("web-search-2026-02-09".to_string());
             }
-            payload["tools"] = json!(tools);
+            if !tools.is_empty() {
+                payload["tools"] = json!(tools);
+            }
         }
+
+        headers.insert("anthropic-beta", beta_headers.join(",").parse()?);
 
         log::debug!(
             "Anthropic Request Payload: {}",
