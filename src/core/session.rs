@@ -89,6 +89,7 @@ impl ChatSession {
         let _ = rl.load_history(&*HISTORY_LOG_PATH);
 
         let mut line_buffer = Vec::new();
+        let mut next_initial_text: Option<String> = None;
 
         loop {
             // Update current provider in completer in case it changed
@@ -97,8 +98,13 @@ impl ChatSession {
                 *cp = self.client.get_state().provider.clone();
             }
 
-            let prompt = if line_buffer.is_empty() { "> " } else { ">> " };
-            let readline = rl.readline(prompt);
+            let readline = if let Some(initial) = next_initial_text.take() {
+                rl.readline_with_initial("> ", (&initial, ""))
+            } else {
+                let prompt = if line_buffer.is_empty() { "> " } else { ">> " };
+                rl.readline(prompt)
+            };
+
             match readline {
                 Ok(line) => {
                     let trimmed = line.trim();
@@ -143,7 +149,8 @@ impl ChatSession {
                                 (Some(final_trimmed.to_string()), false)
                             }
                             crate::cli::interactive::dispatcher::CommandResult::Input(text) => {
-                                (Some(text), false)
+                                next_initial_text = Some(text);
+                                (None, true)
                             }
                         };
 
@@ -166,7 +173,17 @@ impl ChatSession {
                         metadata: std::collections::HashMap::new(),
                     });
 
-                    match self.process_and_print(data).await {
+                    let mut process_future = Box::pin(self.process_and_print(data));
+
+                    match tokio::select! {
+                        res = &mut process_future => res,
+                        _ = tokio::signal::ctrl_c() => {
+                            drop(process_future);
+                            println!("\n^C - Interrupted. Returning to prompt...");
+                            self.handle_interruption();
+                            Ok(())
+                        }
+                    } {
                         Ok(_) => {}
                         Err(e) => {
                             ui::report_error(&format!("Error: {}", e));
@@ -338,9 +355,17 @@ impl ChatSession {
 
                                 if !approved {
                                     ui::report_warning("Execution cancelled by user.");
-                                    final_result = Some(serde_json::Value::String(
-                                        "Error: Execution cancelled by user.".to_string(),
-                                    ));
+                                    let feedback =
+                                        ui::get_user_input("Provide feedback (optional): ");
+                                    let result_msg = if feedback.trim().is_empty() {
+                                        "Error: Execution cancelled by user.".to_string()
+                                    } else {
+                                        format!(
+                                            "Error: Execution cancelled by user. Feedback: {}",
+                                            feedback
+                                        )
+                                    };
+                                    final_result = Some(serde_json::Value::String(result_msg));
                                 }
 
                                 // Wait for Dual LLM Verifier if it was started
@@ -533,6 +558,58 @@ impl ChatSession {
             (tool.func)(args)
         } else {
             Err(anyhow::anyhow!("Tool not found: {}", name))
+        }
+    }
+
+    fn handle_interruption(&mut self) {
+        let state = self.client.get_state_mut();
+        let last_msg = state.conversation.last().cloned();
+        if let Some(msg) = last_msg {
+            if msg.role == Role::Assistant || msg.role == Role::Model {
+                let mut has_unanswered_tools = false;
+                for part in &msg.parts {
+                    if let MessagePart::Part(cp) = part {
+                        if cp.function_call.is_some() {
+                            has_unanswered_tools = true;
+                            break;
+                        }
+                    }
+                }
+
+                if has_unanswered_tools {
+                    let mut tool_results = Vec::new();
+                    for part in &msg.parts {
+                        if let MessagePart::Part(cp) = part {
+                            if let Some(fc) = &cp.function_call {
+                                let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                                let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+
+                                let mut fr = HashMap::new();
+                                fr.insert("id".to_string(), serde_json::json!(id));
+                                fr.insert("name".to_string(), serde_json::json!(name));
+                                fr.insert(
+                                    "response".to_string(),
+                                    serde_json::json!("Error: Interrupted by user."),
+                                );
+
+                                tool_results.push(MessagePart::Part(ContentPart {
+                                    text: None,
+                                    inline_data: None,
+                                    function_call: None,
+                                    function_response: Some(fr),
+                                    thought: None,
+                                    thought_signature: None,
+                                    is_diagnostic: false,
+                                }));
+                            }
+                        }
+                    }
+                    state.conversation.push(Message {
+                        role: Role::Tool,
+                        parts: tool_results,
+                    });
+                }
+            }
         }
     }
 }

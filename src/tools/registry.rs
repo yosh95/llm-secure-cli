@@ -278,8 +278,7 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
     r.register(
         "edit_file",
         "Edit a file by replacing a specific block of text. \
-         The tool first tries an exact match, and if that fails, it performs a \
-         fuzzy match (ignoring minor whitespace and indentation differences).",
+         The search string must match the file content exactly.",
         json!({
             "type": "object",
             "properties": {

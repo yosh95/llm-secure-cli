@@ -1,0 +1,22 @@
+=== Rust Local Primitives Benchmark (ChromeOS Flex / Debian 13) ===
+Environment: Intel(R) Core(TM) i5-7300U CPU @ 2.60GHz, 8GB RAM (Crostini)
+Date: 2026-04-19
+
+AST Analysis (avg): 1.09 ms per run
+ML-DSA-44 Keygen: 0.08 ms
+ML-DSA-44 Sign (avg): 0.08 ms
+ML-DSA-44 Verify (avg): 0.03 ms
+ML-DSA-65 Keygen: 0.06 ms
+ML-DSA-65 Sign (avg): 0.15 ms
+ML-DSA-65 Verify (avg): 0.05 ms
+ML-DSA-87 Keygen: 0.08 ms
+ML-DSA-87 Sign (avg): 0.16 ms
+ML-DSA-87 Verify (avg): 0.07 ms
+ML-KEM-768 Encaps (avg): 0.015 ms
+ML-KEM-768 Decaps (avg): 0.016 ms
+
+=== Dual LLM Intent Verification (n=3) ===
+Google (Gemini 3.1 Flash-Lite): 1690 ms
+OpenAI (GPT-5.4 Nano): 1540 ms
+Anthropic (Claude Haiku 4.5): 2220 ms
+(Values represent stable subsequent calls after cold start)
