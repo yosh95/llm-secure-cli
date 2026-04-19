@@ -92,7 +92,11 @@ pub fn log_audit(
         pqc_confidential: pqc_encrypted,
         output: output.map(|s| {
             if s.len() > 256 {
-                format!("{}...", &s[..256])
+                let mut end = 256;
+                while !s.is_char_boundary(end) {
+                    end -= 1;
+                }
+                format!("{}...", &s[..end])
             } else {
                 s.to_string()
             }
