@@ -132,6 +132,8 @@ As a tool designed with **CISSP/CISA/CCSP** principles and **EU AI Act** complia
 
 Inside the `llsc` interactive session:
 - `/help`, `/h`: Show this help message.
+- `/quit`, `/q`: Exit the application.
+- `/date`, `/d`: Send current date and time to LLM.
 - `/p <provider>` / `/m <model>`: Switch the AI engine on the fly.
 - `/attach <path/URL>`: Add a file or website content to the context.
 - `/tools [on|off]`: Show or toggle autonomous tool use status.
@@ -316,6 +318,8 @@ AIがファイル操作、Web検索、Python実行などのツールを自律的
 
 `llsc` インタラクティブセッション内で利用可能なコマンド:
 - `/help`, `/h`: ヘルプメッセージを表示。
+- `/quit`, `/q`: アプリケーションを終了。
+- `/date`, `/d`: 現在の日時をシステムメッセージとしてLLMに送信。
 - `/p <provider>` / `/m <model>`: プロバイダーやモデルを動的に切り替え。
 - `/attach <path/URL>`: ファイルやウェブサイトのコンテンツをコンテキストに追加。
 - `/tools [on|off]`: ツールの自律実行ステータスの表示・切り替え。

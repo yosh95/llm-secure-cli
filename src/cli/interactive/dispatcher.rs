@@ -1,6 +1,7 @@
 use crate::cli::ui;
 use crate::core::session::ChatSession;
-use crate::llm::models::Role;
+use crate::llm::models::{Message, MessagePart, Role};
+use chrono::Local;
 use colored::Colorize;
 
 pub enum CommandResult {
@@ -25,6 +26,17 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             CommandResult::Handled
         }
         "q" | "quit" => CommandResult::Exit,
+        "date" | "d" => {
+            let now = Local::now();
+            let date_str = format!("Current date and time: {}", now.format("%Y-%m-%d %H:%M:%S %Z"));
+            let msg = Message {
+                role: Role::System,
+                parts: vec![MessagePart::Text(date_str.clone())],
+            };
+            session.client.get_state_mut().conversation.push(msg);
+            ui::report_success(&format!("Sent to LLM: {}", date_str));
+            CommandResult::Handled
+        }
         "edit" | "e" => match ui::open_external_editor(args) {
             Ok(content) => {
                 if content.trim().is_empty() {
@@ -313,6 +325,7 @@ pub fn print_help() {
     println!("\nChat Commands:");
     println!("  /help, /h       Show this help message");
     println!("  /quit, /q       Exit the application");
+    println!("  /date, /d       Send current date and time to LLM");
     println!("  /edit, /e       Edit message in external editor");
     println!("  /clear, /c      Clear conversation history");
     println!("  /info, /i       Show session info");
