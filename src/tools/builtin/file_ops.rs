@@ -108,11 +108,6 @@ pub fn list_files_in_directory(args: HashMap<String, Value>) -> anyhow::Result<V
     }
 
     let mut results = Vec::new();
-    results.push(format!(
-        "{:<7} {:<20} {:>10}  {}",
-        "[Type]", "[Last Modified (UTC)]", "[Size]", "[Full Path]"
-    ));
-
     let mut file_count = 0usize;
 
     #[allow(clippy::too_many_arguments)]
@@ -123,7 +118,7 @@ pub fn list_files_in_directory(args: HashMap<String, Value>) -> anyhow::Result<V
         max_depth: usize,
         include_hidden: bool,
         ignore_patterns: &[String],
-        results: &mut Vec<String>,
+        results: &mut Vec<Value>,
         file_count: &mut usize,
         max_files: usize,
     ) {
@@ -134,10 +129,11 @@ pub fn list_files_in_directory(args: HashMap<String, Value>) -> anyhow::Result<V
         let mut entries: Vec<_> = match fs::read_dir(current_path) {
             Ok(rd) => rd.flatten().collect(),
             Err(_) => {
-                results.push(format!(
-                    "{:<7} {:<20} {:>10}  [DENIED] Permission Denied",
-                    "[ERR]", "", ""
-                ));
+                results.push(json!({
+                    "type": "error",
+                    "path": current_path.to_string_lossy().to_string(),
+                    "message": "Permission Denied"
+                }));
                 return;
             }
         };
@@ -155,10 +151,6 @@ pub fn list_files_in_directory(args: HashMap<String, Value>) -> anyhow::Result<V
 
         for entry in entries {
             if *file_count >= max_files {
-                if *file_count == max_files {
-                    results.push("\n... (Too many files, listing truncated)".to_string());
-                    *file_count += 1;
-                }
                 return;
             }
 
@@ -171,7 +163,8 @@ pub fn list_files_in_directory(args: HashMap<String, Value>) -> anyhow::Result<V
             let rel_path = path
                 .strip_prefix(base_path)
                 .unwrap_or(&path)
-                .to_string_lossy();
+                .to_string_lossy()
+                .to_string();
 
             if let Ok(metadata) = path.metadata() {
                 let mtime = metadata
@@ -184,10 +177,11 @@ pub fn list_files_in_directory(args: HashMap<String, Value>) -> anyhow::Result<V
                     .unwrap_or_else(|| "Unknown".to_string());
 
                 if path.is_dir() {
-                    results.push(format!(
-                        "{:<7} {:<20} {:>10}  {}/",
-                        "[D]", mtime, "-", rel_path
-                    ));
+                    results.push(json!({
+                        "type": "dir",
+                        "path": rel_path,
+                        "last_modified": mtime
+                    }));
                     *file_count += 1;
                     walk(
                         &path,
@@ -201,11 +195,12 @@ pub fn list_files_in_directory(args: HashMap<String, Value>) -> anyhow::Result<V
                         max_files,
                     );
                 } else {
-                    let size = format_size(metadata.len());
-                    results.push(format!(
-                        "{:<7} {:<20} {:>10}  {}",
-                        "[F]", mtime, size, rel_path
-                    ));
+                    results.push(json!({
+                        "type": "file",
+                        "path": rel_path,
+                        "size": metadata.len(),
+                        "last_modified": mtime
+                    }));
                     *file_count += 1;
                 }
             }
@@ -224,10 +219,13 @@ pub fn list_files_in_directory(args: HashMap<String, Value>) -> anyhow::Result<V
         max_files,
     );
 
-    if results.len() <= 1 {
-        Ok(json!("No files found."))
+    if results.is_empty() {
+        Ok(json!({ "files": [], "message": "No files found." }))
     } else {
-        Ok(json!(results.join("\n")))
+        Ok(json!({
+            "files": results,
+            "truncated": file_count >= max_files
+        }))
     }
 }
 
@@ -325,7 +323,6 @@ pub fn grep_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         Err(e) => return Ok(json!(format!("Error: Invalid regex pattern: {}", e))),
     };
 
-    let mut results = Vec::new();
     let start_time = std::time::Instant::now();
 
     fn walk_grep(
@@ -333,7 +330,7 @@ pub fn grep_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         base: &Path,
         regex: &Regex,
         file_pattern: Option<&str>,
-        results: &mut Vec<String>,
+        results: &mut Vec<Value>,
         start_time: std::time::Instant,
         timeout: u64,
     ) -> bool {
@@ -400,12 +397,11 @@ pub fn grep_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
                     for (line_no, line) in content.lines().enumerate() {
                         if regex.is_match(line) {
                             let rel = path.strip_prefix(base).unwrap_or(&path);
-                            results.push(format!(
-                                "{}:{}:{}",
-                                rel.display(),
-                                line_no + 1,
-                                line.trim()
-                            ));
+                            results.push(json!({
+                                "file": rel.to_string_lossy().to_string(),
+                                "line": line_no + 1,
+                                "text": line.trim().to_string()
+                            }));
                             if results.len() >= MAX_SEARCH_RESULTS {
                                 return true;
                             }
@@ -417,6 +413,7 @@ pub fn grep_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         true
     }
 
+    let mut results = Vec::new();
     let timed_out = !walk_grep(
         &base_path,
         &base_path,
@@ -427,25 +424,25 @@ pub fn grep_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         SEARCH_TIMEOUT_SECS,
     );
 
+    let mut response = json!({
+        "matches": results,
+        "truncated": results.len() >= MAX_SEARCH_RESULTS,
+    });
+
     if timed_out {
-        results.push(format!(
-            "Error: Search timed out after {} seconds.",
-            SEARCH_TIMEOUT_SECS
-        ));
+        response.as_object_mut().unwrap().insert(
+            "error".to_string(),
+            json!(format!(
+                "Search timed out after {} seconds.",
+                SEARCH_TIMEOUT_SECS
+            )),
+        );
     }
 
-    if results.is_empty() {
-        Ok(json!("No matches found."))
+    if results.is_empty() && !timed_out {
+        Ok(json!({ "matches": [], "message": "No matches found." }))
     } else {
-        let truncated = results.len() >= MAX_SEARCH_RESULTS;
-        let mut output = results.join("\n");
-        if truncated {
-            output.push_str(&format!(
-                "\n\n... (Total {} matches, truncated)",
-                results.len()
-            ));
-        }
-        Ok(json!(output))
+        Ok(response)
     }
 }
 
@@ -476,14 +473,12 @@ pub fn search_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         )));
     }
 
-    let mut results = Vec::new();
-
     fn walk_search(
         dir: &Path,
         base: &Path,
         pattern: &str,
         exclude_patterns: &[String],
-        results: &mut Vec<String>,
+        results: &mut Vec<Value>,
     ) {
         let entries = match fs::read_dir(dir) {
             Ok(rd) => rd.flatten().collect::<Vec<_>>(),
@@ -507,8 +502,10 @@ pub fn search_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
 
             if glob_match(pattern, &name) {
                 let rel = path.strip_prefix(base).unwrap_or(&path);
-                let item_type = if path.is_dir() { "[D]" } else { "[F]" };
-                results.push(format!("{} {}", item_type, rel.display()));
+                results.push(json!({
+                    "type": if path.is_dir() { "dir" } else { "file" },
+                    "path": rel.to_string_lossy().to_string()
+                }));
             }
 
             if path.is_dir() {
@@ -521,6 +518,7 @@ pub fn search_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         }
     }
 
+    let mut results: Vec<Value> = Vec::new();
     walk_search(
         &base_path,
         &base_path,
@@ -530,13 +528,11 @@ pub fn search_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
     );
 
     if results.is_empty() {
-        Ok(json!("No files found matching the pattern."))
+        Ok(json!({ "results": [], "message": "No files found matching the pattern." }))
     } else {
-        let truncated = results.len() >= MAX_SEARCH_RESULTS;
-        let mut output = results.join("\n");
-        if truncated {
-            output.push_str("\n... (Listing truncated)");
-        }
-        Ok(json!(output))
+        Ok(json!({
+            "results": results,
+            "truncated": results.len() >= MAX_SEARCH_RESULTS
+        }))
     }
 }

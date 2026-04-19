@@ -196,6 +196,106 @@ pub fn print_tool_result(result: &str) {
             return;
         }
 
+        // Special handling for "matches" or "results" arrays (e.g., from grep or search)
+        for key in ["matches", "results", "files"] {
+            if let Some(arr) = v.get(key).and_then(|a| a.as_array()) {
+                if arr.is_empty() {
+                    println!("    {}", "(empty results)".dimmed());
+                } else {
+                    for item in arr {
+                        if let Some(s) = item.as_str() {
+                            println!("    {} {}", "•".bright_black(), s.dimmed());
+                        } else if let Some(obj) = item.as_object() {
+                            // Try to format common object structures
+                            if let (Some(file), Some(line), Some(text)) = (
+                                obj.get("file").and_then(|v| v.as_str()),
+                                obj.get("line"),
+                                obj.get("text").and_then(|v| v.as_str()),
+                            ) {
+                                println!(
+                                    "    {} {}:{}: {}",
+                                    "•".bright_black(),
+                                    file.cyan(),
+                                    line.to_string().yellow(),
+                                    text.dimmed()
+                                );
+                            } else if let (Some(t), Some(path)) = (
+                                obj.get("type").and_then(|v| v.as_str()),
+                                obj.get("path").and_then(|v| v.as_str()),
+                            ) {
+                                let mut details = Vec::new();
+                                if let Some(size) = obj.get("size").and_then(|v| v.as_u64()) {
+                                    details.push(format_size_brief(size));
+                                }
+                                if let Some(mtime) = obj.get("last_modified").and_then(|v| v.as_str()) {
+                                    details.push(mtime.to_string());
+                                }
+
+                                if details.is_empty() {
+                                    println!("    {} [{}] {}", "•".bright_black(), t.cyan(), path);
+                                } else {
+                                    println!(
+                                        "    {} [{}] {:<30}  {}",
+                                        "•".bright_black(),
+                                        t.cyan(),
+                                        path,
+                                        details.join(" | ").dimmed()
+                                    );
+                                }
+                            } else {
+                                // Fallback for other objects in the array
+                                println!("    {} {}", "•".bright_black(), item.to_string().dimmed());
+                            }
+                        }
+                    }
+                }
+                if let Some(truncated) = v.get("truncated").and_then(|v| v.as_bool()) {
+                    if truncated {
+                        println!("    {}", "... (results truncated)".yellow().dimmed());
+                    }
+                }
+                return;
+            }
+        }
+
+        // Special handling for brave_search results
+        if let Some(results) = v.get("results").and_then(|v| v.as_array()) {
+            if v.get("query").is_some() {
+                for item in results {
+                    let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
+                    let url = item.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                    let snippet = item.get("description").and_then(|v| v.as_str()).unwrap_or("");
+                    println!("    {} {}", "•".bright_black(), title.bold().cyan());
+                    println!("      {}", url.dimmed().underline());
+                    if !snippet.is_empty() {
+                        for line in snippet.lines() {
+                            println!("      {}", line.dimmed());
+                        }
+                    }
+                    println!();
+                }
+                return;
+            }
+        }
+
+        // Special handling for read_url_content or similar "content" responses
+        if let Some(content) = v.get("content").and_then(|v| v.as_str()) {
+            for line in content.lines().take(20) {
+                println!("    {}", line.dimmed());
+            }
+            if content.lines().count() > 20 {
+                println!("    {}", "... (long content truncated in display)".dimmed());
+            }
+            if let Some(notes) = v.get("notes").and_then(|v| v.as_array()) {
+                for note in notes {
+                    if let Some(n) = note.as_str() {
+                        println!("    {} {}", "!".yellow(), n.yellow().dimmed());
+                    }
+                }
+            }
+            return;
+        }
+
         if let Ok(pretty) = serde_json::to_string_pretty(&v) {
             // If it's a complex object, show it pretty
             if v.is_object() || v.is_array() {
@@ -269,6 +369,18 @@ pub fn report_warning(message: &str) {
 
 pub fn report_success(message: &str) {
     println!("{} {}", "OK".green().bold(), message.green());
+}
+
+fn format_size_brief(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{}B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1}KB", bytes as f64 / 1024.0)
+    } else if bytes < 1024 * 1024 * 1024 {
+        format!("{:.1}MB", bytes as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{:.1}GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    }
 }
 
 pub fn ask_confirm(prompt: &str) -> bool {
