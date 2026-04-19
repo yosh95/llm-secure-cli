@@ -229,12 +229,22 @@ impl LlmClient for GeminiClient {
             }]);
         }
 
+        log::debug!(
+            "Gemini Request Payload: {}",
+            serde_json::to_string_pretty(&payload).unwrap_or_default()
+        );
+
         let url = self.get_api_url();
 
         let res = HTTP_CLIENT.post(&url).json(&payload).send().await?;
 
         let status = res.status();
         let res_json: serde_json::Value = res.json().await?;
+        log::debug!(
+            "Gemini Response ({}): {}",
+            status,
+            serde_json::to_string_pretty(&res_json).unwrap_or_default()
+        );
 
         if !status.is_success() {
             let err_msg = res_json["error"]["message"]

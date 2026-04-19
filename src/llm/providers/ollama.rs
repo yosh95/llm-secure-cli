@@ -100,6 +100,11 @@ impl LlmClient for OllamaClient {
             "messages": messages,
         });
 
+        log::debug!(
+            "Ollama Request Payload: {}",
+            serde_json::to_string_pretty(&payload).unwrap_or_default()
+        );
+
         let res = HTTP_CLIENT
             .post(&self.api_url)
             .headers(headers)
@@ -108,6 +113,10 @@ impl LlmClient for OllamaClient {
             .await?;
 
         let res_json: serde_json::Value = res.json().await?;
+        log::debug!(
+            "Ollama Response: {}",
+            serde_json::to_string_pretty(&res_json).unwrap_or_default()
+        );
 
         let text = res_json["choices"][0]["message"]["content"]
             .as_str()

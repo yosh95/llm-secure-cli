@@ -161,6 +161,11 @@ impl LlmClient for OpenAiClient {
                 .collect::<Vec<_>>());
         }
 
+        log::debug!(
+            "OpenAI Request Payload: {}",
+            serde_json::to_string_pretty(&payload).unwrap_or_default()
+        );
+
         let res = HTTP_CLIENT
             .post(&self.api_url)
             .headers(headers)
@@ -169,6 +174,10 @@ impl LlmClient for OpenAiClient {
             .await?;
 
         let res_json: serde_json::Value = res.json().await?;
+        log::debug!(
+            "OpenAI Response: {}",
+            serde_json::to_string_pretty(&res_json).unwrap_or_default()
+        );
 
         if let Some(err) = res_json.get("error") {
             return Err(anyhow::anyhow!("OpenAI API error: {}", err));

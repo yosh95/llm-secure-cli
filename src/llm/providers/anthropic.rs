@@ -254,6 +254,11 @@ impl LlmClient for ClaudeClient {
             payload["tools"] = json!(tools);
         }
 
+        log::debug!(
+            "Anthropic Request Payload: {}",
+            serde_json::to_string_pretty(&payload).unwrap_or_default()
+        );
+
         let res = HTTP_CLIENT
             .post(&self.api_url)
             .headers(headers)
@@ -262,6 +267,10 @@ impl LlmClient for ClaudeClient {
             .await?;
 
         let res_json: Value = res.json().await?;
+        log::debug!(
+            "Anthropic Response: {}",
+            serde_json::to_string_pretty(&res_json).unwrap_or_default()
+        );
 
         let mut full_text = String::new();
         let mut thought_text = String::new();

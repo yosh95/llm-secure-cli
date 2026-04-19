@@ -48,17 +48,6 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             handle_info(session);
             CommandResult::Handled
         }
-        "debug" | "d" => {
-            let state = session.client.get_state_mut();
-            state.live_debug = !state.live_debug;
-            let status = if state.live_debug {
-                "ENABLED"
-            } else {
-                "DISABLED"
-            };
-            println!("Live debug mode {}.", status);
-            CommandResult::Handled
-        }
         "raw" => {
             handle_raw(session);
             CommandResult::Handled
@@ -161,7 +150,14 @@ pub fn handle_info(session: &ChatSession) {
             "Off"
         },
     );
-    ui::print_key_value("Debug Mode", if state.live_debug { "On" } else { "Off" });
+    ui::print_key_value(
+        "Debug Mode",
+        if log::log_enabled!(log::Level::Debug) {
+            "On"
+        } else {
+            "Off"
+        },
+    );
     ui::print_rule(None, Some("cyan"));
 }
 
@@ -320,7 +316,6 @@ pub fn print_help() {
     println!("  /edit, /e       Edit message in external editor");
     println!("  /clear, /c      Clear conversation history");
     println!("  /info, /i       Show session info");
-    println!("  /debug, /d      Toggle live debug mode");
     println!("  /raw            Show conversation as raw text");
     println!("  /dump           Dump conversation history as JSON");
     println!("  /save <path>    Save conversation history to JSON file");

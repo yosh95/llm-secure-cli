@@ -227,7 +227,9 @@ pub fn print_tool_result(result: &str) {
                                 if let Some(size) = obj.get("size").and_then(|v| v.as_u64()) {
                                     details.push(format_size_brief(size));
                                 }
-                                if let Some(mtime) = obj.get("last_modified").and_then(|v| v.as_str()) {
+                                if let Some(mtime) =
+                                    obj.get("last_modified").and_then(|v| v.as_str())
+                                {
                                     details.push(mtime.to_string());
                                 }
 
@@ -244,7 +246,11 @@ pub fn print_tool_result(result: &str) {
                                 }
                             } else {
                                 // Fallback for other objects in the array
-                                println!("    {} {}", "•".bright_black(), item.to_string().dimmed());
+                                println!(
+                                    "    {} {}",
+                                    "•".bright_black(),
+                                    item.to_string().dimmed()
+                                );
                             }
                         }
                     }
@@ -264,7 +270,10 @@ pub fn print_tool_result(result: &str) {
                 for item in results {
                     let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
                     let url = item.get("url").and_then(|v| v.as_str()).unwrap_or("");
-                    let snippet = item.get("description").and_then(|v| v.as_str()).unwrap_or("");
+                    let snippet = item
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
                     println!("    {} {}", "•".bright_black(), title.bold().cyan());
                     println!("      {}", url.dimmed().underline());
                     if !snippet.is_empty() {

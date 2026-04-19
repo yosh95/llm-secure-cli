@@ -112,10 +112,14 @@ enum IdentityCommands {
 async fn main() {
     let args = Args::parse();
 
+    // Initialize logger with 'debug' level by default so we can toggle it at runtime.
+    // The actual output is controlled by log::set_max_level.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+
     if args.debug {
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+        log::set_max_level(log::LevelFilter::Debug);
     } else {
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+        log::set_max_level(log::LevelFilter::Warn);
     }
 
     // --- Initialization ---
@@ -298,7 +302,8 @@ async fn main() {
         registry.create_client(&provider, &model, stdout, args.raw)
     };
 
-    if let Some(client) = client {
+    if let Some(mut client) = client {
+        client.get_state_mut().live_debug = args.debug;
         let mut session = ChatSession::new(client);
 
         let mut all_sources = args.sources;
