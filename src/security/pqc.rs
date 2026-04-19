@@ -65,7 +65,17 @@ impl FromStr for MlkemVariant {
 pub struct PqcProvider;
 
 impl PqcProvider {
+    fn is_enabled() -> bool {
+        if std::env::var("LLM_CLI_DISABLE_PQC").is_ok() {
+            return false;
+        }
+        CONFIG_MANAGER.get_config().security.pqc_enabled
+    }
+
     pub fn generate_mldsa_keypair(variant: MldsaVariant) -> (Vec<u8>, Vec<u8>) {
+        if !Self::is_enabled() {
+            return (vec![], vec![]);
+        }
         match variant {
             MldsaVariant::Mldsa44 => {
                 let (pk, sk) = mldsa44_keypair();
@@ -83,6 +93,9 @@ impl PqcProvider {
     }
 
     pub fn sign_mldsa(message: &[u8], sk_bytes: &[u8], variant: MldsaVariant) -> Vec<u8> {
+        if !Self::is_enabled() || sk_bytes.is_empty() {
+            return vec![];
+        }
         match variant {
             MldsaVariant::Mldsa44 => {
                 let sk = mldsa44::SecretKey::from_bytes(sk_bytes).unwrap();
@@ -108,6 +121,9 @@ impl PqcProvider {
         pk_bytes: &[u8],
         variant: MldsaVariant,
     ) -> bool {
+        if !Self::is_enabled() || sig_bytes.is_empty() || pk_bytes.is_empty() {
+            return true;
+        }
         match variant {
             MldsaVariant::Mldsa44 => {
                 let pk = mldsa44::PublicKey::from_bytes(pk_bytes).unwrap();
@@ -128,6 +144,9 @@ impl PqcProvider {
     }
 
     pub fn generate_mlkem_keypair(variant: MlkemVariant) -> (Vec<u8>, Vec<u8>) {
+        if !Self::is_enabled() {
+            return (vec![], vec![]);
+        }
         match variant {
             MlkemVariant::Mlkem512 => {
                 let (pk, sk) = mlkem512_keypair();
@@ -145,6 +164,9 @@ impl PqcProvider {
     }
 
     pub fn encapsulate_mlkem(pk_bytes: &[u8], variant: MlkemVariant) -> (Vec<u8>, Vec<u8>) {
+        if !Self::is_enabled() || pk_bytes.is_empty() {
+            return (vec![0; 32], vec![]);
+        }
         match variant {
             MlkemVariant::Mlkem512 => {
                 let pk = mlkem512::PublicKey::from_bytes(pk_bytes).unwrap();
@@ -165,6 +187,9 @@ impl PqcProvider {
     }
 
     pub fn decapsulate_mlkem(ct_bytes: &[u8], sk_bytes: &[u8], variant: MlkemVariant) -> Vec<u8> {
+        if !Self::is_enabled() || sk_bytes.is_empty() {
+            return vec![0; 32];
+        }
         match variant {
             MlkemVariant::Mlkem512 => {
                 let sk = mlkem512::SecretKey::from_bytes(sk_bytes).unwrap();

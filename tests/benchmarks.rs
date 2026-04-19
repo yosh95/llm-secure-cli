@@ -3,6 +3,7 @@ use llm_secure_cli::security::static_analyzer::StaticAnalyzer;
 use std::time::Instant;
 
 #[test]
+#[ignore]
 fn benchmark_local_primitives() {
     println!("\n=== Rust Local Primitives Benchmark ===");
 

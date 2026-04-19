@@ -127,6 +127,9 @@ impl ConfigManager {
         if over.security.security_level != "high" {
             base.security.security_level = over.security.security_level;
         }
+        if !over.security.pqc_enabled {
+            base.security.pqc_enabled = false;
+        }
 
         // Merge MCP
         if !over.mcp_servers.is_empty() {
