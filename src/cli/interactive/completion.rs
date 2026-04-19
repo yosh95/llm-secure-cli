@@ -29,6 +29,7 @@ impl ChatCompleter {
                 "/info",
                 "/i",
                 "/debug",
+                "/date",
                 "/d",
                 "/raw",
                 "/dump",

@@ -1,6 +1,6 @@
 use crate::cli::ui;
 use crate::core::session::ChatSession;
-use crate::llm::models::Role;
+use crate::llm::models::{DataSource, Message, MessagePart, Role};
 use chrono::Local;
 use colored::Colorize;
 
@@ -58,6 +58,19 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             handle_info(session);
             CommandResult::Handled
         }
+        "debug" => {
+            let state = session.client.get_state_mut();
+            state.live_debug = !state.live_debug;
+            let status = if state.live_debug {
+                log::set_max_level(log::LevelFilter::Debug);
+                "ON"
+            } else {
+                log::set_max_level(log::LevelFilter::Warn);
+                "OFF"
+            };
+            ui::report_success(&format!("Live debug mode is now {}.", status));
+            CommandResult::Handled
+        }
         "raw" => {
             handle_raw(session);
             CommandResult::Handled
@@ -105,7 +118,7 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             CommandResult::Handled
         }
         "checkpoint" | "cp" => {
-            ui::report_warning("Checkpointing is not yet implemented in Rust version.");
+            handle_checkpoint(session).await;
             CommandResult::Handled
         }
         "reload" => {
@@ -319,6 +332,50 @@ pub fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
     }
 }
 
+pub async fn handle_checkpoint(session: &mut ChatSession) {
+    let history_len = session.client.get_state().conversation.len();
+    if history_len == 0 {
+        ui::report_warning("History is empty. Nothing to checkpoint.");
+        return;
+    }
+
+    ui::report_info("Creating checkpoint (summarizing history)...");
+
+    let summary_prompt = "Please provide a concise but comprehensive summary of our work so far, including key findings, decisions made, and any pending tasks. This summary will be used as a 'checkpoint' message to replace the current conversation history and save context. Respond ONLY with the summary text.";
+
+    let data = vec![DataSource {
+        content: serde_json::Value::String(summary_prompt.to_string()),
+        content_type: "text/plain".to_string(),
+        is_file_or_url: false,
+        metadata: std::collections::HashMap::new(),
+    }];
+
+    // Use process_and_print to get the summary so the user sees it and thinking is shown
+    if let Err(e) = session.process_and_print(data).await {
+        ui::report_error(&format!("Failed to create checkpoint: {}", e));
+        return;
+    }
+
+    // After process_and_print, the history has [Old History] + [Summary Prompt] + [Summary Response]
+    let state = session.client.get_state_mut();
+    if let Some(last_msg) = state.conversation.last().cloned() {
+        // Clear all history and replace with the summary
+        state.conversation.clear();
+
+        // Wrap the summary in a descriptive header
+        let summary_text = last_msg.get_text(true);
+        let checkpoint_msg = Message {
+            role: Role::System,
+            parts: vec![MessagePart::Text(format!(
+                "--- CHECKPOINT SUMMARY ---\n{}\n--- END OF SUMMARY ---",
+                summary_text
+            ))],
+        };
+        state.conversation.push(checkpoint_msg);
+        ui::report_success("Checkpoint created. History has been compressed.");
+    }
+}
+
 pub fn print_help() {
     println!("\nChat Commands:");
     println!("  /help, /h       Show this help message");
@@ -327,6 +384,7 @@ pub fn print_help() {
     println!("  /edit, /e       Edit message in external editor");
     println!("  /clear, /c      Clear conversation history");
     println!("  /info, /i       Show session info");
+    println!("  /debug          Toggle live debug mode");
     println!("  /raw            Show conversation as raw text");
     println!("  /dump           Dump conversation history as JSON");
     println!("  /save <path>    Save conversation history to JSON file");
@@ -335,7 +393,7 @@ pub fn print_help() {
     println!("  /tools [on|off] Show or toggle tool status");
     println!("  /model, /m      Switch models");
     println!("  /provider, /p   Switch provider");
-    println!("  /checkpoint, /cp Summarize and compress history (WIP)");
+    println!("  /checkpoint, /cp Summarize and compress history");
     println!("  /reload         Reload configuration");
     println!();
 }

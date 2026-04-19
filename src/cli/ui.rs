@@ -372,6 +372,10 @@ pub fn report_error(message: &str) {
     eprintln!("{} {}", "NG".red().bold(), message.red());
 }
 
+pub fn report_info(message: &str) {
+    println!("{} {}", "INFO".cyan().bold(), message.cyan());
+}
+
 pub fn report_warning(message: &str) {
     println!("{} {}", "WARNING".yellow().bold(), message.yellow());
 }

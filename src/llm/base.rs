@@ -101,12 +101,15 @@ impl BaseLlmClientData {
         // Load system prompt from config if available
         let system_prompt = {
             let config = CONFIG_MANAGER.get_config();
-            config
-                .providers
-                .get(&config_section)
-                .and_then(|p| p.extra.get("system_prompt"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
+            let provider_cfg = config.providers.get(&config_section);
+            provider_cfg
+                .and_then(|p| p.system_prompt.clone())
+                .or_else(|| {
+                    provider_cfg
+                        .and_then(|p| p.extra.get("system_prompt"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
         };
 
         let tools_enabled = model_config
