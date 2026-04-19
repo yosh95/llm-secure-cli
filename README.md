@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/yosh95/llm-secure-cli-rust/actions/workflows/ci.yml/badge.svg?branch=main)
 
-`llm-secure-cli` is a high-assurance command-line tool designed for interacting with Large Language Models (LLMs). It provides a unified, stable interface for Gemini, OpenAI, Claude, and local models via Ollama, prioritizing cognitive focus, secure execution, and extensible automation.
+`llm-secure-cli` (binary name: `llsc`) is a high-assurance command-line tool designed for interacting with Large Language Models (LLMs). It provides a unified, stable interface for Gemini, OpenAI, Claude, and local models via Ollama, prioritizing cognitive focus, secure execution, and extensible automation.
 
 [English] | [日本語](#japanese-description)
 
@@ -47,12 +47,12 @@ The accompanying [Technical Report](paper/comprehensive_framework/paper.pdf) det
     cd llm-secure-cli-rust
     cargo install --path .
     ```
-2.  **Set API Keys**: `llm-secure-cli` requires API keys to be set as environment variables.
+2.  **Set API Keys**: `llsc` requires API keys to be set as environment variables.
     ```bash
     export GEMINI_API_KEY="your-api-key"
     # Supported: GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, OLLAMA_API_KEY
     ```
-3.  **Chat**: Type `llm-secure-cli` to start an interactive session.
+3.  **Chat**: Type `llsc` to start an interactive session.
     *   **Automatic Initialization**: On the first run, `~/.llm_secure_cli/config.toml` is automatically created.
     *   **Native Web Search**: Gemini, OpenAI, and Claude support built-in web search automatically using your provider API key.
     *   **Brave Search**: Support for the Brave Search API is also available for comprehensive searching across all providers (requires `BRAVE_API_KEY`). **Note**: When Brave Search is enabled, provider-native search is automatically disabled to ensure a consistent, auditable, and PQC-signed search path.
@@ -65,14 +65,14 @@ The accompanying [Technical Report](paper/comprehensive_framework/paper.pdf) det
 ### One-Shot Examples
 ```bash
 # Ask a question using the default provider (Gemini)
-llm-secure-cli "What is the capital of France?"
+llsc "What is the capital of France?"
 
 # Use a specific provider and model
-llm-secure-cli -p anthropic -m sonnet "Explain quantum computing"
+llsc -p anthropic -m sonnet "Explain quantum computing"
 
 # Analyze a local file or a URL
-llm-secure-cli "Summarize this PDF" ./document.pdf
-llm-secure-cli "Analyze this website" https://example.com
+llsc "Summarize this PDF" ./document.pdf
+llsc "Analyze this website" https://example.com
 ```
 
 ## Core Features
@@ -80,8 +80,8 @@ llm-secure-cli "Analyze this website" https://example.com
 - **Unified Provider Access**: Seamlessly switch between Google (Gemini), OpenAI, Anthropic (Claude), and **Local LLMs (Ollama)**.
 - **Autonomous Agent**: Let the AI manage files, execute Python code (replacing risky shell commands), and search the web using **Provider-Native Search** (Gemini Grounding, OpenAI/Claude Web Search) or **Brave Search**.
 - **Config-free Execution**: Start using immediately by just providing an environment variable.
-- **MCP (Model Context Protocol) Support**: Connect to remote resources or services via custom servers.
-- **Multimodal capabilities**: Support for Images, PDFs, Audio, and Video.
+- **MCP (Model Context Protocol) Support**: Connect to remote resources or services via custom servers configured in `config.toml`.
+- **Multimodal capabilities**: Support for Images, PDFs, Audio, and Video. Image generation is also supported for compatible models.
 - **Operational Stability**: A clean, flicker-free UI designed for long-term "Deep Work" sessions and SSH-based environments.
 - **Human-in-the-Loop**: All critical actions (file edits, code execution) require explicit human approval by default.
 
@@ -130,22 +130,27 @@ As a tool designed with **CISSP/CISA/CCSP** principles and **EU AI Act** complia
 
 ##  Advanced Commands & Power User Tips
 
-Inside the `llm-secure-cli` interactive session:
-- `/help`: Display all available commands.
+Inside the `llsc` interactive session:
+- `/help`, `/h`: Show this help message.
 - `/p <provider>` / `/m <model>`: Switch the AI engine on the fly.
 - `/attach <path/URL>`: Add a file or website content to the context.
-- `/tools on|off`: Enable/disable autonomous tool use.
-- `/i`: Show session integrity and security status.
-- `/save` / `/load`: Manage conversation history.
-- `/cp`: Checkpoint (Summarize and clear history).
-- `/mcp`: Toggle or manage MCP server integrations.
+- `/tools [on|off]`: Show or toggle autonomous tool use status.
+- `/i`: Show session info, integrity, and security status.
+- `/save <path>` / `/load <path>`: Manage conversation history.
+- `/clear`, `/c`: Clear conversation history.
+- `/edit`, `/e`: Edit message in external editor.
+- `/raw`: Show conversation as raw text.
+- `/dump`: Dump conversation history as JSON.
+- `/cp`: Checkpoint (Summarize and clear history - WIP).
+- `/reload`: Reload configuration from disk.
+- `/quit`, `/q`: Exit the application.
 
 ###  Logging & Troubleshooting
-By default, `llm-secure-cli` and its related tools suppress all informational logs and only show `WARNING` or `ERROR` messages. If you encounter issues:
+By default, `llsc` and its related tools suppress all informational logs and only show `WARNING` or `ERROR` messages. If you encounter issues:
 - **Enable Debug Mode**: Add the `--debug` flag to any tool to see detailed execution logs:
   ```bash
-  llm-secure-cli --debug "query"
-  llm-secure-cli-security --debug verify
+  llsc --debug "query"
+  llsc-security --debug verify
   ```
 - **MCP Debugging**: To troubleshoot the MCP server (which is often spawned by a third-party client), use the `MCP_DEBUG` environment variable:
   ```bash
@@ -157,20 +162,19 @@ By default, `llm-secure-cli` and its related tools suppress all informational lo
 ### Power User Tips
 - **Backgrounding (`Ctrl+Z`)**: Suspend the session to perform shell operations, then use `fg` to return.
 - **External Editor (`Ctrl+X, Ctrl+E`)**: Open the current prompt in your default editor (`vim`, `nano`, etc.) for complex editing.
-- **Templates**: Define reusable prompts in `~/.llm_secure_cli/config.toml` and call them with `/t <name>`.
 - **Model-specific Tool Disabling**: For models that do not support tool use (e.g., image generation models), you can pre-configure them to disable tools automatically in `config.toml`:
   ```toml
   [google.models]
-  image = { model = "gemini-1.5-flash-image-preview", tools = false }
+  image = { model = "gemini-3.1-flash-image-preview", tools = false }
   ```
 - **Disabling Tools Manually**: Use `/tools off` to prevent errors when using a model that doesn't support function calling.
 
 ## Security Management
-Use the `llm-secure-cli-security` tool to manage your cryptographic identity:
+Use the `llsc-security` tool to manage your cryptographic identity:
 ```bash
-llm-secure-cli-security keygen     # Generate RSA and PQC (ML-DSA/ML-KEM) keys
-llm-secure-cli-security manifest   # Rebuild integrity manifest for remote attestation
-llm-secure-cli-security decrypt-log ~/.llm_secure_cli/audit.jsonl -o decrypted.jsonl
+llsc-security keygen     # Generate RSA and PQC (ML-DSA/ML-KEM) keys
+llsc-security manifest   # Rebuild integrity manifest for remote attestation
+llsc-security decrypt-log ~/.llm_secure_cli/audit.jsonl -o decrypted.jsonl
 ```
 
 ##  License
@@ -184,7 +188,9 @@ For detailed architectural insights and the academic background of our security 
 
 # llm-secure-cli: 複数LLM対応 統合コマンドラインインターフェース
 
-`llm-secure-cli` は、Gemini, OpenAI, Claude、および Ollama を介したローカルLLMを一元的に操作できる、高い安全性を備えたCLIツールです。開発者の「深い集中（Deep Work）」を妨げない安定した対話環境と、プロフェッショナルな要求に応える高度なセキュリティ機能を両立しています。
+`llm-secure-cli`（バイナリ名：`llsc`）は、Gemini, OpenAI, Claude、および Ollama を介したローカルLLMを一元的に操作できる、高い安全性を備えたCLIツールです。開発者の「深い集中（Deep Work）」を妨げない安定した対話環境と、プロフェッショナルな要求に応える高度なセキュリティ機能を両立しています。
+
+[English] | [日本語]
 
 ---
 
@@ -232,7 +238,7 @@ For detailed architectural insights and the academic background of our security 
     export GEMINI_API_KEY="your-api-key"
     # 対応: GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, OLLAMA_API_KEY
     ```
-3.  **対話開始**: `llm-secure-cli` コマンドでスタート。
+3.  **対話開始**: `llsc` コマンドでスタート。
     *   **設定の自動生成**: 初回起動時に `~/.llm_secure_cli/config.toml` が自動的に作成されます。
     *   **ネイティブWeb検索**: Gemini, OpenAI, Claude はプロバイダーのAPIキーのみで、組み込みのWeb検索（Grounding等）を自動的に利用可能です。別途検索APIキーを用意する必要はありません。
     *   **Brave Search**: すべてのプロバイダーで利用可能な共通のWeb検索ツールとして Brave Search API をサポートしています（`BRAVE_API_KEY` が必要）。**注意**: Brave Search が有効な場合、一貫した監査ログと署名（PQC）を確保するため、プロバイダー独自のネイティブ検索は自動的に無効化されます。
@@ -242,14 +248,28 @@ For detailed architectural insights and the academic background of our security 
     ```
 5.  **ヘルプ**: チャット内で `/help` と入力するとコマンド一覧が表示されます。
 
+### ワンショット実行例
+```bash
+# デフォルトのプロバイダー（Gemini）で質問する
+llsc "フランスの首都はどこですか？"
+
+# 特定のプロバイダーとモデルを指定する
+llsc -p anthropic -m sonnet "量子コンピュータについて説明して"
+
+# ローカルファイルやURLを解析する
+llsc "このPDFを要約して" ./document.pdf
+llsc "このWebサイトを解析して" https://example.com
+```
+
 ## 主な機能 (実用ツールとして)
 
-- **統合インターフェース**: `llm-secure-cli` コマンド一つで主要なクラウドLLMと **Ollama (Local)** にアクセス。
+- **統合インターフェース**: `llsc` コマンド一つで主要なクラウドLLMと **Ollama (Local)** にアクセス。
 - **自律型エージェント**: ファイル操作、Python実行、Web検索、URL解析をAIが自律的に実行。Web検索はプロバイダー提供の**ネイティブ検索機能**（Gemini Grounding, OpenAI/Claude Web Search等）または **Brave Search** を使用します。
 - **設定不要の即時利用**: 環境変数を設定するだけで、セットアップの手間なく利用可能。
-- **MCP (Model Context Protocol) 対応**: リモートサーバーや外部サービスとの連携をサポート。
-- **マルチモーダル対応**: 画像、PDF、音声、動画の入力をサポート。画像生成も可能。
+- **MCP (Model Context Protocol) 対応**: `config.toml` に設定されたリモートサーバーや外部サービスとの連携をサポート。
+- **マルチモーダル対応**: 画像、PDF、音声、動画の入力をサポート。対応モデルでの画像生成も可能。
 - **集中力を削がないUI**: 画面のちらつきを抑え、SSH越しでも安定して動作するクリーンなターミナル出力。
+- **Human-in-the-Loop**: ファイル編集やコード実行などの重要な操作は、デフォルトで人間の明示的な承認を必要とします。
 
 ### 自律型エージェントのツール実行
 AIがファイル操作、Web検索、Python実行などのツールを自律的に使用し、複雑なタスクを遂行します。Web検索はLLMプロバイダーの機能（Gemini Grounding, OpenAI/Claude Web Search）または Brave Search API を利用します。監査の健全性を維持するため、**Brave Search が優先されます**。Brave Search が設定されている場合、すべての外部データ取得が暗号学的に署名・記録されることを保証するため、ネイティブ検索は無効化されます。
@@ -266,15 +286,19 @@ AIがファイル操作、Web検索、Python実行などのツールを自律的
 `llm-secure-cli` は、実行コンテキストとリソース属性に基づいた **属性ベースアクセス制御 (ABAC)** を採用し、高度に粒度の細かいセキュリティを実現しています。
 - **リスクベース・スケーリング**: ツールのリスクレベル（HIGH/MEDIUM/LOW）に応じて、要求されるセキュリティ強度が自動的に変化します。
 - **意図の検証 (Dual LLM)**: 高リスクな操作は、軽量な「検証用LLM」（例：Gemini Flash Lite）によって元のプロンプトと照合されます。これにより、高度なプロンプトインジェクションによる意図しない操作を動的に防止します。
-- **バックグラウンド実行**: 検証はユーザーが説明文を確認して承認（HITL）を行う裏で非同期に実行されます。これにより、高度な検証に伴う待機時間を最小化し、ストレスのない操作感を実現しています。
-- **アイデンティティ証明**: 高リスクな操作（Python実行など）には、**耐量子暗号 (PQC)** による署名付き証明が必要です。
+  - **バックグラウンド実行**: 検証はユーザーが説明文を確認して承認（HITL）を行う裏で非同期に実行されます。これにより、高度な検証に伴う待機時間を最小化し、ストレスのない操作感を実現しています。
+  - `high` セキュリティモードでは、機能する Dual LLM プロバイダーの設定が **必須** です。
+  - セカンダリLLMが未設定または到達不能な場合（Soft Failure）、フェイルオープンを防ぐため、システムは常に手動のユーザー承認にフォールバックします。
+  - 意図チェックが明示的に拒絶した場合（Hard Block）、実行は厳格に拒否されます。
+- **アイデンティティ証明**: 高リスクな操作（Python実行など）には、**耐量子暗号 (PQC)** による署名付き証明が必要です。`high` モードでは、鍵が不足している場合、実行がブロックされます。
 - **互換モード**: `LLM_CLI_SECURITY_LEVEL=standard` を環境変数で設定するか、`config.toml` 内で `security_level = "standard"` を設定することで、PQC非対応のクライアントやサーバーとの相互運用を許可し、整合性チェックのエラーを警告表示のみにダウングレードします。
   ```toml
   [security]
   security_level = "standard"
   ```
 - **AST静的解析**: 全てのPythonスクリプトは実行前に解析され、危険なモジュール（`os.system`, `base64`, `socket`等）やリフレクション攻撃、さらに**難読化されたキーワード構築**（例：`"ex" + "ec"`）を遮断します。
-- **パス・ガードレール**: 操作可能な範囲を属性（ディレクトリ・パスなど）で制限します。
+- **パス・ガードレール**: 操作可能な範囲を属性（ディレクトリ・パスなど）で制限します。ポリシーエンジンは複数の引数名（`path`, `directory`, `file`, `src`, `dest`など）を検査し、バイパスを防止します。
+- **説明の強制**: 全てのツールは `explanation` パラメータを必須とし、LLMにその意図を正当化させます。
 
 ### 2. アイデンティティと非否認性 (実験的参照実装)
 - **分散型トラストモデル**: クライアントとサーバーが公開鍵のみを交換する分散型アイデンティティモデルを実装。特定のコンポーネントが侵害された際の横展開を防止する手法を探求していますが、エンタープライズ領域での利用には十分な評価が必要です。
@@ -286,24 +310,31 @@ AIがファイル操作、Web検索、Python実行などのツールを自律的
 - **改ざん防止監査ログ**: ハッシュ連鎖（Chained Hashing）によるログ保護と、**ML-KEM (Kyber)** による機密性保護を実装しています。
 - **Merkle Tree アンカリング**: Tier 3 実装として Merkle Tree によるログバッチの固定を導入。履歴の改ざんを防止し、セッションの整合性を証明するアーキテクチャのプロトタイプです。
 
+---
+
 ###  高度なコマンドとパワーユーザー向け機能
 
-インタラクティブセッション内で利用可能なコマンド:
-- `/help`: 利用可能なすべてのコマンドを表示。
+`llsc` インタラクティブセッション内で利用可能なコマンド:
+- `/help`, `/h`: ヘルプメッセージを表示。
 - `/p <provider>` / `/m <model>`: プロバイダーやモデルを動的に切り替え。
 - `/attach <path/URL>`: ファイルやウェブサイトのコンテンツをコンテキストに追加。
-- `/tools on|off`: ツールの自律実行を有効化/無効化。
-- `/i`: セッションの整合性とセキュリティステータスを表示。
-- `/save` / `/load`: 会話履歴を保存・読み込み。
-- `/cp`: チェックポイント (会話の要約と履歴のクリア)。
-- `/mcp`: MCP サーバー連携の切り替えと管理。
+- `/tools [on|off]`: ツールの自律実行ステータスの表示・切り替え。
+- `/i`: セッション情報、整合性、およびセキュリティステータスを表示。
+- `/save <path>` / `/load <path>`: 会話履歴の保存・読み込み。
+- `/clear`, `/c`: 会話履歴をクリア。
+- `/edit`, `/e`: 外部エディタでメッセージを編集。
+- `/raw`: 会話をそのままのテキストとして表示。
+- `/dump`: 会話履歴をJSON形式でダンプ。
+- `/cp`: チェックポイント (会話の要約と履歴のクリア - 開発中)。
+- `/reload`: 設定をディスクから再読み込み。
+- `/quit`, `/q`: アプリケーションを終了。
 
 ###  ログとトラブルシューティング
-デフォルトでは、`llm-secure-cli` およびその関連ツールは、`WARNING` または `ERROR` メッセージのみを表示し、情報のログは表示されません。
+デフォルトでは、`llsc` およびその関連ツールは、`WARNING` または `ERROR` メッセージのみを表示し、情報のログは表示されません。
 - **デバッグモードの有効化**: ツールの実行時に `--debug` フラグを追加して、詳細なログを表示します。
   ```bash
-  llm-secure-cli --debug "query"
-  llm-secure-cli-security --debug verify
+  llsc --debug "query"
+  llsc-security --debug verify
   ```
 - **MCP のデバッグ**: 3rdパーティのクライアント（Claude Desktop 等）から起動される MCP サーバーのトラブルシューティングには、`MCP_DEBUG` 環境変数を使用します。
   ```bash
@@ -315,15 +346,21 @@ AIがファイル操作、Web検索、Python実行などのツールを自律的
 ### パワーユーザー向け機能
 - **一時中断 (`Ctrl+Z`)**: セッションをバックグラウンドに送り、シェルに戻る。`fg` で復帰可能。
 - **外部エディタ編集 (`Ctrl+X, Ctrl+E`)**: プロンプト入力を `vim` や `nano` で編集。
-- **テンプレート**: 頻繁に使うプロンプトを `~/.llm_secure_cli/config.toml` に定義し、`/t <名前>` で呼び出し。
 - **モデルごとのツール自動無効化**: 画像生成モデルなど、ツール利用に対応していないモデルに対して、`config.toml` で自動的にツール機能をオフに設定できます。
   ```toml
   [google.models]
-  image = { model = "gemini-1.5-flash-image-preview", tools = false }
+  image = { model = "gemini-3.1-flash-image-preview", tools = false }
   ```
 - **ツール機能の手動無効化**: `/tools off` コマンドでツール送信を一時的に無効化できます。
 
----
+## セキュリティ管理
+`llsc-security` ツールを使用して暗号化アイデンティティを管理します。
+```bash
+llsc-security keygen     # RSA および PQC (ML-DSA/ML-KEM) 鍵ペアの生成
+llsc-security manifest   # リモートアテステーションのための整合性マニフェストの再構築
+decrypted.jsonl
+llsc-security decrypt-log ~/.llm_secure_cli/audit.jsonl -o decrypted.jsonl
+```
 
 ##  ライセンス
 [Apache License 2.0](LICENSE) に基づき公開されています。技術的な詳細については [テクニカルレポート](paper/comprehensive_framework/paper.pdf) を参照してください。

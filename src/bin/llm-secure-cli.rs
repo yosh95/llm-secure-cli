@@ -32,10 +32,6 @@ struct Args {
     #[clap(long)]
     raw: bool,
 
-    /// Enable MCP integration
-    #[clap(long)]
-    mcp: bool,
-
     /// Run as an MCP server
     #[clap(long)]
     mcp_server: bool,

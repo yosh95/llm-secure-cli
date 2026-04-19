@@ -161,14 +161,12 @@ default = "gemma4:e2b"
 # [[mcp_servers]]
 # name = "remote-agent"
 # command = "ssh"
-# args = ["-T", "user@remote-host", "llm-secure-cli", "--mcp-server"]
+# args = ["-T", "user@remote-host", "llsc", "--mcp-server"]
 # zero_trust = true
 
 # =============================================================================
 # Templates (Reusable Prompts)
 # =============================================================================
-# You can define reusable prompts here and call them using --template <name>.
-#
 # [templates]
 # analyze = """
 # Analyze the current directory structure and provide a summary of the project's purpose,
