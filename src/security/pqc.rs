@@ -96,17 +96,23 @@ impl PqcProvider {
         (pk.to_bytes(), sk.to_bytes())
     }
 
-    pub fn sign_mldsa(message: &[u8], sk_bytes: &[u8], variant: MldsaVariant) -> Vec<u8> {
+    pub fn sign_mldsa(
+        message: &[u8],
+        sk_bytes: &[u8],
+        variant: MldsaVariant,
+    ) -> anyhow::Result<Vec<u8>> {
         if sk_bytes.is_empty() {
-            return vec![];
+            return Err(anyhow::anyhow!("PQC Secret Key is empty"));
         }
         Self::ensure_init();
         let saorsa_variant = Self::map_mldsa_variant(variant);
         let ops = MlDsa::new(saorsa_variant);
-        let sk =
-            MlDsaSecretKey::from_bytes(saorsa_variant, sk_bytes).expect("Invalid PQC secret key");
-        let sig = ops.sign(&sk, message).expect("PQC sign failed");
-        sig.to_bytes()
+        let sk = MlDsaSecretKey::from_bytes(saorsa_variant, sk_bytes)
+            .map_err(|_| anyhow::anyhow!("Invalid PQC secret key"))?;
+        let sig = ops
+            .sign(&sk, message)
+            .map_err(|_| anyhow::anyhow!("PQC sign failed"))?;
+        Ok(sig.to_bytes())
     }
 
     pub fn verify_mldsa(
@@ -116,7 +122,7 @@ impl PqcProvider {
         variant: MldsaVariant,
     ) -> bool {
         if sig_bytes.is_empty() || pk_bytes.is_empty() {
-            return true;
+            return false;
         }
         Self::ensure_init();
         let saorsa_variant = Self::map_mldsa_variant(variant);
@@ -296,16 +302,16 @@ impl ResponseSigner {
         verification_id: &str,
         sk_bytes: &[u8],
         variant: MldsaVariant,
-    ) -> SignedResponse {
+    ) -> anyhow::Result<SignedResponse> {
         let message = format!("{}:{}", verification_id, response_text);
-        let sig = PqcProvider::sign_mldsa(message.as_bytes(), sk_bytes, variant);
+        let sig = PqcProvider::sign_mldsa(message.as_bytes(), sk_bytes, variant)?;
 
-        SignedResponse {
+        Ok(SignedResponse {
             result: response_text.to_string(),
             verification_id: verification_id.to_string(),
             pqc_signature: general_purpose::URL_SAFE_NO_PAD.encode(sig),
             algorithm: variant.to_str().to_string(),
-        }
+        })
     }
 
     pub fn verify_response(signed: &SignedResponse, pk_bytes: &[u8]) -> bool {
@@ -320,10 +326,13 @@ impl ResponseSigner {
 
 use crate::security::identity::IdentityManager;
 
-pub fn sign_tool_result(result_text: &str, variant: MldsaVariant) -> SignedResponse {
+pub fn sign_tool_result(
+    result_text: &str,
+    variant: MldsaVariant,
+) -> anyhow::Result<SignedResponse> {
     let verification_id = Uuid::new_v4().to_string();
 
-    let sk = IdentityManager::get_pqc_private_key(variant).expect("Failed to get PQC private key");
+    let sk = IdentityManager::get_pqc_private_key(variant)?;
 
     ResponseSigner::sign_response(result_text, &verification_id, &sk, variant)
 }

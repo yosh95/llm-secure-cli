@@ -296,213 +296,236 @@ impl ChatSession {
 
                                 ui::print_tool_call(name, &serde_json::json!(args));
 
-                                // Dual LLM Verification (Start)
-                                let mut verifier_handle = None;
-                                let config = crate::config::CONFIG_MANAGER.get_config();
-                                if config.security.dual_llm_verification.unwrap_or(false) {
-                                    // 1. Extract recent USER messages (Sliding Window: last 5)
-                                    // 2. Truncate long messages to focus on intent, not data (UTF-8 safe)
-                                    let user_history: Vec<String> = self
-                                        .client
-                                        .get_state()
-                                        .conversation
-                                        .iter()
-                                        .filter(|m| m.role == Role::User)
-                                        .rev()
-                                        .take(5)
-                                        .map(|m| {
-                                            let text = m.get_text(true);
-                                            if text.chars().count() > 1000 {
-                                                let head: String = text.chars().take(500).collect();
-                                                let tail: String = text
-                                                    .chars()
-                                                    .rev()
-                                                    .take(500)
-                                                    .collect::<String>()
-                                                    .chars()
-                                                    .rev()
-                                                    .collect();
-                                                format!("{}...[TRUNCATED]...{}", head, tail)
-                                            } else {
-                                                text
-                                            }
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .into_iter()
-                                        .rev()
-                                        .collect();
-
-                                    let mut intent_context = user_history.join("\n---\n");
-
-                                    // 3. Final total length safety check
-                                    if intent_context.chars().count() > 4000 {
-                                        intent_context = intent_context
-                                            .chars()
-                                            .rev()
-                                            .take(4000)
-                                            .collect::<String>()
-                                            .chars()
-                                            .rev()
-                                            .collect();
-                                    }
-
-                                    let name_clone = name.to_string();
-                                    let args_clone = serde_json::json!(args);
-
-                                    verifier_handle = Some(tokio::spawn(async move {
-                                        crate::security::dual_llm_verifier::verify_tool_call(
-                                            &intent_context,
-                                            &name_clone,
-                                            &args_clone,
-                                            None,
-                                        )
-                                        .await
-                                    }));
-                                }
-
-                                // HITL Approval
-                                let risk_level =
-                                    crate::security::cass::CASS_ORCHESTRATOR.evaluate_risk(name);
-                                let auto_approval = config
-                                    .security
-                                    .auto_approval_level
-                                    .as_deref()
-                                    .unwrap_or("none");
-
-                                let mut approved = false;
-                                if auto_approval == "low"
-                                    && risk_level == crate::security::cass::RiskLevel::Low
-                                {
-                                    approved = true;
-                                    ui::report_success("Auto-approved (Low Risk)");
-                                } else if auto_approval == "medium"
-                                    && (risk_level == crate::security::cass::RiskLevel::Low
-                                        || risk_level == crate::security::cass::RiskLevel::Medium)
-                                {
-                                    approved = true;
-                                    ui::report_success("Auto-approved (Medium Risk)");
-                                }
-
-                                if !approved {
-                                    let prompt = format!("Execute {}", name);
-                                    approved = ui::ask_confirm(&prompt);
-                                }
-
                                 let mut final_result = None;
 
-                                if !approved {
-                                    ui::report_warning("Execution cancelled by user.");
-                                    let feedback =
-                                        ui::get_user_input("Provide feedback (optional): ");
-                                    let result_msg = if feedback.trim().is_empty() {
-                                        "Error: Execution cancelled by user.".to_string()
-                                    } else {
-                                        format!(
-                                            "Error: Execution cancelled by user. Feedback: {}",
-                                            feedback
-                                        )
-                                    };
-                                    final_result = Some(serde_json::Value::String(result_msg));
-                                }
+                                // --- [PHASE 1] Lightweight Fast Checks (Block Early) ---
 
-                                // Wait for Dual LLM Verifier if it was started
-                                if final_result.is_none() {
-                                    if let Some(handle) = verifier_handle {
-                                        let pb = ProgressBar::new_spinner();
-                                        pb.set_style(
-                                            ProgressStyle::default_spinner()
-                                                .template("{spinner:.yellow} {msg}")?,
-                                        );
-
-                                        let config = crate::config::CONFIG_MANAGER.get_config();
-                                        let v_provider = config.security.dual_llm_provider.clone();
-                                        let v_model_alias = config.security.dual_llm_model.clone();
-                                        let v_model_name = {
-                                            let registry = crate::llm::registry::CLIENT_REGISTRY
-                                                .lock()
-                                                .unwrap();
-                                            registry
-                                                .create_client(
-                                                    &v_provider,
-                                                    &v_model_alias,
-                                                    false,
-                                                    true,
-                                                )
-                                                .map(|c| c.get_state().model.clone())
-                                                .unwrap_or(v_model_alias)
-                                        };
-
-                                        pb.set_message(format!(
-                                            "Finalizing intent verification... ({})",
-                                            v_model_name
-                                        ));
-                                        pb.enable_steady_tick(std::time::Duration::from_millis(
-                                            100,
-                                        ));
-
-                                        let (safe, reason) = handle.await.unwrap_or_else(|_| {
-                                            (false, "Verification task panicked".to_string())
-                                        });
-                                        pb.finish_and_clear();
-                                        if !safe {
-                                            ui::report_error(&format!(
-                                                "Dual LLM Verification failed: {}",
-                                                reason
-                                            ));
-                                            final_result = Some(serde_json::Value::String(
-                                                format!("Security Policy Violation: {}", reason),
-                                            ));
-                                        } else {
-                                            ui::report_success(&format!(
-                                                "Intent Verified: {}",
-                                                reason
-                                            ));
+                                // 1.1 Path Guardrails
+                                let path_args =
+                                    ["path", "directory", "file", "src", "dest", "filename"];
+                                for arg_name in path_args {
+                                    if let Some(p_val) = args.get(arg_name).and_then(|v| v.as_str())
+                                    {
+                                        if let Err(e) =
+                                            crate::security::path_validator::validate_path(p_val)
+                                        {
+                                            let err_msg = format!(
+                                                "Security Blocked (Path Guardrails): {}",
+                                                e
+                                            );
+                                            ui::report_error(&err_msg);
+                                            final_result = Some(serde_json::Value::String(err_msg));
+                                            break;
                                         }
                                     }
                                 }
 
-                                // Execute tool
-                                // 1. Static Analysis (Space)
-                                if final_result.is_none()
-                                    && (name == "execute_command" || name == "execute_python")
-                                {
-                                    let mut check_contents = Vec::new();
-                                    if let Some(c) = args.get("command").and_then(|v| v.as_str()) {
-                                        check_contents.push(c.to_string());
+                                // 1.2 Static Analysis (for execute_command)
+                                if final_result.is_none() && name == "execute_command" {
+                                    let program =
+                                        args.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                                    let cmd_args: Vec<String> = args
+                                        .get("args")
+                                        .and_then(|v| v.as_array())
+                                        .map(|arr| {
+                                            arr.iter()
+                                                .filter_map(|v| v.as_str())
+                                                .map(|s| s.to_string())
+                                                .collect()
+                                        })
+                                        .unwrap_or_default();
+
+                                    let full_cmd = format!("{} {}", program, cmd_args.join(" "));
+                                    let (safe, violations) = crate::security::static_analyzer::StaticAnalyzer::is_dangerous_command(&full_cmd);
+                                    if !safe {
+                                        let err_msg = format!(
+                                            "Security Blocked (Static Analysis): {}",
+                                            violations.join(", ")
+                                        );
+                                        ui::report_error(&err_msg);
+                                        final_result = Some(serde_json::Value::String(err_msg));
                                     }
-                                    if let Some(c) = args.get("code").and_then(|v| v.as_str()) {
-                                        check_contents.push(c.to_string());
+                                }
+
+                                // --- [PHASE 2] High-Assurance Checks (Dual LLM & HITL) ---
+
+                                if final_result.is_none() {
+                                    // Dual LLM Verification (Start)
+                                    let mut verifier_handle = None;
+                                    let config = crate::config::CONFIG_MANAGER.get_config();
+                                    if config.security.dual_llm_verification.unwrap_or(false) {
+                                        // 1. Extract recent USER messages (Sliding Window: last 5)
+                                        // 2. Truncate long messages to focus on intent, not data (UTF-8 safe)
+                                        let user_history: Vec<String> = self
+                                            .client
+                                            .get_state()
+                                            .conversation
+                                            .iter()
+                                            .filter(|m| m.role == Role::User)
+                                            .rev()
+                                            .take(5)
+                                            .map(|m| {
+                                                let text = m.get_text(true);
+                                                if text.chars().count() > 1000 {
+                                                    let head: String =
+                                                        text.chars().take(500).collect();
+                                                    let tail: String = text
+                                                        .chars()
+                                                        .rev()
+                                                        .take(500)
+                                                        .collect::<String>()
+                                                        .chars()
+                                                        .rev()
+                                                        .collect();
+                                                    format!("{}...[TRUNCATED]...{}", head, tail)
+                                                } else {
+                                                    text
+                                                }
+                                            })
+                                            .collect::<Vec<_>>()
+                                            .into_iter()
+                                            .rev()
+                                            .collect();
+
+                                        let mut intent_context = user_history.join("\n---\n");
+
+                                        // 3. Final total length safety check
+                                        if intent_context.chars().count() > 4000 {
+                                            intent_context = intent_context
+                                                .chars()
+                                                .rev()
+                                                .take(4000)
+                                                .collect::<String>()
+                                                .chars()
+                                                .rev()
+                                                .collect();
+                                        }
+
+                                        let name_clone = name.to_string();
+                                        let args_clone = serde_json::json!(args);
+
+                                        verifier_handle = Some(tokio::spawn(async move {
+                                            crate::security::dual_llm_verifier::verify_tool_call(
+                                                &intent_context,
+                                                &name_clone,
+                                                &args_clone,
+                                                None,
+                                            )
+                                            .await
+                                        }));
                                     }
-                                    if let Some(serde_json::Value::Array(arr)) = args.get("args") {
-                                        for v in arr {
-                                            if let Some(s) = v.as_str() {
-                                                check_contents.push(s.to_string());
+
+                                    // HITL Approval
+                                    let risk_level = crate::security::cass::CASS_ORCHESTRATOR
+                                        .evaluate_risk(name);
+                                    let auto_approval = config
+                                        .security
+                                        .auto_approval_level
+                                        .as_deref()
+                                        .unwrap_or("none");
+
+                                    let mut approved = false;
+                                    if auto_approval == "low"
+                                        && risk_level == crate::security::cass::RiskLevel::Low
+                                    {
+                                        approved = true;
+                                        ui::report_success("Auto-approved (Low Risk)");
+                                    } else if auto_approval == "medium"
+                                        && (risk_level == crate::security::cass::RiskLevel::Low
+                                            || risk_level
+                                                == crate::security::cass::RiskLevel::Medium)
+                                    {
+                                        approved = true;
+                                        ui::report_success("Auto-approved (Medium Risk)");
+                                    }
+
+                                    if !approved {
+                                        let prompt = format!("Execute {}", name);
+                                        approved = ui::ask_confirm(&prompt);
+                                    }
+
+                                    if !approved {
+                                        ui::report_warning("Execution cancelled by user.");
+                                        let feedback =
+                                            ui::get_user_input("Provide feedback (optional): ");
+                                        let result_msg = if feedback.trim().is_empty() {
+                                            "Error: Execution cancelled by user.".to_string()
+                                        } else {
+                                            format!(
+                                                "Error: Execution cancelled by user. Feedback: {}",
+                                                feedback
+                                            )
+                                        };
+                                        final_result = Some(serde_json::Value::String(result_msg));
+                                    }
+
+                                    // Wait for Dual LLM Verifier if it was started
+                                    if final_result.is_none() {
+                                        if let Some(handle) = verifier_handle {
+                                            let pb = ProgressBar::new_spinner();
+                                            pb.set_style(
+                                                ProgressStyle::default_spinner()
+                                                    .template("{spinner:.yellow} {msg}")?,
+                                            );
+
+                                            let config = crate::config::CONFIG_MANAGER.get_config();
+                                            let v_provider =
+                                                config.security.dual_llm_provider.clone();
+                                            let v_model_alias =
+                                                config.security.dual_llm_model.clone();
+                                            let v_model_name = {
+                                                let registry =
+                                                    crate::llm::registry::CLIENT_REGISTRY
+                                                        .lock()
+                                                        .unwrap();
+                                                registry
+                                                    .create_client(
+                                                        &v_provider,
+                                                        &v_model_alias,
+                                                        false,
+                                                        true,
+                                                    )
+                                                    .map(|c| c.get_state().model.clone())
+                                                    .unwrap_or(v_model_alias)
+                                            };
+
+                                            pb.set_message(format!(
+                                                "Finalizing intent verification... ({})",
+                                                v_model_name
+                                            ));
+                                            pb.enable_steady_tick(
+                                                std::time::Duration::from_millis(100),
+                                            );
+
+                                            let (safe, reason) =
+                                                handle.await.unwrap_or_else(|_| {
+                                                    (
+                                                        false,
+                                                        "Verification task panicked".to_string(),
+                                                    )
+                                                });
+                                            pb.finish_and_clear();
+                                            if !safe {
+                                                ui::report_error(&format!(
+                                                    "Dual LLM Verification failed: {}",
+                                                    reason
+                                                ));
+                                                final_result =
+                                                    Some(serde_json::Value::String(format!(
+                                                        "Security Policy Violation: {}",
+                                                        reason
+                                                    )));
+                                            } else {
+                                                ui::report_success(&format!(
+                                                    "Intent Verified: {}",
+                                                    reason
+                                                ));
                                             }
                                         }
                                     }
-
-                                    for code in check_contents {
-                                        let (safe, violations, warnings) =
-                                            crate::security::static_analyzer::StaticAnalyzer::analyze_python_safety(
-                                                &code,
-                                            );
-                                        if !safe {
-                                            let err = format!(
-                                                "Static Analysis Blocked: {}",
-                                                violations.join(", ")
-                                            );
-                                            ui::report_error(&err);
-                                            final_result = Some(serde_json::Value::String(err));
-                                            break;
-                                        } else if !warnings.is_empty() {
-                                            ui::report_warning(&format!(
-                                                "Static Analysis Warning: {}",
-                                                warnings.join(", ")
-                                            ));
-                                        }
-                                    }
                                 }
 
+                                // --- [PHASE 3] Execution ---
                                 let result_value = if let Some(res) = final_result {
                                     res
                                 } else {

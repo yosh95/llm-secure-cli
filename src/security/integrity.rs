@@ -70,7 +70,7 @@ impl IntegrityVerifier {
         let sk = IdentityManager::get_pqc_private_key(MldsaVariant::Mldsa65)
             .map_err(|_| anyhow!("Identity keys not found. Run 'keygen' first."))?;
 
-        let signature = PqcProvider::sign_mldsa(json_data.as_bytes(), &sk, MldsaVariant::Mldsa65);
+        let signature = PqcProvider::sign_mldsa(json_data.as_bytes(), &sk, MldsaVariant::Mldsa65)?;
 
         let manifest = IntegrityManifest {
             binary_hash,

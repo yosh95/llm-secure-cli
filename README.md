@@ -78,7 +78,7 @@ llsc "Analyze this website" https://example.com
 ## Core Features
 
 - **Unified Provider Access**: Seamlessly switch between Google (Gemini), OpenAI, Anthropic (Claude), and **Local LLMs (Ollama)**.
-- **Autonomous Agent**: Let the AI manage files, execute Python code (replacing risky shell commands), and search the web using **Provider-Native Search** (Gemini Grounding, OpenAI/Claude Web Search) or **Brave Search**.
+- **Autonomous Agent**: Let the AI manage files and search the web using **Provider-Native Search** (Gemini Grounding, OpenAI/Claude Web Search) or **Brave Search**.
 - **Config-free Execution**: Start using immediately by just providing an environment variable.
 - **MCP (Model Context Protocol) Support**: Connect to remote resources or services via custom servers configured in `config.toml`.
 - **Multimodal capabilities**: Support for Images, PDFs, Audio, and Video. Image generation is also supported for compatible models.
@@ -106,7 +106,7 @@ As a tool designed with **CISSP/CISA/CCSP** principles and **EU AI Act** complia
   - In `high` security mode, a functional Dual LLM provider is **required**.
   - If the secondary LLM is misconfigured or unreachable (Soft Failure), the system will fallback to explicit manual user approval rather than failing open.
   - If the intent check actively rejects the call (Hard Block), the execution is strictly denied.
-- **Identity Proof**: High-risk actions (e.g., Python execution) require a valid **PQC-signed identity token**. In `high` mode, execution is blocked if keys are missing.
+- **Identity Proof**: High-risk actions require a valid **PQC-signed identity token**. In `high` mode, execution is blocked if keys are missing.
 - **Compatibility Mode**: Use `LLM_CLI_SECURITY_LEVEL=standard` or set `security_level = "standard"` in `config.toml` to enable interoperability with non-llm-secure-cli clients or legacy MCP servers, downgrading PQC enforcement and integrity checks to warnings.
   ```toml
   [security]
@@ -266,7 +266,7 @@ llsc "このWebサイトを解析して" https://example.com
 ## 主な機能 (実用ツールとして)
 
 - **統合インターフェース**: `llsc` コマンド一つで主要なクラウドLLMと **Ollama (Local)** にアクセス。
-- **自律型エージェント**: ファイル操作、Python実行、Web検索、URL解析をAIが自律的に実行。Web検索はプロバイダー提供の**ネイティブ検索機能**（Gemini Grounding, OpenAI/Claude Web Search等）または **Brave Search** を使用します。
+- **自律型エージェント**: ファイル操作、Web検索、URL解析をAIが自律的に実行。Web検索はプロバイダー提供の**ネイティブ検索機能**（Gemini Grounding, OpenAI/Claude Web Search等）または **Brave Search** を使用します。
 - **設定不要の即時利用**: 環境変数を設定するだけで、セットアップの手間なく利用可能。
 - **MCP (Model Context Protocol) 対応**: `config.toml` に設定されたリモートサーバーや外部サービスとの連携をサポート。
 - **マルチモーダル対応**: 画像、PDF、音声、動画の入力をサポート。対応モデルでの画像生成も可能。
@@ -292,7 +292,7 @@ AIがファイル操作、Web検索、Python実行などのツールを自律的
   - `high` セキュリティモードでは、機能する Dual LLM プロバイダーの設定が **必須** です。
   - セカンダリLLMが未設定または到達不能な場合（Soft Failure）、フェイルオープンを防ぐため、システムは常に手動のユーザー承認にフォールバックします。
   - 意図チェックが明示的に拒絶した場合（Hard Block）、実行は厳格に拒否されます。
-- **アイデンティティ証明**: 高リスクな操作（Python実行など）には、**耐量子暗号 (PQC)** による署名付き証明が必要です。`high` モードでは、鍵が不足している場合、実行がブロックされます。
+- **アイデンティティ証明**: 高リスクな操作には、**耐量子暗号 (PQC)** による署名付き証明が必要です。`high` モードでは、鍵が不足している場合、実行がブロックされます。
 - **互換モード**: `LLM_CLI_SECURITY_LEVEL=standard` を環境変数で設定するか、`config.toml` 内で `security_level = "standard"` を設定することで、PQC非対応のクライアントやサーバーとの相互運用を許可し、整合性チェックのエラーを警告表示のみにダウングレードします。
   ```toml
   [security]

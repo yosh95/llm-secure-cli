@@ -60,7 +60,8 @@ impl HybridSigner {
 
         let pqc_tbs =
             Self::build_sig_structure(&body_protected, &pqc_sign_protected, &payload_bytes);
-        let pqc_sig = PqcProvider::sign_mldsa(&pqc_tbs, pqc_private_key, variant);
+        let pqc_sig =
+            PqcProvider::sign_mldsa(&pqc_tbs, pqc_private_key, variant).unwrap_or_default();
 
         let pqc_signature_entry = Value::Array(vec![
             Value::Bytes(pqc_sign_protected),

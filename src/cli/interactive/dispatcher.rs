@@ -28,7 +28,10 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
         "q" | "quit" => CommandResult::Exit,
         "date" | "d" => {
             let now = Local::now();
-            let date_str = format!("Current date and time: {}", now.format("%Y-%m-%d %H:%M:%S %Z"));
+            let date_str = format!(
+                "Current date and time: {}",
+                now.format("%Y-%m-%d %H:%M:%S %Z")
+            );
             let msg = Message {
                 role: Role::System,
                 parts: vec![MessagePart::Text(date_str.clone())],

@@ -117,10 +117,15 @@ pub fn log_audit(
     // PQC Signing (Identity Manager now provides the key)
     let variant = crate::security::pqc::MldsaVariant::Mldsa65;
     if let Ok(sk) = crate::security::identity::IdentityManager::get_pqc_private_key(variant) {
-        let signed =
-            ResponseSigner::sign_response(&log_entry.hash, &log_entry.trace_id, &sk, variant);
-        log_entry.pqc_signature = Some(signed.pqc_signature);
-        log_entry.pqc_algorithm = Some(signed.algorithm);
+        match ResponseSigner::sign_response(&log_entry.hash, &log_entry.trace_id, &sk, variant) {
+            Ok(signed) => {
+                log_entry.pqc_signature = Some(signed.pqc_signature);
+                log_entry.pqc_algorithm = Some(signed.algorithm);
+            }
+            Err(e) => {
+                eprintln!("[ERROR] Failed to sign audit log entry: {}", e);
+            }
+        }
     }
 
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {

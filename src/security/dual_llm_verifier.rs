@@ -96,8 +96,16 @@ pub async fn verify_tool_call_full(
 
     match client.send(data).await {
         Ok((Some(text), _)) => {
-            let clean_text = text.trim_matches(|c| c == '`' || c == '\n' || c == ' ');
-            let json_text = clean_text.strip_prefix("json").unwrap_or(clean_text);
+            // Robust JSON extraction from LLM response
+            let json_text = if let Some(start) = text.find('{') {
+                if let Some(end) = text.rfind('}') {
+                    &text[start..=end]
+                } else {
+                    &text
+                }
+            } else {
+                &text
+            };
 
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_text) {
                 let safe = v["safe"].as_bool().unwrap_or(false);
@@ -114,7 +122,10 @@ pub async fn verify_tool_call_full(
             } else {
                 (
                     false,
-                    "Failed to parse JSON response from Dual LLM".to_string(),
+                    format!(
+                        "Failed to parse JSON response from Dual LLM. Raw output: {}",
+                        text
+                    ),
                 )
             }
         }

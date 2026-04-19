@@ -115,7 +115,7 @@ impl SessionAnchorManager {
         let variant = MldsaVariant::Mldsa65;
         if let Ok(sk) = IdentityManager::get_pqc_private_key(variant) {
             let message = serde_json::to_string(&anchor)?;
-            let sig = PqcProvider::sign_mldsa(message.as_bytes(), &sk, variant);
+            let sig = PqcProvider::sign_mldsa(message.as_bytes(), &sk, variant)?;
             anchor.pqc_signature = Some(general_purpose::STANDARD.encode(sig));
             anchor.pqc_algorithm = Some(variant.to_str().to_string());
         }
