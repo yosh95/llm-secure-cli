@@ -11,7 +11,7 @@ fn benchmark_local_primitives() {
     let code = "import os; os.system('ls')";
     let start = Instant::now();
     for _ in 0..1000 {
-        StaticAnalyzer::analyze_python_safety(code);
+        StaticAnalyzer::is_dangerous_command(code);
     }
     let elapsed = start.elapsed();
     println!("AST Analysis (1000 runs): {:?}", elapsed);
@@ -35,10 +35,10 @@ fn benchmark_local_primitives() {
         let msg = b"Hello, world!";
         let start = Instant::now();
         for _ in 0..100 {
-            PqcProvider::sign_mldsa(msg, &sk, variant);
+            let _ = PqcProvider::sign_mldsa(msg, &sk, variant);
         }
         let elapsed = start.elapsed();
-        let sig = PqcProvider::sign_mldsa(msg, &sk, variant);
+        let sig = PqcProvider::sign_mldsa(msg, &sk, variant).expect("Signing failed");
         println!("{} Sign (100 runs): {:?}", name, elapsed);
         println!("{} Sign (avg): {:?} per run", name, elapsed / 100);
 
