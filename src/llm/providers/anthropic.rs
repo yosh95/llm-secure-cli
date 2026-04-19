@@ -215,8 +215,6 @@ impl LlmClient for ClaudeClient {
             .unwrap()
             .get_tool_schemas_anthropic();
 
-        let mut beta_headers = vec!["prompt-caching-2024-07-31".to_string()];
-
         let mut payload = json!({
             "model": self.base.state.model,
             "max_tokens": 8192,
@@ -250,15 +248,11 @@ impl LlmClient for ClaudeClient {
                 })];
                 all_tools.extend(tools);
                 tools = all_tools;
-                // Add required beta header for native web search
-                beta_headers.push("web-search-2026-02-09".to_string());
             }
             if !tools.is_empty() {
                 payload["tools"] = json!(tools);
             }
         }
-
-        headers.insert("anthropic-beta", beta_headers.join(",").parse()?);
 
         log::debug!(
             "Anthropic Request Payload: {}",

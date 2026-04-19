@@ -25,10 +25,9 @@ impl GeminiClient {
 
     fn get_api_url(&self) -> String {
         let model = &self.base.state.model;
-        let key = self.base.api_key.as_deref().unwrap_or("");
         format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            model, key
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+            model
         )
     }
 
@@ -239,18 +238,18 @@ impl LlmClient for GeminiClient {
 
             if !has_brave {
                 tools.push(json!({
-                    "google_search_retrieval": {
-                        "dynamic_retrieval_config": {
-                            "mode": "unspecified",
-                            "dynamic_threshold": 0.06
-                        }
+                    "google_search": {
                     }
                 }));
+                payload["toolConfig"] = json!({
+                    "includeServerSideToolInvocations": true
+                });
             }
 
             if !tools.is_empty() {
                 payload["tools"] = json!(tools);
             }
+
         }
 
         log::debug!(
@@ -259,8 +258,14 @@ impl LlmClient for GeminiClient {
         );
 
         let url = self.get_api_url();
+        let key = self.base.api_key.as_deref().unwrap_or("");
 
-        let res = HTTP_CLIENT.post(&url).json(&payload).send().await?;
+        let res = HTTP_CLIENT
+            .post(&url)
+            .header("x-goog-api-key", key)
+            .json(&payload)
+            .send()
+            .await?;
 
         let status = res.status();
         let res_json: serde_json::Value = res.json().await?;
