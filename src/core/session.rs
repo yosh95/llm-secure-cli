@@ -30,7 +30,11 @@ impl ChatSession {
             let new_state = new_client.get_state_mut();
             new_state.conversation = old_state.conversation.clone();
             new_state.live_debug = old_state.live_debug;
-            new_state.tools_enabled = old_state.tools_enabled;
+            // Only carry over tools_enabled if the new model supports tools by default.
+            // If the new model has tools explicitly disabled in config, respect that.
+            if new_state.tools_enabled {
+                new_state.tools_enabled = old_state.tools_enabled;
+            }
             new_state.system_prompt_enabled = old_state.system_prompt_enabled;
         }
         self.client = new_client;
@@ -237,6 +241,39 @@ impl ChatSession {
             if let Some(text) = response {
                 if !text.trim().is_empty() {
                     ui::print_block(&text, Some(&self.client.get_display_name()), Some("cyan"));
+                }
+            }
+
+            // Handle incoming images in the response
+            let last_msg = self.client.get_state().conversation.last().cloned();
+            if let Some(msg) = last_msg {
+                if msg.role == Role::Assistant || msg.role == Role::Model {
+                    for part in &msg.parts {
+                        if let MessagePart::Part(cp) = part {
+                            if let Some(id) = &cp.inline_data {
+                                let b64_data =
+                                    id.get("data").and_then(|v| v.as_str()).unwrap_or("");
+                                let mime_type =
+                                    id.get("mimeType").and_then(|v| v.as_str()).unwrap_or("");
+                                if !b64_data.is_empty() {
+                                    let config = crate::config::CONFIG_MANAGER.get_config();
+                                    match crate::utils::media::save_image(
+                                        b64_data,
+                                        mime_type,
+                                        &config.general.image_save_path,
+                                    ) {
+                                        Ok(path) => {
+                                            ui::report_success(&format!("Image saved to: {}", path))
+                                        }
+                                        Err(e) => ui::report_error(&format!(
+                                            "Failed to save image: {}",
+                                            e
+                                        )),
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

@@ -235,7 +235,7 @@ impl LlmClient for ClaudeClient {
         }
 
         // Tools
-        if !tool_schemas.is_empty() {
+        if self.base.state.tools_enabled && !tool_schemas.is_empty() {
             // Include native web_search tool if brave_search is not registered
             let registry = crate::tools::registry::REGISTRY.lock().unwrap();
             let has_brave = registry.tools.contains_key("brave_search");

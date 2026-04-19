@@ -57,10 +57,8 @@ html2text = "0.6"
 difflib = "0.4"
 urlencoding = "2.1"
 rustyline = "12.0"
-# PQC support (Reference implementations)
-pqcrypto-mldsa = "0.1"
-pqcrypto-mlkem = "0.1"
-pqcrypto-traits = "0.3"
+# PQC support (Pure Rust)
+saorsa-pqc = "0.5"
 aes-gcm = "0.10"
 ciborium = "0.2"
 rsa = "0.9"

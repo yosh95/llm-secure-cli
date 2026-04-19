@@ -1,5 +1,7 @@
 use crate::llm::models::DataSource;
 use base64::{engine::general_purpose, Engine as _};
+use chrono;
+use dirs;
 use std::fs;
 use std::path::Path;
 use url::Url;
@@ -130,4 +132,32 @@ pub async fn process_sources(sources: Vec<String>) -> Vec<DataSource> {
         }
     }
     results
+}
+
+pub fn save_image(b64_data: &str, mime_type: &str, save_path: &str) -> anyhow::Result<String> {
+    let bytes = general_purpose::STANDARD.decode(b64_data)?;
+    let extension = match mime_type {
+        "image/png" => "png",
+        "image/jpeg" | "image/jpg" => "jpg",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        _ => "bin",
+    };
+
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let filename = format!("generated_{}.{}", timestamp, extension);
+
+    let mut path = Path::new(save_path).to_path_buf();
+    // Expand ~ if present
+    if path.starts_with("~") {
+        if let Some(home) = dirs::home_dir() {
+            path = home.join(path.strip_prefix("~").unwrap());
+        }
+    }
+
+    fs::create_dir_all(&path)?;
+    let full_path = path.join(filename);
+    fs::write(&full_path, bytes)?;
+
+    Ok(full_path.to_string_lossy().to_string())
 }

@@ -223,7 +223,7 @@ impl LlmClient for GeminiClient {
             }
         }
 
-        if !tool_declarations.is_empty() {
+        if self.base.state.tools_enabled && !tool_declarations.is_empty() {
             payload["tools"] = json!([{
                 "function_declarations": tool_declarations
             }]);
@@ -321,9 +321,38 @@ impl LlmClient for GeminiClient {
                                 thought_signature: thought_sig,
                                 is_diagnostic: false,
                             }));
+                        } else if let Some(id) = part.get("inlineData") {
+                            let mime = id.get("mimeType").and_then(|v| v.as_str()).unwrap_or("");
+                            full_text.push_str(&format!("[Image: {}]", mime));
+
+                            msg_parts.push(MessagePart::Part(ContentPart {
+                                text: None,
+                                inline_data: Some(
+                                    id.as_object()
+                                        .cloned()
+                                        .unwrap_or_default()
+                                        .into_iter()
+                                        .collect(),
+                                ),
+                                function_call: None,
+                                function_response: None,
+                                thought: None,
+                                thought_signature: thought_sig,
+                                is_diagnostic: false,
+                            }));
                         }
                     }
                 }
+
+                if full_text.is_empty() && thought_text.is_empty() && msg_parts.is_empty() {
+                    if let Some(reason) = candidate["finishReason"].as_str() {
+                        if reason != "STOP" {
+                            full_text.push_str(&format!("[No content. Finish reason: {}]", reason));
+                        }
+                    }
+                }
+            } else if let Some(feedback) = res_json["promptFeedback"]["blockReason"].as_str() {
+                return Err(anyhow::anyhow!("Gemini blocked the prompt: {}", feedback));
             }
         }
 

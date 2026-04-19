@@ -29,12 +29,6 @@ max_audit_archives = 10
 # - standard: Compatibility mode for non-llm-secure-cli clients or legacy MCP servers.
 security_level = "high"
 
-# Post-Quantum Cryptography (PQC) Support
-# If true, the system uses ML-DSA for identity tokens and audit log signatures.
-# Set to false if you experience "Illegal Instruction" errors on certain 
-# ARM-based environments like Termux.
-pqc_enabled = true
-
 # Auto-Approval Policy
 # Controls which tools can run without human intervention.
 # - "none":   All tools require manual approval (Safest).
@@ -148,7 +142,7 @@ opus = "claude-opus-4-7"
 [ollama]
 api_url = "http://localhost:11434/v1/chat/completions"
 [ollama.models]
-# default = "gemma4:e2b" # Commented out to prevent auto-activation without user config
+default = "gemma4:e2b"
 
 # =============================================================================
 # Model Context Protocol (MCP) Servers

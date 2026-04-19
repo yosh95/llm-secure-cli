@@ -127,9 +127,6 @@ impl ConfigManager {
         if over.security.security_level != "high" {
             base.security.security_level = over.security.security_level;
         }
-        if !over.security.pqc_enabled {
-            base.security.pqc_enabled = false;
-        }
 
         // Merge MCP
         if !over.mcp_servers.is_empty() {
@@ -172,10 +169,9 @@ impl ConfigManager {
             let config = self.get_config();
             if let Some(p_cfg) = config.providers.get("ollama") {
                 let base_url = p_cfg.api_url.as_deref().unwrap_or("");
-                if (base_url.contains("localhost")
+                if base_url.contains("localhost")
                     || base_url.contains("127.0.0.1")
-                    || base_url.is_empty())
-                    && !p_cfg.models.is_empty()
+                    || base_url.is_empty()
                 {
                     return Some("local_bypass".to_string());
                 }

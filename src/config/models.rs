@@ -119,8 +119,6 @@ pub struct SecurityConfig {
     pub dual_llm_model: String,
     #[serde(default = "default_security_level")]
     pub security_level: String,
-    #[serde(default = "default_true")]
-    pub pqc_enabled: bool,
 }
 
 fn default_roles() -> Vec<String> {
@@ -158,7 +156,6 @@ impl Default for SecurityConfig {
             dual_llm_provider: "google".to_string(),
             dual_llm_model: "lite".to_string(),
             security_level: default_security_level(),
-            pqc_enabled: default_true(),
         }
     }
 }

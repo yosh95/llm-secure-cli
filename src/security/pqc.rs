@@ -4,10 +4,10 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use base64::{engine::general_purpose, Engine as _};
-use pqcrypto_mldsa::*;
-use pqcrypto_mlkem::*;
-use pqcrypto_traits::kem::{Ciphertext as _, PublicKey as _, SecretKey as _, SharedSecret as _};
-use pqcrypto_traits::sign::{DetachedSignature as _, PublicKey as _, SecretKey as _};
+use saorsa_pqc::api::{
+    MlDsa, MlDsaPublicKey, MlDsaSecretKey, MlDsaSignature, MlDsaVariant as SaorsaMldsaVariant,
+    MlKem, MlKemCiphertext, MlKemPublicKey, MlKemSecretKey, MlKemVariant as SaorsaMlkemVariant,
+};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use uuid::Uuid;
@@ -65,54 +65,48 @@ impl FromStr for MlkemVariant {
 pub struct PqcProvider;
 
 impl PqcProvider {
-    fn is_enabled() -> bool {
-        if std::env::var("LLM_CLI_DISABLE_PQC").is_ok() {
-            return false;
+    fn ensure_init() {
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            let _ = saorsa_pqc::api::init();
+        });
+    }
+
+    fn map_mldsa_variant(variant: MldsaVariant) -> SaorsaMldsaVariant {
+        match variant {
+            MldsaVariant::Mldsa44 => SaorsaMldsaVariant::MlDsa44,
+            MldsaVariant::Mldsa65 => SaorsaMldsaVariant::MlDsa65,
+            MldsaVariant::Mldsa87 => SaorsaMldsaVariant::MlDsa87,
         }
-        CONFIG_MANAGER.get_config().security.pqc_enabled
+    }
+
+    fn map_mlkem_variant(variant: MlkemVariant) -> SaorsaMlkemVariant {
+        match variant {
+            MlkemVariant::Mlkem512 => SaorsaMlkemVariant::MlKem512,
+            MlkemVariant::Mlkem768 => SaorsaMlkemVariant::MlKem768,
+            MlkemVariant::Mlkem1024 => SaorsaMlkemVariant::MlKem1024,
+        }
     }
 
     pub fn generate_mldsa_keypair(variant: MldsaVariant) -> (Vec<u8>, Vec<u8>) {
-        if !Self::is_enabled() {
-            return (vec![], vec![]);
-        }
-        match variant {
-            MldsaVariant::Mldsa44 => {
-                let (pk, sk) = mldsa44_keypair();
-                (pk.as_bytes().to_vec(), sk.as_bytes().to_vec())
-            }
-            MldsaVariant::Mldsa65 => {
-                let (pk, sk) = mldsa65_keypair();
-                (pk.as_bytes().to_vec(), sk.as_bytes().to_vec())
-            }
-            MldsaVariant::Mldsa87 => {
-                let (pk, sk) = mldsa87_keypair();
-                (pk.as_bytes().to_vec(), sk.as_bytes().to_vec())
-            }
-        }
+        Self::ensure_init();
+        let saorsa_variant = Self::map_mldsa_variant(variant);
+        let ops = MlDsa::new(saorsa_variant);
+        let (pk, sk) = ops.generate_keypair().expect("PQC keygen failed");
+        (pk.to_bytes(), sk.to_bytes())
     }
 
     pub fn sign_mldsa(message: &[u8], sk_bytes: &[u8], variant: MldsaVariant) -> Vec<u8> {
-        if !Self::is_enabled() || sk_bytes.is_empty() {
+        if sk_bytes.is_empty() {
             return vec![];
         }
-        match variant {
-            MldsaVariant::Mldsa44 => {
-                let sk = mldsa44::SecretKey::from_bytes(sk_bytes).unwrap();
-                let sig = mldsa44::detached_sign(message, &sk);
-                sig.as_bytes().to_vec()
-            }
-            MldsaVariant::Mldsa65 => {
-                let sk = mldsa65::SecretKey::from_bytes(sk_bytes).unwrap();
-                let sig = mldsa65::detached_sign(message, &sk);
-                sig.as_bytes().to_vec()
-            }
-            MldsaVariant::Mldsa87 => {
-                let sk = mldsa87::SecretKey::from_bytes(sk_bytes).unwrap();
-                let sig = mldsa87::detached_sign(message, &sk);
-                sig.as_bytes().to_vec()
-            }
-        }
+        Self::ensure_init();
+        let saorsa_variant = Self::map_mldsa_variant(variant);
+        let ops = MlDsa::new(saorsa_variant);
+        let sk =
+            MlDsaSecretKey::from_bytes(saorsa_variant, sk_bytes).expect("Invalid PQC secret key");
+        let sig = ops.sign(&sk, message).expect("PQC sign failed");
+        sig.to_bytes()
     }
 
     pub fn verify_mldsa(
@@ -121,95 +115,57 @@ impl PqcProvider {
         pk_bytes: &[u8],
         variant: MldsaVariant,
     ) -> bool {
-        if !Self::is_enabled() || sig_bytes.is_empty() || pk_bytes.is_empty() {
+        if sig_bytes.is_empty() || pk_bytes.is_empty() {
             return true;
         }
-        match variant {
-            MldsaVariant::Mldsa44 => {
-                let pk = mldsa44::PublicKey::from_bytes(pk_bytes).unwrap();
-                let sig = mldsa44::DetachedSignature::from_bytes(sig_bytes).unwrap();
-                mldsa44::verify_detached_signature(&sig, message, &pk).is_ok()
-            }
-            MldsaVariant::Mldsa65 => {
-                let pk = mldsa65::PublicKey::from_bytes(pk_bytes).unwrap();
-                let sig = mldsa65::DetachedSignature::from_bytes(sig_bytes).unwrap();
-                mldsa65::verify_detached_signature(&sig, message, &pk).is_ok()
-            }
-            MldsaVariant::Mldsa87 => {
-                let pk = mldsa87::PublicKey::from_bytes(pk_bytes).unwrap();
-                let sig = mldsa87::DetachedSignature::from_bytes(sig_bytes).unwrap();
-                mldsa87::verify_detached_signature(&sig, message, &pk).is_ok()
-            }
-        }
+        Self::ensure_init();
+        let saorsa_variant = Self::map_mldsa_variant(variant);
+        let ops = MlDsa::new(saorsa_variant);
+        let pk = match MlDsaPublicKey::from_bytes(saorsa_variant, pk_bytes) {
+            Ok(pk) => pk,
+            Err(_) => return false,
+        };
+        let sig = match MlDsaSignature::from_bytes(saorsa_variant, sig_bytes) {
+            Ok(sig) => sig,
+            Err(_) => return false,
+        };
+        ops.verify(&pk, message, &sig).is_ok()
     }
 
     pub fn generate_mlkem_keypair(variant: MlkemVariant) -> (Vec<u8>, Vec<u8>) {
-        if !Self::is_enabled() {
-            return (vec![], vec![]);
-        }
-        match variant {
-            MlkemVariant::Mlkem512 => {
-                let (pk, sk) = mlkem512_keypair();
-                (pk.as_bytes().to_vec(), sk.as_bytes().to_vec())
-            }
-            MlkemVariant::Mlkem768 => {
-                let (pk, sk) = mlkem768_keypair();
-                (pk.as_bytes().to_vec(), sk.as_bytes().to_vec())
-            }
-            MlkemVariant::Mlkem1024 => {
-                let (pk, sk) = mlkem1024_keypair();
-                (pk.as_bytes().to_vec(), sk.as_bytes().to_vec())
-            }
-        }
+        Self::ensure_init();
+        let saorsa_variant = Self::map_mlkem_variant(variant);
+        let ops = MlKem::new(saorsa_variant);
+        let (pk, sk) = ops.generate_keypair().expect("PQC keygen failed");
+        (pk.to_bytes(), sk.to_bytes())
     }
 
     pub fn encapsulate_mlkem(pk_bytes: &[u8], variant: MlkemVariant) -> (Vec<u8>, Vec<u8>) {
-        if !Self::is_enabled() || pk_bytes.is_empty() {
+        if pk_bytes.is_empty() {
             return (vec![0; 32], vec![]);
         }
-        match variant {
-            MlkemVariant::Mlkem512 => {
-                let pk = mlkem512::PublicKey::from_bytes(pk_bytes).unwrap();
-                let (ss, ct) = mlkem512::encapsulate(&pk);
-                (ss.as_bytes().to_vec(), ct.as_bytes().to_vec())
-            }
-            MlkemVariant::Mlkem768 => {
-                let pk = mlkem768::PublicKey::from_bytes(pk_bytes).unwrap();
-                let (ss, ct) = mlkem768::encapsulate(&pk);
-                (ss.as_bytes().to_vec(), ct.as_bytes().to_vec())
-            }
-            MlkemVariant::Mlkem1024 => {
-                let pk = mlkem1024::PublicKey::from_bytes(pk_bytes).unwrap();
-                let (ss, ct) = mlkem1024::encapsulate(&pk);
-                (ss.as_bytes().to_vec(), ct.as_bytes().to_vec())
-            }
-        }
+        Self::ensure_init();
+        let saorsa_variant = Self::map_mlkem_variant(variant);
+        let ops = MlKem::new(saorsa_variant);
+        let pk =
+            MlKemPublicKey::from_bytes(saorsa_variant, pk_bytes).expect("Invalid PQC public key");
+        let (ss, ct) = ops.encapsulate(&pk).expect("PQC encapsulate failed");
+        (ss.to_bytes().to_vec(), ct.to_bytes().to_vec())
     }
 
     pub fn decapsulate_mlkem(ct_bytes: &[u8], sk_bytes: &[u8], variant: MlkemVariant) -> Vec<u8> {
-        if !Self::is_enabled() || sk_bytes.is_empty() {
+        if sk_bytes.is_empty() {
             return vec![0; 32];
         }
-        match variant {
-            MlkemVariant::Mlkem512 => {
-                let sk = mlkem512::SecretKey::from_bytes(sk_bytes).unwrap();
-                let ct = mlkem512::Ciphertext::from_bytes(ct_bytes).unwrap();
-                let ss = mlkem512::decapsulate(&ct, &sk);
-                ss.as_bytes().to_vec()
-            }
-            MlkemVariant::Mlkem768 => {
-                let sk = mlkem768::SecretKey::from_bytes(sk_bytes).unwrap();
-                let ct = mlkem768::Ciphertext::from_bytes(ct_bytes).unwrap();
-                let ss = mlkem768::decapsulate(&ct, &sk);
-                ss.as_bytes().to_vec()
-            }
-            MlkemVariant::Mlkem1024 => {
-                let sk = mlkem1024::SecretKey::from_bytes(sk_bytes).unwrap();
-                let ct = mlkem1024::Ciphertext::from_bytes(ct_bytes).unwrap();
-                let ss = mlkem1024::decapsulate(&ct, &sk);
-                ss.as_bytes().to_vec()
-            }
-        }
+        Self::ensure_init();
+        let saorsa_variant = Self::map_mlkem_variant(variant);
+        let ops = MlKem::new(saorsa_variant);
+        let sk =
+            MlKemSecretKey::from_bytes(saorsa_variant, sk_bytes).expect("Invalid PQC secret key");
+        let ct =
+            MlKemCiphertext::from_bytes(saorsa_variant, ct_bytes).expect("Invalid PQC ciphertext");
+        let ss = ops.decapsulate(&sk, &ct).expect("PQC decapsulate failed");
+        ss.to_bytes().to_vec()
     }
 }
 

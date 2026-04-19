@@ -62,7 +62,7 @@ fn benchmark_local_primitives() {
         PqcProvider::encapsulate_mlkem(&pk, variant);
     }
     let elapsed = start.elapsed();
-    let (ss, ct) = PqcProvider::encapsulate_mlkem(&pk, variant);
+    let (_ss, ct) = PqcProvider::encapsulate_mlkem(&pk, variant);
     println!("ML-KEM-768 Encaps (1000 runs): {:?}", elapsed);
     println!("ML-KEM-768 Encaps (avg): {:?} per run", elapsed / 1000);
 
