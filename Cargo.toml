@@ -22,7 +22,7 @@ path = "src/bin/llm-secure-cli-benchmark-dual.rs"
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 tokio = { version = "1.43", features = ["full"] }
-reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "gzip", "rustls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "gzip", "rustls-tls-webpki-roots"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "1.1"
