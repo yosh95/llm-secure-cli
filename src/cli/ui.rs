@@ -408,6 +408,11 @@ pub fn ask_confirm(prompt: &str) -> bool {
                     println!("{}", "no".red());
                     return false;
                 }
+                '\u{3}' => {
+                    // Ctrl+C
+                    println!("^C");
+                    std::process::exit(0);
+                }
                 _ => {}
             }
         }
@@ -415,11 +420,24 @@ pub fn ask_confirm(prompt: &str) -> bool {
 }
 
 pub fn get_user_input(prompt: &str) -> String {
-    print!("{}", prompt);
-    let _ = io::stdout().flush();
-    let mut input = String::new();
-    let _ = io::stdin().read_line(&mut input);
-    input.trim().to_string()
+    use rustyline::error::ReadlineError;
+    use rustyline::DefaultEditor;
+
+    let mut rl = DefaultEditor::new().expect("Failed to create editor");
+    match rl.readline(prompt) {
+        Ok(line) => line.trim().to_string(),
+        Err(ReadlineError::Interrupted) => {
+            println!("^C");
+            std::process::exit(0);
+        }
+        Err(ReadlineError::Eof) => {
+            std::process::exit(0);
+        }
+        Err(err) => {
+            eprintln!("Error: {:?}", err);
+            std::process::exit(1);
+        }
+    }
 }
 
 pub fn open_external_editor(initial_content: &str) -> anyhow::Result<String> {
