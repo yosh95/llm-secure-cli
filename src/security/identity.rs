@@ -58,7 +58,7 @@ impl IdentityManager {
         let rsa_pub_path = KEY_DIR.join(Self::PUBLIC_KEY_PATH);
 
         if force || !rsa_priv_path.exists() || !rsa_pub_path.exists() {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             let priv_key = RsaPrivateKey::new(&mut rng, 3072)?;
             let pub_key = RsaPublicKey::from(&priv_key);
 

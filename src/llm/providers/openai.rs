@@ -111,7 +111,10 @@ impl OpenAiClient {
             return Ok((Some("Failed to retrieve image data.".to_string()), None));
         };
 
-        let save_path = &crate::config::CONFIG_MANAGER.get_config().general.image_save_path;
+        let save_path = &crate::config::CONFIG_MANAGER
+            .get_config()
+            .general
+            .image_save_path;
         let saved_path = crate::utils::media::save_image(&img_data_str, &mime_type, save_path)?;
 
         let mut display_text = format!("Image saved to {}", saved_path);

@@ -7,7 +7,7 @@ struct Args {
     /// Provider name (e.g., openai, anthropic, google, ollama)
     provider: Option<String>,
     /// Specific models to show detail for (JSON)
-    #[clap(min_values = 0)]
+    #[clap(num_args = 0..)]
     models: Vec<String>,
     /// Verbose output (table format)
     #[clap(short, long)]
