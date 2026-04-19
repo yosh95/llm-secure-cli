@@ -249,7 +249,6 @@ impl LlmClient for GeminiClient {
             if !tools.is_empty() {
                 payload["tools"] = json!(tools);
             }
-
         }
 
         log::debug!(

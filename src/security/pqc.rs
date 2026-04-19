@@ -49,15 +49,12 @@ pub enum MlkemVariant {
     Mlkem1024,
 }
 
-impl FromStr for MlkemVariant {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_uppercase().as_str() {
-            "ML-KEM-512" => Ok(MlkemVariant::Mlkem512),
-            "ML-KEM-768" => Ok(MlkemVariant::Mlkem768),
-            "ML-KEM-1024" => Ok(MlkemVariant::Mlkem1024),
-            _ => Err(()),
+impl MlkemVariant {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            MlkemVariant::Mlkem512 => "ML-KEM-512",
+            MlkemVariant::Mlkem768 => "ML-KEM-768",
+            MlkemVariant::Mlkem1024 => "ML-KEM-1024",
         }
     }
 }

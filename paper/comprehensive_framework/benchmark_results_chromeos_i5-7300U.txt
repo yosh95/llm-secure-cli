@@ -1,22 +1,36 @@
-=== Rust Local Primitives Benchmark (ChromeOS Flex / Debian 13) ===
-Environment: Intel(R) Core(TM) i5-7300U CPU @ 2.60GHz, 8GB RAM (Crostini)
-Date: 2026-04-19
+=== Unified Security Framework — Comprehensive Benchmark (Rust) ===
+Environment: Reference Hardware (Optimized Release Build)
 
-AST Analysis (avg): 1.09 ms per run
-ML-DSA-44 Keygen: 0.08 ms
-ML-DSA-44 Sign (avg): 0.08 ms
-ML-DSA-44 Verify (avg): 0.03 ms
-ML-DSA-65 Keygen: 0.06 ms
-ML-DSA-65 Sign (avg): 0.15 ms
-ML-DSA-65 Verify (avg): 0.05 ms
-ML-DSA-87 Keygen: 0.08 ms
-ML-DSA-87 Sign (avg): 0.16 ms
-ML-DSA-87 Verify (avg): 0.07 ms
-ML-KEM-768 Encaps (avg): 0.015 ms
-ML-KEM-768 Decaps (avg): 0.016 ms
+Phase 1: Structural Guardrails (Space)
+--------------------------------------
+Static Analysis (Pattern-based) : < 0.01 ms
+Base Subprocess Latency         : 15.99 ms
 
-=== Dual LLM Intent Verification (n=3) ===
-Google (Gemini 3.1 Flash-Lite): 1690 ms
-OpenAI (GPT-5.4 Nano): 1540 ms
-Anthropic (Claude Haiku 4.5): 2220 ms
-(Values represent stable subsequent calls after cold start)
+Phase 2: Behavioral & Identity Assurance (Behavior)
+---------------------------------------------------
+Token Gen (ML-DSA-65)           : 6.39 ms
+
+Phase 3: Post-Quantum Resilience (Cryp. Agility)
+------------------------------------------------
+ML-DSA-44 Keygen  : 0.25 ms
+ML-DSA-44 Sign    : 0.68 ms
+ML-DSA-44 Verify  : 0.16 ms
+
+ML-DSA-87 Keygen  : 0.59 ms
+ML-DSA-87 Sign    : 1.26 ms
+ML-DSA-87 Verify  : 0.41 ms
+
+ML-KEM-768 Keygen : 0.08 ms
+ML-KEM-768 Encaps : 0.09 ms
+ML-KEM-768 Decaps : 0.12 ms
+
+Phase 4: Intent Verification (Dual LLM)
+---------------------------------------
+Google Gemini 3.1 Flash-Lite : ~1297 ms
+OpenAI GPT-5.4 Nano          : ~1467 ms
+Anthropic Claude Haiku 4.5   : ~1295 ms
+
+Summary
+-------
+Total Local Overhead (worst-case): 1.36 ms
+(Static Analysis + ML-DSA-87 Sign + ML-KEM-768 Encaps)

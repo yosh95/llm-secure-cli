@@ -11,6 +11,10 @@ pub struct GeneralConfig {
     pub request_timeout: u64,
     #[serde(default = "default_command_timeout")]
     pub command_timeout: u64,
+    #[serde(default = "default_max_file_size")]
+    pub max_command_file_size_mb: u64,
+    #[serde(default = "default_max_turns")]
+    pub max_turns: u32,
     #[serde(default = "default_max_memory")]
     pub max_command_memory_mb: u64,
     #[serde(default = "default_max_chat_log")]
@@ -36,6 +40,12 @@ fn default_request_timeout() -> u64 {
 }
 fn default_command_timeout() -> u64 {
     300
+}
+fn default_max_file_size() -> u64 {
+    100
+}
+fn default_max_turns() -> u32 {
+    20
 }
 fn default_max_memory() -> u64 {
     1024
@@ -63,6 +73,8 @@ impl Default for GeneralConfig {
             pdf_as_base64: default_true(),
             request_timeout: default_request_timeout(),
             command_timeout: default_command_timeout(),
+            max_command_file_size_mb: default_max_file_size(),
+            max_turns: default_max_turns(),
             max_command_memory_mb: default_max_memory(),
             max_chat_log_lines: default_max_chat_log(),
             max_security_log_lines: default_max_security_log(),
@@ -117,6 +129,8 @@ pub struct SecurityConfig {
     pub dual_llm_provider: String,
     #[serde(default = "default_dual_llm_model")]
     pub dual_llm_model: String,
+    #[serde(default = "default_confidence_threshold")]
+    pub dual_llm_confidence_threshold: f64,
     #[serde(default = "default_security_level")]
     pub security_level: String,
 }
@@ -135,6 +149,9 @@ fn default_dual_llm_model() -> String {
 }
 fn default_security_level() -> String {
     "high".to_string()
+}
+fn default_confidence_threshold() -> f64 {
+    0.7
 }
 
 impl Default for SecurityConfig {
@@ -155,6 +172,7 @@ impl Default for SecurityConfig {
             dual_llm_verification: None,
             dual_llm_provider: "google".to_string(),
             dual_llm_model: "lite".to_string(),
+            dual_llm_confidence_threshold: default_confidence_threshold(),
             security_level: default_security_level(),
         }
     }

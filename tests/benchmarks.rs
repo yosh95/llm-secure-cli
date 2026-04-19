@@ -7,15 +7,15 @@ use std::time::Instant;
 fn benchmark_local_primitives() {
     println!("\n=== Rust Local Primitives Benchmark ===");
 
-    // 1. AST Analysis
+    // 1. Static Analysis
     let code = "import os; os.system('ls')";
     let start = Instant::now();
     for _ in 0..1000 {
         StaticAnalyzer::is_dangerous_command(code);
     }
     let elapsed = start.elapsed();
-    println!("AST Analysis (1000 runs): {:?}", elapsed);
-    println!("AST Analysis (avg): {:?} per run", elapsed / 1000);
+    println!("Static Analysis (1000 runs): {:?}", elapsed);
+    println!("Static Analysis (avg): {:?} per run", elapsed / 1000);
 
     // 2. ML-DSA Keygen/Sign/Verify
     for variant in [

@@ -17,7 +17,7 @@
     \path [line] (request) -- (cass);
 
     % Tier 1: Space
-    \node [component, fill=green!5, right=1.2cm of cass, yshift=3.2cm] (ast) {AST Static Analysis \\ \textit{(Strict Whitelist)}};
+    \node [component, fill=green!5, right=1.2cm of cass, yshift=3.2cm] (ast) {Command Static Analysis \\ \textit{(Strict Whitelist)}};
     \node [component, fill=green!5, right=of ast] (path) {Path Guardrails \\ \textit{(Normalization)}};
     \node [component, fill=green!5, right=of path] (isolated_env) {Isolated Environment \\ \textit{(Container via MCP)}};
     

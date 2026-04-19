@@ -112,7 +112,7 @@ pub async fn verify_tool_call_full(
                 let confidence = v["confidence"].as_f64().unwrap_or(1.0);
                 let reason = v["reason"].as_str().unwrap_or("").to_string();
 
-                if confidence < 0.7 {
+                if confidence < config.security.dual_llm_confidence_threshold {
                     return (
                         false,
                         format!("[LOW_CONFIDENCE:{:.2}] {}", confidence, reason),

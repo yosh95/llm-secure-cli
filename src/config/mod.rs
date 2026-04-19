@@ -69,8 +69,8 @@ impl ConfigManager {
 
         // 2. Load user config from files (Priority: current dir > home dir)
         let config_paths = [
-            std::path::Path::new("config.toml").to_path_buf(),
             (*CONFIG_FILE_PATH).clone(),
+            std::path::Path::new("config.toml").to_path_buf(),
         ];
 
         for path in config_paths {
@@ -92,7 +92,39 @@ impl ConfigManager {
         if over.general.unified_default_provider != "google" {
             base.general.unified_default_provider = over.general.unified_default_provider;
         }
-        // Note: other general fields could be merged too.
+        if over.general.request_timeout != 1800 {
+            base.general.request_timeout = over.general.request_timeout;
+        }
+        if over.general.command_timeout != 300 {
+            base.general.command_timeout = over.general.command_timeout;
+        }
+        if over.general.max_command_memory_mb != 1024 {
+            base.general.max_command_memory_mb = over.general.max_command_memory_mb;
+        }
+        if over.general.max_command_file_size_mb != 100 {
+            base.general.max_command_file_size_mb = over.general.max_command_file_size_mb;
+        }
+        if over.general.max_turns != 20 {
+            base.general.max_turns = over.general.max_turns;
+        }
+        if !over.general.pdf_as_base64 {
+            base.general.pdf_as_base64 = over.general.pdf_as_base64;
+        }
+        if over.general.max_chat_log_lines != 10000 {
+            base.general.max_chat_log_lines = over.general.max_chat_log_lines;
+        }
+        if over.general.max_security_log_lines != 1000 {
+            base.general.max_security_log_lines = over.general.max_security_log_lines;
+        }
+        if over.general.max_audit_log_lines != 10000 {
+            base.general.max_audit_log_lines = over.general.max_audit_log_lines;
+        }
+        if over.general.max_audit_archives != 10 {
+            base.general.max_audit_archives = over.general.max_audit_archives;
+        }
+        if over.general.image_save_path != "~/Pictures/llm-secure-cli" {
+            base.general.image_save_path = over.general.image_save_path;
+        }
 
         // Merge providers
         for (name, over_p) in over.providers {
@@ -124,13 +156,65 @@ impl ConfigManager {
         if let Some(val) = over.security.dual_llm_verification {
             base.security.dual_llm_verification = Some(val);
         }
+        if let Some(val) = over.security.auto_approval_level {
+            base.security.auto_approval_level = Some(val);
+        }
+        if over.security.dual_llm_confidence_threshold != 0.7 {
+            base.security.dual_llm_confidence_threshold =
+                over.security.dual_llm_confidence_threshold;
+        }
         if over.security.security_level != "high" {
             base.security.security_level = over.security.security_level;
         }
+        if over.security.dual_llm_provider != "google" {
+            base.security.dual_llm_provider = over.security.dual_llm_provider;
+        }
+        if over.security.dual_llm_model != "lite" {
+            base.security.dual_llm_model = over.security.dual_llm_model;
+        }
+        if !over.security.default_roles.is_empty()
+            && over.security.default_roles != vec!["user".to_string()]
+        {
+            base.security.default_roles = over.security.default_roles;
+        }
+        if over.security.default_user_id != "current_user" {
+            base.security.default_user_id = over.security.default_user_id;
+        }
+        if !over.security.static_analysis_is_error {
+            base.security.static_analysis_is_error = over.security.static_analysis_is_error;
+        }
+        if !over.security.scaling_patterns.is_empty() {
+            base.security.scaling_patterns = over.security.scaling_patterns;
+        }
+        if !over.security.allowed_paths.is_empty()
+            && over.security.allowed_paths != vec![".".to_string()]
+        {
+            base.security.allowed_paths = over.security.allowed_paths;
+        }
+        if !over.security.blocked_paths.is_empty() {
+            base.security.blocked_paths = over.security.blocked_paths;
+        }
+        if !over.security.blocked_filenames.is_empty() {
+            base.security.blocked_filenames = over.security.blocked_filenames;
+        }
+        if !over.security.high_risk_tools.is_empty() {
+            base.security.high_risk_tools = over.security.high_risk_tools;
+        }
+        if !over.security.medium_risk_tools.is_empty() {
+            base.security.medium_risk_tools = over.security.medium_risk_tools;
+        }
+        if !over.security.low_risk_tools.is_empty() {
+            base.security.low_risk_tools = over.security.low_risk_tools;
+        }
+        if !over.security.allowed_env_vars.is_empty() {
+            base.security.allowed_env_vars = over.security.allowed_env_vars;
+        }
 
-        // Merge MCP
-        if !over.mcp_servers.is_empty() {
-            base.mcp_servers = over.mcp_servers;
+        // Merge MCP (append instead of overwrite)
+        for over_mcp in over.mcp_servers {
+            if !base.mcp_servers.iter().any(|m| m.name == over_mcp.name) {
+                base.mcp_servers.push(over_mcp);
+            }
         }
 
         // Merge templates

@@ -112,7 +112,7 @@ As a tool designed with **CISSP/CISA/CCSP** principles and **EU AI Act** complia
   [security]
   security_level = "standard"
   ```
-- **AST-based Static Analysis**: Every Python script is inspected before execution to block dangerous modules (`os.system`, `base64`, `socket`, etc.), reflection attacks, and **obfuscated keyword construction** (e.g., `"ex" + "ec"`).
+- **Pattern-based Static Analysis**: Every tool command and argument is inspected before execution to block dangerous patterns (`rm -rf /`, `mkfs`, etc.) and ensure system integrity. This lightweight analysis provides deterministic safety boundaries with minimal overhead.
 - **Path Guardrails**: Tools are restricted by path attributes (defaulting to the current directory). The policy engine now inspects multiple argument names (`path`, `directory`, `file`, `src`, `dest`, etc.) to prevent bypass.
 - **Explanation Enforcement**: Every tool mandates an `explanation` parameter, forcing the LLM to justify its intent.
 
@@ -298,7 +298,7 @@ AIがファイル操作、Web検索、Python実行などのツールを自律的
   [security]
   security_level = "standard"
   ```
-- **AST静的解析**: 全てのPythonスクリプトは実行前に解析され、危険なモジュール（`os.system`, `base64`, `socket`等）やリフレクション攻撃、さらに**難読化されたキーワード構築**（例：`"ex" + "ec"`）を遮断します。
+- **パターンベースの静的解析**: 全てのツールコマンドと引数は実行前に解析され、危険なパターン（`rm -rf /`, `mkfs`等）を遮断します。この軽量な解析により、最小限のオーバーヘッドで決定論的な安全境界を提供します。
 - **パス・ガードレール**: 操作可能な範囲を属性（ディレクトリ・パスなど）で制限します。ポリシーエンジンは複数の引数名（`path`, `directory`, `file`, `src`, `dest`など）を検査し、バイパスを防止します。
 - **説明の強制**: 全てのツールは `explanation` パラメータを必須とし、LLMにその意図を正当化させます。
 

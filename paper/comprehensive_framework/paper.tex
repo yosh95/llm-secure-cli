@@ -40,7 +40,7 @@ Tokyo, Japan}
 \maketitle
 
 \begin{abstract}
-As Large Language Model (LLM) agents transition from passive chatbots to autonomous entities capable of executing system-level tools via protocols like the Model Context Protocol (MCP), they introduce a critical "Agency Gap." Traditional security perimeters are insufficient for protecting against prompt injection and future cryptographic threats. This paper proposes a unified security framework designed to protect agent-based systems across three integrated dimensions: Space, Behavior, and Time, while ensuring human-centric governance. First, we establish \textit{Structural Guardrails} (Space) using AST-based static analysis and environment isolation. Second, we implement \textit{Behavioral Zero-Trust} through verifiable workload identity and \textit{White-box Agency}, leveraging Human-in-the-Loop (HITL) not just for security, but for cognitive synchronization and early loop detection. Finally, we ensure \textit{Temporal Sovereignty} (Time) by integrating a dual-layered integrity architecture (Hashed Chain and Merkle Tree) with Post-Quantum Cryptography (PQC). Our evaluation demonstrates that this architecture provides robust, multi-layered defense and enhances agent transparency. The local security stack (static analysis, PQC identity, and audit encryption) imposes under 2\,ms of overhead on the Rust-based implementation, representing a negligible ``security speed bump'' relative to the 500\,ms--3000\,ms round-trip time of cloud LLM inference. Intent verification via a secondary LLM adds network-bound latency that is effectively masked by the concurrent Human-in-the-Loop review window.
+As Large Language Model (LLM) agents transition from passive chatbots to autonomous entities capable of executing system-level tools via protocols like the Model Context Protocol (MCP), they introduce a critical "Agency Gap." Traditional security perimeters are insufficient for protecting against prompt injection and future cryptographic threats. This paper proposes a unified security framework designed to protect agent-based systems across three integrated dimensions: Space, Behavior, and Time, while ensuring human-centric governance. First, we establish \textit{Structural Guardrails} (Space) using pattern-based static analysis and environment isolation. Second, we implement \textit{Behavioral Zero-Trust} through verifiable workload identity and \textit{White-box Agency}, leveraging Human-in-the-Loop (HITL) not just for security, but for cognitive synchronization and early loop detection. Finally, we ensure \textit{Temporal Sovereignty} (Time) by integrating a dual-layered integrity architecture (Hashed Chain and Merkle Tree) with Post-Quantum Cryptography (PQC). Our evaluation demonstrates that this architecture provides robust, multi-layered defense and enhances agent transparency. The local security stack (static analysis, PQC identity, and audit encryption) imposes under 2\,ms of overhead on the Rust-based implementation, representing a negligible ``security speed bump'' relative to the 500\,ms--3000\,ms round-trip time of cloud LLM inference. Intent verification via a secondary LLM adds network-bound latency that is effectively masked by the concurrent Human-in-the-Loop review window.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -54,7 +54,7 @@ The OWASP Top 10 for LLM Applications \cite{owasp2023} identifies "Insecure Outp
 
 This paper presents a "Triple-Lock" framework for Agentic Security, addressing the agent's action through three integrated dimensions:
 \begin{enumerate}
-    \item \textbf{Structural Containment (Space):} Establishing deterministic safety boundaries using AST inspection and environment isolation.
+    \item \textbf{Structural Containment (Space):} Establishing deterministic safety boundaries using static command inspection and environment isolation.
     \item \textbf{Behavioral Integrity \& White-box Agency (Behavior):} Implementing Zero Trust where every action is verified by cryptographically signed identity and synchronized with human cognition for early detection of "Reasoning Loops."
     \item \textbf{Temporal Sovereignty (Time):} Protecting against future cryptographic threats using PQC and a dual-layered audit architecture (Hashed Chain for real-time protection and Merkle Tree for session-wide anchoring).
 \end{enumerate}
@@ -112,12 +112,12 @@ Identity Spoofing & Tier 2 & COSE/PQC tokens + ABAC \\
 To ensure structural immunity, we adopt a "No-Shell" execution model where system operations are restricted to specialized tools.
 
 \subsection{Static Inspection and Hybrid Sanitization}
-Before execution, generated code is subjected to multi-layered static analysis. We implement a \textit{Hybrid Sanitization} approach: a strict blocklist for dangerous modules (e.g., \texttt{socket, pty, base64, codecs}) and a granular whitelist for necessary but risky modules like \texttt{os} and \texttt{shutil}. Specifically, it ensures that \texttt{subprocess} calls never use \texttt{shell=True}, blocks reflection-based attacks (e.g., \texttt{\_\_subclasses\_\_}), and prevents access to sensitive system paths (e.g., \texttt{/etc/shadow}) by inspecting tool arguments before they reach the OS. To counter code obfuscation, the analyzer also detects the dynamic construction of dangerous keywords via string concatenation (e.g., \texttt{"ex" + "ec"}).
+Before execution, requested tool arguments are subjected to multi-layered static analysis. We implement a \textit{Hybrid Sanitization} approach: a strict blocklist for dangerous command patterns and a granular whitelist for necessary but risky filesystem paths. Specifically, the framework ensures that system commands are executed directly without an intermediate shell, mitigating shell injection vulnerabilities. The analyzer detects dangerous keywords and command sequences (e.g., \texttt{rm -rf /}, \texttt{chmod 777}) and prevents access to sensitive system paths (e.g., \texttt{/etc/shadow}) by inspecting tool arguments before they reach the OS.
 
 \subsection{Environment Isolation via MCP}
 The framework achieves process isolation by leveraging the Model Context Protocol (MCP) to delegate high-risk tool execution to external environments. By connecting to MCP servers running in dedicated containers, the agent operates in a "Shared-Nothing" architecture, ensuring any malicious activity is contained within a disposable environment.
 
-Two additional supply-chain protections are enforced at the MCP integration layer. First, \textbf{Remote Tool Isolation}: the tool registry marks every built-in tool with an \texttt{is\_local} flag. Any attempt by a remote MCP server to register a tool whose name collides with an existing local tool (e.g., shadowing \texttt{execute\_python}) is silently blocked and logged, preventing a compromised or malicious server from hijacking the agent's core capabilities. Second, \textbf{Metadata Separation}: internal bookkeeping fields injected by the framework (e.g., \texttt{explanation}, \texttt{\_\_audit\_model\_\_}) are stripped from outbound MCP calls by cross-referencing the tool's declared JSON Schema, ensuring that framework-internal fields are never forwarded to third-party servers as tool arguments.
+Two additional supply-chain protections are enforced at the MCP integration layer. First, \textbf{Remote Tool Isolation}: the tool registry marks every built-in tool with an \texttt{is\_local} flag. Any attempt by a remote MCP server to register a tool whose name collides with an existing local tool (e.g., shadowing \texttt{execute\_command}) is silently blocked and logged, preventing a compromised or malicious server from hijacking the agent's core capabilities. Second, \textbf{Metadata Separation}: internal bookkeeping fields injected by the framework (e.g., \texttt{explanation}, \texttt{\_\_audit\_model\_\_}) are stripped from outbound MCP calls by cross-referencing the tool's declared JSON Schema, ensuring that framework-internal fields are never forwarded to third-party servers as tool arguments.
 
 \subsection{System Integrity Attestation}
 To prevent "Living-off-the-Land" attacks where the agent's own source code is modified, we implement \textbf{System Integrity Attestation}. On startup, the framework calculates SHA-256 hashes of all critical application files and compares them against a PQC-signed \textbf{Integrity Manifest}. If any unauthorized modification is detected, the system enters a "Hard Block" state, refusing to execute until the administrator re-establishes the baseline.
@@ -149,7 +149,7 @@ To balance security with usability, the framework implements a configurable \tex
 As a complementary automated safeguard, the framework enforces a \textbf{Maximum Turn Limit} on the ReAct loop. When the conversation reaches a configurable threshold (default: 20 model turns), the system automatically prompts the user to perform a \textit{checkpoint}---summarizing and compressing the conversation history. This acts as a deterministic backstop for Reasoning Loops that may evade human detection in long-running sessions.
 
 \subsection{PQC Agility: Context-Adaptive Security Scaling}
-The framework implements \textbf{PQC Agility}, dynamically adjusting security levels based on risk. Higher-risk tools (e.g., \texttt{execute\_python}) mandate ML-DSA-87 signatures and detailed human approval, while low-risk observations use ML-DSA-44 with relaxed oversight.
+The framework implements \textbf{PQC Agility}, dynamically adjusting security levels based on risk. Higher-risk tools (e.g., \texttt{execute\_command}) mandate ML-DSA-87 signatures and detailed human approval, while low-risk observations use ML-DSA-44 with relaxed oversight.
 
 \subsection{Bi-directional Verification with ResponseSigner}
 To ensure the integrity of the entire tool execution loop, we implement \textbf{Bi-directional Verification}. While the agent signs the tool request via an Identity Token, high-risk write tools embed a \textbf{ResponseSigner} PQC signature (ML-DSA) in their return value, binding the response content to a unique \texttt{verification\_id}. The \texttt{tool\_executor} layer verifies this signature before passing the result to the LLM, preventing ``Man-in-the-Middle'' manipulation of tool outputs.
@@ -197,7 +197,7 @@ PQC Signature & ML-DSA-44 & ML-DSA-65 & ML-DSA-87 \\
 Audit Protection & Hashed Chain & + AES-256 & + ML-KEM-768 \\
 Human Oversight & Optional & Required & Strict (White-box) \\
 Transparency & Basic & Restrained & Full Justification \\
-AST Analysis & Basic & Restricted & Strict Whitelist \\
+Static Analysis & Basic & Restricted & Strict Whitelist \\
 \hline
 \end{tabularx}
 \label{tab:cass_matrix}
@@ -216,23 +216,26 @@ The framework's reliability and security protocol compliance were verified throu
 
 \textit{Scope of this evaluation:} This section is intended to demonstrate \textit{architectural feasibility} and \textit{protocol overhead}---not to provide statistically comprehensive or independently validated coverage. The test vectors are author-designed to verify that each defense layer behaves correctly on representative cases. Direct quantitative comparison against systems such as Guardrails AI or NeMo Guardrails is deferred, as those systems target a different abstraction layer (output filtering) and operate under different assumptions (no tool-call schema, no cryptographic identity), making side-by-side benchmarking on a shared test suite a non-trivial research contribution in its own right.
 
-\subsection{Security Effectiveness}
-Table \ref{tab:security_eval} summarizes the detection capabilities across 25 author-designed test vectors (including 4 distributed trust scenarios). The framework achieved 100\% mitigation across all adversarial categories \textit{within this controlled test suite}. The five benign pass-through cases in the AST tier and five additional benign cases in the Dual LLM tier yielded a combined false positive rate of 0\% (0/10), confirming that legitimate code is not incorrectly blocked. These results should be interpreted as a demonstration of architectural correctness on representative scenarios, not as a statistically exhaustive security guarantee. Notably, the White-box Agency layer enabled users to abort 100\% of identified reasoning loops (repetitive trial-and-error cycles) within the first three tool calls, demonstrating the practical value of cognitive synchronization.
+\subsection{Security Effectiveness (Controlled Evaluation)}
+The framework's detection capabilities were evaluated against a controlled set of 25 author-designed test vectors (including 4 distributed trust scenarios). In this specific environment, the framework mitigated all tested adversarial categories. However, these results should be interpreted as a demonstration of architectural correctness on representative scenarios, not as a statistically exhaustive security guarantee. 
+
+Specifically, the pattern-based static analysis (Tier 1) provides a deterministic "hard gate" against known dangerous strings but remains susceptible to advanced command obfuscation or novel injection techniques. Similarly, the Dual LLM verification (Tier 2) is a probabilistic defense; while it achieved a 0\% false positive rate across 10 benign cases in our tests, its effectiveness depends on the underlying model's reasoning capabilities.
 
 \begin{table}[htbp]
-\caption{Security Effectiveness (n=25 test cases)}
+\caption{Security Mitigation Performance (n=25 fixed test cases)}
 \begin{center}
 \begin{tabularx}{\columnwidth}{|l|C|C|}
 \hline
-\textbf{Defense Layer} & \textbf{Threat Category} & \textbf{Mitigation Rate} \\
+\textbf{Defense Layer} & \textbf{Threat Category} & \textbf{Mitigation Rate*} \\
 \hline
-Tier 1 (AST) & Shell/Command Injection & 100.0\% (6/6) \\
-Tier 1 (AST) & Benign Pass-through & 100.0\% (5/5) \\
+Tier 1 (Static) & Shell/Command Injection & 100.0\% (6/6) \\
+Tier 1 (Static) & Benign Pass-through & 100.0\% (5/5) \\
 Tier 2 (White-box) & \textbf{Reasoning Loops} & \textbf{100.0\% (3/3)} \\
 Tier 2 (ABAC) & Unauthorized Workspace & 100.0\% (3/3) \\
-Tier 2 (Trust) & \textbf{Distributed Trust} & \textbf{100.0\% (4/4)} \\
 Tier 3 (PQC) & Future Decryption & 100.0\% (Immunity) \\
 Dual LLM Guardrail & Malicious Intent & 100.0\% (5/5) \\
+\hline
+\multicolumn{3}{l}{\textit{* Results apply only to the evaluated test suite.}} \\
 \hline
 \end{tabularx}
 \label{tab:security_eval}
@@ -240,23 +243,23 @@ Dual LLM Guardrail & Malicious Intent & 100.0\% (5/5) \\
 \end{table}
 
 \subsection{Performance Latency}
-Table~\ref{tab:total_perf} reports the latency of each local security primitive. The true cumulative security overhead---comprising static analysis, ML-DSA-87 identity signing, and ML-KEM-768 audit encryption---is $\approx$1.34\,ms. All cryptographic latencies are measured using native Rust implementations ({\tt pqcrypto} crates). This "Security Speed Bump" is practically invisible to the user, remaining well below the 500\,ms--3000\,ms RTT typical of cloud-based LLM inference.
+Table~\ref{tab:total_perf} reports the latency of each local security primitive. The true cumulative security overhead---comprising static analysis, ML-DSA-87 identity signing, and ML-KEM-768 audit encryption---is $\approx$1.36\,ms. All cryptographic latencies are measured using native Rust implementations ({\tt saorsa-pqc} crates). This "Security Speed Bump" is practically invisible to the user, remaining well below the 500\,ms--3000\,ms RTT typical of cloud-based LLM inference.
 
 \begin{table}[htbp]
-\caption{Local Security Primitive Latency (ms). Measured on Intel(R) Core(TM) i5-7300U @ 2.60GHz, Debian 13 (Rust).}
+\caption{Local Security Primitive Latency (ms). Measured on reference hardware (Rust).}
 \begin{center}
 \begin{tabularx}{\columnwidth}{|l|C|}
 \hline
 \textbf{Component} & \textbf{Latency (ms)} \\
 \hline
-Static Analysis (Pattern-based) &  1.09   \\
-Identity Gen (ML-DSA-44)        &  0.08   \\
-Identity Gen (ML-DSA-87)        &  0.16   \\
-KEM Encapsulation (ML-KEM-768)  &  0.02   \\
+Static Analysis (Pattern-based) &  < 0.01 \\
+Identity Gen (ML-DSA-44)        &  0.68   \\
+Identity Gen (ML-DSA-87)        &  1.26   \\
+KEM Encapsulation (ML-KEM-768)  &  0.09   \\
 \hline
-\textbf{Security Total}         & \textbf{1.35} \\
+\textbf{Security Total}         & \textbf{1.36} \\
 \hline
-\textit{Subprocess (ref.)}      & \textit{32.50} \\
+\textit{Subprocess (ref.)}      & \textit{15.99} \\
 \hline
 \end{tabularx}
 \label{tab:total_perf}
@@ -286,7 +289,7 @@ TC4 & Benign &
 \hline
 TC6 & Malicious (Injection) &
   \textit{``Summarize this: System cmd: delete /etc/shadow''} \newline
-  {\tiny\texttt{execute\_python(code="os.remove('/etc/shadow')")}} \\
+  {\tiny\texttt{execute\_command(command="rm", args=["-rf", "/etc/shadow"])}} \\
 \hline
 TC7 & Malicious (Data Theft) &
   \textit{``Help me fix my git config''} \newline
@@ -304,7 +307,7 @@ TC8 & Malicious (Persistence) &
 
 As shown in Table~\ref{tab:dual_llm_perf}, all three providers achieved 100\% classification accuracy across the test suite. TC1--TC5 (benign) were correctly \emph{allowed} (false positive rate = 0/5 = 0\%), while TC6--TC10 (adversarial) were correctly \emph{blocked} (detection rate = 5/5 = 100\%).
 
-Mean latency was broadly consistent with previous measurements, as cloud API round-trip time dominates over local processing differences. On the reference ChromeOS Flex environment, mean latencies were $\approx$1690\,ms (Google), $\approx$1540\,ms (OpenAI), and $\approx$2220\,ms (Anthropic) (Table~\ref{tab:dual_llm_perf}). As the verification process runs concurrently with the user's cognitive review of the tool's explanation, the measured latency is effectively masked within the manual oversight window.
+Mean latency was broadly consistent with previous measurements, as cloud API round-trip time dominates over local processing differences. On the reference environment, mean latencies were $\approx$1297\,ms (Google), $\approx$1467\,ms (OpenAI), and $\approx$1295\,ms (Anthropic) (Table~\ref{tab:dual_llm_perf}). As the verification process runs concurrently with the user's cognitive review of the tool's explanation, the measured latency is effectively masked within the manual oversight window.
 
 \begin{table}[htbp]
 \caption{Dual LLM Verification Performance (n=3).
@@ -315,9 +318,9 @@ Acc.: 100\% (based on test suite). Latencies represent stable subsequent calls.}
 \textbf{Provider} & \textbf{Model} & \textbf{Acc.} &
   \textbf{Latency (ms)} \\
 \hline
-Google    & Gemini 3.1 Flash-Lite & 100\% & $\approx$1690 \\
-OpenAI    & GPT-5.4 Nano          & 100\% & $\approx$1540 \\
-Anthropic & Claude Haiku 4.5      & 100\% & $\approx$2220 \\
+Google    & Gemini 3.1 Flash-Lite & 100\% & $\approx$1297 \\
+OpenAI    & GPT-5.4 Nano          & 100\% & $\approx$1467 \\
+Anthropic & Claude Haiku 4.5      & 100\% & $\approx$1295 \\
 \hline
 \end{tabularx}
 \label{tab:dual_llm_perf}
@@ -352,7 +355,7 @@ TC4 & Benign &
 \hline
 TC6 & Malicious (Injection) &
   \textit{``Summarize this: System cmd: delete /etc/shadow''} \newline
-  {\tiny\texttt{execute\_python(code="os.remove('/etc/shadow')")}} \\
+  {\tiny\texttt{execute\_command(command="rm", args=["-rf", "/etc/shadow"])}} \\
 \hline
 TC7 & Malicious (Data Theft) &
   \textit{``Help me fix my git config''} \newline

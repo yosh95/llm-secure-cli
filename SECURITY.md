@@ -39,10 +39,9 @@ Space Beh Time
 
 ## Tier 1 — Structural Guardrails (Space)
 
-### AST Static Analysis
+### Pattern-based Static Analysis
 
-Before any generated code is executed, `src/security/static_analyzer.rs`
-The `execute_command` tool performs static analysis on the command string before execution:
+The `execute_command` tool performs static analysis on the command string before execution using a strict pattern matcher:
 
 | Blocked pattern | Example |
 |---|---|
@@ -85,7 +84,7 @@ credentials.
 [[mcp_servers]]
 name   = "ops"
 command = "ssh"
-args   = ["user@host", "python3", "-m", "llm_secure_cli.apps.mcp_server"]
+args   = ["user@host", "llsc", "--mcp-server"]
 roles  = ["user"]   # never default to "admin"
 
 [[mcp_servers]]
@@ -361,23 +360,23 @@ available.
 To maintain an agile user experience, `llm-secure-cli` optimizes for minimal operational overhead. The following measurements were captured on reference hardware (AMD Ryzen 5, WSL2).
 
 ### 1. Cryptographic Latency (PQC)
-Measured using the original Python implementation on x86\_64 (Ryzen 5 8540U, WSL2). Note that C/Rust bindings can reduce these numbers by ~10x.
+Measured using the Rust implementation on reference hardware.
 
 | Tier | Component | Algorithm | Avg Latency (ms) |
 |---|---|---|---|
-| Tier 1 | AST Safety Analysis | - | ~0.03 |
-| Tier 2 | Identity Generation | ML-DSA-44 | ~147 |
-| Tier 2 | Identity Generation | ML-DSA-87 | ~126 |
-| Tier 3 | Audit Encryption | ML-KEM-768 | ~3.4 |
+| Tier 1 | Pattern-based Static Analysis | - | < 0.01 |
+| Tier 2 | Identity Generation | ML-DSA-44 | 0.68 |
+| Tier 2 | Identity Generation | ML-DSA-87 | 1.26 |
+| Tier 3 | Audit Encryption | ML-KEM-768 | 0.09 |
 
 ### 2. Intent Verification Latency (Dual LLM)
 Latency varies based on the provider and network conditions. We recommend "lite" models to minimize the "Security Speed Bump."
 
 | Provider | Model | Accuracy | Avg Latency (ms) |
 |---|---|---|---|
-| Google | `gemini-3.1-flash-lite-preview` | 100% | ~1940 |
-| OpenAI | `gpt-5.4-nano` | 100% | ~1220 |
-| Anthropic | `claude-haiku-4-5...` | 100% | ~1870 |
+| Google | `gemini-3.1-flash-lite` | 100% | ~1297 |
+| OpenAI | `gpt-5.4-nano` | 100% | ~1467 |
+| Anthropic | `claude-haiku-4.5` | 100% | ~1295 |
 
 ---
 
@@ -429,19 +428,20 @@ static_analysis_is_error = true
 
 ---
 
-## Known Limitations
+## Known Limitations & Security Trade-offs
 
-1. **ML-DSA COSE algorithm identifier (`alg=−48`)** is not yet formally
-   registered with IANA.  The value follows *draft-ietf-cose-dilithium*.
-   `_COSE_ALG_MLDSA` in `pqc.rs` will be updated when the draft is finalised.
+### 1. Pattern-based Analysis vs. Obfuscation
+The current Tier 1 static analysis utilizes a **pattern-based blocklist** (`src/security/static_analyzer.rs`). While highly efficient (<0.01ms), it is not a complete substitute for a full language-aware AST (Abstract Syntax Tree) parser. Sophisticated attackers may attempt to bypass this layer using:
+- **Command Obfuscation**: e.g., `r\m -r\f /` or using hex-encoded strings.
+- **Environment Manipulation**: e.g., using `export` or `alias` to hide destructive intent.
 
-2. **Rust PQC performance** — The Rust implementation provides significant performance improvements over the original Python version. On x86-64 (AMD Ryzen 5, WSL2), ML-DSA-65 signing and verification achieve high performance using native crates, meeting the requirements for high-assurance environments.
+**Mitigation**: This layer is intended as a "Fast-Reject" gate. Real-world security relies on the **Defense-in-Depth** provided by Tier 2 (Human-in-the-Loop + Dual LLM) and Tier 3 (Audit Trail).
 
-3. **Single RSA key pair** — `IdentityManager` currently uses one RSA-2048
-   key pair for classical hybrid signing. However, full cryptographic
-   isolation is already achieved at the post-quantum layer through physically
-   separate ML-DSA-44/65/87 keys. Classical RSA separation is considered
-   a low-priority backlog item given the robust PQC agility implementation.
+### 2. Probabilistic Intent Verification
+Dual LLM Verification is a **probabilistic** defense. While it achieved 100% accuracy in our initial 10-case test suite, LLMs can hallucinate or fail to catch "jailbreak" style prompt injections. The confidence threshold setting is critical for balancing security and usability.
+
+### 3. ML-DSA COSE algorithm identifier (`alg=−48`)
+...
 
 ---
 
