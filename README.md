@@ -114,6 +114,11 @@ As a tool designed with **CISSP/CISA/CCSP** principles and **EU AI Act** complia
   ```
 - **Pattern-based Static Analysis**: Every tool command and argument is inspected before execution to block dangerous patterns (`rm -rf /`, `mkfs`, etc.) and ensure system integrity. This lightweight analysis provides deterministic safety boundaries with minimal overhead.
 - **Path Guardrails**: Tools are restricted by path attributes (defaulting to the current directory). The policy engine now inspects multiple argument names (`path`, `directory`, `file`, `src`, `dest`, etc.) to prevent bypass.
+- **Tool Whitelisting**: A restricted list of authorized tools (both built-in and remote MCP) can be defined in `config.toml`. Only whitelisted tools will be registered, providing an additional layer of defense-in-depth by reducing the available attack surface.
+  ```toml
+  [security]
+  allowed_tools = ["read_file_content", "grep_files", "brave_search"] # Only these tools will be loaded
+  ```
 - **Explanation Enforcement**: Every tool mandates an `explanation` parameter, forcing the LLM to justify its intent.
 
 ### 2. Identity & Non-Repudiation (Experimental Reference)
@@ -300,6 +305,11 @@ AIがファイル操作、Web検索、Python実行などのツールを自律的
   ```
 - **パターンベースの静的解析**: 全てのツールコマンドと引数は実行前に解析され、危険なパターン（`rm -rf /`, `mkfs`等）を遮断します。この軽量な解析により、最小限のオーバーヘッドで決定論的な安全境界を提供します。
 - **パス・ガードレール**: 操作可能な範囲を属性（ディレクトリ・パスなど）で制限します。ポリシーエンジンは複数の引数名（`path`, `directory`, `file`, `src`, `dest`など）を検査し、バイパスを防止します。
+- **ツールのホワイトリスト化**: `config.toml` で許可するツール（組み込みおよびリモートMCP）を明示的に指定できます。ホワイトリストに記載されていないツールはレジストリに登録されず、攻撃表面を最小限に抑える防御層として機能します。
+  ```toml
+  [security]
+  allowed_tools = ["read_file_content", "grep_files", "brave_search"] # 指定したツールのみがロードされます
+  ```
 - **説明の強制**: 全てのツールは `explanation` パラメータを必須とし、LLMにその意図を正当化させます。
 
 ### 2. アイデンティティと非否認性 (実験的参照実装)
