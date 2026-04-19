@@ -65,6 +65,7 @@ rsa = "0.10.0-rc.17"
 uuid = { version = "1.10", features = ["v4"] }
 hostname = "0.4"
 rand = "0.10"
+constant_time_eq = "=0.4.2"
 
 
 [dev-dependencies]
