@@ -117,6 +117,8 @@ pub struct SecurityConfig {
     pub low_risk_tools: Vec<String>,
     #[serde(default)]
     pub allowed_env_vars: Vec<String>,
+    #[serde(default)]
+    pub allowed_tools: Option<Vec<String>>,
     #[serde(default = "default_true")]
     pub static_analysis_is_error: bool,
     #[serde(default)]
@@ -166,6 +168,7 @@ impl Default for SecurityConfig {
             medium_risk_tools: Vec::new(),
             low_risk_tools: Vec::new(),
             allowed_env_vars: Vec::new(),
+            allowed_tools: None,
             static_analysis_is_error: true,
             scaling_patterns: Vec::new(),
             auto_approval_level: None,

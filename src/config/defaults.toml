@@ -60,6 +60,22 @@ blocked_filenames = [
     "*.ppk",                    # PuTTY private key
 ]
 
+# Whitelist-based Tool Loading
+# If specified, only the tools in this list will be loaded.
+# This applies to both built-in tools and remote MCP tools.
+# If commented out or empty (None), all tools are loaded by default.
+allowed_tools = [
+    "list_files_in_directory",
+    "read_file_content",
+    "grep_files",
+    "search_files",
+    "edit_file",
+    "create_or_overwrite_file",
+    "read_url_content",
+    "brave_search",
+    "execute_command"
+]
+
 # Risk Level Classification
 #
 # HIGH   - Irreversible writes / external network access.

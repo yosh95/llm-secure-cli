@@ -146,8 +146,17 @@ pub async fn initialize_remote_tools() -> anyhow::Result<()> {
     let mcp_manager = &crate::tools::mcp::manager::MCP_MANAGER;
     let tools = mcp_manager.initialize_servers().await?;
 
+    let config = crate::config::CONFIG_MANAGER.get_config();
+    let allowed_tools = config.security.allowed_tools;
+
     let mut registry = REGISTRY.lock().unwrap();
     for tool in tools {
+        if let Some(ref allowed) = allowed_tools {
+            let name = tool["name"].as_str().unwrap_or("");
+            if !allowed.contains(&name.to_string()) {
+                continue;
+            }
+        }
         registry.register_remote_tool(&tool);
     }
 
@@ -155,7 +164,24 @@ pub async fn initialize_remote_tools() -> anyhow::Result<()> {
 }
 
 fn register_builtin_tools(r: &mut ToolRegistry) {
-    r.register(
+    let config = crate::config::CONFIG_MANAGER.get_config();
+    let allowed_tools = config.security.allowed_tools;
+
+    let maybe_register = |r: &mut ToolRegistry,
+                              name: &str,
+                              description: &str,
+                              parameters: Value,
+                              func: ToolFunc| {
+        if let Some(ref allowed) = allowed_tools {
+            if !allowed.contains(&name.to_string()) {
+                return;
+            }
+        }
+        r.register(name, description, parameters, func, true);
+    };
+
+    maybe_register(
+        r,
         "list_files_in_directory",
         "List files in a directory.",
         json!({
@@ -188,10 +214,10 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             }
         }),
         Arc::new(crate::tools::builtin::file_ops::list_files_in_directory),
-        true,
     );
 
-    r.register(
+    maybe_register(
+        r,
         "read_file_content",
         "Read content from a text file or PDF. For PDFs, text content will be extracted. \
          IMPORTANT: This tool can read up to 500 lines or 30000 characters at once. \
@@ -219,10 +245,10 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             "required": ["path"]
         }),
         Arc::new(crate::tools::builtin::file_ops::read_file_content),
-        true,
     );
 
-    r.register(
+    maybe_register(
+        r,
         "grep_files",
         "Search for a regex pattern in files within a directory (like grep). \
          Automatically excludes common junk directories like .git, node_modules, and \
@@ -246,10 +272,10 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             "required": ["query"]
         }),
         Arc::new(crate::tools::builtin::file_ops::grep_files),
-        true,
     );
 
-    r.register(
+    maybe_register(
+        r,
         "search_files",
         "Search for files or directories by name pattern within a directory.",
         json!({
@@ -272,10 +298,10 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             "required": ["pattern"]
         }),
         Arc::new(crate::tools::builtin::file_ops::search_files),
-        true,
     );
 
-    r.register(
+    maybe_register(
+        r,
         "edit_file",
         "Edit a file by replacing a specific block of text. \
          The search string must match the file content exactly.",
@@ -300,10 +326,10 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             "required": ["path", "search", "replace"]
         }),
         Arc::new(crate::tools::builtin::file_modification::edit_file),
-        true,
     );
 
-    r.register(
+    maybe_register(
+        r,
         "create_or_overwrite_file",
         "Write full content to a file. Overwrites existing files.",
         json!({
@@ -318,10 +344,10 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             "required": ["path", "content"]
         }),
         Arc::new(crate::tools::builtin::file_modification::create_or_overwrite_file),
-        true,
     );
 
-    r.register(
+    maybe_register(
+        r,
         "read_url_content",
         "Fetch a web page URL or PDF URL and convert the content to Markdown or text. \
          For PDFs, text content will be extracted. \
@@ -345,13 +371,13 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             "required": ["url"]
         }),
         Arc::new(crate::tools::builtin::web::read_url_content),
-        true,
     );
 
     // Brave Search: register only if API key is available
     let brave_key = crate::config::CONFIG_MANAGER.get_api_key("brave");
     if brave_key.is_some() {
-        r.register(
+        maybe_register(
+            r,
             "brave_search",
             "Search the web for current information using the Brave Search API. \
              Returns a list of relevant search results including titles, snippets, and URLs. \
@@ -372,11 +398,11 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
                 "required": ["query"]
             }),
             Arc::new(crate::tools::builtin::web::brave_search),
-            true,
         );
     }
 
-    r.register(
+    maybe_register(
+        r,
         "execute_command",
         "Execute a system command directly without a shell. \
          Use 'command' for the executable (e.g., 'ls', 'git') and 'args' for its arguments. \
@@ -397,6 +423,5 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             "required": ["command", "args"]
         }),
         Arc::new(crate::tools::builtin::shell::execute_command),
-        true,
     );
 }

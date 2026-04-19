@@ -210,11 +210,13 @@ impl ConfigManager {
             base.security.allowed_env_vars = over.security.allowed_env_vars;
         }
 
-        // Merge MCP (append instead of overwrite)
-        for over_mcp in over.mcp_servers {
-            if !base.mcp_servers.iter().any(|m| m.name == over_mcp.name) {
-                base.mcp_servers.push(over_mcp);
-            }
+        if let Some(tools) = over.security.allowed_tools {
+            base.security.allowed_tools = Some(tools);
+        }
+
+        // Merge MCP
+        if !over.mcp_servers.is_empty() {
+            base.mcp_servers = over.mcp_servers;
         }
 
         // Merge templates
