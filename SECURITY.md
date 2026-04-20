@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 1.0.x   | OK Active  |
-| < 1.0   | ❌ EOL     |
+| 0.2.x   | OK Active  |
+| < 0.2   | ❌ EOL     |
 
 ---
 

@@ -167,18 +167,15 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
     let config = crate::config::CONFIG_MANAGER.get_config();
     let allowed_tools = config.security.allowed_tools;
 
-    let maybe_register = |r: &mut ToolRegistry,
-                              name: &str,
-                              description: &str,
-                              parameters: Value,
-                              func: ToolFunc| {
-        if let Some(ref allowed) = allowed_tools {
-            if !allowed.contains(&name.to_string()) {
-                return;
+    let maybe_register =
+        |r: &mut ToolRegistry, name: &str, description: &str, parameters: Value, func: ToolFunc| {
+            if let Some(ref allowed) = allowed_tools {
+                if !allowed.contains(&name.to_string()) {
+                    return;
+                }
             }
-        }
-        r.register(name, description, parameters, func, true);
-    };
+            r.register(name, description, parameters, func, true);
+        };
 
     maybe_register(
         r,
@@ -423,5 +420,37 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             "required": ["command", "args"]
         }),
         Arc::new(crate::tools::builtin::shell::execute_command),
+    );
+
+    maybe_register(
+        r,
+        "queue_task",
+        "Queue a task for later execution in a secure environment.",
+        json!({
+            "type": "object",
+            "properties": {
+                "task_type": {
+                    "type": "string",
+                    "description": "The type of task to perform."
+                },
+                "description": {
+                    "type": "string",
+                    "description": "A description of the task."
+                },
+                "parameters": {
+                    "type": "object",
+                    "description": "Parameters for the task."
+                }
+            },
+            "required": ["task_type", "description"]
+        }),
+        Arc::new(|_args| {
+            // This is a special tool that doesn't execute immediately but returns a success message
+            // The actual logic to push to session.pending_tasks needs to be in session.rs
+            Ok(json!({
+                "status": "queued",
+                "message": "Task has been queued. The user must run '/tasks run' to execute it."
+            }))
+        }),
     );
 }

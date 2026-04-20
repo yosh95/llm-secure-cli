@@ -166,6 +166,9 @@ impl ConfigManager {
         if over.security.security_level != "high" {
             base.security.security_level = over.security.security_level;
         }
+        if over.security.runtime_type != "local" {
+            base.security.runtime_type = over.security.runtime_type;
+        }
         if over.security.dual_llm_provider != "google" {
             base.security.dual_llm_provider = over.security.dual_llm_provider;
         }

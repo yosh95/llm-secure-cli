@@ -121,6 +121,16 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             handle_checkpoint(session).await;
             CommandResult::Handled
         }
+        "tasks" => {
+            if args == "run" {
+                if let Err(e) = session.execute_pending_tasks().await {
+                    ui::report_error(&format!("Task execution failed: {}", e));
+                }
+            } else {
+                handle_tasks_info(session);
+            }
+            CommandResult::Handled
+        }
         "reload" => {
             crate::config::CONFIG_MANAGER.reload();
             let (provider, model, stdout, render_markdown) = {
@@ -156,7 +166,9 @@ pub fn handle_info(session: &ChatSession) {
     ui::print_rule(Some("Session Info"), Some("cyan"));
     ui::print_key_value("Provider", &state.provider);
     ui::print_key_value("Model", &state.model);
+    ui::print_key_value("Runtime", session.runtime.name());
     ui::print_key_value("History", &format!("{} messages", state.conversation.len()));
+    ui::print_key_value("Pending Tasks", &format!("{}", session.pending_tasks.len()));
     ui::print_key_value(
         "Tools",
         if state.tools_enabled {
@@ -182,6 +194,25 @@ pub fn handle_info(session: &ChatSession) {
         },
     );
     ui::print_rule(None, Some("cyan"));
+}
+
+pub fn handle_tasks_info(session: &ChatSession) {
+    ui::print_rule(Some("Pending Tasks"), Some("yellow"));
+    if session.pending_tasks.is_empty() {
+        println!("  No pending tasks.");
+    } else {
+        for (i, task) in session.pending_tasks.iter().enumerate() {
+            println!(
+                "  [{}] {} ({}) - {}",
+                i,
+                task.description.bold(),
+                task.id,
+                task.task_type
+            );
+        }
+        println!("\n  Use '/tasks run' to execute all pending tasks.");
+    }
+    ui::print_rule(None, Some("yellow"));
 }
 
 pub fn handle_raw(session: &ChatSession) {
@@ -394,6 +425,7 @@ pub fn print_help() {
     println!("  /model, /m      Switch models");
     println!("  /provider, /p   Switch provider");
     println!("  /checkpoint, /cp Summarize and compress history");
+    println!("  /tasks [run]    Show or run pending tasks");
     println!("  /reload         Reload configuration");
     println!();
 }

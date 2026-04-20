@@ -16,9 +16,15 @@ pub fn execute_command(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         _ => Vec::new(),
     };
 
-    // 1. Static Analysis (Basic keyword check on the entire command)
+    // 1. Static Analysis (Enhanced Regex-based)
     let full_command = format!("{} {}", program, cmd_args.join(" "));
-    static_analyze(&full_command)?;
+    let (safe, violations) =
+        crate::security::static_analyzer::StaticAnalyzer::is_dangerous_command(&full_command);
+    if !safe {
+        let error_msg = format!("Security Blocked: {}", violations.join(", "));
+        ui::report_error(&error_msg);
+        return Err(anyhow::anyhow!(error_msg));
+    }
 
     // 2. Execution with Timeout
     let config = CONFIG_MANAGER.get_config();
@@ -53,32 +59,4 @@ pub fn execute_command(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         "stderr": String::from_utf8_lossy(&output_res.stderr),
         "exit_code": output_res.status.code().unwrap_or(-1)
     }))
-}
-
-fn static_analyze(command: &str) -> anyhow::Result<()> {
-    let dangerous_patterns = [
-        "rm -rf /",
-        "mkfs",
-        "dd if=",
-        "> /etc/",
-        "chmod -R 777",
-        "chown",
-        "passwd",
-        "kill -9",
-    ];
-
-    for pattern in dangerous_patterns {
-        if command.contains(pattern) {
-            ui::report_error(&format!(
-                "Security Blocked: Dangerous command pattern detected: {}",
-                pattern
-            ));
-            return Err(anyhow::anyhow!(
-                "Security policy violation: dangerous pattern '{}'",
-                pattern
-            ));
-        }
-    }
-
-    Ok(())
 }

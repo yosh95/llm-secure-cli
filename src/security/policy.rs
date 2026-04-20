@@ -28,20 +28,15 @@ impl PolicyEngine {
             return false;
         }
 
-        // 2. Scope Verification
-        if !self.verify_scope(tool_name, arguments) {
-            return false;
-        }
-
-        // 3. Global Guardrails
-        if !self.global_guardrails(tool_name, arguments) {
+        // 2. Resource Guardrails (Path/Scope)
+        if !self.verify_path_guardrails(tool_name, arguments) {
             return false;
         }
 
         true
     }
 
-    fn verify_scope(
+    fn verify_path_guardrails(
         &self,
         _tool_name: &str,
         arguments: &HashMap<String, serde_json::Value>,
@@ -57,31 +52,6 @@ impl PolicyEngine {
         ];
         for arg_name in path_args {
             if let Some(raw_path) = arguments.get(arg_name).and_then(|v| v.as_str()) {
-                if validate_path(raw_path).is_err() {
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
-    fn global_guardrails(
-        &self,
-        _tool_name: &str,
-        arguments: &HashMap<String, serde_json::Value>,
-    ) -> bool {
-        let path_args = [
-            "path",
-            "directory",
-            "file",
-            "filename",
-            "src",
-            "dest",
-            "destination",
-        ];
-        for arg_name in path_args {
-            if let Some(raw_path) = arguments.get(arg_name).and_then(|v| v.as_str()) {
-                // validate_path already handles blocked_paths
                 if validate_path(raw_path).is_err() {
                     return false;
                 }

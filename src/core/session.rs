@@ -3,6 +3,7 @@ use crate::cli::ui;
 use crate::consts::HISTORY_LOG_PATH;
 use crate::llm::base::LlmClient;
 use crate::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
+use crate::security::runtime::{get_runtime, SecureRuntime, Task, TaskStatus};
 use rustyline::error::ReadlineError;
 use rustyline::history::FileHistory;
 use rustyline::Editor;
@@ -13,14 +14,21 @@ pub struct ChatSession {
     pub client: Box<dyn LlmClient>,
     pub intent: String,
     pub pending_data: Vec<DataSource>,
+    pub pending_tasks: Vec<Task>,
+    pub runtime: Box<dyn SecureRuntime>,
 }
 
 impl ChatSession {
     pub fn new(client: Box<dyn LlmClient>) -> Self {
+        let config = crate::config::CONFIG_MANAGER.get_config();
+        let runtime = get_runtime(&config.security.runtime_type);
+
         Self {
             client,
             intent: String::new(),
             pending_data: Vec::new(),
+            pending_tasks: Vec::new(),
+            runtime,
         }
     }
 
@@ -38,6 +46,53 @@ impl ChatSession {
             new_state.system_prompt_enabled = old_state.system_prompt_enabled;
         }
         self.client = new_client;
+    }
+
+    pub async fn execute_pending_tasks(&mut self) -> anyhow::Result<()> {
+        if self.pending_tasks.is_empty() {
+            ui::report_warning("No pending tasks to execute.");
+            return Ok(());
+        }
+
+        ui::report_info(&format!(
+            "Executing {} pending tasks using {} runtime...",
+            self.pending_tasks.len(),
+            self.runtime.name()
+        ));
+
+        let tasks = std::mem::take(&mut self.pending_tasks);
+        let mut results = Vec::new();
+
+        for mut task in tasks {
+            ui::report_info(&format!("Running task: {} ({})", task.description, task.id));
+            task.status = TaskStatus::Running;
+
+            match self.runtime.execute_task(task.clone()).await {
+                Ok(res) => {
+                    ui::report_success(&format!("Task {} completed.", task.id));
+                    task.status = TaskStatus::Completed;
+                    results.push(format!("Task {}: {}", task.id, res));
+                }
+                Err(e) => {
+                    ui::report_error(&format!("Task {} failed: {}", task.id, e));
+                    task.status = TaskStatus::Failed(e.to_string());
+                    results.push(format!("Task {} failed: {}", task.id, e));
+                }
+            }
+        }
+
+        if !results.is_empty() {
+            let result_msg = format!("Execution Results:\n{}", results.join("\n"));
+            self.pending_data.push(DataSource {
+                content: serde_json::Value::String(result_msg),
+                content_type: "text/plain".to_string(),
+                is_file_or_url: false,
+                metadata: std::collections::HashMap::new(),
+            });
+            ui::report_info("Results added to pending data for next turn.");
+        }
+
+        Ok(())
     }
 
     pub async fn run(
@@ -609,13 +664,37 @@ impl ChatSession {
     }
 
     fn execute_tool(
-        &self,
+        &mut self,
         name: &str,
         args: HashMap<String, serde_json::Value>,
     ) -> anyhow::Result<serde_json::Value> {
         let registry = crate::tools::registry::REGISTRY.lock().unwrap();
         if let Some(tool) = registry.tools.get(name) {
-            (tool.func)(args)
+            let res = (tool.func)(args.clone());
+
+            if name == "queue_task" && res.is_ok() {
+                let task = Task {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    task_type: args
+                        .get("task_type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    description: args
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("No description")
+                        .to_string(),
+                    parameters: args
+                        .get("parameters")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+                    status: TaskStatus::Pending,
+                };
+                self.pending_tasks.push(task);
+            }
+
+            res
         } else {
             Err(anyhow::anyhow!("Tool not found: {}", name))
         }

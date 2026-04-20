@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
+use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AuditEntry {
@@ -76,9 +77,18 @@ pub fn log_audit(
 
     let prev_hash = get_last_log_hash(path);
 
-    // Hybrid Encryption for high-risk data (Placeholder for ML-KEM)
-    let pqc_encrypted = false;
-    let final_args = args;
+    // Hybrid Encryption for high-risk data (ML-KEM + AES-256-GCM)
+    let mut pqc_encrypted = false;
+    let mut final_args = args.clone();
+
+    if config.security.security_level == "high" {
+        if let Ok(pk) = crate::security::identity::IdentityManager::get_kem_public_key() {
+            let arg_bytes = serde_json::to_vec(&args).unwrap_or_default();
+            let packet = crate::security::pqc::SecureStorage::encrypt(&arg_bytes, &pk);
+            final_args = serde_json::to_value(packet).unwrap_or(args);
+            pqc_encrypted = true;
+        }
+    }
 
     let mut log_entry = AuditEntry {
         timestamp,
@@ -178,12 +188,12 @@ fn get_last_log_hash(path: &Path) -> String {
     "0".repeat(64)
 }
 
-fn trim_log_file(path: &Path, max_lines: usize) {
+fn trim_log_file(path: &std::path::Path, max_lines: usize) {
     if !path.exists() {
         return;
     }
 
-    let content = match fs::read_to_string(path) {
+    let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => return,
     };
@@ -193,12 +203,30 @@ fn trim_log_file(path: &Path, max_lines: usize) {
         return;
     }
 
+    // Capture the hash of the last line that WILL be removed to maintain chain evidence
+    let last_removed_idx = lines.len() - max_lines - 1;
+    let last_removed_hash = serde_json::from_str::<serde_json::Value>(lines[last_removed_idx])
+        .ok()
+        .and_then(|v| {
+            v.get("hash")
+                .and_then(|h| h.as_str())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| "0".repeat(64));
+
     let kept_lines = &lines[lines.len() - max_lines..];
 
-    // Simplifed rotation: just rewrite the file
-    // In Python version, it rotates to an archive and adds a snapshot entry.
-    // For now, let's just truncate to keep it simple.
-    if let Ok(mut file) = fs::File::create(path) {
+    if let Ok(mut file) = std::fs::File::create(path) {
+        // Add a continuity marker as the first line of the new truncated log
+        let continuity_marker = serde_json::json!({
+            "timestamp": Utc::now().to_rfc3339(),
+            "event_type": "LOG_ROTATION_MARKER",
+            "prev_hash": last_removed_hash,
+            "hash": "ROTATION-NONCE-".to_string() + &Uuid::new_v4().to_string(),
+            "status": "CONTINUITY_MAINTAINED"
+        });
+        let _ = writeln!(file, "{}", continuity_marker);
+
         for line in kept_lines {
             let _ = writeln!(file, "{}", line);
         }
