@@ -403,18 +403,19 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
         "execute_command",
         "Execute a system command directly without a shell. \
          Use 'command' for the executable (e.g., 'ls', 'git') and 'args' for its arguments. \
+         IMPORTANT: 'args' must NOT include the executable name. \
          This is secure against shell injection and handles special characters like backticks or quotes correctly.",
         json!({
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "The executable to run."
+                    "description": "The executable to run (e.g., 'rm', 'ls', 'git')."
                 },
                 "args": {
                     "type": "array",
                     "items": { "type": "string" },
-                    "description": "List of arguments to pass to the executable."
+                    "description": "List of arguments to pass to the executable. Do NOT include the command name itself here. For example, if command is 'rm', args should be ['test.txt'], NOT ['rm', 'test.txt']."
                 }
             },
             "required": ["command", "args"]

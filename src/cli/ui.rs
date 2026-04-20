@@ -94,7 +94,7 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             } else {
                 for line in diff {
                     if line.starts_with('+') && !line.starts_with("+++") {
-                        println!("        {}", line.bright_green());
+                        println!("        {}", line.cyan());
                     } else if line.starts_with('-') && !line.starts_with("---") {
                         println!("        {}", line.red());
                     } else if !line.starts_with("@@")
