@@ -304,10 +304,22 @@ pub fn handle_model_cmd(session: &mut ChatSession, args: &str) {
             let mut keys: Vec<_> = p_cfg.models.keys().collect();
             keys.sort();
             for alias in keys {
-                if alias == &current_model {
-                    println!("  {} {}", "●".cyan(), alias.bold().cyan());
+                let model_config = crate::config::CONFIG_MANAGER.get_model_config(&provider, alias);
+                let actual_model = model_config
+                    .get("model")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(alias);
+
+                let display_name = if actual_model != alias {
+                    format!("{} ({})", alias, actual_model)
                 } else {
-                    println!("    {}", alias);
+                    alias.to_string()
+                };
+
+                if alias == &current_model || actual_model == current_model {
+                    println!("  {} {}", "●".cyan(), display_name.bold().cyan());
+                } else {
+                    println!("    {}", display_name);
                 }
             }
             ui::print_rule(None, Some("cyan"));
