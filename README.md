@@ -27,13 +27,9 @@ The accompanying [Technical Report](paper/comprehensive_framework/paper.pdf) det
 ---
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/yosh95/llm-secure-cli-rust/main/images/architecture_diagram_en.png" width="800" alt="llm-secure-cli Architecture & Security Guardrails" />
-</p>
-
-<p align="center">
   <img src="images/architecture_diagram_simple.png" width="800" alt="llm-secure-cli Simplified Architecture Flow" />
   <br>
-  <em>Simplified Architecture Flow (TikZ version)</em>
+  <em>Simplified Architecture Flow</em>
 </p>
 
 ---
@@ -89,10 +85,6 @@ llsc "Analyze this website" https://example.com
 
 ### Autonomous Agent & Tool Use
 The AI agent autonomously uses tools to perform complex tasks, such as file management, web search, and Python execution. Web search is powered by the LLM provider's native capabilities (Gemini Grounding, OpenAI/Claude Web Search) or the Brave Search API. To maintain audit integrity, **Brave Search takes precedence**; if it is configured, native search is disabled to ensure all external data retrieval is cryptographically signed and logged.
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/yosh95/llm-secure-cli-rust/main/images/screenshot-tool-calling.png" width="800" alt="Autonomous Agent and Tool Use" />
-</p>
 
 ---
 
@@ -233,10 +225,6 @@ For detailed architectural insights and the academic background of our security 
 ---
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/yosh95/llm-secure-cli-rust/main/images/architecture_diagram_ja.png" width="800" alt="llm-secure-cli アーキテクチャと多層防御" />
-</p>
-
-<p align="center">
   <img src="images/architecture_diagram_simple.png" width="800" alt="llm-secure-cli 簡易アーキテクチャフロー" />
   <br>
   <em>簡易アーキテクチャフロー (TikZ版)</em>
@@ -295,10 +283,6 @@ llsc "このWebサイトを解析して" https://example.com
 
 ### 自律型エージェントのツール実行
 AIがファイル操作、Web検索、Python実行などのツールを自律的に使用し、複雑なタスクを遂行します。Web検索はLLMプロバイダーの機能（Gemini Grounding, OpenAI/Claude Web Search）または Brave Search API を利用します。監査の健全性を維持するため、**Brave Search が優先されます**。Brave Search が設定されている場合、すべての外部データ取得が暗号学的に署名・記録されることを保証するため、ネイティブ検索は無効化されます。
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/yosh95/llm-secure-cli-rust/main/images/screenshot-tool-calling.png" width="800" alt="自律型エージェントのツール実行" />
-</p>
 
 ## セキュリティとガバナンス (プロフェッショナル向け)
 
