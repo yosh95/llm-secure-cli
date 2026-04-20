@@ -1,7 +1,8 @@
 use colored::*;
 use console::Term;
 use std::io::{self, Read, Write};
-use termimad::MadSkin;
+use termimad::crossterm::style::Color::*;
+use termimad::{rgb, FmtText, MadSkin, StyledChar};
 use textwrap::wrap;
 
 pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
@@ -18,11 +19,15 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
 
     // Use termimad for markdown rendering
     let mut skin = MadSkin::default();
-    skin.set_headers_fg(termimad::crossterm::style::Color::Cyan);
+    skin.set_headers_fg(rgb(255, 187, 0));
+    skin.bold.set_fg(Yellow);
+    skin.italic.set_fg(Magenta);
+    skin.bullet = StyledChar::from_fg_char(Yellow, '・');
+    skin.quote_mark.set_fg(Yellow);
 
     // Use the calculated width for wrapping
-    let fmt_text = termimad::FmtText::from_text(&skin, content.trim().into(), Some(width));
-    print!("{}", fmt_text.to_string().trim_end());
+    let fmt_text = FmtText::from_text(&skin, content.trim().into(), Some(width));
+    print!("{}", fmt_text);
     println!();
 
     if title.is_some() {
