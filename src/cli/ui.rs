@@ -1,6 +1,6 @@
+use crate::cli::markdown::render_markdown;
 use colored::*;
 use console::Term;
-use markdown_to_ansi::{render, Options};
 use std::io::{self, Read, Write};
 use textwrap::wrap;
 
@@ -16,14 +16,9 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
         println!("{}", t.bold().color(rule_color));
     }
 
-    // Use markdown-to-ansi for rendering
-    let opts = Options {
-        syntax_highlight: true,
-        width: Some(width),
-        code_bg: true,
-    };
-    let output = render(content.trim(), &opts);
-    println!("{}", output.trim());
+    // Use our custom markdown renderer
+    let output = render_markdown(content.trim(), width);
+    println!("{}", output);
 
     if title.is_some() {
         let rule_color = style.unwrap_or("cyan");
