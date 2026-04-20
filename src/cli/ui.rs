@@ -1,8 +1,7 @@
 use colored::*;
 use console::Term;
+use markdown_to_ansi::{render, Options};
 use std::io::{self, Read, Write};
-use termimad::crossterm::style::Color::*;
-use termimad::{rgb, MadSkin, StyledChar};
 use textwrap::wrap;
 
 pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
@@ -17,16 +16,14 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
         println!("{}", t.bold().color(rule_color));
     }
 
-    // Use termimad for markdown rendering
-    let mut skin = MadSkin::default();
-    skin.set_headers_fg(rgb(255, 187, 0));
-    skin.bold.set_fg(Yellow);
-    skin.italic.set_fg(Magenta);
-    skin.bullet = StyledChar::from_fg_char(Yellow, '・');
-    skin.quote_mark.set_fg(Yellow);
-
-    // Use the calculated width for wrapping
-    skin.print_text(content.trim());
+    // Use markdown-to-ansi for rendering
+    let opts = Options {
+        syntax_highlight: true,
+        width: Some(width),
+        code_bg: true,
+    };
+    let output = render(content.trim(), &opts);
+    println!("{}", output.trim());
 
     if title.is_some() {
         let rule_color = style.unwrap_or("cyan");
