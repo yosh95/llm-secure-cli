@@ -22,8 +22,8 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
 
     // Use the calculated width for wrapping
     let fmt_text = termimad::FmtText::from_text(&skin, content.trim().into(), Some(width));
-    print!("{}", fmt_text);
-    println!(); // Add a single newline after the content
+    print!("{}", fmt_text.to_string().trim_end());
+    println!();
 
     if title.is_some() {
         let rule_color = style.unwrap_or("cyan");
