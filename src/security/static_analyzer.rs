@@ -3,54 +3,85 @@ use regex::Regex;
 
 pub struct StaticAnalyzer;
 
-static DANGEROUS_PATTERNS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
+#[derive(Debug)]
+pub struct Violation {
+    pub description: &'static str,
+    pub pattern: String,
+}
+
+static DANGEROUS_BINARIES: &[&str] = &[
+    "mkfs", "fdisk", "parted", "dd", "passwd", "chown", "chmod", "kill", "reboot", "shutdown",
+];
+
+static SENSITIVE_PATHS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
-        (
-            Regex::new(r"(?i)rm\s+-[rfj]+\s+/").unwrap(),
-            "Destructive removal of root directory",
-        ),
-        (
-            Regex::new(r"(?i)mkfs(\s+|\.[a-z0-9]+)").unwrap(),
-            "Filesystem formatting",
-        ),
-        (
-            Regex::new(r"(?i)dd\s+if=").unwrap(),
-            "Low-level disk writing",
-        ),
-        (
-            Regex::new(r"(?i)>\s*/etc/").unwrap(),
-            "Writing to system configuration",
-        ),
-        (
-            Regex::new(r"(?i)chmod\s+(-R\s+)?777").unwrap(),
-            "Insecure permission change",
-        ),
-        (Regex::new(r"(?i)chown\s+").unwrap(), "Ownership change"),
-        (
-            Regex::new(r"(?i)passwd\s+").unwrap(),
-            "Password modification",
-        ),
-        (
-            Regex::new(r"(?i)kill\s+-9").unwrap(),
-            "Forceful process termination",
-        ),
-        (
-            Regex::new(r"(?i)curl\s+.*\s+\|\s*sh").unwrap(),
-            "Piping remote script to shell",
-        ),
+        Regex::new(r"^/etc/.*").unwrap(),
+        Regex::new(r"^/root/.*").unwrap(),
+        Regex::new(r"^/var/.*").unwrap(),
+        Regex::new(r"^/proc/.*").unwrap(),
+        Regex::new(r"^/sys/.*").unwrap(),
+        Regex::new(r"^/dev/.*").unwrap(),
     ]
 });
 
 impl StaticAnalyzer {
-    pub fn is_dangerous_command(command: &str) -> (bool, Vec<String>) {
+    pub fn check(command: &str, args: &[String]) -> (bool, Vec<String>) {
         let mut violations = Vec::new();
 
-        for (regex, description) in DANGEROUS_PATTERNS.iter() {
-            if regex.is_match(command) {
-                violations.push(format!("{}: {}", description, regex.as_str()));
+        // 1. Binary blocklist
+        if DANGEROUS_BINARIES.contains(&command) {
+            violations.push(format!("Use of forbidden binary: {}", command));
+        }
+
+        // 2. Argument-based checks
+        match command {
+            "rm" => {
+                if args
+                    .iter()
+                    .any(|arg| arg == "/" || arg == "/*" || arg.starts_with("/etc"))
+                {
+                    violations.push("Destructive removal of sensitive directory".to_string());
+                }
+            }
+            "curl" | "wget" => {
+                // Check for piping to shell (not directly possible via argv, but check for suspicious URLs)
+                if args
+                    .iter()
+                    .any(|arg| arg.contains("sh") && arg.contains("|"))
+                {
+                    violations.push("Potential remote script execution".to_string());
+                }
+            }
+            "find" => {
+                if args.iter().any(|arg| arg == "-exec" || arg == "-delete") {
+                    violations.push("Forbidden find flags (-exec, -delete)".to_string());
+                }
+            }
+            _ => {}
+        }
+
+        // 3. Sensitive path injection in any argument
+        for arg in args {
+            for path_regex in SENSITIVE_PATHS.iter() {
+                if path_regex.is_match(arg) {
+                    violations.push(format!("Access to sensitive path in arguments: {}", arg));
+                }
             }
         }
 
         (violations.is_empty(), violations)
+    }
+
+    /// Legacy support for string-based check (used in some places)
+    pub fn is_dangerous_command(full_command: &str) -> (bool, Vec<String>) {
+        let parts: Vec<String> = full_command
+            .split_whitespace()
+            .map(|s| s.to_string())
+            .collect();
+        if parts.is_empty() {
+            return (true, Vec::new());
+        }
+        let (cmd, args) = parts.split_first().unwrap();
+        Self::check(cmd, args)
     }
 }

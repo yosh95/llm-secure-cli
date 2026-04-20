@@ -278,7 +278,11 @@ impl LlmClient for ClaudeClient {
             if let Some(err) = res_json.get("error") {
                 return Err(anyhow::anyhow!("Anthropic API error ({}): {}", status, err));
             } else {
-                return Err(anyhow::anyhow!("Anthropic API error ({}): {}", status, res_json));
+                return Err(anyhow::anyhow!(
+                    "Anthropic API error ({}): {}",
+                    status,
+                    res_json
+                ));
             }
         }
 

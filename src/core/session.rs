@@ -390,8 +390,10 @@ impl ChatSession {
                                         })
                                         .unwrap_or_default();
 
-                                    let full_cmd = format!("{} {}", program, cmd_args.join(" "));
-                                    let (safe, violations) = crate::security::static_analyzer::StaticAnalyzer::is_dangerous_command(&full_cmd);
+                                    let (safe, violations) =
+                                        crate::security::static_analyzer::StaticAnalyzer::check(
+                                            program, &cmd_args,
+                                        );
                                     if !safe {
                                         let err_msg = format!(
                                             "Security Blocked (Static Analysis): {}",

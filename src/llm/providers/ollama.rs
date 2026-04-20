@@ -124,7 +124,11 @@ impl LlmClient for OllamaClient {
             if let Some(err) = res_json.get("error") {
                 return Err(anyhow::anyhow!("Ollama API error ({}): {}", status, err));
             } else {
-                return Err(anyhow::anyhow!("Ollama API error ({}): {}", status, res_json));
+                return Err(anyhow::anyhow!(
+                    "Ollama API error ({}): {}",
+                    status,
+                    res_json
+                ));
             }
         }
 
@@ -133,9 +137,7 @@ impl LlmClient for OllamaClient {
             return Err(anyhow::anyhow!("Invalid response from Ollama: no choices"));
         };
 
-        let text = choice["message"]["content"]
-            .as_str()
-            .map(|s| s.to_string());
+        let text = choice["message"]["content"].as_str().map(|s| s.to_string());
 
         let model_msg = crate::llm::models::Message {
             role: Role::Assistant,

@@ -346,7 +346,11 @@ impl LlmClient for OpenAiClient {
             if let Some(err) = res_json.get("error") {
                 return Err(anyhow::anyhow!("OpenAI API error ({}): {}", status, err));
             } else {
-                return Err(anyhow::anyhow!("OpenAI API error ({}): {}", status, res_json));
+                return Err(anyhow::anyhow!(
+                    "OpenAI API error ({}): {}",
+                    status,
+                    res_json
+                ));
             }
         }
 

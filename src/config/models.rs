@@ -13,8 +13,6 @@ pub struct GeneralConfig {
     pub command_timeout: u64,
     #[serde(default = "default_max_file_size")]
     pub max_command_file_size_mb: u64,
-    #[serde(default = "default_max_turns")]
-    pub max_turns: u32,
     #[serde(default = "default_max_memory")]
     pub max_command_memory_mb: u64,
     #[serde(default = "default_max_chat_log")]
@@ -44,9 +42,6 @@ fn default_command_timeout() -> u64 {
 fn default_max_file_size() -> u64 {
     100
 }
-fn default_max_turns() -> u32 {
-    20
-}
 fn default_max_memory() -> u64 {
     1024
 }
@@ -74,7 +69,6 @@ impl Default for GeneralConfig {
             request_timeout: default_request_timeout(),
             command_timeout: default_command_timeout(),
             max_command_file_size_mb: default_max_file_size(),
-            max_turns: default_max_turns(),
             max_command_memory_mb: default_max_memory(),
             max_chat_log_lines: default_max_chat_log(),
             max_security_log_lines: default_max_security_log(),

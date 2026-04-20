@@ -159,7 +159,6 @@ fn test_file_modification_tools() {
 
     let res = edit_file(args).expect("edit_file failed");
     assert!(res["success"].as_bool().unwrap());
-    assert_eq!(res["match_type"].as_str().unwrap(), "exact");
     assert_eq!(
         fs::read_to_string(&file_path).unwrap(),
         "line1\nline2 modified\nline3"

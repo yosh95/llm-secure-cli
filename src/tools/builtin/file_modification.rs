@@ -37,7 +37,7 @@ pub fn edit_file(args: HashMap<String, Value>) -> anyhow::Result<Value> {
     // 1. Try exact match
     if !original.contains(search_str) {
         return Err(anyhow::anyhow!(
-            "Search string not found in file (exact match required).\n\
+            "Search string not found in file.\n\
              File: {}\n\
              Search (first 200 chars): {}",
             path_str,
@@ -46,15 +46,13 @@ pub fn edit_file(args: HashMap<String, Value>) -> anyhow::Result<Value> {
     }
 
     let new_content = original.replacen(search_str, replace_str, 1);
-    let match_type = "exact";
 
     if dry_run {
         let diff = generate_diff(&original, &new_content);
         return Ok(json!({
             "dry_run": true,
-            "match_type": match_type,
             "diff": diff,
-            "message": format!("Dry run complete ({} match). No changes written.", match_type)
+            "message": "Dry run complete. No changes written."
         }));
     }
 
@@ -62,9 +60,8 @@ pub fn edit_file(args: HashMap<String, Value>) -> anyhow::Result<Value> {
 
     Ok(json!({
         "success": true,
-        "match_type": match_type,
         "path": path_str,
-        "message": format!("File edited successfully ({} match).", match_type)
+        "message": "File edited successfully."
     }))
 }
 
