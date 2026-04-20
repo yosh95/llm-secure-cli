@@ -300,6 +300,14 @@ async fn main() {
 
     if let Some(mut client) = client {
         client.get_state_mut().live_debug = args.debug;
+
+        if let Some(session_path) = args.session {
+            match client.load_session(&session_path) {
+                Ok(_) => ui::report_success(&format!("Session loaded from {}", session_path)),
+                Err(e) => ui::report_error(&format!("Failed to load session: {}", e)),
+            }
+        }
+
         let mut session = ChatSession::new(client);
 
         let mut all_sources = args.sources;
