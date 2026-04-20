@@ -2,7 +2,7 @@ use colored::*;
 use console::Term;
 use std::io::{self, Read, Write};
 use termimad::crossterm::style::Color::*;
-use termimad::{rgb, FmtText, MadSkin, StyledChar};
+use termimad::{rgb, MadSkin, StyledChar};
 use textwrap::wrap;
 
 pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
@@ -26,8 +26,7 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
     skin.quote_mark.set_fg(Yellow);
 
     // Use the calculated width for wrapping
-    let fmt_text = FmtText::from_text(&skin, content.trim().into(), Some(width));
-    print!("{}", fmt_text);
+    skin.print_text(content.trim());
 
     if title.is_some() {
         let rule_color = style.unwrap_or("cyan");
