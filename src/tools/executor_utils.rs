@@ -63,5 +63,5 @@ pub fn create_error_response(ctx: &ToolExecutionContext) -> MessagePart {
 }
 
 pub fn print_tool_output(res_str: &str) {
-    crate::cli::ui::print_block(res_str, Some("[OK] Tool Output"), Some("green"));
+    crate::cli::ui::print_block(res_str, Some("[OK] Tool Output"), Some("bright_green"));
 }

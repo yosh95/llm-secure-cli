@@ -52,7 +52,7 @@ pub async fn run_benchmark(provider: &str, model: &str, iterations: u32) {
     let min_latency = latencies.iter().fold(f64::INFINITY, |a, &b| a.min(b));
     let max_latency = latencies.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
 
-    println!("\n{}", "SUCCESS Benchmark Results:".green().bold());
+    println!("\n{}", "SUCCESS Benchmark Results:".bright_green().bold());
     println!("  Average Latency: {:.2}s", avg_latency);
     println!("  Min Latency:     {:.2}s", min_latency);
     println!("  Max Latency:     {:.2}s", max_latency);

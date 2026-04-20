@@ -94,7 +94,7 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             } else {
                 for line in diff {
                     if line.starts_with('+') && !line.starts_with("+++") {
-                        println!("        {}", line.green());
+                        println!("        {}", line.bright_green());
                     } else if line.starts_with('-') && !line.starts_with("---") {
                         println!("        {}", line.red());
                     } else if !line.starts_with("@@")
@@ -161,8 +161,8 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
 }
 
 pub fn print_tool_result(result: &str) {
-    let color = "green";
-    println!("  {}", "── Result ──".color(color).dimmed());
+    let color = "bright_green";
+    println!("  {}", "── Result ──".color(color).bold());
 
     // Try to parse as JSON for pretty printing
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(result) {
@@ -172,7 +172,11 @@ pub fn print_tool_result(result: &str) {
             v.get("stderr").and_then(|v| v.as_str()),
             v.get("exit_code").and_then(|v| v.as_i64()),
         ) {
-            let status_color = if exit_code == 0 { "green" } else { "red" };
+            let status_color = if exit_code == 0 {
+                "bright_green"
+            } else {
+                "red"
+            };
             println!(
                 "    {} {}",
                 "Exit Code:".bold(),
@@ -380,7 +384,7 @@ pub fn report_warning(message: &str) {
 }
 
 pub fn report_success(message: &str) {
-    println!("{} {}", "OK".green().bold(), message.green());
+    println!("{} {}", "OK".bright_green().bold(), message.bright_green());
 }
 
 fn format_size_brief(bytes: u64) -> String {
@@ -404,7 +408,7 @@ pub fn ask_confirm(prompt: &str) -> bool {
         if let Ok(key) = term.read_char() {
             match key {
                 'y' | 'Y' | 'ｙ' | 'Ｙ' => {
-                    println!("{}", "yes".green());
+                    println!("{}", "yes".bright_green());
                     return true;
                 }
                 'n' | 'N' | 'ｎ' | 'Ｎ' | '\r' | '\n' => {
