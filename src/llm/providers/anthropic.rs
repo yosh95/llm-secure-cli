@@ -266,11 +266,21 @@ impl LlmClient for ClaudeClient {
             .send()
             .await?;
 
+        let status = res.status();
         let res_json: Value = res.json().await?;
         log::debug!(
-            "Anthropic Response: {}",
+            "Anthropic Response ({}): {}",
+            status,
             serde_json::to_string_pretty(&res_json).unwrap_or_default()
         );
+
+        if !status.is_success() {
+            if let Some(err) = res_json.get("error") {
+                return Err(anyhow::anyhow!("Anthropic API error ({}): {}", status, err));
+            } else {
+                return Err(anyhow::anyhow!("Anthropic API error ({}): {}", status, res_json));
+            }
+        }
 
         let mut full_text = String::new();
         let mut thought_text = String::new();

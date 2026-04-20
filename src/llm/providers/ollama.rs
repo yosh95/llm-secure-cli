@@ -112,13 +112,28 @@ impl LlmClient for OllamaClient {
             .send()
             .await?;
 
+        let status = res.status();
         let res_json: serde_json::Value = res.json().await?;
         log::debug!(
-            "Ollama Response: {}",
+            "Ollama Response ({}): {}",
+            status,
             serde_json::to_string_pretty(&res_json).unwrap_or_default()
         );
 
-        let text = res_json["choices"][0]["message"]["content"]
+        if !status.is_success() {
+            if let Some(err) = res_json.get("error") {
+                return Err(anyhow::anyhow!("Ollama API error ({}): {}", status, err));
+            } else {
+                return Err(anyhow::anyhow!("Ollama API error ({}): {}", status, res_json));
+            }
+        }
+
+        let choices = res_json.get("choices").and_then(|v| v.as_array());
+        let Some(choice) = choices.and_then(|c| c.first()) else {
+            return Err(anyhow::anyhow!("Invalid response from Ollama: no choices"));
+        };
+
+        let text = choice["message"]["content"]
             .as_str()
             .map(|s| s.to_string());
 

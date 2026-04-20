@@ -334,14 +334,20 @@ impl LlmClient for OpenAiClient {
             .send()
             .await?;
 
+        let status = res.status();
         let res_json: serde_json::Value = res.json().await?;
         log::debug!(
-            "OpenAI Response: {}",
+            "OpenAI Response ({}): {}",
+            status,
             serde_json::to_string_pretty(&res_json).unwrap_or_default()
         );
 
-        if let Some(err) = res_json.get("error") {
-            return Err(anyhow::anyhow!("OpenAI API error: {}", err));
+        if !status.is_success() {
+            if let Some(err) = res_json.get("error") {
+                return Err(anyhow::anyhow!("OpenAI API error ({}): {}", status, err));
+            } else {
+                return Err(anyhow::anyhow!("OpenAI API error ({}): {}", status, res_json));
+            }
         }
 
         let choice = &res_json["choices"][0];
