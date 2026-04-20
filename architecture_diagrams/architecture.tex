@@ -66,9 +66,9 @@
     % --- Level 6: External Tools ---
     % Center the group of 4 tools by placing the middle two symmetrically
     \node [tool, anchor=north east, xshift=-0.2cm] (web) at ($(executor.south) + (0,-1.2)$) {Web Search};
-    \node [tool, anchor=north west, xshift=0.2cm] (python) at ($(executor.south) + (0,-1.2)$) {Python Env};
+    \node [tool, anchor=north west, xshift=0.2cm] (shell) at ($(executor.south) + (0,-1.2)$) {Shell};
     \node [tool, left=0.4cm of web] (file) {File Ops};
-    \node [tool, right=0.4cm of python] (mcp) {MCP Servers};
+    \node [tool, right=0.4cm of shell] (mcp) {MCP Servers};
 
     % --- Connections ---
     \draw [->, thick] (user) -- (prompt);
@@ -87,7 +87,7 @@
     
     \draw [->, thick] (executor) -- (file);
     \draw [->, thick] (executor) -- (web);
-    \draw [->, thick] (executor) -- (python);
+    \draw [->, thick] (executor) -- (shell);
     \draw [->, thick] (executor) -- (mcp);
 
     % Feedback Loop
