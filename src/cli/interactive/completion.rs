@@ -1,6 +1,6 @@
 use rustyline::completion::{Completer, FilenameCompleter, Pair};
 use rustyline::error::ReadlineError;
-use rustyline::highlight::Highlighter;
+use rustyline::highlight::{CmdKind, Highlighter};
 use rustyline::hint::Hinter;
 use rustyline::validate::Validator;
 use rustyline::Context;
@@ -151,8 +151,56 @@ impl Hinter for ChatCompleter {
     type Hint = String;
 }
 
-impl Highlighter for ChatCompleter {}
+impl Highlighter for ChatCompleter {
+    fn highlight<'l>(&self, line: &'l str, _pos: usize) -> std::borrow::Cow<'l, str> {
+        if line.starts_with('/') {
+            let parts: Vec<&str> = line.splitn(2, ' ').collect();
+            let cmd = parts[0];
+            if self.commands.contains(&cmd) {
+                let mut highlighted = line.to_string();
+                // Use ANSI codes directly to avoid conflicts with rustyline's own handling
+                // \x1b[1;36m is bold cyan, \x1b[0m is reset
+                let colored_cmd = format!("\x1b[1;34m{}\x1b[0m", cmd);
+                highlighted = highlighted.replacen(cmd, &colored_cmd, 1);
+                return std::borrow::Cow::Owned(highlighted);
+            }
+        }
 
-impl Validator for ChatCompleter {}
+        // Basic highlighting for markdown-style code blocks in input
+        if line.contains("```") {
+            let mut highlighted = line.to_string();
+            highlighted = highlighted.replace("```", "\x1b[1;33m```\x1b[0m");
+            return std::borrow::Cow::Owned(highlighted);
+        }
+
+        std::borrow::Cow::Borrowed(line)
+    }
+
+    fn highlight_char(&self, _line: &str, _pos: usize, _forced: CmdKind) -> bool {
+        true
+    }
+}
+
+impl Validator for ChatCompleter {
+    fn validate(
+        &self,
+        ctx: &mut rustyline::validate::ValidationContext,
+    ) -> rustyline::Result<rustyline::validate::ValidationResult> {
+        let input = ctx.input();
+
+        // Simple check for unclosed code blocks
+        let backtick_count = input.matches("```").count();
+        if !backtick_count.is_multiple_of(2) {
+            return Ok(rustyline::validate::ValidationResult::Incomplete);
+        }
+
+        // Allow explicit newline continuation with \
+        if input.ends_with('\\') {
+            return Ok(rustyline::validate::ValidationResult::Incomplete);
+        }
+
+        Ok(rustyline::validate::ValidationResult::Valid(None))
+    }
+}
 
 impl Helper for ChatCompleter {}

@@ -6,7 +6,7 @@ use crate::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
 use crate::security::runtime::{get_runtime, SecureRuntime, Task, TaskStatus};
 use rustyline::error::ReadlineError;
 use rustyline::history::FileHistory;
-use rustyline::Editor;
+use rustyline::{Cmd, Editor, KeyCode, KeyEvent, Modifiers};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -139,15 +139,34 @@ impl ChatSession {
         println!("Use Ctrl+C or /q to exit, /h for help.");
 
         let current_provider = Arc::new(Mutex::new(self.client.get_state().provider.clone()));
-        let mut rl = Editor::<ChatCompleter, FileHistory>::new().expect("Failed to create editor");
+
+        // Configure rustyline for a more "rich" experience
+        let config = rustyline::Config::builder()
+            .history_ignore_space(true)
+            .completion_type(rustyline::CompletionType::List)
+            .edit_mode(rustyline::EditMode::Emacs)
+            .bracketed_paste(true)
+            .build();
+
+        let mut rl = Editor::<ChatCompleter, FileHistory>::with_config(config)
+            .expect("Failed to create editor");
         rl.set_helper(Some(ChatCompleter::new(current_provider.clone())));
+
+        // Bindings to improve multi-line and history navigation
+        // Up/Down now jump between history entries even if they are multi-line
+        rl.bind_sequence(KeyEvent(KeyCode::Up, Modifiers::NONE), Cmd::PreviousHistory);
+        rl.bind_sequence(KeyEvent(KeyCode::Down, Modifiers::NONE), Cmd::NextHistory);
+        // Alt-Enter (or Esc-Enter) for inserting a new line without submitting
+        rl.bind_sequence(KeyEvent(KeyCode::Enter, Modifiers::ALT), Cmd::Newline);
+        // Ctrl-Up/Down for navigating between lines within a multi-line entry
+        rl.bind_sequence(KeyEvent(KeyCode::Up, Modifiers::CTRL), Cmd::PreviousHistory);
+        rl.bind_sequence(KeyEvent(KeyCode::Down, Modifiers::CTRL), Cmd::NextHistory);
 
         if let Some(parent) = HISTORY_LOG_PATH.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         let _ = rl.load_history(&*HISTORY_LOG_PATH);
 
-        let mut line_buffer = Vec::new();
         let mut next_initial_text: Option<String> = None;
 
         loop {
@@ -160,33 +179,12 @@ impl ChatSession {
             let readline = if let Some(initial) = next_initial_text.take() {
                 rl.readline_with_initial("> ", (&initial, ""))
             } else {
-                let prompt = if line_buffer.is_empty() { "> " } else { ">> " };
-                rl.readline(prompt)
+                rl.readline("> ")
             };
 
             match readline {
                 Ok(line) => {
-                    let trimmed = line.trim();
-                    if trimmed.is_empty() && line_buffer.is_empty() {
-                        continue;
-                    }
-
-                    // Check for line continuation
-                    if let Some(stripped) = trimmed.strip_suffix('\\') {
-                        line_buffer.push(stripped.to_string());
-                        continue;
-                    }
-
-                    let full_line = if line_buffer.is_empty() {
-                        trimmed.to_string()
-                    } else {
-                        line_buffer.push(trimmed.to_string());
-                        let combined = line_buffer.join("\n");
-                        line_buffer.clear();
-                        combined
-                    };
-
-                    let final_trimmed = full_line.trim();
+                    let final_trimmed = line.trim().to_string();
                     if final_trimmed.is_empty() {
                         continue;
                     }
@@ -195,17 +193,17 @@ impl ChatSession {
                     let (content, should_continue) =
                         match crate::cli::interactive::dispatcher::handle_command(
                             self,
-                            final_trimmed,
+                            &final_trimmed,
                         )
                         .await
                         {
                             crate::cli::interactive::dispatcher::CommandResult::Exit => break,
                             crate::cli::interactive::dispatcher::CommandResult::Handled => {
-                                let _ = rl.add_history_entry(final_trimmed);
+                                let _ = rl.add_history_entry(&final_trimmed);
                                 (None, true)
                             }
                             crate::cli::interactive::dispatcher::CommandResult::NotACommand => {
-                                (Some(final_trimmed.to_string()), false)
+                                (Some(final_trimmed.clone()), false)
                             }
                             crate::cli::interactive::dispatcher::CommandResult::Input(text) => {
                                 next_initial_text = Some(text);
@@ -217,7 +215,7 @@ impl ChatSession {
                         continue;
                     }
 
-                    let _ = rl.add_history_entry(final_trimmed);
+                    let _ = rl.add_history_entry(&final_trimmed);
                     let final_content = content.unwrap_or_else(|| final_trimmed.to_string());
 
                     if self.intent.is_empty() {
