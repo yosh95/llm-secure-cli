@@ -1,7 +1,5 @@
 # llm-secure-cli: A Unified Terminal Interface for Multiple LLMs
 
-![CI](https://github.com/yosh95/llm-secure-cli-rust/actions/workflows/ci.yml/badge.svg?branch=main)
-
 `llm-secure-cli` (binary name: `llsc`) is a high-assurance command-line tool designed for interacting with Large Language Models (LLMs). It provides a unified, stable interface for Gemini, OpenAI, Claude, and local models via Ollama, prioritizing cognitive focus, secure execution, and extensible automation.
 
 [English] | [日本語](#japanese-description)
@@ -27,7 +25,7 @@ The accompanying [Technical Report](paper/comprehensive_framework/paper.pdf) det
 ---
 
 <p align="center">
-  <img src="images/architecture_diagram_simple.png" width="800" alt="llm-secure-cli Simplified Architecture Flow" />
+  <img src="images/architecture.png" width="800" alt="llm-secure-cli Simplified Architecture Flow" />
   <br>
   <em>Simplified Architecture Flow</em>
 </p>
@@ -225,7 +223,7 @@ For detailed architectural insights and the academic background of our security 
 ---
 
 <p align="center">
-  <img src="images/architecture_diagram_simple.png" width="800" alt="llm-secure-cli 簡易アーキテクチャフロー" />
+  <img src="images/architecture.png" width="800" alt="llm-secure-cli 簡易アーキテクチャフロー" />
   <br>
   <em>簡易アーキテクチャフロー (TikZ版)</em>
 </p>
