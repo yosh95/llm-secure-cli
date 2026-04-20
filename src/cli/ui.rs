@@ -33,8 +33,6 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
         let rule_color = style.unwrap_or("cyan");
         let rule = "─".repeat(width);
         println!("{}", rule.color(rule_color));
-    } else {
-        println!();
     }
 }
 
