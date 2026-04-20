@@ -135,7 +135,7 @@ The verifier also implements \textbf{Context-Aware Verification} by receiving th
 
 The \textbf{Soft-Failure} path distinguishes two failure modes: (1) \textit{Infrastructure failures}, where the verifier is unreachable or misconfigured (e.g., missing API key, unknown provider), and (2) \textit{Uncertain verdicts}, where the confidence score falls below the threshold. Both are treated as soft failures and route to HITL review rather than a hard block, ensuring the system degrades gracefully. Only an \textit{active rejection} (high-confidence \texttt{safe=false}) constitutes a Hard Block. This three-way distinction---Verified / Uncertain (HITL) / Rejected---ensures that the system remains safe even when the verifier model itself is ambiguous or temporarily unavailable.
 
-From an implementation perspective, this dual verification is performed concurrently with the user's review of the tool's rationale. By overlapping the verification latency with the human-in-the-loop stage, the framework effectively masks the computational overhead of the intent check. This approach ensures that the additional security layer does not introduce perceptible delays in the agent-user interaction loop.
+From an implementation perspective, this dual verification is performed using **Native Tool Calling (Function Calling)**. By forcing the verifier LLM to provide its verdict through a structured schema (\texttt{safe: boolean}, \texttt{confidence: float}, \texttt{reason: string}), the framework eliminates the brittleness associated with parsing unstructured text and mitigates "Format Hijacking" attacks where an adversary attempts to manipulate the verification output format itself. This structured verdict is performed concurrently with the user's review of the tool's rationale. By overlapping the verification latency with the human-in-the-loop stage, the framework effectively masks the computational overhead of the intent check.
 
 \subsection{White-box Agency: Cognitive Synchronization}
 Traditional Human-in-the-Loop (HITL) is often viewed as a bottleneck. We redefine it as \textbf{White-box Agency}, where the agent must present its "Internal Monologue" and justification before execution. Every tool call mandates an \texttt{explanation} parameter, serving two purposes:
@@ -307,27 +307,27 @@ TC8 & Malicious (Persistence) &
 
 As shown in Table~\ref{tab:dual_llm_perf}, all three providers achieved 100\% classification accuracy across the test suite. TC1--TC5 (benign) were correctly \emph{allowed} (false positive rate = 0/5 = 0\%), while TC6--TC10 (adversarial) were correctly \emph{blocked} (detection rate = 5/5 = 100\%).
 
-Mean latency was broadly consistent with previous measurements, as cloud API round-trip time dominates over local processing differences. On the reference environment, mean latencies were $\approx$1297\,ms (Google), $\approx$1467\,ms (OpenAI), and $\approx$1295\,ms (Anthropic) (Table~\ref{tab:dual_llm_perf}). As the verification process runs concurrently with the user's cognitive review of the tool's explanation, the measured latency is effectively masked within the manual oversight window.
+Mean latency has slightly increased due to the structured output (Function Calling) overhead, but it remains well within the HITL masking window. On the reference environment, latencies ranged from $\approx$1226\,ms (Google) to $\approx$2574\,ms (Google) depending on prompt complexity, with OpenAI and Anthropic showing consistent performance around 1.7--2.4\,s (Table~\ref{tab:dual_llm_perf}). The transition to structured output has eliminated all previous "Parse Error" failures, achieving 100\% structural consistency across all test runs.
 
 \begin{table}[htbp]
-\caption{Dual LLM Verification Performance (n=3).
-Acc.: 100\% (based on test suite). Latencies represent stable subsequent calls.}
+\caption{Dual LLM Verification Performance (Function Calling).
+Acc.: 100\% (based on test suite). Latency ranges represent wall-clock measurements.}
 \begin{center}
 \begin{tabularx}{\columnwidth}{|l|l|C|C|}
 \hline
 \textbf{Provider} & \textbf{Model} & \textbf{Acc.} &
   \textbf{Latency (ms)} \\
 \hline
-Google    & Gemini 3.1 Flash-Lite & 100\% & $\approx$1297 \\
-OpenAI    & GPT-5.4 Nano          & 100\% & $\approx$1467 \\
-Anthropic & Claude Haiku 4.5      & 100\% & $\approx$1295 \\
+Google    & Gemini 3.1 Flash-Lite & 100\% & 1226 -- 2574 \\
+OpenAI    & GPT-5.4 Mini          & 100\% & 1739 -- 2352 \\
+Anthropic & Claude Haiku 4.5      & 100\% & 1781 -- 2225 \\
 \hline
 \end{tabularx}
 \label{tab:dual_llm_perf}
 \end{center}
 \end{table}
 
-{\small\textit{Reproducibility note:} Dual LLM latency figures represent the mean of 10 single-pass wall-clock measurements per provider from a residential broadband connection. Local PQC primitive latencies were obtained from the Rust benchmark suite (\texttt{tests/benchmarks.rs}) under the ChromeOS Flex configuration described above. Model version identifiers correspond to the API snapshots available as of April 2026.}
+{\small\textit{Reproducibility note:} Dual LLM latency figures represent the range of 10 single-pass wall-clock measurements per provider from a residential broadband connection. Local PQC primitive latencies were obtained from the Rust benchmark suite (\texttt{src/bin/benchmark\_local.rs}) under the ChromeOS Flex configuration described above. Model version identifiers correspond to the API snapshots available as of April 2026.}
 
 \section{Conclusion}
 Securing autonomous agents requires a transition from probabilistic "alignment" to a deterministic, human-centric framework. By integrating Structural Guardrails, White-box Agency, and a Dual-Layered PQC Audit architecture, our reference framework demonstrates how AI agency can remain transparent, verifiable, and resilient. The transition to a Rust-based implementation has further reduced security overhead to negligible levels ($<$2\,ms), ensuring that robust defense-in-depth does not compromise user experience.

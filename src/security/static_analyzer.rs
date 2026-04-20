@@ -1,6 +1,12 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+/// StaticAnalyzer provides a "Fast Fail" mechanism for deterministic security blocks.
+///
+/// Unlike the Dual LLM Verifier, which uses probabilistic reasoning, this analyzer
+/// blocks clearly dangerous patterns with zero latency. It is not intended to be
+/// a comprehensive sandbox, but rather a first line of defense to reduce the
+/// cognitive load on the Dual LLM and the human-in-the-loop.
 pub struct StaticAnalyzer;
 
 #[derive(Debug)]

@@ -2,9 +2,7 @@ use llm_secure_cli::security::pqc::{MldsaVariant, MlkemVariant, PqcProvider};
 use llm_secure_cli::security::static_analyzer::StaticAnalyzer;
 use std::time::Instant;
 
-#[test]
-#[ignore]
-fn benchmark_local_primitives() {
+fn main() {
     println!("\n=== Rust Local Primitives Benchmark ===");
 
     // 1. Static Analysis

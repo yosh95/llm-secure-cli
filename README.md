@@ -50,7 +50,8 @@ The accompanying [Technical Report](paper/comprehensive_framework/paper.pdf) det
 2.  **Set API Keys**: `llsc` requires API keys to be set as environment variables.
     ```bash
     export GEMINI_API_KEY="your-api-key"
-    # Supported: GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, OLLAMA_API_KEY
+    # Supported: GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY
+    # Ollama: No API key required for local use.
     ```
 3.  **Chat**: Type `llsc` to start an interactive session.
     *   **Automatic Initialization**: On the first run, `~/.llm_secure_cli/config.toml` is automatically created.
@@ -79,6 +80,7 @@ llsc "Analyze this website" https://example.com
 
 - **Unified Provider Access**: Seamlessly switch between Google (Gemini), OpenAI, Anthropic (Claude), and **Local LLMs (Ollama)**.
 - **Autonomous Agent**: Let the AI manage files and search the web using **Provider-Native Search** (Gemini Grounding, OpenAI/Claude Web Search) or **Brave Search**.
+- **High-Assurance via Dual LLM**: Every high-risk tool call is verified by a secondary LLM to ensure intent alignment, balancing flexibility and security.
 - **Config-free Execution**: Start using immediately by just providing an environment variable.
 - **MCP (Model Context Protocol) Support**: Connect to remote resources or services via custom servers configured in `config.toml`.
 - **Multimodal capabilities**: Support for Images, PDFs, Audio, and Video. Image generation is also supported for compatible models.
@@ -184,6 +186,17 @@ llsc-security manifest   # Rebuild integrity manifest for remote attestation
 llsc-security decrypt-log ~/.llm_secure_cli/audit.jsonl -o decrypted.jsonl
 ```
 
+## Development & Benchmarks
+To run the local security primitive benchmarks (Static Analysis, PQC Keygen/Sign/Verify):
+```bash
+cargo run --bin benchmark_local
+```
+
+To run the Dual LLM verification latency benchmarks (requires API keys):
+```bash
+cargo run --bin benchmark_dual_llm
+```
+
 ##  License
 Licensed under [Apache License 2.0](LICENSE). 
 
@@ -243,7 +256,8 @@ For detailed architectural insights and the academic background of our security 
 2.  **APIキーの設定**: APIキーを環境変数として設定します。
     ```bash
     export GEMINI_API_KEY="your-api-key"
-    # 対応: GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, OLLAMA_API_KEY
+    # 対応: GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY
+    # Ollama: ローカル利用の場合、APIキーは不要です。
     ```
 3.  **対話開始**: `llsc` コマンドでスタート。
     *   **設定の自動生成**: 初回起動時に `~/.llm_secure_cli/config.toml` が自動的に作成されます。
@@ -272,6 +286,7 @@ llsc "このWebサイトを解析して" https://example.com
 
 - **統合インターフェース**: `llsc` コマンド一つで主要なクラウドLLMと **Ollama (Local)** にアクセス。
 - **自律型エージェント**: ファイル操作、Web検索、URL解析をAIが自律的に実行。Web検索はプロバイダー提供の**ネイティブ検索機能**（Gemini Grounding, OpenAI/Claude Web Search等）または **Brave Search** を使用します。
+- **Dual LLM による高保証**: 全ての高リスクなツール実行はセカンダリLLMによって検証され、柔軟性と安全性を両立しています。
 - **設定不要の即時利用**: 環境変数を設定するだけで、セットアップの手間なく利用可能。
 - **MCP (Model Context Protocol) 対応**: `config.toml` に設定されたリモートサーバーや外部サービスとの連携をサポート。
 - **マルチモーダル対応**: 画像、PDF、音声、動画の入力をサポート。対応モデルでの画像生成も可能。
@@ -374,6 +389,17 @@ llsc-security keygen     # RSA および PQC (ML-DSA/ML-KEM) 鍵ペアの生成
 llsc-security manifest   # リモートアテステーションのための整合性マニフェストの再構築
 decrypted.jsonl
 llsc-security decrypt-log ~/.llm_secure_cli/audit.jsonl -o decrypted.jsonl
+```
+
+## 開発とベンチマーク
+ローカルのセキュリティプリミティブ（静的解析、PQC鍵生成/署名/検証）のベンチマークを実行するには：
+```bash
+cargo run --bin benchmark_local
+```
+
+Dual LLM 検証のレイテンシベンチマークを実行するには（APIキーが必要）：
+```bash
+cargo run --bin benchmark_dual_llm
 ```
 
 ##  ライセンス

@@ -19,6 +19,13 @@ pub trait LlmClient: Send + Sync {
         data: Vec<DataSource>,
     ) -> anyhow::Result<(Option<String>, Option<String>)>;
 
+    /// Send a request specifically for verification purposes, forcing a structured tool call response.
+    async fn send_as_verifier(
+        &mut self,
+        data: Vec<DataSource>,
+        tool_schema: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value>;
+
     fn load_session(&mut self, path: &str) -> anyhow::Result<()> {
         let file = std::fs::File::open(path)?;
         let conversation: Vec<crate::llm::models::Message> = serde_json::from_reader(file)?;

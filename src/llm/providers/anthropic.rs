@@ -382,4 +382,72 @@ impl LlmClient for ClaudeClient {
             },
         ))
     }
+
+    async fn send_as_verifier(
+        &mut self,
+        data: Vec<DataSource>,
+        tool_schema: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        let messages = self.build_messages(&data);
+        let tool_name = tool_schema["name"].as_str().unwrap_or("verify").to_string();
+
+        // Convert common parameter format to Anthropic's input_schema
+        let mut anthropic_tool = tool_schema.clone();
+        if let Some(params) = anthropic_tool.as_object_mut() {
+            if let Some(p) = params.remove("parameters") {
+                params.insert("input_schema".to_string(), p);
+            }
+        }
+
+        let mut payload = json!({
+            "model": self.base.state.model,
+            "max_tokens": 1024,
+            "messages": messages,
+            "tools": [anthropic_tool],
+            "tool_choice": {
+                "type": "tool",
+                "name": tool_name
+            }
+        });
+
+        if let Some(sp) = &self.base.state.system_prompt {
+            if !sp.is_empty() {
+                payload["system"] = json!([{"type": "text", "text": sp}]);
+            }
+        }
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(key) = &self.base.api_key {
+            headers.insert("x-api-key", key.parse()?);
+        }
+        headers.insert("anthropic-version", "2023-06-01".parse()?);
+
+        let res = HTTP_CLIENT
+            .post(&self.api_url)
+            .headers(headers)
+            .json(&payload)
+            .send()
+            .await?;
+
+        if !res.status().is_success() {
+            let res_json: serde_json::Value = res.json().await?;
+            return Err(anyhow::anyhow!("Anthropic verifier error: {}", res_json));
+        }
+
+        let res_json: serde_json::Value = res.json().await?;
+        let input = res_json["content"]
+            .as_array()
+            .and_then(|content| {
+                content.iter().find_map(|block| {
+                    if block["type"] == "tool_use" {
+                        Some(block["input"].clone())
+                    } else {
+                        None
+                    }
+                })
+            })
+            .ok_or_else(|| anyhow::anyhow!("No tool use in Anthropic response"))?;
+
+        Ok(input)
+    }
 }

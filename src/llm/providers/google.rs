@@ -404,4 +404,62 @@ impl LlmClient for GeminiClient {
             },
         ))
     }
+
+    async fn send_as_verifier(
+        &mut self,
+        data: Vec<DataSource>,
+        tool_schema: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        let contents = self.build_contents(&data);
+        let tool_name = tool_schema["name"].as_str().unwrap_or("verify").to_string();
+
+        let mut payload = json!({
+            "contents": contents,
+            "tools": [{
+                "function_declarations": [tool_schema]
+            }],
+            "tool_config": {
+                "function_calling_config": {
+                    "mode": "ANY",
+                    "allowed_function_names": [tool_name]
+                }
+            }
+        });
+
+        // Add system prompt if available
+        if let Some(sp) = &self.base.state.system_prompt {
+            if !sp.is_empty() {
+                payload["system_instruction"] = json!({
+                    "parts": [{"text": sp}]
+                });
+            }
+        }
+
+        let url = self.get_api_url();
+        let key = self.base.api_key.as_deref().unwrap_or("");
+
+        let res = HTTP_CLIENT
+            .post(&url)
+            .header("x-goog-api-key", key)
+            .json(&payload)
+            .send()
+            .await?;
+
+        if !res.status().is_success() {
+            let res_json: serde_json::Value = res.json().await?;
+            return Err(anyhow::anyhow!("Gemini verifier error: {}", res_json));
+        }
+
+        let res_json: serde_json::Value = res.json().await?;
+        let args = res_json["candidates"][0]["content"]["parts"]
+            .as_array()
+            .and_then(|parts| {
+                parts
+                    .iter()
+                    .find_map(|p| p.get("functionCall")?.get("args"))
+            })
+            .ok_or_else(|| anyhow::anyhow!("No function call args in Gemini response"))?;
+
+        Ok(args.clone())
+    }
 }

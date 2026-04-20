@@ -281,7 +281,7 @@ async fn main() {
             println!("  - GEMINI_API_KEY (or GOOGLE_API_KEY)");
             println!("  - OPENAI_API_KEY");
             println!("  - ANTHROPIC_API_KEY");
-            println!("  - OLLAMA_API_KEY (required for remote Ollama)");
+            println!("  - Ollama: No API key required for local use.");
             process::exit(1);
         }
     }

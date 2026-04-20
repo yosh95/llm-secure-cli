@@ -21,7 +21,7 @@ max_audit_archives = 10
 #   - OpenAI:       OPENAI_API_KEY
 #   - Anthropic:    ANTHROPIC_API_KEY
 #   - Google/Gemini: GEMINI_API_KEY (or GOOGLE_API_KEY)
-#   - Ollama:       OLLAMA_API_KEY (required even for local usage)
+#   - Ollama:       No API key required for local usage.
 
 # Security Level (high | standard)
 # - high (default): Strict PQC enforcement for all high-risk tool calls.

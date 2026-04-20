@@ -149,4 +149,68 @@ impl LlmClient for OllamaClient {
 
         Ok((text, None))
     }
+
+    async fn send_as_verifier(
+        &mut self,
+        data: Vec<DataSource>,
+        tool_schema: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        let messages = self.build_messages(&data);
+        let tool_name = tool_schema["name"].as_str().unwrap_or("verify").to_string();
+
+        let payload = json!({
+            "model": self.base.state.model,
+            "messages": messages,
+            "tools": [{
+                "type": "function",
+                "function": tool_schema
+            }],
+            "tool_choice": {
+                "type": "function",
+                "function": { "name": tool_name }
+            },
+            "stream": false
+        });
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(key) = &self.base.api_key {
+            if key != "ollama" && key != "local_bypass" {
+                headers.insert(
+                    reqwest::header::AUTHORIZATION,
+                    format!("Bearer {}", key).parse()?,
+                );
+            }
+        }
+
+        let res = HTTP_CLIENT
+            .post(&self.api_url)
+            .headers(headers)
+            .json(&payload)
+            .send()
+            .await?;
+
+        if !res.status().is_success() {
+            let res_json: serde_json::Value = res.json().await?;
+            return Err(anyhow::anyhow!("Ollama verifier error: {}", res_json));
+        }
+
+        let res_json: serde_json::Value = res.json().await?;
+
+        // Try to extract tool calls from Ollama response (OpenAI compatible format)
+        let tool_call = res_json["choices"][0]["message"]["tool_calls"][0]["function"]
+            .as_object()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No tool call found in Ollama response. Ensure the model supports tools."
+                )
+            })?;
+
+        let args_val = &tool_call["arguments"];
+        if args_val.is_string() {
+            let args_str = args_val.as_str().unwrap();
+            Ok(serde_json::from_str(args_str)?)
+        } else {
+            Ok(args_val.clone())
+        }
+    }
 }
