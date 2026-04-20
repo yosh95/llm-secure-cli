@@ -35,27 +35,22 @@ impl StaticAnalyzer {
 
         // 2. Argument-based checks
         match command {
-            "rm" => {
+            "rm" if args
+                .iter()
+                .any(|arg| arg == "/" || arg == "/*" || arg.starts_with("/etc")) =>
+            {
+                violations.push("Destructive removal of sensitive directory".to_string());
+            }
+            "curl" | "wget"
                 if args
                     .iter()
-                    .any(|arg| arg == "/" || arg == "/*" || arg.starts_with("/etc"))
-                {
-                    violations.push("Destructive removal of sensitive directory".to_string());
-                }
-            }
-            "curl" | "wget" => {
+                    .any(|arg| arg.contains("sh") && arg.contains("|")) =>
+            {
                 // Check for piping to shell (not directly possible via argv, but check for suspicious URLs)
-                if args
-                    .iter()
-                    .any(|arg| arg.contains("sh") && arg.contains("|"))
-                {
-                    violations.push("Potential remote script execution".to_string());
-                }
+                violations.push("Potential remote script execution".to_string());
             }
-            "find" => {
-                if args.iter().any(|arg| arg == "-exec" || arg == "-delete") {
-                    violations.push("Forbidden find flags (-exec, -delete)".to_string());
-                }
+            "find" if args.iter().any(|arg| arg == "-exec" || arg == "-delete") => {
+                violations.push("Forbidden find flags (-exec, -delete)".to_string());
             }
             _ => {}
         }
