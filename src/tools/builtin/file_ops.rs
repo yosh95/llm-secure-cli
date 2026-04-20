@@ -272,6 +272,15 @@ pub fn read_file_content(args: HashMap<String, Value>) -> anyhow::Result<Value> 
     let lines: Vec<&str> = content.lines().collect();
     let start = (start_line.saturating_sub(1)).min(lines.len());
     let end = end_line.map(|e| e.min(lines.len())).unwrap_or(lines.len());
+
+    if start > end {
+        return Ok(json!(format!(
+            "Error: start_line ({}) is greater than end_line ({}).",
+            start_line,
+            end_line.unwrap_or(0)
+        )));
+    }
+
     let selected = &lines[start..end];
 
     // Enforce output limits
@@ -290,7 +299,8 @@ pub fn read_file_content(args: HashMap<String, Value>) -> anyhow::Result<Value> 
 
     // Truncate by chars if needed
     if output.len() > MAX_OUTPUT_CHARS {
-        Ok(json!(&output[..MAX_OUTPUT_CHARS]))
+        let truncated: String = output.chars().take(MAX_OUTPUT_CHARS).collect();
+        Ok(json!(truncated))
     } else {
         Ok(json!(output))
     }

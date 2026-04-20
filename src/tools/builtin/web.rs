@@ -45,12 +45,20 @@ pub fn read_url_content(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         .map(|e| e.min(total_lines))
         .unwrap_or_else(|| (from + MAX_OUTPUT_LINES).min(total_lines));
 
+    if from > to {
+        return Ok(json!(format!(
+            "Error: start_line ({}) is greater than end_line ({}).",
+            start_line,
+            end_line.unwrap_or(0)
+        )));
+    }
+
     let slice = &lines[from..to];
     let mut result_text: String = slice.join("\n");
 
     let truncated_lines = to < total_lines;
     let truncated_chars = if result_text.len() > MAX_OUTPUT_CHARS {
-        result_text.truncate(MAX_OUTPUT_CHARS);
+        result_text = result_text.chars().take(MAX_OUTPUT_CHARS).collect();
         true
     } else {
         false
