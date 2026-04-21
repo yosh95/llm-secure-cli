@@ -3,6 +3,7 @@ use crate::cli::ui;
 use crate::consts::HISTORY_LOG_PATH;
 use crate::llm::base::LlmClient;
 use crate::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
+use crate::security::merkle_anchor::SessionAnchorManager;
 use crate::security::runtime::{get_runtime, SecureRuntime, Task, TaskStatus};
 use colored::*;
 use rustyline::error::ReadlineError;
@@ -20,11 +21,34 @@ pub struct ChatSession {
     pub trace_id: String,
 }
 
+impl Drop for ChatSession {
+    fn drop(&mut self) {
+        // Automatically create a PQC-signed session anchor when the session object is destroyed.
+        // This ensures the session appears in 'llsc identity list-sessions'.
+        let _ = SessionAnchorManager::create_anchor(&self.trace_id);
+    }
+}
+
 impl ChatSession {
     pub fn new(client: Box<dyn LlmClient>) -> Self {
         let config = crate::config::CONFIG_MANAGER.get_config();
         let runtime = get_runtime(&config.security.runtime_type);
         let trace_id = format!("sess-{}", &uuid::Uuid::new_v4().to_string()[..8]);
+
+        // Log session initialization for anchoring
+        crate::security::audit::log_audit(
+            "session_start",
+            "session",
+            serde_json::json!({}),
+            None,
+            None,
+            None,
+            Some(&serde_json::json!({
+                "trace_id": trace_id,
+                "model": client.get_state().model,
+                "user_id": "current_user"
+            })),
+        );
 
         Self {
             client,
@@ -598,6 +622,7 @@ impl ChatSession {
                                                 "user_id": "current_user"
                                             });
                                             crate::security::audit::log_audit(
+                                                "tool_call",
                                                 name,
                                                 serde_json::json!(args),
                                                 v.as_str(),
@@ -614,6 +639,7 @@ impl ChatSession {
                                                 "user_id": "current_user"
                                             });
                                             crate::security::audit::log_audit(
+                                                "tool_call",
                                                 name,
                                                 serde_json::json!(args),
                                                 None,

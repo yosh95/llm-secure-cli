@@ -108,6 +108,7 @@ fn test_audit_hash_chaining() {
     // Call log_audit twice.
     // The second call should pick up the hash of the first call as its prev_hash.
     log_audit(
+        "tool_call",
         "test_tool",
         serde_json::json!({}),
         None,
@@ -116,6 +117,7 @@ fn test_audit_hash_chaining() {
         None,
     );
     log_audit(
+        "tool_call",
         "test_tool",
         serde_json::json!({}),
         None,

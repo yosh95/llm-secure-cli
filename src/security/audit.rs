@@ -32,6 +32,7 @@ pub struct AuditEntry {
 }
 
 pub fn log_audit(
+    event_type: &str,
     tool_name: &str,
     args: serde_json::Value,
     output: Option<&str>,
@@ -96,7 +97,7 @@ pub fn log_audit(
         subject,
         audience,
         model,
-        event_type: "tool_call".to_string(),
+        event_type: event_type.to_string(),
         tool: tool_name.to_string(),
         args: final_args,
         pqc_confidential: pqc_encrypted,
