@@ -17,12 +17,14 @@ pub struct ChatSession {
     pub pending_data: Vec<DataSource>,
     pub pending_tasks: Vec<Task>,
     pub runtime: Box<dyn SecureRuntime>,
+    pub trace_id: String,
 }
 
 impl ChatSession {
     pub fn new(client: Box<dyn LlmClient>) -> Self {
         let config = crate::config::CONFIG_MANAGER.get_config();
         let runtime = get_runtime(&config.security.runtime_type);
+        let trace_id = format!("sess-{}", &uuid::Uuid::new_v4().to_string()[..8]);
 
         Self {
             client,
@@ -30,6 +32,7 @@ impl ChatSession {
             pending_data: Vec::new(),
             pending_tasks: Vec::new(),
             runtime,
+            trace_id,
         }
     }
 
@@ -590,7 +593,7 @@ impl ChatSession {
                                     match result {
                                         Ok(v) => {
                                             let audit_ctx = serde_json::json!({
-                                                "trace_id": id,
+                                                "trace_id": self.trace_id,
                                                 "model": self.client.get_state().model,
                                                 "user_id": "current_user"
                                             });
@@ -606,7 +609,7 @@ impl ChatSession {
                                         }
                                         Err(e) => {
                                             let audit_ctx = serde_json::json!({
-                                                "trace_id": id,
+                                                "trace_id": self.trace_id,
                                                 "model": self.client.get_state().model,
                                                 "user_id": "current_user"
                                             });

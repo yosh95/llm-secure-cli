@@ -80,7 +80,7 @@ pub fn run_verify_session(trace_id: &str) {
 }
 
 pub fn list_anchors() {
-    ui::report_success("Available Session Anchors:");
+    ui::report_success("Available Sessions (PQC-Anchored):");
 
     let anchor_dir = crate::consts::AUDIT_LOG_PATH
         .parent()

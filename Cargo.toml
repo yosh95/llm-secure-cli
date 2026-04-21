@@ -2,26 +2,11 @@
 name = "llm-secure-cli"
 version = "0.2.0"
 edition = "2021"
+autobins = false
 
 [[bin]]
 name = "llsc"
-path = "src/bin/llm-secure-cli.rs"
-
-[[bin]]
-name = "llsc-security"
-path = "src/bin/llm-secure-cli-security.rs"
-
-[[bin]]
-name = "llsc-models"
-path = "src/bin/llm-secure-cli-models.rs"
-
-[[bin]]
-name = "llsc-benchmark-dual"
-path = "src/bin/llm-secure-cli-benchmark-dual.rs"
-
-[[bin]]
-name = "comprehensive-benchmark"
-path = "src/bin/comprehensive_benchmark.rs"
+path = "src/bin/llsc.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }

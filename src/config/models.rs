@@ -58,7 +58,7 @@ fn default_max_audit_archives() -> usize {
     10
 }
 fn default_image_save_path() -> String {
-    "~/Pictures/llm-secure-cli".to_string()
+    "~/Pictures/llsc".to_string()
 }
 
 impl Default for GeneralConfig {

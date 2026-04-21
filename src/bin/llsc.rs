@@ -100,8 +100,8 @@ enum IdentityCommands {
         /// Session Trace ID to verify
         trace_id: String,
     },
-    /// List available session anchors
-    ListAnchors,
+    /// List available sessions (anchored)
+    ListSessions,
 }
 
 #[tokio::main]
@@ -141,9 +141,7 @@ async fn main() {
                     if security_level == "high" {
                         ui::report_error("CRITICAL: SYSTEM INTEGRITY FAILURE");
                         eprintln!("Unauthorized modifications detected in binary or config.");
-                        eprintln!(
-                            "Run 'llm-secure-cli-security manifest' if this was intentional."
-                        );
+                        eprintln!("Run 'llsc identity manifest' if this was intentional.");
                         std::process::exit(1);
                     } else {
                         ui::report_warning("Integrity Failure: System does not match manifest, but security_level is 'standard'.");
@@ -199,7 +197,21 @@ async fn main() {
                 if let Some(p) = provider {
                     llm_secure_cli::cli::commands::models::list_models(&p, models, verbose).await;
                 } else {
-                    println!("Please specify a provider.");
+                    let config_manager = &llm_secure_cli::config::CONFIG_MANAGER;
+                    let active_providers = config_manager.get_active_providers();
+                    if active_providers.is_empty() {
+                        println!("No active providers found. Please set API keys.");
+                    } else {
+                        for p in active_providers {
+                            println!("\n--- Models for {} ---", p);
+                            llm_secure_cli::cli::commands::models::list_models(
+                                &p,
+                                models.clone(),
+                                verbose,
+                            )
+                            .await;
+                        }
+                    }
                 }
                 return;
             }
@@ -228,7 +240,7 @@ async fn main() {
                     Some(IdentityCommands::VerifySession { trace_id }) => {
                         llm_secure_cli::cli::commands::identity::run_verify_session(&trace_id);
                     }
-                    Some(IdentityCommands::ListAnchors) => {
+                    Some(IdentityCommands::ListSessions) => {
                         llm_secure_cli::cli::commands::identity::list_anchors()
                     }
                     None => println!("Please specify an identity subcommand."),

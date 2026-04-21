@@ -132,7 +132,7 @@ pub fn brave_search(args: HashMap<String, Value>) -> anyhow::Result<Value> {
 /// Fetch URL content and convert HTML to Markdown-like text.
 async fn fetch_url(url: &str) -> anyhow::Result<String> {
     let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (compatible; llm-secure-cli/0.1)")
+        .user_agent("Mozilla/5.0 (compatible; llsc/0.1)")
         .timeout(std::time::Duration::from_secs(30))
         .redirect(reqwest::redirect::Policy::limited(3))
         .build()?;

@@ -24,10 +24,15 @@ impl HybridSigner {
         pqc_private_key: &[u8],
         variant: MldsaVariant,
     ) -> Vec<u8> {
+        log::debug!(
+            "HybridSigner: Creating hybrid COSE token (PQC variant: {:?})",
+            variant
+        );
         let payload_bytes = serde_json::to_vec(payload).unwrap();
         let body_protected = Self::encode_header_map(HashMap::new());
 
         // --- Signer 0: RSA ---
+        log::debug!("HybridSigner: Generating RSA-256 signature");
         let mut rsa_header = HashMap::new();
         rsa_header.insert(COSE_HEADER_ALG, Value::Integer(COSE_ALG_RS256.into()));
         let rsa_sign_protected = Self::encode_header_map(rsa_header);
@@ -49,6 +54,7 @@ impl HybridSigner {
         ]);
 
         // --- Signer 1: ML-DSA ---
+        log::debug!("HybridSigner: Generating ML-DSA signature");
         let mut pqc_header = HashMap::new();
         pqc_header.insert(COSE_HEADER_ALG, Value::Integer(COSE_ALG_MLDSA.into()));
         let pqc_sign_protected = Self::encode_header_map(pqc_header);
@@ -83,6 +89,10 @@ impl HybridSigner {
             &mut encoded,
         )
         .unwrap();
+        log::debug!(
+            "HybridSigner: Hybrid token created ({} bytes)",
+            encoded.len()
+        );
         encoded
     }
 
@@ -91,13 +101,24 @@ impl HybridSigner {
         rsa_public_key_pem: &str,
         pqc_public_key_provider: impl Fn(MldsaVariant) -> Vec<u8>,
     ) -> Option<JsonValue> {
+        log::debug!(
+            "HybridSigner: Verifying hybrid COSE token ({} bytes)",
+            cose_token.len()
+        );
         let value: Value = ciborium::de::from_reader(cose_token).ok()?;
         let (tag, structure) = match value {
             Value::Tag(tag, box_val) => (tag, *box_val),
-            _ => return None,
+            _ => {
+                log::debug!("HybridSigner: Verification failed (invalid COSE tag)");
+                return None;
+            }
         };
 
         if tag != COSE_SIGN_TAG {
+            log::debug!(
+                "HybridSigner: Verification failed (not a COSE_Sign tag: {})",
+                tag
+            );
             return None;
         }
 
@@ -124,10 +145,12 @@ impl HybridSigner {
         };
 
         if signatures.len() < 2 {
+            log::debug!("HybridSigner: Verification failed (less than 2 signatures found)");
             return None;
         }
 
         // Signer 0: RSA
+        log::debug!("HybridSigner: Verifying RSA-256 signature");
         let rsa_entry = match &signatures[0] {
             Value::Array(arr) if arr.len() == 3 => arr,
             _ => return None,
@@ -150,17 +173,21 @@ impl HybridSigner {
             _ => None,
         };
         if rsa_alg != Some(Value::Integer(COSE_ALG_RS256.into())) {
+            log::debug!("HybridSigner: RSA verification failed (unsupported algorithm)");
             return None;
         }
 
         let rsa_tbs = Self::build_sig_structure(body_protected, rsa_sign_protected, payload_bytes);
         let rsa_pub = RsaPublicKey::from_public_key_pem(rsa_public_key_pem).ok()?;
         let digest = sha2::Sha256::digest(&rsa_tbs);
-        rsa_pub
-            .verify(Pkcs1v15Sign::new::<sha2::Sha256>(), &digest, rsa_sig)
-            .ok()?;
+        if let Err(e) = rsa_pub.verify(Pkcs1v15Sign::new::<sha2::Sha256>(), &digest, rsa_sig) {
+            log::debug!("HybridSigner: RSA verification failed: {:?}", e);
+            return None;
+        }
+        log::debug!("HybridSigner: RSA verification successful");
 
         // Signer 1: ML-DSA
+        log::debug!("HybridSigner: Verifying ML-DSA signature");
         let pqc_entry = match &signatures[1] {
             Value::Array(arr) if arr.len() == 3 => arr,
             _ => return None,
@@ -187,6 +214,7 @@ impl HybridSigner {
             _ => None,
         };
         if pqc_alg != Some(Value::Integer(COSE_ALG_MLDSA.into())) {
+            log::debug!("HybridSigner: ML-DSA verification failed (unsupported algorithm)");
             return None;
         }
 
@@ -206,9 +234,15 @@ impl HybridSigner {
 
         let pqc_tbs = Self::build_sig_structure(body_protected, pqc_sign_protected, payload_bytes);
         if !PqcProvider::verify_mldsa(&pqc_tbs, pqc_sig, &pqc_pub, variant) {
+            log::debug!("HybridSigner: ML-DSA verification failed (invalid signature)");
             return None;
         }
+        log::debug!(
+            "HybridSigner: ML-DSA verification successful (variant: {:?})",
+            variant
+        );
 
+        log::debug!("HybridSigner: Full hybrid token verification successful");
         serde_json::from_slice(payload_bytes).ok()
     }
 

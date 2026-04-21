@@ -68,6 +68,12 @@ llsc -p anthropic -m sonnet "Explain quantum computing"
 # Analyze a local file or a URL
 llsc "Summarize this PDF" ./document.pdf
 llsc "Analyze this website" https://example.com
+
+# List available models
+llsc models
+
+# Benchmark provider latency
+llsc benchmark openai gpt-4o
 ```
 
 ## Core Features
@@ -151,10 +157,10 @@ Inside the `llsc` interactive session:
 
 ###  Logging & Troubleshooting
 By default, `llsc` and its related tools suppress all informational logs and only show `WARNING` or `ERROR` messages. If you encounter issues:
-- **Enable Debug Mode**: Add the `--debug` flag to any tool to see detailed execution logs:
+- **Enable Debug Mode**: Add the `--debug` flag to see detailed execution logs:
   ```bash
   llsc --debug "query"
-  llsc-security --debug verify
+  llsc --debug identity verify
   ```
 - **MCP Debugging**: To troubleshoot the MCP server (which is often spawned by a third-party client), use the `MCP_DEBUG` environment variable:
   ```bash
@@ -175,11 +181,20 @@ By default, `llsc` and its related tools suppress all informational logs and onl
 - **Disabling Tools Manually**: Use `/tools off` to prevent errors when using a model that doesn't support function calling.
 
 ## Security Management
-Use the `llsc-security` tool to manage your cryptographic identity:
+Use the `llsc` command with the `identity` or `decrypt-log` subcommands to manage your cryptographic identity and audit logs:
 ```bash
-llsc-security keygen     # Generate RSA and PQC (ML-DSA/ML-KEM) keys
-llsc-security manifest   # Rebuild integrity manifest for remote attestation
-llsc-security decrypt-log ~/.llm_secure_cli/audit.jsonl -o decrypted.jsonl
+llsc identity keygen          # Generate RSA and PQC (ML-DSA/ML-KEM) keys
+llsc identity manifest        # Rebuild integrity manifest for system verification
+llsc identity verify          # Run full integrity verification
+llsc identity verify-session <trace-id>  # Verify session integrity using Merkle Anchor
+llsc identity list-sessions   # List available anchored sessions
+llsc decrypt-log <input>      # Decrypt PQC-encrypted audit logs
+```
+
+## Utility Commands
+```bash
+llsc models                   # List available models for active providers
+llsc benchmark <provider> <model>  # Benchmark Dual LLM verification latency
 ```
 
 ## Development & Benchmarks
@@ -188,7 +203,7 @@ To run the local security primitive benchmarks (Static Analysis, PQC Keygen/Sign
 cargo run --bin benchmark_local
 ```
 
-To run the Dual LLM verification latency benchmarks (requires API keys):
+To run the internal Dual LLM verification scenarios (requires API keys):
 ```bash
 cargo run --bin benchmark_dual_llm
 ```
@@ -272,6 +287,12 @@ llsc -p anthropic -m sonnet "量子コンピュータについて説明して"
 # ローカルファイルやURLを解析する
 llsc "このPDFを要約して" ./document.pdf
 llsc "このWebサイトを解析して" https://example.com
+
+# 利用可能なモデル一覧を表示する
+llsc models
+
+# プロバイダーのレイテンシを測定する
+llsc benchmark openai gpt-4o
 ```
 
 ## 主な機能 (実用ツールとして)
@@ -356,7 +377,7 @@ AIがファイル操作、Web検索、Python実行などのツールを自律的
 - **デバッグモードの有効化**: ツールの実行時に `--debug` フラグを追加して、詳細なログを表示します。
   ```bash
   llsc --debug "query"
-  llsc-security --debug verify
+  llsc --debug identity verify
   ```
 - **MCP のデバッグ**: 3rdパーティのクライアント（Claude Desktop 等）から起動される MCP サーバーのトラブルシューティングには、`MCP_DEBUG` environment変数を使用します。
   ```bash
@@ -377,11 +398,20 @@ AIがファイル操作、Web検索、Python実行などのツールを自律的
 - **ツール機能の手動無効化**: `/tools off` コマンドでツール送信を一時的に無効化できます。
 
 ## セキュリティ管理
-`llsc-security` ツールを使用して暗号化アイデンティティを管理します。
+`llsc` コマンドの `identity` または `decrypt-log` サブコマンドを使用して、暗号化アイデンティティと監査ログを管理します。
 ```bash
-llsc-security keygen     # RSA および PQC (ML-DSA/ML-KEM) 鍵ペアの生成
-llsc-security manifest   # リモートアテステーションのための整合性マニフェストの再構築
-llsc-security decrypt-log ~/.llm_secure_cli/audit.jsonl -o decrypted.jsonl
+llsc identity keygen          # RSA および PQC (ML-DSA/ML-KEM) 鍵ペアの生成
+llsc identity manifest        # システム検証のための整合性マニフェストの再構築
+llsc identity verify          # 完全な整合性検証の実行
+llsc identity verify-session <trace-id>  # Merkle Anchorを用いたセッション整合性の検証
+llsc identity list-sessions   # アンカーされた利用可能なセッションの一覧表示
+llsc decrypt-log <input>      # 耐量子暗号（PQC）で暗号化された監査ログの復号
+```
+
+## ユーティリティコマンド
+```bash
+llsc models                   # アクティブなプロバイダーの利用可能モデルを表示
+llsc benchmark <provider> <model>  # Dual LLM検証のレイテンシを測定
 ```
 
 ## 開発とベンチマーク
@@ -390,7 +420,7 @@ llsc-security decrypt-log ~/.llm_secure_cli/audit.jsonl -o decrypted.jsonl
 cargo run --bin benchmark_local
 ```
 
-Dual LLM 検証のレイテンシベンチマークを実行するには（APIキーが必要）：
+内部的な Dual LLM 検証シナリオを実行するには（APIキーが必要）：
 ```bash
 cargo run --bin benchmark_dual_llm
 ```

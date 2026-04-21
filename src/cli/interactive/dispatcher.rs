@@ -125,7 +125,7 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             handle_tools(session, args);
             CommandResult::Handled
         }
-        "model" | "m" => {
+        "model" | "models" | "m" => {
             handle_model_cmd(session, args);
             CommandResult::Handled
         }
@@ -179,10 +179,27 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
 
 pub fn handle_info(session: &ChatSession) {
     let state = session.client.get_state();
+    let config = crate::config::CONFIG_MANAGER.get_config();
+
     ui::print_rule(Some("Session Info"), Some("cyan"));
+    ui::print_key_value("Session ID", &session.trace_id);
     ui::print_key_value("Provider", &state.provider);
     ui::print_key_value("Model", &state.model);
     ui::print_key_value("Runtime", session.runtime.name());
+
+    // Security & Integrity
+    let integrity_status = match crate::security::integrity::IntegrityVerifier::new().verify() {
+        Ok(true) => "Verified (PQC-Signed)".green().to_string(),
+        Ok(false) => "TAMPERED/Mismatch".red().to_string(),
+        Err(_) => "Not Established (Run /identity manifest)"
+            .yellow()
+            .to_string(),
+    };
+    ui::print_key_value("System Integrity", &integrity_status);
+    ui::print_key_value("PQC Algorithm", "ML-DSA-65 (Dilithium)");
+    ui::print_key_value("Security Level", &config.security.security_level);
+
+    ui::print_rule(Some("Status"), Some("cyan"));
     ui::print_key_value("History", &format!("{} messages", state.conversation.len()));
     ui::print_key_value("Pending Tasks", &format!("{}", session.pending_tasks.len()));
     ui::print_key_value(
