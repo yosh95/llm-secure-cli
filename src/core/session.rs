@@ -156,8 +156,8 @@ impl ChatSession {
         // Up/Down now jump between history entries even if they are multi-line
         rl.bind_sequence(KeyEvent(KeyCode::Up, Modifiers::NONE), Cmd::PreviousHistory);
         rl.bind_sequence(KeyEvent(KeyCode::Down, Modifiers::NONE), Cmd::NextHistory);
-        // Alt-Enter (or Esc-Enter) for inserting a new line without submitting
-        rl.bind_sequence(KeyEvent(KeyCode::Enter, Modifiers::ALT), Cmd::Newline);
+        // Ctrl-J for inserting a new line without submitting
+        rl.bind_sequence(KeyEvent(KeyCode::Char('j'), Modifiers::CTRL), Cmd::Newline);
         // Ctrl-Up/Down for navigating between lines within a multi-line entry
         rl.bind_sequence(KeyEvent(KeyCode::Up, Modifiers::CTRL), Cmd::PreviousHistory);
         rl.bind_sequence(KeyEvent(KeyCode::Down, Modifiers::CTRL), Cmd::NextHistory);

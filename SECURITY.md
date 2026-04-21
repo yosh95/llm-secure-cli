@@ -396,7 +396,7 @@ allowed_paths            = ["."]
 blocked_paths            = ["/etc", "/var", "/root", "~/.ssh"]
 
 # Risk classification
-high_risk_tools          = ["execute_python", "edit_file",
+high_risk_tools          = ["execute_command", "edit_file",
                             "create_or_overwrite_file", "read_url_content",
                             "brave_search"]
 medium_risk_tools        = ["read_file_content", "grep_files"]
