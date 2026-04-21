@@ -193,7 +193,7 @@ pub fn print_tool_result(result: &str) {
             if !stderr.is_empty() {
                 println!("    {}", "STDERR:".bold().red());
                 for line in stderr.lines() {
-                    println!("      {}", line.red().dimmed());
+                    println!("      {}", line.red());
                 }
             }
             return;
