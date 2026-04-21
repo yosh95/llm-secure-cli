@@ -243,7 +243,7 @@ impl MarkdownRenderer {
                         0,
                         None,
                     );
-                    output.push_str("\n\n---");
+                    output.push_str("\n---\n");
                 }
                 _ => {}
             }

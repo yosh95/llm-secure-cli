@@ -164,14 +164,19 @@ fn test_file_modification_tools() {
         "line1\nline2 modified\nline3"
     );
 
-    // 3. Edit file (exact match required)
+    // 3. Edit file (fuzzy match)
     let mut args = HashMap::new();
     args.insert("path".to_string(), json!(path_str));
     args.insert("search".to_string(), json!("  line3  ")); // Whitespace difference
     args.insert("replace".to_string(), json!("line3 modified"));
 
-    let res = edit_file(args);
-    assert!(res.is_err(), "Should fail because exact match is required");
+    let res = edit_file(args).expect("Fuzzy match should now succeed");
+    assert!(res["success"].as_bool().unwrap());
+    assert_eq!(res["match_type"].as_str().unwrap(), "fuzzy");
+    assert_eq!(
+        fs::read_to_string(&file_path).unwrap(),
+        "line1\nline2 modified\nline3 modified"
+    );
 }
 
 #[test]

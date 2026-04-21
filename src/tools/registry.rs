@@ -301,14 +301,15 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
         r,
         "edit_file",
         "Edit a file by replacing a specific block of text. \
-         The search string must match the file content exactly.",
+         First tries an exact match. If that fails, it tries a fuzzy match (ignoring leading/trailing whitespace on each line). \
+         The fuzzy match only succeeds if it finds exactly one unique match in the file.",
         json!({
             "type": "object",
             "properties": {
                 "path": {"type": "string", "description": "Path to the file to edit."},
                 "search": {
                     "type": "string",
-                    "description": "The block of text to find in the file."
+                    "description": "The block of text to find in the file. Context (surrounding lines) is recommended for fuzzy matching."
                 },
                 "replace": {
                     "type": "string",
