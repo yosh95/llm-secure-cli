@@ -163,79 +163,94 @@ impl OpenAiClient {
         }
 
         for m in &self.base.state.conversation {
-            let role = match m.role {
-                Role::System => "system",
-                Role::User => "user",
-                Role::Assistant | Role::Model => "assistant",
-                Role::Tool => "tool",
-            };
-
-            let mut msg = json!({ "role": role });
-            let mut content_parts = Vec::new();
-            let mut tool_calls = Vec::new();
-
-            for part in &m.parts {
-                match part {
-                    MessagePart::Text(t) => {
-                        content_parts.push(json!({"type": "text", "text": t}));
-                    }
-                    MessagePart::Part(cp) => {
-                        if let Some(t) = &cp.text {
-                            content_parts.push(json!({"type": "text", "text": t}));
-                        }
-                        if let Some(id) = &cp.inline_data {
-                            if let (Some(mime), Some(data)) = (id.get("mimeType"), id.get("data")) {
-                                content_parts.push(json!({
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": format!("data:{};base64,{}", mime.as_str().unwrap_or(""), data.as_str().unwrap_or(""))
-                                    }
+            match m.role {
+                Role::Tool => {
+                    for part in &m.parts {
+                        if let MessagePart::Part(cp) = part {
+                            if let Some(fr) = &cp.function_response {
+                                let tool_call_id =
+                                    fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                let response = fr.get("response").cloned().unwrap_or(json!(""));
+                                let content = if let Some(s) = response.as_str() {
+                                    s.to_string()
+                                } else {
+                                    response.to_string()
+                                };
+                                messages.push(json!({
+                                    "role": "tool",
+                                    "tool_call_id": tool_call_id,
+                                    "content": content
                                 }));
                             }
                         }
-                        if let Some(fc) = &cp.function_call {
-                            tool_calls.push(json!({
-                                "id": fc.get("id").and_then(|v| v.as_str()).unwrap_or(""),
-                                "type": "function",
-                                "function": {
-                                    "name": fc.get("name").and_then(|v| v.as_str()).unwrap_or(""),
-                                    "arguments": fc.get("arguments").map(|v| v.to_string()).unwrap_or_else(|| "{}".to_string())
-                                }
-                            }));
-                        }
-                        if let Some(fr) = &cp.function_response {
-                            msg["tool_call_id"] = fr.get("id").cloned().unwrap_or(json!(""));
-                            let response = fr.get("response").cloned().unwrap_or(json!(""));
-                            let response_str = if let Some(s) = response.as_str() {
-                                s.to_string()
-                            } else {
-                                response.to_string()
-                            };
-                            content_parts.push(json!({"type": "text", "text": response_str}));
-                        }
                     }
                 }
-            }
+                _ => {
+                    let role = match m.role {
+                        Role::System => "system",
+                        Role::User => "user",
+                        Role::Assistant | Role::Model => "assistant",
+                        Role::Tool => unreachable!(),
+                    };
 
-            // If it's a simple text message, use the string format for better compatibility
-            // Otherwise use the array format for multimodal support
-            if !content_parts.is_empty() {
-                if content_parts.len() == 1 && content_parts[0]["type"] == "text" {
-                    msg["content"] = content_parts[0]["text"].clone();
-                } else {
-                    msg["content"] = json!(content_parts);
+                    let mut msg = json!({ "role": role });
+                    let mut content_parts = Vec::new();
+                    let mut tool_calls = Vec::new();
+
+                    for part in &m.parts {
+                        match part {
+                            MessagePart::Text(t) => {
+                                content_parts.push(json!({"type": "text", "text": t}));
+                            }
+                            MessagePart::Part(cp) => {
+                                if let Some(t) = &cp.text {
+                                    content_parts.push(json!({"type": "text", "text": t}));
+                                }
+                                if let Some(id) = &cp.inline_data {
+                                    if let (Some(mime), Some(data)) =
+                                        (id.get("mimeType"), id.get("data"))
+                                    {
+                                        content_parts.push(json!({
+                                            "type": "image_url",
+                                            "image_url": {
+                                                "url": format!("data:{};base64,{}", mime.as_str().unwrap_or(""), data.as_str().unwrap_or(""))
+                                            }
+                                        }));
+                                    }
+                                }
+                                if let Some(fc) = &cp.function_call {
+                                    tool_calls.push(json!({
+                                        "id": fc.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                                        "type": "function",
+                                        "function": {
+                                            "name": fc.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                                            "arguments": fc.get("arguments").map(|v| v.to_string()).unwrap_or_else(|| "{}".to_string())
+                                        }
+                                    }));
+                                }
+                            }
+                        }
+                    }
+
+                    // If it's a simple text message, use the string format for better compatibility
+                    // Otherwise use the array format for multimodal support
+                    if !content_parts.is_empty() {
+                        if content_parts.len() == 1 && content_parts[0]["type"] == "text" {
+                            msg["content"] = content_parts[0]["text"].clone();
+                        } else {
+                            msg["content"] = json!(content_parts);
+                        }
+                    } else if role == "assistant" && !tool_calls.is_empty() {
+                        msg["content"] = json!(null);
+                    }
+
+                    if !tool_calls.is_empty() {
+                        msg["tool_calls"] = json!(tool_calls);
+                    }
+
+                    messages.push(msg);
                 }
-            } else if role == "tool" {
-                msg["content"] = json!("");
-            } else if role == "assistant" && !tool_calls.is_empty() {
-                msg["content"] = json!(null);
             }
-
-            if !tool_calls.is_empty() {
-                msg["tool_calls"] = json!(tool_calls);
-            }
-
-            messages.push(msg);
         }
 
         // Handle new data from DataSource
