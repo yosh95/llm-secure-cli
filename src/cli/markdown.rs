@@ -46,7 +46,7 @@ impl MarkdownRenderer {
                             None,
                         );
                         let level_num = level as usize;
-                        output.push_str("\n\n");
+                        output.push('\n');
                         current_paragraph.push_str(&"#".repeat(level_num));
                         current_paragraph.push(' ');
                         current_heading_level = Some(level_num);
@@ -200,10 +200,8 @@ impl MarkdownRenderer {
                             in_table_head = false;
                             table_headers = std::mem::take(&mut current_row);
                         }
-                        TagEnd::TableRow => {
-                            if !in_table_head {
-                                table_rows.push(std::mem::take(&mut current_row));
-                            }
+                        TagEnd::TableRow if !in_table_head => {
+                            table_rows.push(std::mem::take(&mut current_row));
                         }
                         TagEnd::CodeBlock => {
                             in_code_block = false;
@@ -231,15 +229,11 @@ impl MarkdownRenderer {
                         let _ = write!(current_paragraph, "`{}`", text);
                     }
                 }
-                Event::SoftBreak => {
-                    if !in_table {
-                        current_paragraph.push(' ');
-                    }
+                Event::SoftBreak if !in_table => {
+                    current_paragraph.push(' ');
                 }
-                Event::HardBreak => {
-                    if !in_table {
-                        current_paragraph.push('\n');
-                    }
+                Event::HardBreak if !in_table => {
+                    current_paragraph.push('\n');
                 }
                 Event::Rule => {
                     self.flush_paragraph(
@@ -249,7 +243,7 @@ impl MarkdownRenderer {
                         0,
                         None,
                     );
-                    output.push_str("\n---\n");
+                    output.push_str("\n\n---");
                 }
                 _ => {}
             }
