@@ -4,6 +4,7 @@ use crate::consts::HISTORY_LOG_PATH;
 use crate::llm::base::LlmClient;
 use crate::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
 use crate::security::runtime::{get_runtime, SecureRuntime, Task, TaskStatus};
+use colored::*;
 use rustyline::error::ReadlineError;
 use rustyline::history::FileHistory;
 use rustyline::{Cmd, Editor, KeyCode, KeyEvent, Modifiers};
@@ -136,7 +137,7 @@ impl ChatSession {
             return;
         }
 
-        println!("Use Ctrl+C or /q to exit, /h for help.");
+        println!("{}", "Use Ctrl+C or /q to exit, /h for help.".dimmed());
 
         let current_provider = Arc::new(Mutex::new(self.client.get_state().provider.clone()));
 
