@@ -203,19 +203,14 @@ impl LlmClient for GeminiClient {
         let contents = self.build_contents(&data);
         let tool_declarations = self.build_tool_declarations();
 
-        // Use system prompt from ClientState
-        let system_prompt = &self.base.state.system_prompt;
-
         let mut payload = json!({
             "contents": contents,
         });
 
-        if let Some(sp) = system_prompt {
-            if !sp.is_empty() {
-                payload["system_instruction"] = json!({
-                    "parts": [{"text": sp}]
-                });
-            }
+        if let Some(sp) = self.base.state.get_effective_system_prompt() {
+            payload["system_instruction"] = json!({
+                "parts": [{"text": sp}]
+            });
         }
 
         if self.base.state.tools_enabled {
@@ -423,12 +418,10 @@ impl LlmClient for GeminiClient {
         });
 
         // Add system prompt if available
-        if let Some(sp) = &self.base.state.system_prompt {
-            if !sp.is_empty() {
-                payload["system_instruction"] = json!({
-                    "parts": [{"text": sp}]
-                });
-            }
+        if let Some(sp) = self.base.state.get_effective_system_prompt() {
+            payload["system_instruction"] = json!({
+                "parts": [{"text": sp}]
+            });
         }
 
         let url = self.get_api_url();

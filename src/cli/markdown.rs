@@ -153,6 +153,9 @@ impl MarkdownRenderer {
                                 indent,
                                 None,
                             );
+                            if !output.ends_with('\n') {
+                                output.push('\n');
+                            }
                         }
                         TagEnd::List(_) => {
                             self.flush_paragraph(
@@ -163,6 +166,9 @@ impl MarkdownRenderer {
                                 None,
                             );
                             list_depth -= 1;
+                            if !output.is_empty() && !output.ends_with('\n') {
+                                output.push('\n');
+                            }
                         }
                         TagEnd::Table => {
                             in_table = false;

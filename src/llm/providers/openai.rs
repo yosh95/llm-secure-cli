@@ -151,15 +151,11 @@ impl OpenAiClient {
         let mut messages = Vec::new();
 
         // Prepend system prompt if enabled
-        if self.base.state.system_prompt_enabled {
-            if let Some(sp) = &self.base.state.system_prompt {
-                if !sp.is_empty() {
-                    messages.push(json!({
-                        "role": "system",
-                        "content": sp
-                    }));
-                }
-            }
+        if let Some(sp) = self.base.state.get_effective_system_prompt() {
+            messages.push(json!({
+                "role": "system",
+                "content": sp
+            }));
         }
 
         for m in &self.base.state.conversation {

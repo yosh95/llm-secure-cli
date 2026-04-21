@@ -7,7 +7,7 @@ use textwrap::wrap;
 pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
     let term = Term::stdout();
     let (_, width) = term.size();
-    let width = (width as usize).min(100);
+    let width = (width as usize).min(140);
 
     if let Some(t) = title {
         let rule_color = style.unwrap_or("cyan");
@@ -30,7 +30,7 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
 pub fn print_rule(title: Option<&str>, style: Option<&str>) {
     let term = Term::stdout();
     let (_, width) = term.size();
-    let width = (width as usize).min(100);
+    let width = (width as usize).min(140);
     let color = style.unwrap_or("bright_black");
 
     if let Some(t) = title {
@@ -58,7 +58,7 @@ pub fn print_key_value(key: &str, value: &str) {
 pub fn print_tool_call(name: &str, args: &serde_json::Value) {
     let term = Term::stdout();
     let (_, width) = term.size();
-    let width = (width as usize).min(100);
+    let width = (width as usize).min(140);
     let color = "yellow";
 
     println!();
@@ -342,7 +342,7 @@ pub fn print_panel(
 ) {
     let term = Term::stdout();
     let (_, term_width) = term.size();
-    let width = (term_width as usize).clamp(40, 100);
+    let width = (term_width as usize).clamp(40, 140);
 
     let border_color = border_style.unwrap_or("bright_black");
 

@@ -1,7 +1,6 @@
 use crate::cli::ui;
 use crate::core::session::ChatSession;
 use crate::llm::models::{DataSource, Message, MessagePart, Role};
-use chrono::Local;
 use colored::Colorize;
 
 pub enum CommandResult {
@@ -26,43 +25,30 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             CommandResult::Handled
         }
         "q" | "quit" => CommandResult::Exit,
-        "date" | "d" => {
-            let now = Local::now();
-            let date_str = if args.is_empty() {
-                now.format("%Y-%m-%d (%A)").to_string()
-            } else {
-                args.to_string()
-            };
-
-            let directive = format!(
-                "Today's date is {}. You must treat this as the current date and ignore your training cutoff or any other date information.",
-                date_str
-            );
-
+        "system" => {
             let state = session.client.get_state_mut();
-            let current_sp = state.system_prompt.clone().unwrap_or_default();
-
-            // Replace existing date directive if present, otherwise prepend
-            let new_sp = if current_sp.contains("Today's date is") {
-                current_sp
-                    .lines()
-                    .map(|line| {
-                        if line.contains("Today's date is") {
-                            directive.clone()
-                        } else {
-                            line.to_string()
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            } else if current_sp.is_empty() {
-                directive.clone()
-            } else {
-                format!("{}\n\n{}", directive, current_sp)
-            };
-
-            state.system_prompt = Some(new_sp);
-            ui::report_success(&format!("System prompt updated: Today is {}", date_str));
+            match args.to_lowercase().as_str() {
+                "on" => {
+                    state.system_prompt_enabled = true;
+                    ui::report_success("System prompt enabled.");
+                }
+                "off" => {
+                    state.system_prompt_enabled = false;
+                    ui::report_success("System prompt disabled.");
+                }
+                "" => {
+                    let status = if state.system_prompt_enabled {
+                        "ON"
+                    } else {
+                        "OFF"
+                    };
+                    println!("System Prompt Status: {}", status);
+                    if let Some(sp) = state.get_effective_system_prompt() {
+                        println!("\nEffective System Prompt:\n{}", sp);
+                    }
+                }
+                _ => ui::report_error("Usage: /system [on|off]"),
+            }
             CommandResult::Handled
         }
         "edit" | "e" => match ui::open_external_editor(args) {
@@ -215,6 +201,15 @@ pub fn handle_info(session: &ChatSession) {
             "Off"
         },
     );
+    if state.system_prompt_enabled {
+        if let Some(sp) = state.get_effective_system_prompt() {
+            println!("  --------------------------------------------------");
+            for line in sp.lines() {
+                println!("  {}", line);
+            }
+            println!("  --------------------------------------------------");
+        }
+    }
     ui::print_key_value(
         "Debug Mode",
         if log::log_enabled!(log::Level::Debug) {
@@ -453,7 +448,7 @@ pub fn print_help() {
     println!("\nChat Commands:");
     println!("  /help, /h       Show this help message");
     println!("  /quit, /q       Exit the application");
-    println!("  /date, /d       Update system prompt with current or specified date");
+    println!("  /system [on|off] Show or toggle system prompt status");
     println!("  /edit, /e       Edit message in external editor");
     println!("  /clear, /c      Clear conversation history");
     println!("  /info, /i       Show session info");

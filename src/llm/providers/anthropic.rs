@@ -222,14 +222,12 @@ impl LlmClient for ClaudeClient {
         });
 
         // System prompt
-        if let Some(sp) = &self.base.state.system_prompt {
-            if !sp.is_empty() {
-                payload["system"] = json!([{
-                    "type": "text",
-                    "text": sp,
-                    "cache_control": { "type": "ephemeral" }
-                }]);
-            }
+        if let Some(sp) = self.base.state.get_effective_system_prompt() {
+            payload["system"] = json!([{
+                "type": "text",
+                "text": sp,
+                "cache_control": { "type": "ephemeral" }
+            }]);
         }
 
         // Tools

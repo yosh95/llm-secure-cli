@@ -29,8 +29,7 @@ impl ChatCompleter {
                 "/info",
                 "/i",
                 "/debug",
-                "/date",
-                "/d",
+                "/system",
                 "/raw",
                 "/dump",
                 "/save",
@@ -149,7 +148,7 @@ impl Completer for ChatCompleter {
                         matches.dedup_by(|a, b| a.display == b.display);
                         return Ok((start, matches));
                     }
-                    "/tools" => {
+                    "/tools" | "/system" => {
                         let mut matches = Vec::new();
                         for opt in &["on", "off"] {
                             if opt.starts_with(arg_prefix) {

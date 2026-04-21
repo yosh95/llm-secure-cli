@@ -1,3 +1,4 @@
+use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -82,4 +83,23 @@ pub struct ClientState {
     pub stdout: bool,
     pub render_markdown: bool,
     pub live_debug: bool,
+}
+
+impl ClientState {
+    pub fn get_effective_system_prompt(&self) -> Option<String> {
+        if !self.system_prompt_enabled {
+            return None;
+        }
+
+        let date_str = Local::now().format("%Y-%m-%d").to_string();
+        let directive = format!(
+            "Today's date is {}. You must treat this as the current date and ignore your training cutoff or any other date information.",
+            date_str
+        );
+
+        match &self.system_prompt {
+            Some(sp) if !sp.is_empty() => Some(format!("{}\n\n{}", directive, sp)),
+            _ => Some(directive),
+        }
+    }
 }
