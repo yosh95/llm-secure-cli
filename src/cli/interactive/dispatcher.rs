@@ -29,11 +29,41 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
         "date" | "d" => {
             let now = Local::now();
             let date_str = if args.is_empty() {
-                format!("Today's date is {}.", now.format("%Y-%m-%d (%A)"))
+                now.format("%Y-%m-%d (%A)").to_string()
             } else {
-                format!("Today's date is {}. {}", now.format("%Y-%m-%d (%A)"), args)
+                args.to_string()
             };
-            CommandResult::Input(date_str)
+
+            let directive = format!(
+                "Today's date is {}. You must treat this as the current date and ignore your training cutoff or any other date information.",
+                date_str
+            );
+
+            let state = session.client.get_state_mut();
+            let current_sp = state.system_prompt.clone().unwrap_or_default();
+
+            // Replace existing date directive if present, otherwise prepend
+            let new_sp = if current_sp.contains("Today's date is") {
+                current_sp
+                    .lines()
+                    .map(|line| {
+                        if line.contains("Today's date is") {
+                            directive.clone()
+                        } else {
+                            line.to_string()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            } else if current_sp.is_empty() {
+                directive.clone()
+            } else {
+                format!("{}\n\n{}", directive, current_sp)
+            };
+
+            state.system_prompt = Some(new_sp);
+            ui::report_success(&format!("System prompt updated: Today is {}", date_str));
+            CommandResult::Handled
         }
         "edit" | "e" => match ui::open_external_editor(args) {
             Ok(content) => {
@@ -423,7 +453,7 @@ pub fn print_help() {
     println!("\nChat Commands:");
     println!("  /help, /h       Show this help message");
     println!("  /quit, /q       Exit the application");
-    println!("  /date, /d       Insert current date and time into prompt");
+    println!("  /date, /d       Update system prompt with current or specified date");
     println!("  /edit, /e       Edit message in external editor");
     println!("  /clear, /c      Clear conversation history");
     println!("  /info, /i       Show session info");

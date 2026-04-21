@@ -41,6 +41,18 @@ impl OllamaClient {
     fn build_messages(&self, data: &[DataSource]) -> Vec<serde_json::Value> {
         let mut messages = Vec::new();
 
+        // Prepend system prompt if enabled
+        if self.base.state.system_prompt_enabled {
+            if let Some(sp) = &self.base.state.system_prompt {
+                if !sp.is_empty() {
+                    messages.push(json!({
+                        "role": "system",
+                        "content": sp
+                    }));
+                }
+            }
+        }
+
         for m in &self.base.state.conversation {
             let role = match m.role {
                 Role::System => "system",

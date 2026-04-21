@@ -203,12 +203,8 @@ impl LlmClient for GeminiClient {
         let contents = self.build_contents(&data);
         let tool_declarations = self.build_tool_declarations();
 
-        // Get system prompt from config
-        let system_prompt = crate::config::CONFIG_MANAGER
-            .get_config()
-            .providers
-            .get("google")
-            .and_then(|p| p.system_prompt.clone());
+        // Use system prompt from ClientState
+        let system_prompt = &self.base.state.system_prompt;
 
         let mut payload = json!({
             "contents": contents,
