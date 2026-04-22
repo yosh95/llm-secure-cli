@@ -104,9 +104,12 @@ impl PolicyEngine {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        if risk_level == RiskLevel::High && !has_pqc_proof && security_level == "high" {
+        if (risk_level == RiskLevel::High || risk_level == RiskLevel::Critical)
+            && !has_pqc_proof
+            && security_level == "high"
+        {
             log::warn!(
-                "Policy Denied: Tool '{}' has high risk and requires PQC proof.",
+                "Policy Denied: Tool '{}' has high/critical risk and requires PQC proof.",
                 tool_name
             );
             return false;

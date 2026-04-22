@@ -47,13 +47,15 @@ impl StaticAnalyzer {
             {
                 violations.push("Destructive removal of sensitive directory".to_string());
             }
-            "curl" | "wget"
-                if args
+            "curl" | "wget" => {
+                let has_pipe = args.iter().any(|arg| arg.contains('|'));
+                let has_sh = args
                     .iter()
-                    .any(|arg| arg.contains("sh") && arg.contains("|")) =>
-            {
-                // Check for piping to shell (not directly possible via argv, but check for suspicious URLs)
-                violations.push("Potential remote script execution".to_string());
+                    .any(|arg| arg == "sh" || arg == "bash" || arg == "zsh" || arg == "python");
+                if has_pipe && has_sh {
+                    violations
+                        .push("Potential remote script execution via pipe to shell".to_string());
+                }
             }
             "find" if args.iter().any(|arg| arg == "-exec" || arg == "-delete") => {
                 violations.push("Forbidden find flags (-exec, -delete)".to_string());

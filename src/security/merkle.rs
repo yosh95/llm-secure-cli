@@ -10,7 +10,7 @@ impl MerkleTree {
         if leaves.is_empty() {
             return MerkleTree {
                 leaves: vec![],
-                root_hex: "".to_string(),
+                root_hex: "0".repeat(64),
             };
         }
 

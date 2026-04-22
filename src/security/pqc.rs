@@ -150,7 +150,7 @@ impl PqcProvider {
                 return false;
             }
         };
-        let result = ops.verify(&pk, message, &sig).is_ok();
+        let result = ops.verify(&pk, message, &sig).unwrap_or_default();
         log::debug!("PQC: ML-DSA verification result: {}", result);
         result
     }

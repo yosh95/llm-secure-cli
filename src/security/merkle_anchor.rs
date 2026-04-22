@@ -1,4 +1,5 @@
 use crate::consts::AUDIT_LOG_PATH;
+use crate::security::audit::AuditEntry;
 use crate::security::identity::IdentityManager;
 use crate::security::merkle::MerkleTree;
 use crate::security::pqc::{MldsaVariant, PqcProvider};
@@ -165,16 +166,16 @@ impl SessionAnchorManager {
             let provided_hash = entry
                 .get("hash")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("Missing hash"))?;
+                .ok_or_else(|| anyhow::anyhow!("Missing hash"))?
+                .to_string();
 
-            let mut entry_copy = entry.clone();
-            if let Some(obj) = entry_copy.as_object_mut() {
-                obj.remove("hash");
-                obj.remove("pqc_signature");
-                obj.remove("pqc_algorithm");
-            }
+            // Re-serialize exactly as log_audit does (via AuditEntry struct)
+            let mut audit_entry: AuditEntry = serde_json::from_value(entry)?;
+            audit_entry.hash = String::new();
+            audit_entry.pqc_signature = None;
+            audit_entry.pqc_algorithm = None;
 
-            let entry_str = serde_json::to_string(&entry_copy)?;
+            let entry_str = serde_json::to_string(&audit_entry)?;
             let mut hasher = sha2::Sha256::new();
             hasher.update(entry_str.as_bytes());
             let actual_hash = hex::encode(hasher.finalize());
@@ -182,7 +183,7 @@ impl SessionAnchorManager {
             if provided_hash != actual_hash {
                 return Ok(false);
             }
-            leaf_hashes.push(provided_hash.to_string());
+            leaf_hashes.push(provided_hash);
         }
 
         let tree = MerkleTree::new(leaf_hashes);
