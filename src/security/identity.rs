@@ -4,11 +4,10 @@ use crate::security::pqc_cose::HybridSigner;
 use anyhow::Result;
 use base64::{engine::general_purpose, Engine as _};
 use chrono::Utc;
+use ed25519_dalek::SigningKey;
 use once_cell::sync::Lazy;
-use rsa::{
-    pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding},
-    RsaPrivateKey, RsaPublicKey,
-};
+use pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
+use rand::rngs::OsRng;
 use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
@@ -24,8 +23,8 @@ static KEY_CACHE: Lazy<Mutex<HashMap<String, Vec<u8>>>> = Lazy::new(|| Mutex::ne
 static KEYS_ENSURED: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
 
 impl IdentityManager {
-    const PRIVATE_KEY_PATH: &str = "id_rsa";
-    const PUBLIC_KEY_PATH: &str = "id_rsa.pub";
+    const PRIVATE_KEY_PATH: &str = "id_ed25519";
+    const PUBLIC_KEY_PATH: &str = "id_ed25519.pub";
     const PQC_KEM_PRIVATE_KEY_PATH: &str = "id_kem.key";
     const PQC_KEM_PUBLIC_KEY_PATH: &str = "id_kem.pub";
 
@@ -53,20 +52,20 @@ impl IdentityManager {
             }
         }
 
-        // Classical RSA Keys
-        let rsa_priv_path = KEY_DIR.join(Self::PRIVATE_KEY_PATH);
-        let rsa_pub_path = KEY_DIR.join(Self::PUBLIC_KEY_PATH);
+        // Classical Ed25519 Keys
+        let ed_priv_path = KEY_DIR.join(Self::PRIVATE_KEY_PATH);
+        let ed_pub_path = KEY_DIR.join(Self::PUBLIC_KEY_PATH);
 
-        if force || !rsa_priv_path.exists() || !rsa_pub_path.exists() {
-            let mut rng = rand::rng();
-            let priv_key = RsaPrivateKey::new(&mut rng, 3072)?;
-            let pub_key = RsaPublicKey::from(&priv_key);
+        if force || !ed_priv_path.exists() || !ed_pub_path.exists() {
+            let mut rng = OsRng;
+            let signing_key = SigningKey::generate(&mut rng);
+            let verifying_key = signing_key.verifying_key();
 
-            let priv_pem = priv_key.to_pkcs8_pem(LineEnding::LF)?;
-            let pub_pem = pub_key.to_public_key_pem(LineEnding::LF)?;
+            let priv_pem = signing_key.to_pkcs8_pem(LineEnding::LF)?;
+            let pub_pem = verifying_key.to_public_key_pem(LineEnding::LF)?;
 
-            Self::write_private_file(&rsa_priv_path, priv_pem.as_bytes())?;
-            Self::write_public_file(&rsa_pub_path, pub_pem.as_bytes())?;
+            Self::write_private_file(&ed_priv_path, priv_pem.as_bytes())?;
+            Self::write_public_file(&ed_pub_path, pub_pem.as_bytes())?;
         }
 
         // ML-DSA Keys
@@ -121,7 +120,7 @@ impl IdentityManager {
         Ok(())
     }
 
-    pub fn get_rsa_private_key_pem() -> Result<String> {
+    pub fn get_classical_private_key_pem() -> Result<String> {
         Self::ensure_keys(false)?;
         let path = KEY_DIR.join(Self::PRIVATE_KEY_PATH);
         Ok(fs::read_to_string(path)?)
@@ -204,11 +203,11 @@ impl IdentityManager {
             uid,
             variant
         );
-        let rsa_priv = Self::get_rsa_private_key_pem()?;
+        let classical_priv = Self::get_classical_private_key_pem()?;
         let pqc_priv = Self::get_pqc_private_key(variant)?;
 
         let cose_token_bytes =
-            HybridSigner::create_hybrid_token(&payload, &rsa_priv, &pqc_priv, variant);
+            HybridSigner::create_hybrid_token(&payload, &classical_priv, &pqc_priv, variant);
 
         Ok(general_purpose::URL_SAFE_NO_PAD.encode(cose_token_bytes))
     }

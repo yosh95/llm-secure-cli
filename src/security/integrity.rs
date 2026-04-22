@@ -3,8 +3,8 @@ use crate::security::identity::IdentityManager;
 use crate::security::pqc::{MldsaVariant, PqcProvider};
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose, Engine as _};
-use rsa::pkcs1v15::Pkcs1v15Sign;
-use rsa::{pkcs8::DecodePrivateKey, pkcs8::DecodePublicKey, RsaPrivateKey, RsaPublicKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use pkcs8::{DecodePrivateKey, DecodePublicKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -17,7 +17,7 @@ pub struct IntegrityManifest {
     pub config_hash: String,
     pub pqc_signature: String,
     pub pqc_algorithm: String,
-    pub rsa_signature: Option<String>,
+    pub classical_signature: Option<String>,
 }
 
 pub struct IntegrityVerifier {
@@ -105,21 +105,18 @@ impl IntegrityVerifier {
         let pqc_sig =
             PqcProvider::sign_mldsa(json_data.as_bytes(), &sk_pqc, MldsaVariant::Mldsa65)?;
 
-        // 2. Sign with RSA (Classical)
-        let rsa_priv_pem = IdentityManager::get_rsa_private_key_pem()?;
-        let rsa_priv = RsaPrivateKey::from_pkcs8_pem(&rsa_priv_pem)
-            .map_err(|e| anyhow!("Failed to load RSA private key: {}", e))?;
-        let rsa_digest = Sha256::digest(json_data.as_bytes());
-        let rsa_sig = rsa_priv
-            .sign(Pkcs1v15Sign::new::<Sha256>(), &rsa_digest)
-            .map_err(|e| anyhow!("RSA signing failed: {}", e))?;
+        // 2. Sign with Ed25519 (Classical)
+        let classical_priv_pem = IdentityManager::get_classical_private_key_pem()?;
+        let signing_key = SigningKey::from_pkcs8_pem(&classical_priv_pem)
+            .map_err(|e| anyhow!("Failed to load Ed25519 private key: {}", e))?;
+        let classical_sig = signing_key.sign(json_data.as_bytes());
 
         let manifest = IntegrityManifest {
             binary_hash,
             config_hash,
             pqc_signature: general_purpose::STANDARD.encode(pqc_sig),
             pqc_algorithm: "ML-DSA-65".to_string(),
-            rsa_signature: Some(general_purpose::STANDARD.encode(rsa_sig)),
+            classical_signature: Some(general_purpose::STANDARD.encode(classical_sig.to_vec())),
         };
 
         let json_manifest = serde_json::to_string_pretty(&manifest)?;
@@ -170,22 +167,23 @@ impl IntegrityVerifier {
             return Ok(false); // PQC signature mismatch
         }
 
-        // 1b. Verify RSA Signature (Classical)
-        if let Some(rsa_sig_b64) = &manifest.rsa_signature {
-            log::debug!("IntegrityVerifier: Verifying classical RSA signature");
-            let rsa_pub_path = crate::consts::KEY_DIR.join("id_rsa.pub");
-            let rsa_pub_pem = fs::read_to_string(rsa_pub_path)?;
-            let rsa_pub = RsaPublicKey::from_public_key_pem(&rsa_pub_pem)
-                .map_err(|e| anyhow!("Failed to load RSA public key: {}", e))?;
-            let rsa_sig = general_purpose::STANDARD.decode(rsa_sig_b64)?;
-            let rsa_digest = Sha256::digest(json_data.as_bytes());
+        // 1b. Verify Classical Signature (Ed25519)
+        if let Some(classical_sig_b64) = &manifest.classical_signature {
+            log::debug!("IntegrityVerifier: Verifying classical EdDSA signature");
+            let classical_pub_path = crate::consts::KEY_DIR.join("id_ed25519.pub");
+            let classical_pub_pem = fs::read_to_string(classical_pub_path)?;
+            let verifying_key = VerifyingKey::from_public_key_pem(&classical_pub_pem)
+                .map_err(|e| anyhow!("Failed to load Ed25519 public key: {}", e))?;
+            let classical_sig_bytes = general_purpose::STANDARD.decode(classical_sig_b64)?;
+            let classical_sig = Signature::from_slice(&classical_sig_bytes)
+                .map_err(|e| anyhow!("Invalid Ed25519 signature format: {}", e))?;
 
-            if rsa_pub
-                .verify(Pkcs1v15Sign::new::<Sha256>(), &rsa_digest, &rsa_sig)
+            if verifying_key
+                .verify(json_data.as_bytes(), &classical_sig)
                 .is_err()
             {
-                log::warn!("IntegrityVerifier: RSA signature verification FAILED");
-                return Ok(false); // RSA signature mismatch
+                log::warn!("IntegrityVerifier: Classical signature verification FAILED");
+                return Ok(false); // Ed25519 signature mismatch
             }
         }
 

@@ -52,10 +52,11 @@ rustyline = "18.0"
 saorsa-pqc = "0.5"
 aes-gcm = "0.10"
 ciborium = "0.2"
-rsa = "0.10.0-rc.17"
+ed25519-dalek = { version = "2.2", features = ["pkcs8", "rand_core"] }
+pkcs8 = { version = "0.10", features = ["pem"] }
 uuid = { version = "1.10", features = ["v4"] }
 hostname = "0.4"
-rand = "0.10"
+rand = "0.8"
 constant_time_eq = "=0.4.2"
 
 

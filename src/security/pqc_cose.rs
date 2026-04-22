@@ -1,16 +1,12 @@
 use crate::security::pqc::{MldsaVariant, PqcProvider};
 use ciborium::Value;
-use rsa::pkcs1v15::Pkcs1v15Sign;
-use rsa::{
-    pkcs8::{DecodePrivateKey, DecodePublicKey},
-    RsaPrivateKey, RsaPublicKey,
-};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use pkcs8::{DecodePrivateKey, DecodePublicKey};
 use serde_json::Value as JsonValue;
-use sha2::Digest;
 use std::collections::HashMap;
 
 // COSE constants
-const COSE_ALG_RS256: i64 = -257;
+const COSE_ALG_EDDSA: i64 = -8;
 const COSE_ALG_MLDSA: i64 = -48;
 const COSE_HEADER_ALG: i64 = 1;
 const COSE_SIGN_TAG: u64 = 98;
@@ -20,7 +16,7 @@ pub struct HybridSigner;
 impl HybridSigner {
     pub fn create_hybrid_token(
         payload: &JsonValue,
-        rsa_private_key_pem: &str,
+        classical_private_key_pem: &str,
         pqc_private_key: &[u8],
         variant: MldsaVariant,
     ) -> Vec<u8> {
@@ -31,26 +27,22 @@ impl HybridSigner {
         let payload_bytes = serde_json::to_vec(payload).unwrap();
         let body_protected = Self::encode_header_map(HashMap::new());
 
-        // --- Signer 0: RSA ---
-        log::debug!("HybridSigner: Generating RSA-256 signature");
-        let mut rsa_header = HashMap::new();
-        rsa_header.insert(COSE_HEADER_ALG, Value::Integer(COSE_ALG_RS256.into()));
-        let rsa_sign_protected = Self::encode_header_map(rsa_header);
+        // --- Signer 0: Ed25519 (Classical) ---
+        log::debug!("HybridSigner: Generating EdDSA signature");
+        let mut ed_header = HashMap::new();
+        ed_header.insert(COSE_HEADER_ALG, Value::Integer(COSE_ALG_EDDSA.into()));
+        let ed_sign_protected = Self::encode_header_map(ed_header);
 
-        let rsa_tbs =
-            Self::build_sig_structure(&body_protected, &rsa_sign_protected, &payload_bytes);
-        let rsa_priv = RsaPrivateKey::from_pkcs8_pem(rsa_private_key_pem)
-            .expect("Failed to load RSA private key");
+        let ed_tbs = Self::build_sig_structure(&body_protected, &ed_sign_protected, &payload_bytes);
+        let signing_key = SigningKey::from_pkcs8_pem(classical_private_key_pem)
+            .expect("Failed to load Ed25519 private key");
 
-        let digest = sha2::Sha256::digest(&rsa_tbs);
-        let rsa_sig = rsa_priv
-            .sign(Pkcs1v15Sign::new::<sha2::Sha256>(), &digest)
-            .expect("RSA signing failed");
+        let ed_sig = signing_key.sign(&ed_tbs);
 
-        let rsa_signature_entry = Value::Array(vec![
-            Value::Bytes(rsa_sign_protected),
+        let classical_signature_entry = Value::Array(vec![
+            Value::Bytes(ed_sign_protected),
             Value::Map(vec![]),
-            Value::Bytes(rsa_sig),
+            Value::Bytes(ed_sig.to_vec()),
         ]);
 
         // --- Signer 1: ML-DSA ---
@@ -80,7 +72,7 @@ impl HybridSigner {
             Value::Bytes(body_protected),
             Value::Map(vec![]),
             Value::Bytes(payload_bytes),
-            Value::Array(vec![rsa_signature_entry, pqc_signature_entry]),
+            Value::Array(vec![classical_signature_entry, pqc_signature_entry]),
         ]);
 
         let mut encoded = Vec::new();
@@ -98,7 +90,7 @@ impl HybridSigner {
 
     pub fn verify_hybrid_token(
         cose_token: &[u8],
-        rsa_public_key_pem: &str,
+        classical_public_key_pem: &str,
         pqc_public_key_provider: impl Fn(MldsaVariant) -> Vec<u8>,
     ) -> Option<JsonValue> {
         log::debug!(
@@ -149,42 +141,45 @@ impl HybridSigner {
             return None;
         }
 
-        // Signer 0: RSA
-        log::debug!("HybridSigner: Verifying RSA-256 signature");
-        let rsa_entry = match &signatures[0] {
+        // Signer 0: Ed25519 (Classical)
+        log::debug!("HybridSigner: Verifying EdDSA signature");
+        let classical_entry = match &signatures[0] {
             Value::Array(arr) if arr.len() == 3 => arr,
             _ => return None,
         };
-        let rsa_sign_protected = match &rsa_entry[0] {
+        let classical_sign_protected = match &classical_entry[0] {
             Value::Bytes(b) => b,
             _ => return None,
         };
-        let rsa_sig = match &rsa_entry[2] {
+        let classical_sig_bytes = match &classical_entry[2] {
             Value::Bytes(b) => b,
             _ => return None,
         };
 
-        let rsa_phdr: Value = ciborium::de::from_reader(rsa_sign_protected.as_slice()).ok()?;
-        let rsa_alg = match rsa_phdr {
+        let classical_phdr: Value =
+            ciborium::de::from_reader(classical_sign_protected.as_slice()).ok()?;
+        let classical_alg = match classical_phdr {
             Value::Map(m) => m
                 .into_iter()
                 .find(|(k, _)| k == &Value::Integer(COSE_HEADER_ALG.into()))
                 .map(|(_, v)| v),
             _ => None,
         };
-        if rsa_alg != Some(Value::Integer(COSE_ALG_RS256.into())) {
-            log::debug!("HybridSigner: RSA verification failed (unsupported algorithm)");
+        if classical_alg != Some(Value::Integer(COSE_ALG_EDDSA.into())) {
+            log::debug!("HybridSigner: Classical verification failed (unsupported algorithm)");
             return None;
         }
 
-        let rsa_tbs = Self::build_sig_structure(body_protected, rsa_sign_protected, payload_bytes);
-        let rsa_pub = RsaPublicKey::from_public_key_pem(rsa_public_key_pem).ok()?;
-        let digest = sha2::Sha256::digest(&rsa_tbs);
-        if let Err(e) = rsa_pub.verify(Pkcs1v15Sign::new::<sha2::Sha256>(), &digest, rsa_sig) {
-            log::debug!("HybridSigner: RSA verification failed: {:?}", e);
+        let classical_tbs =
+            Self::build_sig_structure(body_protected, classical_sign_protected, payload_bytes);
+        let verifying_key = VerifyingKey::from_public_key_pem(classical_public_key_pem).ok()?;
+        let classical_sig = Signature::from_slice(classical_sig_bytes).ok()?;
+
+        if let Err(e) = verifying_key.verify(&classical_tbs, &classical_sig) {
+            log::debug!("HybridSigner: Classical verification failed: {:?}", e);
             return None;
         }
-        log::debug!("HybridSigner: RSA verification successful");
+        log::debug!("HybridSigner: Classical verification successful");
 
         // Signer 1: ML-DSA
         log::debug!("HybridSigner: Verifying ML-DSA signature");
