@@ -50,6 +50,16 @@ impl EvaluationContext {
                 Value::String(cwd.to_string_lossy().to_string()),
             );
         }
+
+        let keys_exist = crate::security::identity::IdentityManager::get_pqc_public_key(
+            crate::security::pqc::MldsaVariant::Mldsa65,
+        )
+        .is_ok();
+
+        self.attributes.insert(
+            "subject.has_pqc_proof".to_string(),
+            serde_json::Value::Bool(keys_exist),
+        );
     }
 
     pub fn set_attribute(&mut self, key: &str, value: Value) {

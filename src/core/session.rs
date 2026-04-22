@@ -438,6 +438,10 @@ impl ChatSession {
                                         "tool",
                                         serde_json::Value::String(name.to_string()),
                                     );
+                                    eval_ctx.set_attribute(
+                                        "resource.id",
+                                        serde_json::Value::String(name.to_string()),
+                                    );
 
                                     if !crate::security::policy::POLICY_ENGINE
                                         .evaluate(name, &args, &eval_ctx)
