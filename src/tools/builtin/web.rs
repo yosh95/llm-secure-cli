@@ -173,7 +173,7 @@ fn html_to_text(html: &str) -> String {
     let cleaned = re_style.replace_all(&cleaned, "");
 
     // Use html2text for conversion
-    html2text::from_read(cleaned.as_bytes(), 100)
+    html2text::from_read(cleaned.as_bytes(), 100).unwrap_or_else(|_| cleaned.to_string())
 }
 
 /// Call Brave Search API and return a JSON array of results.

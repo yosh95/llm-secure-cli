@@ -217,9 +217,9 @@ impl SecureStorage {
         let cipher = Aes256Gcm::new_from_slice(key).unwrap();
 
         let nonce_bytes: [u8; 12] = rand::random();
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
 
-        let ciphertext_with_tag = cipher.encrypt(nonce, data).expect("encryption failure!");
+        let ciphertext_with_tag = cipher.encrypt(&nonce, data).expect("encryption failure!");
 
         let tag_start = ciphertext_with_tag.len() - 16;
         let aes_ct = &ciphertext_with_tag[..tag_start];
@@ -250,7 +250,7 @@ impl SecureStorage {
         let cipher = Aes256Gcm::new_from_slice(key).unwrap();
 
         let nonce_bytes = general_purpose::STANDARD.decode(&packet.nonce).unwrap();
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::from(<[u8; 12]>::try_from(nonce_bytes).expect("invalid nonce length"));
 
         let aes_ct = general_purpose::STANDARD.decode(&packet.aes_ct).unwrap();
         let tag = general_purpose::STANDARD.decode(&packet.tag).unwrap();
@@ -259,7 +259,7 @@ impl SecureStorage {
         combined.extend_from_slice(&tag);
 
         let decrypted = cipher
-            .decrypt(nonce, combined.as_slice())
+            .decrypt(&nonce, combined.as_slice())
             .expect("decryption failure!");
 
         log::debug!(
