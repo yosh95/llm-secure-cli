@@ -12,5 +12,4 @@ pub mod policy;
 pub mod pqc;
 pub mod pqc_cose;
 pub mod resource_manager;
-pub mod runtime;
 pub mod static_analyzer;

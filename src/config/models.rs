@@ -129,8 +129,6 @@ pub struct SecurityConfig {
     pub dual_llm_confidence_threshold: f64,
     #[serde(default = "default_security_level")]
     pub security_level: String,
-    #[serde(default = "default_runtime_type")]
-    pub runtime_type: String,
     #[serde(default)]
     pub abac_rules: Vec<AbacRule>,
 }
@@ -158,9 +156,6 @@ fn default_dual_llm_model() -> String {
 fn default_security_level() -> String {
     "high".to_string()
 }
-fn default_runtime_type() -> String {
-    "local".to_string()
-}
 fn default_confidence_threshold() -> f64 {
     0.7
 }
@@ -186,7 +181,6 @@ impl Default for SecurityConfig {
             dual_llm_model: "lite".to_string(),
             dual_llm_confidence_threshold: default_confidence_threshold(),
             security_level: default_security_level(),
-            runtime_type: default_runtime_type(),
             abac_rules: Vec::new(),
         }
     }

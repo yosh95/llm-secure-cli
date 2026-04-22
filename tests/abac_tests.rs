@@ -105,10 +105,10 @@ match_attributes = { "subject.groups" = ["admin", "security"] }
     ctx.set_attribute("subject.groups", json!(["admin"]));
     assert_eq!(AbacEngine::evaluate(&ctx), None);
 
-    // Different order (should fail for exact array match)
+    // Different order (should now pass with subset match)
     let mut ctx = EvaluationContext::default();
     ctx.set_attribute("subject.groups", json!(["security", "admin"]));
-    assert_eq!(AbacEngine::evaluate(&ctx), None);
+    assert_eq!(AbacEngine::evaluate(&ctx), Some("allow".to_string()));
 
     env::set_current_dir(original_dir).unwrap();
 }
