@@ -28,7 +28,7 @@ struct Args {
     #[clap(short, long)]
     stdout: bool,
 
-    /// Disable Markdown rendering
+    /// Disable Markdown rendering (recommended with --stdout)
     #[clap(long)]
     raw: bool,
 
@@ -304,6 +304,10 @@ async fn main() {
 
     let is_atty = unsafe { libc::isatty(0) != 0 };
     let stdout = args.stdout || !is_atty;
+
+    if args.raw && !stdout {
+        ui::report_warning("--raw is primarily intended for use with --stdout. In interactive mode, rich rendering is enabled by default.");
+    }
 
     let client = {
         let registry = llm_secure_cli::llm::registry::CLIENT_REGISTRY

@@ -65,6 +65,9 @@ llsc "What is the capital of France?"
 # Use a specific provider and model
 llsc -p anthropic -m sonnet "Explain quantum computing"
 
+# Output raw text to a file (disables Markdown rendering)
+llsc --stdout --raw "Write a python script to sort files" > sort.py
+
 # Analyze a local file or a URL
 llsc "Summarize this PDF" ./document.pdf
 llsc "Analyze this website" https://example.com
@@ -284,6 +287,9 @@ llsc "フランスの首都はどこですか？"
 
 # 特定のプロバイダーとモデルを指定する
 llsc -p anthropic -m sonnet "量子コンピュータについて説明して"
+
+# 生のテキストをファイルに出力する（Markdownレンダリングを無効化）
+llsc --stdout --raw "ファイルをソートするPythonスクリプトを書いて" > sort.py
 
 # ローカルファイルやURLを解析する
 llsc "このPDFを要約して" ./document.pdf
