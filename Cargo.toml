@@ -57,7 +57,7 @@ pkcs8 = { version = "0.10", features = ["pem"] }
 uuid = { version = "1.10", features = ["v4"] }
 hostname = "0.4"
 rand = "0.8"
-constant_time_eq = "=0.4.2"
+constant_time_eq = "0.5"
 
 
 [dev-dependencies]

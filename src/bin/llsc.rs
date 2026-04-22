@@ -126,7 +126,9 @@ async fn main() {
     }
 
     // Run System Integrity Check
-    {
+    let is_identity_cmd = matches!(args.command, Some(Commands::Identity { .. }));
+
+    if !is_identity_cmd {
         let verifier = llm_secure_cli::security::integrity::IntegrityVerifier::new();
         if verifier.manifest_path.exists() {
             match verifier.verify() {

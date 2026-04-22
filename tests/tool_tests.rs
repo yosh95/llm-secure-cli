@@ -62,8 +62,17 @@ fn test_file_ops_list_and_search() {
     let mut args = HashMap::new();
     args.insert("directory".to_string(), json!(root_str));
     args.insert("pattern".to_string(), json!("*.rs"));
+    let res = search_files(args.clone()).unwrap();
+    let results = res["results"].as_array().unwrap();
+    assert!(results.iter().any(|r| r["path"] == "subdir/file2.rs"));
+
+    // 5. Test search_files with *middle* pattern
+    let mut args = HashMap::new();
+    args.insert("directory".to_string(), json!(root_str));
+    args.insert("pattern".to_string(), json!("*file*"));
     let res = search_files(args).unwrap();
     let results = res["results"].as_array().unwrap();
+    assert!(results.iter().any(|r| r["path"] == "file1.txt"));
     assert!(results.iter().any(|r| r["path"] == "subdir/file2.rs"));
 }
 

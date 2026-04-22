@@ -63,13 +63,33 @@ fn glob_match(pattern: &str, name: &str) -> bool {
     if pattern == "*" {
         return true;
     }
-    if let Some(prefix) = pattern.strip_suffix('*') {
-        return name.starts_with(prefix);
+
+    let parts: Vec<&str> = pattern.split('*').collect();
+    if parts.len() == 1 {
+        return pattern == name;
     }
-    if let Some(suffix) = pattern.strip_prefix('*') {
-        return name.ends_with(suffix);
+
+    if !name.starts_with(parts[0]) {
+        return false;
     }
-    false
+
+    let mut current_name = &name[parts[0].len()..];
+
+    // Check intermediate parts
+    for i in 1..parts.len() - 1 {
+        if parts[i].is_empty() {
+            continue;
+        }
+        if let Some(pos) = current_name.find(parts[i]) {
+            current_name = &current_name[pos + parts[i].len()..];
+        } else {
+            return false;
+        }
+    }
+
+    // Check the last part
+    let last_part = parts[parts.len() - 1];
+    current_name.ends_with(last_part)
 }
 
 pub fn list_files_in_directory(args: HashMap<String, Value>) -> anyhow::Result<Value> {
