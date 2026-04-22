@@ -147,6 +147,7 @@ flash = "gemini-3-flash-preview"
 pro = "gemini-3.1-pro-preview"
 image = { model = "gemini-3.1-flash-image-preview", tools = false }
 image-pro = { model = "gemini-3-pro-image-preview", tools = false }
+gemma = "gemma-4-31b-it"
 
 # =============================================================================
 # OpenAI
