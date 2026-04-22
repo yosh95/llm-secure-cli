@@ -3,22 +3,25 @@ use base64::{engine::general_purpose, Engine as _};
 use chrono;
 use dirs;
 use std::fs;
+use std::io::Read;
 use std::path::Path;
-use url::Url;
 
 pub async fn fetch_url_content(
     url_str: &str,
     _pdf_as_base64: bool,
 ) -> anyhow::Result<(String, String)> {
-    let _url = Url::parse(url_str)?;
-    // SSRF validation omitted for brevity in this step, but recommended.
+    let url = url_str.to_string();
 
-    let client = reqwest::Client::new();
-    let res = client.get(url_str).send().await?;
+    let res_result = tokio::task::spawn_blocking(move || ureq::get(&url).call()).await?;
+
+    let res = match res_result {
+        Ok(r) => r,
+        Err(e) => return Err(anyhow::anyhow!("Failed to fetch URL: {}", e)),
+    };
 
     let content_type = res
         .headers()
-        .get(reqwest::header::CONTENT_TYPE)
+        .get("content-type")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("text/plain")
         .split(';')
@@ -27,18 +30,20 @@ pub async fn fetch_url_content(
         .to_string();
 
     if content_type == "application/pdf" {
-        let bytes = res.bytes().await?;
+        let mut bytes = Vec::new();
+        res.into_body().into_reader().read_to_end(&mut bytes)?;
         let b64 = general_purpose::STANDARD.encode(bytes);
         Ok((b64, content_type))
     } else if content_type.contains("html") {
-        let html = res.text().await?;
+        let html = res.into_body().read_to_string()?;
         let text = html_to_text(&html);
         Ok((text, "text/plain".to_string()))
     } else if content_type.starts_with("text/") || content_type.contains("json") {
-        let text = res.text().await?;
+        let text = res.into_body().read_to_string()?;
         Ok((text, "text/plain".to_string()))
     } else {
-        let bytes = res.bytes().await?;
+        let mut bytes = Vec::new();
+        res.into_body().into_reader().read_to_end(&mut bytes)?;
         let b64 = general_purpose::STANDARD.encode(bytes);
         Ok((b64, content_type))
     }

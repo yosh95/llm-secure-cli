@@ -2,11 +2,10 @@ use crate::llm::base::{BaseLlmClientData, LlmClient, ProviderSpec};
 use crate::llm::models::{ClientState, ContentPart, DataSource, Message, MessagePart, Role};
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use reqwest::Client;
 use serde_json::json;
 use std::collections::HashMap;
 
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(Client::new);
+static AGENT: Lazy<ureq::Agent> = Lazy::new(|| ureq::Agent::config_builder().build().into());
 
 pub struct GeminiClient {
     pub base: BaseLlmClientData,
@@ -248,17 +247,25 @@ impl LlmClient for GeminiClient {
         );
 
         let url = self.get_api_url();
-        let key = self.base.api_key.as_deref().unwrap_or("");
+        let key = self.base.api_key.as_deref().unwrap_or("").to_string();
 
-        let res = HTTP_CLIENT
-            .post(&url)
-            .header("x-goog-api-key", key)
-            .json(&payload)
-            .send()
-            .await?;
+        let res_result = tokio::task::spawn_blocking(move || {
+            AGENT
+                .post(&url)
+                .header("x-goog-api-key", key)
+                .send_json(payload)
+        })
+        .await?;
+
+        let res = match res_result {
+            Ok(r) => r,
+            Err(e) => {
+                return Err(anyhow::anyhow!("Gemini API request failed: {}", e));
+            }
+        };
 
         let status = res.status();
-        let res_json: serde_json::Value = res.json().await?;
+        let res_json: serde_json::Value = res.into_body().read_json().unwrap_or_default();
         log::debug!(
             "Gemini Response ({}): {}",
             status,
@@ -425,21 +432,29 @@ impl LlmClient for GeminiClient {
         }
 
         let url = self.get_api_url();
-        let key = self.base.api_key.as_deref().unwrap_or("");
+        let key = self.base.api_key.as_deref().unwrap_or("").to_string();
 
-        let res = HTTP_CLIENT
-            .post(&url)
-            .header("x-goog-api-key", key)
-            .json(&payload)
-            .send()
-            .await?;
+        let res_result = tokio::task::spawn_blocking(move || {
+            AGENT
+                .post(&url)
+                .header("x-goog-api-key", key)
+                .send_json(payload)
+        })
+        .await?;
+
+        let res = match res_result {
+            Ok(r) => r,
+            Err(e) => {
+                return Err(anyhow::anyhow!("Gemini API request failed: {}", e));
+            }
+        };
 
         if !res.status().is_success() {
-            let res_json: serde_json::Value = res.json().await?;
+            let res_json: serde_json::Value = res.into_body().read_json().unwrap_or_default();
             return Err(anyhow::anyhow!("Gemini verifier error: {}", res_json));
         }
 
-        let res_json: serde_json::Value = res.json().await?;
+        let res_json: serde_json::Value = res.into_body().read_json()?;
         let args = res_json["candidates"][0]["content"]["parts"]
             .as_array()
             .and_then(|parts| {

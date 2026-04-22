@@ -26,14 +26,13 @@ pub fn read_url_content(args: HashMap<String, Value>) -> anyhow::Result<Value> {
     // Validate URL (block SSRF: private/loopback addresses)
     validate_url_ssrf(url)?;
 
-    // Build a blocking runtime call inside the sync function
+    // Build a blocking call
     let rt = tokio::runtime::Handle::try_current();
     let content = if rt.is_ok() {
         // Already inside an async context: use block_in_place
-        tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(fetch_url(url)))?
+        tokio::task::block_in_place(|| fetch_url(url))?
     } else {
-        // No async context: create a new runtime
-        tokio::runtime::Runtime::new()?.block_on(fetch_url(url))?
+        fetch_url(url)?
     };
 
     // Apply line range and character limits
@@ -111,11 +110,9 @@ pub fn brave_search(args: HashMap<String, Value>) -> anyhow::Result<Value> {
 
     let rt = tokio::runtime::Handle::try_current();
     let results = if rt.is_ok() {
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(call_brave_api(query, count, &api_key))
-        })?
+        tokio::task::block_in_place(|| call_brave_api(query, count, &api_key))?
     } else {
-        tokio::runtime::Runtime::new()?.block_on(call_brave_api(query, count, &api_key))?
+        call_brave_api(query, count, &api_key)?
     };
 
     Ok(json!({
@@ -130,19 +127,14 @@ pub fn brave_search(args: HashMap<String, Value>) -> anyhow::Result<Value> {
 // ---------------------------------------------------------------------------
 
 /// Fetch URL content and convert HTML to Markdown-like text.
-async fn fetch_url(url: &str) -> anyhow::Result<String> {
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (compatible; llsc/0.1)")
-        .timeout(std::time::Duration::from_secs(30))
-        .redirect(reqwest::redirect::Policy::limited(3))
-        .build()?;
-
-    let res = client.get(url).send().await?;
-    res.error_for_status_ref()?;
+fn fetch_url(url: &str) -> anyhow::Result<String> {
+    let res = ureq::get(url)
+        .header("User-Agent", "Mozilla/5.0 (compatible; llsc/0.1)")
+        .call()?;
 
     let content_type = res
         .headers()
-        .get(reqwest::header::CONTENT_TYPE)
+        .get("content-type")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("text/plain")
         .split(';')
@@ -152,8 +144,10 @@ async fn fetch_url(url: &str) -> anyhow::Result<String> {
         .to_lowercase();
 
     if content_type == "application/pdf" {
-        // For PDFs, return a note (PDF text extraction requires pdfplumber equivalent)
-        let bytes = res.bytes().await?;
+        // For PDFs, return a note
+        let mut bytes = Vec::new();
+        use std::io::Read;
+        res.into_body().into_reader().read_to_end(&mut bytes)?;
         return Ok(format!(
             "[PDF content: {} bytes. PDF text extraction not supported in this tool; \
              download the file and use read_file_content instead.]",
@@ -161,7 +155,7 @@ async fn fetch_url(url: &str) -> anyhow::Result<String> {
         ));
     }
 
-    let body = res.text().await?;
+    let body = res.into_body().read_to_string()?;
 
     if content_type.contains("html") {
         Ok(html_to_text(&body))
@@ -183,25 +177,19 @@ fn html_to_text(html: &str) -> String {
 }
 
 /// Call Brave Search API and return a JSON array of results.
-async fn call_brave_api(query: &str, count: usize, api_key: &str) -> anyhow::Result<Vec<Value>> {
-    let client = reqwest::Client::new();
-
+fn call_brave_api(query: &str, count: usize, api_key: &str) -> anyhow::Result<Vec<Value>> {
     let url = format!(
         "https://api.search.brave.com/res/v1/web/search?q={}&count={}",
         urlencoding::encode(query),
         count
     );
 
-    let res = client
-        .get(&url)
+    let res = ureq::get(&url)
         .header("Accept", "application/json")
         .header("X-Subscription-Token", api_key)
-        .send()
-        .await?;
+        .call()?;
 
-    res.error_for_status_ref()?;
-
-    let data: serde_json::Value = res.json().await?;
+    let data: serde_json::Value = res.into_body().read_json()?;
 
     let mut results = Vec::new();
     if let Some(web) = data

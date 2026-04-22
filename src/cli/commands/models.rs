@@ -1,69 +1,78 @@
 use crate::cli::ui;
 use crate::config::CONFIG_MANAGER;
-use reqwest::header::{HeaderMap, HeaderValue};
 use serde_json::Value;
 
-pub async fn list_models(provider: &str, models: Vec<String>, verbose: bool) {
-    let api_key = CONFIG_MANAGER.get_api_key(provider);
+pub async fn list_models(provider_name: &str, models: Vec<String>, verbose: bool) {
+    let provider = provider_name.to_lowercase();
+    let api_key = CONFIG_MANAGER.get_api_key(&provider);
     if api_key.is_none() && provider != "ollama" {
         ui::report_error(&format!("{} API Key not found.", provider));
         return;
     }
 
-    let client = reqwest::Client::new();
-    let mut headers = HeaderMap::new();
+    let provider_clone = provider.clone();
+    let api_key_clone = api_key.clone();
 
-    let url = match provider {
-        "openai" | "gpt" => {
-            if let Some(key) = api_key {
-                headers.insert(
-                    "Authorization",
-                    HeaderValue::from_str(&format!("Bearer {}", key)).unwrap(),
-                );
+    let fetch_result = tokio::task::spawn_blocking(move || {
+        let (url, headers) = match provider_clone.as_str() {
+            "openai" | "gpt" => {
+                let mut h = Vec::new();
+                if let Some(key) = &api_key_clone {
+                    h.push(("Authorization".to_string(), format!("Bearer {}", key)));
+                }
+                ("https://api.openai.com/v1/models".to_string(), h)
             }
-            "https://api.openai.com/v1/models".to_string()
-        }
-        "anthropic" | "claude" => {
-            if let Some(key) = api_key {
-                headers.insert("x-api-key", HeaderValue::from_str(&key).unwrap());
+            "anthropic" | "claude" => {
+                let mut h = Vec::new();
+                if let Some(key) = &api_key_clone {
+                    h.push(("x-api-key".to_string(), key.clone()));
+                }
+                h.push(("anthropic-version".to_string(), "2023-06-01".to_string()));
+                ("https://api.anthropic.com/v1/models".to_string(), h)
             }
-            headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
-            "https://api.anthropic.com/v1/models".to_string()
-        }
-        "google" | "gemini" => {
-            if let Some(key) = api_key {
-                headers.insert("x-goog-api-key", HeaderValue::from_str(&key).unwrap());
+            "google" | "gemini" => {
+                let mut h = Vec::new();
+                if let Some(key) = &api_key_clone {
+                    h.push(("x-goog-api-key".to_string(), key.clone()));
+                }
+                (
+                    "https://generativelanguage.googleapis.com/v1beta/models".to_string(),
+                    h,
+                )
             }
-            "https://generativelanguage.googleapis.com/v1beta/models".to_string()
-        }
-        "ollama" => {
-            let config = CONFIG_MANAGER.get_config();
-            let mut base_url = "http://localhost:11434".to_string();
-            if let Some(p_cfg) = config.providers.get("ollama") {
-                if let Some(api_url) = &p_cfg.api_url {
-                    if api_url.contains("/v1") {
-                        base_url = api_url.split("/v1").next().unwrap().to_string();
-                    } else {
-                        base_url = api_url.clone();
+            "ollama" => {
+                let config = CONFIG_MANAGER.get_config();
+                let mut base_url = "http://localhost:11434".to_string();
+                if let Some(p_cfg) = config.providers.get("ollama") {
+                    if let Some(api_url) = &p_cfg.api_url {
+                        if api_url.contains("/v1") {
+                            base_url = api_url.split("/v1").next().unwrap().to_string();
+                        } else {
+                            base_url = api_url.clone();
+                        }
                     }
                 }
+                (format!("{}/api/tags", base_url), Vec::new())
             }
-            format!("{}/api/tags", base_url)
-        }
-        _ => {
-            ui::report_error(&format!("Unknown provider: {}", provider));
-            return;
-        }
-    };
+            _ => {
+                return Err(anyhow::anyhow!("Unknown provider: {}", provider_clone));
+            }
+        };
 
-    match client.get(&url).headers(headers).send().await {
-        Ok(response) => {
-            if !response.status().is_success() {
-                ui::report_error(&format!("Failed to fetch models: {}", response.status()));
-                return;
-            }
-            let result: Value = response.json().await.unwrap_or(Value::Null);
-            let models_data = match provider {
+        let mut req = ureq::get(&url);
+        for (k, v) in headers {
+            req = req.header(&k, &v);
+        }
+        let res = req.call()?;
+        let json: Value = res.into_body().read_json()?;
+        Ok(json)
+    })
+    .await;
+
+    match fetch_result {
+        Ok(Ok(result)) => {
+            let provider_str = provider.as_str();
+            let models_data = match provider_str {
                 "openai" | "gpt" | "anthropic" | "claude" => result.get("data"),
                 "google" | "gemini" => result.get("models"),
                 "ollama" => result.get("models"),
@@ -74,7 +83,7 @@ pub async fn list_models(provider: &str, models: Vec<String>, verbose: bool) {
                 let mut sorted_models = models_list.clone();
                 sorted_models.sort_by(|a, b| {
                     let get_id = |m: &Value| {
-                        match provider {
+                        match provider.as_str() {
                             "openai" | "gpt" | "anthropic" | "claude" => {
                                 m.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
                             }
@@ -96,7 +105,7 @@ pub async fn list_models(provider: &str, models: Vec<String>, verbose: bool) {
 
                 if !models.is_empty() {
                     for m in &sorted_models {
-                        let id = match provider {
+                        let id = match provider.as_str() {
                             "openai" | "gpt" | "anthropic" | "claude" => {
                                 m.get("id").and_then(|v| v.as_str())
                             }
@@ -116,7 +125,7 @@ pub async fn list_models(provider: &str, models: Vec<String>, verbose: bool) {
                     println!("{:<30} {:<30}", "Model ID", "Details");
                     println!("{:-<60}", "");
                     for m in &sorted_models {
-                        match provider {
+                        match provider.as_str() {
                             "openai" | "gpt" => {
                                 println!(
                                     "{:<30} {:<20}",
@@ -162,7 +171,7 @@ pub async fn list_models(provider: &str, models: Vec<String>, verbose: bool) {
                     }
                 } else {
                     for m in &sorted_models {
-                        let id = match provider {
+                        let id = match provider.as_str() {
                             "openai" | "gpt" | "anthropic" | "claude" => {
                                 m.get("id").and_then(|v| v.as_str())
                             }
@@ -181,8 +190,11 @@ pub async fn list_models(provider: &str, models: Vec<String>, verbose: bool) {
                 println!("{}", serde_json::to_string_pretty(&result).unwrap());
             }
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             ui::report_error(&format!("Error fetching models: {}", e));
+        }
+        Err(e) => {
+            ui::report_error(&format!("Task join error: {}", e));
         }
     }
 }

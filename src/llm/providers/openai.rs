@@ -2,11 +2,10 @@ use crate::llm::base::{BaseLlmClientData, LlmClient, ProviderSpec};
 use crate::llm::models::{ClientState, ContentPart, DataSource, Message, MessagePart, Role};
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use reqwest::Client;
 use serde_json::json;
 use std::collections::HashMap;
 
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(Client::new);
+static AGENT: Lazy<ureq::Agent> = Lazy::new(|| ureq::Agent::config_builder().build().into());
 const IMAGE_API_URL: &str = "https://api.openai.com/v1/images/generations";
 
 pub struct OpenAiClient {
@@ -69,27 +68,34 @@ impl OpenAiClient {
             "size": "1024x1024",
         });
 
-        let mut headers = reqwest::header::HeaderMap::new();
-        if let Some(key) = &self.base.api_key {
-            headers.insert(
-                reqwest::header::AUTHORIZATION,
-                format!("Bearer {}", key).parse()?,
-            );
+        let api_key = self.base.api_key.clone();
+        let res_result = tokio::task::spawn_blocking(move || {
+            let mut req = AGENT.post(IMAGE_API_URL);
+            if let Some(key) = api_key {
+                req = req.header("Authorization", format!("Bearer {}", key));
+            }
+            req.send_json(payload)
+        })
+        .await?;
+
+        let res = match res_result {
+            Ok(r) => r,
+            Err(e) => {
+                return Err(anyhow::anyhow!("OpenAI Image API request failed: {}", e));
+            }
+        };
+
+        let status = res.status();
+        if !status.is_success() {
+            let err_text = res.into_body().read_to_string().unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "OpenAI Image API error ({}): {}",
+                status,
+                err_text
+            ));
         }
 
-        let res = HTTP_CLIENT
-            .post(IMAGE_API_URL)
-            .headers(headers)
-            .json(&payload)
-            .send()
-            .await?;
-
-        if !res.status().is_success() {
-            let err_text = res.text().await?;
-            return Err(anyhow::anyhow!("OpenAI Image API error: {}", err_text));
-        }
-
-        let res_json: serde_json::Value = res.json().await?;
+        let res_json: serde_json::Value = res.into_body().read_json()?;
 
         let data_item = res_json["data"]
             .get(0)
@@ -308,14 +314,6 @@ impl LlmClient for OpenAiClient {
             .unwrap()
             .get_tool_schemas();
 
-        let mut headers = reqwest::header::HeaderMap::new();
-        if let Some(key) = &self.base.api_key {
-            headers.insert(
-                reqwest::header::AUTHORIZATION,
-                format!("Bearer {}", key).parse()?,
-            );
-        }
-
         let mut payload = json!({
             "model": self.base.state.model,
             "messages": messages,
@@ -338,15 +336,26 @@ impl LlmClient for OpenAiClient {
             serde_json::to_string_pretty(&payload).unwrap_or_default()
         );
 
-        let res = HTTP_CLIENT
-            .post(&self.api_url)
-            .headers(headers)
-            .json(&payload)
-            .send()
-            .await?;
+        let api_key = self.base.api_key.clone();
+        let api_url = self.api_url.clone();
+        let res_result = tokio::task::spawn_blocking(move || {
+            let mut req = AGENT.post(&api_url);
+            if let Some(key) = api_key {
+                req = req.header("Authorization", format!("Bearer {}", key));
+            }
+            req.send_json(payload)
+        })
+        .await?;
+
+        let res = match res_result {
+            Ok(r) => r,
+            Err(e) => {
+                return Err(anyhow::anyhow!("OpenAI API request failed: {}", e));
+            }
+        };
 
         let status = res.status();
-        let res_json: serde_json::Value = res.json().await?;
+        let res_json: serde_json::Value = res.into_body().read_json().unwrap_or_default();
         log::debug!(
             "OpenAI Response ({}): {}",
             status,
@@ -483,27 +492,35 @@ impl LlmClient for OpenAiClient {
             }
         });
 
-        let mut headers = reqwest::header::HeaderMap::new();
-        if let Some(key) = &self.base.api_key {
-            headers.insert(
-                reqwest::header::AUTHORIZATION,
-                format!("Bearer {}", key).parse()?,
-            );
+        let api_key = self.base.api_key.clone();
+        let api_url = self.api_url.clone();
+        let res_result = tokio::task::spawn_blocking(move || {
+            let mut req = AGENT.post(&api_url);
+            if let Some(key) = api_key {
+                req = req.header("Authorization", format!("Bearer {}", key));
+            }
+            req.send_json(payload)
+        })
+        .await?;
+
+        let res = match res_result {
+            Ok(r) => r,
+            Err(e) => {
+                return Err(anyhow::anyhow!("OpenAI API request failed: {}", e));
+            }
+        };
+
+        let status = res.status();
+        if !status.is_success() {
+            let res_json: serde_json::Value = res.into_body().read_json().unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "OpenAI verifier error ({}): {}",
+                status,
+                res_json
+            ));
         }
 
-        let res = HTTP_CLIENT
-            .post(&self.api_url)
-            .headers(headers)
-            .json(&payload)
-            .send()
-            .await?;
-
-        if !res.status().is_success() {
-            let res_json: serde_json::Value = res.json().await?;
-            return Err(anyhow::anyhow!("OpenAI verifier error: {}", res_json));
-        }
-
-        let res_json: serde_json::Value = res.json().await?;
+        let res_json: serde_json::Value = res.into_body().read_json()?;
         let args_str = res_json["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("No tool call arguments in OpenAI response"))?;

@@ -46,7 +46,6 @@ impl MarkdownRenderer {
                             None,
                         );
                         let level_num = level as usize;
-                        output.push('\n');
                         current_paragraph.push_str(&"#".repeat(level_num));
                         current_paragraph.push(' ');
                         current_heading_level = Some(level_num);

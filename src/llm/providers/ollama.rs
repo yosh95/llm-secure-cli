@@ -3,10 +3,9 @@ use crate::llm::base::{BaseLlmClientData, LlmClient, ProviderSpec};
 use crate::llm::models::{ClientState, DataSource, Role};
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use reqwest::Client;
 use serde_json::json;
 
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(Client::new);
+static AGENT: Lazy<ureq::Agent> = Lazy::new(|| ureq::Agent::config_builder().build().into());
 
 pub struct OllamaClient {
     pub base: BaseLlmClientData,
@@ -93,16 +92,6 @@ impl LlmClient for OllamaClient {
     ) -> anyhow::Result<(Option<String>, Option<String>)> {
         let messages = self.build_messages(&data);
 
-        let mut headers = reqwest::header::HeaderMap::new();
-        if let Some(key) = &self.base.api_key {
-            if key != "ollama" && key != "local_bypass" {
-                headers.insert(
-                    reqwest::header::AUTHORIZATION,
-                    format!("Bearer {}", key).parse()?,
-                );
-            }
-        }
-
         let payload = json!({
             "model": self.base.state.model,
             "messages": messages,
@@ -113,15 +102,28 @@ impl LlmClient for OllamaClient {
             serde_json::to_string_pretty(&payload).unwrap_or_default()
         );
 
-        let res = HTTP_CLIENT
-            .post(&self.api_url)
-            .headers(headers)
-            .json(&payload)
-            .send()
-            .await?;
+        let api_key = self.base.api_key.clone();
+        let api_url = self.api_url.clone();
+        let res_result = tokio::task::spawn_blocking(move || {
+            let mut req = AGENT.post(&api_url);
+            if let Some(key) = api_key {
+                if key != "ollama" && key != "local_bypass" {
+                    req = req.header("Authorization", format!("Bearer {}", key));
+                }
+            }
+            req.send_json(payload)
+        })
+        .await?;
+
+        let res = match res_result {
+            Ok(r) => r,
+            Err(e) => {
+                return Err(anyhow::anyhow!("Ollama API request failed: {}", e));
+            }
+        };
 
         let status = res.status();
-        let res_json: serde_json::Value = res.json().await?;
+        let res_json: serde_json::Value = res.into_body().read_json().unwrap_or_default();
         log::debug!(
             "Ollama Response ({}): {}",
             status,
@@ -180,29 +182,32 @@ impl LlmClient for OllamaClient {
             "stream": false
         });
 
-        let mut headers = reqwest::header::HeaderMap::new();
-        if let Some(key) = &self.base.api_key {
-            if key != "ollama" && key != "local_bypass" {
-                headers.insert(
-                    reqwest::header::AUTHORIZATION,
-                    format!("Bearer {}", key).parse()?,
-                );
+        let api_key = self.base.api_key.clone();
+        let api_url = self.api_url.clone();
+        let res_result = tokio::task::spawn_blocking(move || {
+            let mut req = AGENT.post(&api_url);
+            if let Some(key) = api_key {
+                if key != "ollama" && key != "local_bypass" {
+                    req = req.header("Authorization", format!("Bearer {}", key));
+                }
             }
-        }
+            req.send_json(payload)
+        })
+        .await?;
 
-        let res = HTTP_CLIENT
-            .post(&self.api_url)
-            .headers(headers)
-            .json(&payload)
-            .send()
-            .await?;
+        let res = match res_result {
+            Ok(r) => r,
+            Err(e) => {
+                return Err(anyhow::anyhow!("Ollama API request failed: {}", e));
+            }
+        };
 
         if !res.status().is_success() {
-            let res_json: serde_json::Value = res.json().await?;
+            let res_json: serde_json::Value = res.into_body().read_json().unwrap_or_default();
             return Err(anyhow::anyhow!("Ollama verifier error: {}", res_json));
         }
 
-        let res_json: serde_json::Value = res.json().await?;
+        let res_json: serde_json::Value = res.into_body().read_json()?;
 
         // Try to extract tool calls from Ollama response (OpenAI compatible format)
         let tool_call = res_json["choices"][0]["message"]["tool_calls"][0]["function"]

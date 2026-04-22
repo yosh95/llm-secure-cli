@@ -2,11 +2,10 @@ use crate::llm::base::{BaseLlmClientData, LlmClient, ProviderSpec};
 use crate::llm::models::{ClientState, ContentPart, DataSource, Message, MessagePart, Role};
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use reqwest::Client;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(Client::new);
+static AGENT: Lazy<ureq::Agent> = Lazy::new(|| ureq::Agent::config_builder().build().into());
 
 pub struct ClaudeClient {
     pub base: BaseLlmClientData,
@@ -202,13 +201,6 @@ impl LlmClient for ClaudeClient {
     ) -> anyhow::Result<(Option<String>, Option<String>)> {
         let messages = self.build_messages(&data);
 
-        let mut headers = reqwest::header::HeaderMap::new();
-        if let Some(key) = &self.base.api_key {
-            headers.insert("x-api-key", key.parse()?);
-        }
-        headers.insert("anthropic-version", "2023-06-01".parse()?);
-        headers.insert("content-type", "application/json".parse()?);
-
         // Build tool schemas (Anthropic format)
         let tool_schemas = crate::tools::registry::REGISTRY
             .lock()
@@ -257,15 +249,28 @@ impl LlmClient for ClaudeClient {
             serde_json::to_string_pretty(&payload).unwrap_or_default()
         );
 
-        let res = HTTP_CLIENT
-            .post(&self.api_url)
-            .headers(headers)
-            .json(&payload)
-            .send()
-            .await?;
+        let api_key = self.base.api_key.clone();
+        let api_url = self.api_url.clone();
+        let res_result = tokio::task::spawn_blocking(move || {
+            let mut req = AGENT
+                .post(&api_url)
+                .header("anthropic-version", "2023-06-01");
+            if let Some(key) = api_key {
+                req = req.header("x-api-key", key);
+            }
+            req.send_json(payload)
+        })
+        .await?;
+
+        let res = match res_result {
+            Ok(r) => r,
+            Err(e) => {
+                return Err(anyhow::anyhow!("Anthropic API request failed: {}", e));
+            }
+        };
 
         let status = res.status();
-        let res_json: Value = res.json().await?;
+        let res_json: Value = res.into_body().read_json().unwrap_or_default();
         log::debug!(
             "Anthropic Response ({}): {}",
             status,
@@ -414,25 +419,32 @@ impl LlmClient for ClaudeClient {
             }
         }
 
-        let mut headers = reqwest::header::HeaderMap::new();
-        if let Some(key) = &self.base.api_key {
-            headers.insert("x-api-key", key.parse()?);
-        }
-        headers.insert("anthropic-version", "2023-06-01".parse()?);
+        let api_key = self.base.api_key.clone();
+        let api_url = self.api_url.clone();
+        let res_result = tokio::task::spawn_blocking(move || {
+            let mut req = AGENT
+                .post(&api_url)
+                .header("anthropic-version", "2023-06-01");
+            if let Some(key) = api_key {
+                req = req.header("x-api-key", key);
+            }
+            req.send_json(payload)
+        })
+        .await?;
 
-        let res = HTTP_CLIENT
-            .post(&self.api_url)
-            .headers(headers)
-            .json(&payload)
-            .send()
-            .await?;
+        let res = match res_result {
+            Ok(r) => r,
+            Err(e) => {
+                return Err(anyhow::anyhow!("Anthropic API request failed: {}", e));
+            }
+        };
 
         if !res.status().is_success() {
-            let res_json: serde_json::Value = res.json().await?;
+            let res_json: serde_json::Value = res.into_body().read_json().unwrap_or_default();
             return Err(anyhow::anyhow!("Anthropic verifier error: {}", res_json));
         }
 
-        let res_json: serde_json::Value = res.json().await?;
+        let res_json: serde_json::Value = res.into_body().read_json()?;
         let input = res_json["content"]
             .as_array()
             .and_then(|content| {
