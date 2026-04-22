@@ -3,6 +3,7 @@ name = "llm-secure-cli"
 version = "0.2.0"
 edition = "2021"
 autobins = false
+rust-version = "1.95.0"
 
 [[bin]]
 name = "llsc"
