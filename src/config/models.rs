@@ -131,6 +131,16 @@ pub struct SecurityConfig {
     pub security_level: String,
     #[serde(default = "default_runtime_type")]
     pub runtime_type: String,
+    #[serde(default)]
+    pub abac_rules: Vec<AbacRule>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AbacRule {
+    pub name: String,
+    pub description: Option<String>,
+    pub match_attributes: HashMap<String, serde_json::Value>,
+    pub effect: String, // "allow", "deny"
 }
 
 fn default_roles() -> Vec<String> {
@@ -177,6 +187,7 @@ impl Default for SecurityConfig {
             dual_llm_confidence_threshold: default_confidence_threshold(),
             security_level: default_security_level(),
             runtime_type: default_runtime_type(),
+            abac_rules: Vec::new(),
         }
     }
 }

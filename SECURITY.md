@@ -154,8 +154,9 @@ _COSE_SIGN_TAG   = 98     # CBOR tag for COSE_Sign
 
 ### ABAC Policy Engine
 
-Claims embedded in the COSE payload carry execution-context attributes used
-for Attribute-Based Access Control:
+`llm-secure-cli` utilizes a flexible **Attribute-Based Access Control (ABAC)** engine that evaluates both system-provided attributes and user-defined rules. 
+
+Claims embedded in the COSE payload carry execution-context attributes used for ABAC evaluation:
 
 | Claim | Description |
 |---|---|
@@ -165,8 +166,36 @@ for Attribute-Based Access Control:
 | `iat` / `exp` | Issued-at / expiry (Unix timestamps) |
 | `integrity_attestation` | Signed manifest of core security files |
 
-Remote MCP servers verify the token signature and enforce policy against these
-claims.  Risk-level classification in `defaults.toml`:
+#### Custom ABAC Rules
+
+Users can define custom fine-grained policies in `config.toml` using the `abac_rules` array. These rules are evaluated before default guardrails.
+
+**Available Attributes for Matching:**
+- `subject.id`: The current OS user (e.g., "alice").
+- `env.os`: The operating system (e.g., "linux", "macos").
+- `env.git_branch`: The current Git branch name (if in a Git repo).
+- `env.cwd`: The current working directory.
+- `subject.has_pqc_proof`: Whether the request has a valid PQC signature (boolean).
+
+**Example Configuration:**
+
+```toml
+[[security.abac_rules]]
+name = "Restrict Production Branch"
+description = "Deny all tool execution when on the main branch for safety."
+match_attributes = { "env.git_branch" = "main" }
+effect = "deny"
+
+[[security.abac_rules]]
+name = "Allow trusted user"
+description = "Explicitly allow operations for a specific administrative user."
+match_attributes = { "subject.id" = "admin-user" }
+effect = "allow"
+```
+
+Implementation: `src/security/abac.rs` and `src/security/policy.rs`.
+
+Risk-level classification in `defaults.toml`:
 
 ```toml
 [security]

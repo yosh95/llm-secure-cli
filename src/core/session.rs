@@ -430,6 +430,27 @@ impl ChatSession {
                                     }
                                 }
 
+                                // 1.3 ABAC Policy Engine (Externalized Rules)
+                                if final_result.is_none() {
+                                    let mut eval_ctx =
+                                        crate::security::policy::EvaluationContext::new();
+                                    eval_ctx.set_attribute(
+                                        "tool",
+                                        serde_json::Value::String(name.to_string()),
+                                    );
+
+                                    if !crate::security::policy::POLICY_ENGINE
+                                        .evaluate(name, &args, &eval_ctx)
+                                    {
+                                        let err_msg = format!(
+                                            "Security Blocked (ABAC Policy): Execution denied for tool '{}'",
+                                            name
+                                        );
+                                        ui::report_error(&err_msg);
+                                        final_result = Some(serde_json::Value::String(err_msg));
+                                    }
+                                }
+
                                 // --- [PHASE 2] High-Assurance Checks (Dual LLM & HITL) ---
 
                                 if final_result.is_none() {

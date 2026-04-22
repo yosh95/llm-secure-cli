@@ -98,6 +98,7 @@ As a tool designed with **CISSP/CISA/CCSP** principles and **EU AI Act** complia
 
 ### 1. Access Control (ABAC)
 `llm-secure-cli` implements **Attribute-Based Access Control (ABAC)**, providing granular security based on execution context and resource attributes.
+- **Custom Rule Engine**: Define fine-grained policies in `config.toml` based on user identity, environment (Git branch, OS), and PQC verification status.
 - **Risk-based Scaling**: Security requirements automatically scale based on the tool's risk level (HIGH/MEDIUM/LOW).
 - **Intent Verification (Dual LLM)**: High-risk actions are cross-verified by a separate, lightweight "Verifier" LLM (e.g., Gemini Flash Lite) to ensure the proposed tool call aligns with the user's original intent, mitigating sophisticated prompt injection. 
   - **Asynchronous Execution**: To minimize latency, verification runs in the background while the user reviews the tool's explanation. The result is synchronized at the moment of approval, providing a seamless high-assurance experience.
@@ -315,6 +316,7 @@ AIがファイル操作、Web検索、Python実行などのツールを自律的
 
 ### 1. 属性ベースアクセス制御 (ABAC)
 `llm-secure-cli` は、実行コンテキストとリソース属性に基づいた **属性ベースアクセス制御 (ABAC)** を採用し、高度に粒度の細かいセキュリティを実現しています。
+- **カスタムルールエンジン**: ユーザー識別子、環境（Gitブランチ、OS）、PQC検証ステータスなどに基づいた詳細なポリシーを `config.toml` で定義可能です。
 - **リスクベース・スケーリング**: ツールのリスクレベル（HIGH/MEDIUM/LOW）に応じて、要求されるセキュリティ強度が自動的に変化します。
 - **意図の検証 (Dual LLM)**: 高リスクな操作は、軽量な「検証用LLM」（例：Gemini Flash Lite）によって元のプロンプトと照合されます。これにより、高度なプロンプトインジェクションによる意図しない操作を動的に防止します。
   - **バックグラウンド実行**: 検証はユーザーが説明文を確認して承認（HITL）を行う裏で非同期に実行されます。これにより、高度な検証に伴う待機時間を最小化し、ストレスのない操作感を実現しています。

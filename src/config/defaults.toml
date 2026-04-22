@@ -123,6 +123,25 @@ dual_llm_model = "lite"
 dual_llm_confidence_threshold = 0.7
 
 # =============================================================================
+# Attribute-Based Access Control (ABAC) Rules
+# =============================================================================
+# Define custom rules based on execution context attributes.
+# Rules are evaluated in order; the first matching rule determines the effect.
+# Available attributes:
+# - subject.id (Current OS user)
+# - env.git_branch (Current Git branch)
+# - env.os (OS name)
+# - env.cwd (Current working directory)
+# - subject.has_pqc_proof (Boolean: Whether PQC signature is present)
+#
+# Example:
+# [[security.abac_rules]]
+# name = "Allow main branch"
+# description = "Always allow operations when on main branch for rapid development"
+# match_attributes = { "env.git_branch" = "main" }
+# effect = "allow"
+
+# =============================================================================
 # Google Gemini
 # =============================================================================
 [google]

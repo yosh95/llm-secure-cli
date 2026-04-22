@@ -1,3 +1,4 @@
+pub mod abac;
 pub mod audit;
 pub mod cass;
 pub mod dual_llm_verifier;
