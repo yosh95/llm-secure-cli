@@ -399,7 +399,7 @@ fn format_size_brief(bytes: u64) -> String {
     }
 }
 
-pub fn ask_confirm(prompt: &str) -> bool {
+pub fn ask_confirm(prompt: &str) -> Option<bool> {
     let term = Term::stdout();
     print!("{} (y/N): ", prompt);
     let _ = io::stdout().flush();
@@ -409,16 +409,16 @@ pub fn ask_confirm(prompt: &str) -> bool {
             match key {
                 'y' | 'Y' | 'ｙ' | 'Ｙ' => {
                     println!("{}", "yes".bright_green());
-                    return true;
+                    return Some(true);
                 }
                 'n' | 'N' | 'ｎ' | 'Ｎ' | '\r' | '\n' => {
                     println!("{}", "no".red());
-                    return false;
+                    return Some(false);
                 }
                 '\u{3}' => {
                     // Ctrl+C
                     println!("^C");
-                    std::process::exit(0);
+                    return None;
                 }
                 _ => {}
             }
@@ -426,23 +426,21 @@ pub fn ask_confirm(prompt: &str) -> bool {
     }
 }
 
-pub fn get_user_input(prompt: &str) -> String {
+pub fn get_user_input(prompt: &str) -> Option<String> {
     use rustyline::DefaultEditor;
     use rustyline::error::ReadlineError;
 
     let mut rl = DefaultEditor::new().expect("Failed to create editor");
     match rl.readline(prompt) {
-        Ok(line) => line.trim().to_string(),
+        Ok(line) => Some(line.trim().to_string()),
         Err(ReadlineError::Interrupted) => {
             println!("^C");
-            std::process::exit(0);
+            None
         }
-        Err(ReadlineError::Eof) => {
-            std::process::exit(0);
-        }
+        Err(ReadlineError::Eof) => None,
         Err(err) => {
             eprintln!("Error: {:?}", err);
-            std::process::exit(1);
+            None
         }
     }
 }

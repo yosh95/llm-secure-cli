@@ -235,21 +235,34 @@ impl ChatSession {
                             }
 
                             if !approved {
-                                approved = ui::ask_confirm(&format!("Execute {}", name));
+                                match ui::ask_confirm(&format!("Execute {}", name)) {
+                                    Some(val) => approved = val,
+                                    None => {
+                                        self.handle_interruption();
+                                        return Ok(());
+                                    }
+                                }
                             }
 
                             if !approved {
                                 ui::report_warning("Execution cancelled by user.");
-                                let feedback = ui::get_user_input("Provide feedback (optional): ");
-                                let result_msg = if feedback.trim().is_empty() {
-                                    "Error: Execution cancelled by user.".to_string()
-                                } else {
-                                    format!(
-                                        "Error: Execution cancelled by user. Feedback: {}",
-                                        feedback
-                                    )
-                                };
-                                final_result = Some(serde_json::Value::String(result_msg));
+                                match ui::get_user_input("Provide feedback (optional): ") {
+                                    Some(feedback) => {
+                                        let result_msg = if feedback.trim().is_empty() {
+                                            "Error: Execution cancelled by user.".to_string()
+                                        } else {
+                                            format!(
+                                                "Error: Execution cancelled by user. Feedback: {}",
+                                                feedback
+                                            )
+                                        };
+                                        final_result = Some(serde_json::Value::String(result_msg));
+                                    }
+                                    None => {
+                                        self.handle_interruption();
+                                        return Ok(());
+                                    }
+                                }
                             }
 
                             if final_result.is_none()
