@@ -69,10 +69,7 @@ fn test_static_analyzer_path_injection() {
 
 #[test]
 fn test_abac_prefix_matching() {
-    let dir = tempdir().unwrap();
-    let original_dir = env::current_dir().unwrap();
-    env::set_current_dir(dir.path()).unwrap();
-
+    use llm_secure_cli::config::models::AppConfig;
     let config_content = r#"
 [security]
 [[security.abac_rules]]
@@ -80,20 +77,20 @@ name = "Allow CI on ci- branches"
 effect = "allow"
 match_attributes = { "env.git_branch" = "prefix:ci-" }
 "#;
-    fs::write(dir.path().join("config.toml"), config_content).unwrap();
-    CONFIG_MANAGER.reload();
+    let config: AppConfig = toml::from_str(config_content).unwrap();
 
     let mut ctx = EvaluationContext::default();
 
     // Match
     ctx.set_attribute("env.git_branch", json!("ci-deploy-prod"));
-    assert_eq!(AbacEngine::evaluate(&ctx), Some("allow".to_string()));
+    assert_eq!(
+        AbacEngine::evaluate_with_config(&config, &ctx),
+        Some("allow".to_string())
+    );
 
     // No match
     ctx.set_attribute("env.git_branch", json!("feature-xyz"));
-    assert_eq!(AbacEngine::evaluate(&ctx), None);
-
-    env::set_current_dir(original_dir).unwrap();
+    assert_eq!(AbacEngine::evaluate_with_config(&config, &ctx), None);
 }
 
 #[test]
