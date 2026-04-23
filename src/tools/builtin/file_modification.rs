@@ -133,7 +133,12 @@ pub fn edit_file(args: HashMap<String, Value>) -> anyhow::Result<Value> {
          File: {}\n\
          Search (first 200 chars): {}",
         path_str,
-        &search_str[..search_str.len().min(200)]
+        search_str
+            .char_indices()
+            .map(|(i, _)| i)
+            .nth(200)
+            .map(|i| &search_str[..i])
+            .unwrap_or(search_str)
     ))
 }
 
