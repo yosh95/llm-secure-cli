@@ -245,21 +245,39 @@ impl LlmClient for GeminiClient {
             serde_json::to_string_pretty(&payload).unwrap_or_default()
         );
 
-        let url = self.get_api_url();
-        let key = self.base.api_key.as_deref().unwrap_or("").to_string();
+        let mut retries = 0;
+        let max_retries = 3;
+        let mut backoff = std::time::Duration::from_secs(2);
 
-        let res_result = tokio::task::spawn_blocking(move || {
-            AGENT
-                .post(&url)
-                .header("x-goog-api-key", key)
-                .send_json(payload)
-        })
-        .await?;
+        let res = loop {
+            let url = self.get_api_url();
+            let key = self.base.api_key.as_deref().unwrap_or("").to_string();
+            let payload_clone = payload.clone();
 
-        let res = match res_result {
-            Ok(r) => r,
-            Err(e) => {
-                return Err(anyhow::anyhow!("Gemini API request failed: {}", e));
+            let res_result = tokio::task::spawn_blocking(move || {
+                AGENT
+                    .post(&url)
+                    .header("x-goog-api-key", key)
+                    .send_json(payload_clone)
+            })
+            .await?;
+
+            match res_result {
+                Ok(r) => break r,
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    if err_msg.contains("429") && retries < max_retries {
+                        log::warn!(
+                            "Gemini API rate limit (429) hit. Retrying in {:?}...",
+                            backoff
+                        );
+                        tokio::time::sleep(backoff).await;
+                        retries += 1;
+                        backoff *= 2;
+                        continue;
+                    }
+                    return Err(anyhow::anyhow!("Gemini API request failed: {}", e));
+                }
             }
         };
 
@@ -431,21 +449,39 @@ impl LlmClient for GeminiClient {
             });
         }
 
-        let url = self.get_api_url();
-        let key = self.base.api_key.as_deref().unwrap_or("").to_string();
+        let mut retries = 0;
+        let max_retries = 3;
+        let mut backoff = std::time::Duration::from_secs(2);
 
-        let res_result = tokio::task::spawn_blocking(move || {
-            AGENT
-                .post(&url)
-                .header("x-goog-api-key", key)
-                .send_json(payload)
-        })
-        .await?;
+        let res = loop {
+            let url = self.get_api_url();
+            let key = self.base.api_key.as_deref().unwrap_or("").to_string();
+            let payload_clone = payload.clone();
 
-        let res = match res_result {
-            Ok(r) => r,
-            Err(e) => {
-                return Err(anyhow::anyhow!("Gemini API request failed: {}", e));
+            let res_result = tokio::task::spawn_blocking(move || {
+                AGENT
+                    .post(&url)
+                    .header("x-goog-api-key", key)
+                    .send_json(payload_clone)
+            })
+            .await?;
+
+            match res_result {
+                Ok(r) => break r,
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    if err_msg.contains("429") && retries < max_retries {
+                        log::warn!(
+                            "Gemini API rate limit (429) hit in verifier. Retrying in {:?}...",
+                            backoff
+                        );
+                        tokio::time::sleep(backoff).await;
+                        retries += 1;
+                        backoff *= 2;
+                        continue;
+                    }
+                    return Err(anyhow::anyhow!("Gemini API request failed: {}", e));
+                }
             }
         };
 

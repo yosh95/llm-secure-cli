@@ -68,20 +68,46 @@ impl OpenAiClient {
             "size": "1024x1024",
         });
 
-        let api_key = self.base.api_key.clone();
-        let res_result = tokio::task::spawn_blocking(move || {
-            let mut req = AGENT.post(IMAGE_API_URL);
-            if let Some(key) = api_key {
-                req = req.header("Authorization", format!("Bearer {}", key));
-            }
-            req.send_json(payload)
-        })
-        .await?;
+        let mut retries = 0;
+        let max_retries = 3;
+        let mut backoff = std::time::Duration::from_secs(2);
 
-        let res = match res_result {
-            Ok(r) => r,
-            Err(e) => {
-                return Err(anyhow::anyhow!("OpenAI Image API request failed: {}", e));
+        let res = loop {
+            let api_key = self.base.api_key.clone();
+            let payload_clone = payload.clone();
+
+            let res_result = tokio::task::spawn_blocking(move || {
+                let mut req = AGENT.post(IMAGE_API_URL);
+                if let Some(key) = api_key {
+                    req = req.header("Authorization", format!("Bearer {}", key));
+                }
+                req.send_json(payload_clone)
+            })
+            .await?;
+
+            match res_result {
+                Ok(r) => break r,
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    let should_retry = err_msg.contains("429")
+                        || err_msg.contains("500")
+                        || err_msg.contains("502")
+                        || err_msg.contains("503")
+                        || err_msg.contains("504");
+
+                    if should_retry && retries < max_retries {
+                        log::warn!(
+                            "OpenAI Image API error ({}) hit. Retrying in {:?}...",
+                            err_msg,
+                            backoff
+                        );
+                        tokio::time::sleep(backoff).await;
+                        retries += 1;
+                        backoff *= 2;
+                        continue;
+                    }
+                    return Err(anyhow::anyhow!("OpenAI Image API request failed: {}", e));
+                }
             }
         };
 
@@ -336,21 +362,47 @@ impl LlmClient for OpenAiClient {
             serde_json::to_string_pretty(&payload).unwrap_or_default()
         );
 
-        let api_key = self.base.api_key.clone();
-        let api_url = self.api_url.clone();
-        let res_result = tokio::task::spawn_blocking(move || {
-            let mut req = AGENT.post(&api_url);
-            if let Some(key) = api_key {
-                req = req.header("Authorization", format!("Bearer {}", key));
-            }
-            req.send_json(payload)
-        })
-        .await?;
+        let mut retries = 0;
+        let max_retries = 3;
+        let mut backoff = std::time::Duration::from_secs(2);
 
-        let res = match res_result {
-            Ok(r) => r,
-            Err(e) => {
-                return Err(anyhow::anyhow!("OpenAI API request failed: {}", e));
+        let res = loop {
+            let api_key = self.base.api_key.clone();
+            let api_url = self.api_url.clone();
+            let payload_clone = payload.clone();
+
+            let res_result = tokio::task::spawn_blocking(move || {
+                let mut req = AGENT.post(&api_url);
+                if let Some(key) = api_key {
+                    req = req.header("Authorization", format!("Bearer {}", key));
+                }
+                req.send_json(payload_clone)
+            })
+            .await?;
+
+            match res_result {
+                Ok(r) => break r,
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    let should_retry = err_msg.contains("429")
+                        || err_msg.contains("500")
+                        || err_msg.contains("502")
+                        || err_msg.contains("503")
+                        || err_msg.contains("504");
+
+                    if should_retry && retries < max_retries {
+                        log::warn!(
+                            "OpenAI API error ({}) hit. Retrying in {:?}...",
+                            err_msg,
+                            backoff
+                        );
+                        tokio::time::sleep(backoff).await;
+                        retries += 1;
+                        backoff *= 2;
+                        continue;
+                    }
+                    return Err(anyhow::anyhow!("OpenAI API request failed: {}", e));
+                }
             }
         };
 
@@ -492,21 +544,47 @@ impl LlmClient for OpenAiClient {
             }
         });
 
-        let api_key = self.base.api_key.clone();
-        let api_url = self.api_url.clone();
-        let res_result = tokio::task::spawn_blocking(move || {
-            let mut req = AGENT.post(&api_url);
-            if let Some(key) = api_key {
-                req = req.header("Authorization", format!("Bearer {}", key));
-            }
-            req.send_json(payload)
-        })
-        .await?;
+        let mut retries = 0;
+        let max_retries = 3;
+        let mut backoff = std::time::Duration::from_secs(2);
 
-        let res = match res_result {
-            Ok(r) => r,
-            Err(e) => {
-                return Err(anyhow::anyhow!("OpenAI API request failed: {}", e));
+        let res = loop {
+            let api_key = self.base.api_key.clone();
+            let api_url = self.api_url.clone();
+            let payload_clone = payload.clone();
+
+            let res_result = tokio::task::spawn_blocking(move || {
+                let mut req = AGENT.post(&api_url);
+                if let Some(key) = api_key {
+                    req = req.header("Authorization", format!("Bearer {}", key));
+                }
+                req.send_json(payload_clone)
+            })
+            .await?;
+
+            match res_result {
+                Ok(r) => break r,
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    let should_retry = err_msg.contains("429")
+                        || err_msg.contains("500")
+                        || err_msg.contains("502")
+                        || err_msg.contains("503")
+                        || err_msg.contains("504");
+
+                    if should_retry && retries < max_retries {
+                        log::warn!(
+                            "OpenAI API error ({}) in verifier. Retrying in {:?}...",
+                            err_msg,
+                            backoff
+                        );
+                        tokio::time::sleep(backoff).await;
+                        retries += 1;
+                        backoff *= 2;
+                        continue;
+                    }
+                    return Err(anyhow::anyhow!("OpenAI API request failed: {}", e));
+                }
             }
         };
 
