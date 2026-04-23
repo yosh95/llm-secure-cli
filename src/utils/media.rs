@@ -2,6 +2,7 @@ use crate::llm::models::DataSource;
 use base64::{engine::general_purpose, Engine as _};
 use chrono;
 use dirs;
+use mime_guess;
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -61,17 +62,26 @@ pub fn html_to_text(html: &str) -> String {
 }
 
 pub fn process_file(path: &Path, _pdf_as_base64: bool) -> anyhow::Result<DataSource> {
-    let _content_type = "text/plain"; // Simplified; use mime_guess in production
     let metadata = std::collections::HashMap::new();
-
-    // In a real implementation, we'd use a crate like `infer` to detect mime type
     let bytes = fs::read(path)?;
+
+    // Use mime_guess to determine the content type
+    let mime_type = mime_guess::from_path(path)
+        .first_raw()
+        .unwrap_or("application/octet-stream");
 
     // Check if it's likely text
     if let Ok(text) = String::from_utf8(bytes.clone()) {
+        let content_type =
+            if mime_type == "application/octet-stream" || mime_type.starts_with("text/") {
+                "text/plain".to_string()
+            } else {
+                mime_type.to_string()
+            };
+
         Ok(DataSource {
             content: serde_json::Value::String(text),
-            content_type: "text/plain".to_string(),
+            content_type,
             is_file_or_url: true,
             metadata,
         })
@@ -79,7 +89,7 @@ pub fn process_file(path: &Path, _pdf_as_base64: bool) -> anyhow::Result<DataSou
         let b64 = general_purpose::STANDARD.encode(bytes);
         Ok(DataSource {
             content: serde_json::Value::String(b64),
-            content_type: "application/octet-stream".to_string(), // Placeholder
+            content_type: mime_type.to_string(),
             is_file_or_url: true,
             metadata,
         })
