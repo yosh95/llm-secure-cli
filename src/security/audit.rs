@@ -45,11 +45,10 @@ pub fn log_audit(
     let max_lines = config.general.max_audit_log_lines;
 
     // Ensure directory exists
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
+    if let Some(parent) = path.parent()
+        && !parent.exists() {
             let _ = fs::create_dir_all(parent);
         }
-    }
 
     let timestamp = Utc::now().to_rfc3339();
     let empty_map = serde_json::Map::new();
@@ -82,14 +81,13 @@ pub fn log_audit(
     let mut pqc_encrypted = false;
     let mut final_args = args.clone();
 
-    if config.security.security_level == "high" {
-        if let Ok(pk) = crate::security::identity::IdentityManager::get_kem_public_key() {
+    if config.security.security_level == "high"
+        && let Ok(pk) = crate::security::identity::IdentityManager::get_kem_public_key() {
             let arg_bytes = serde_json::to_vec(&args).unwrap_or_default();
             let packet = crate::security::pqc::SecureStorage::encrypt(&arg_bytes, &pk);
             final_args = serde_json::to_value(packet).unwrap_or(args);
             pqc_encrypted = true;
         }
-    }
 
     let mut log_entry = AuditEntry {
         timestamp,
@@ -143,11 +141,10 @@ pub fn log_audit(
         }
     }
 
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
-        if let Ok(line) = serde_json::to_string(&log_entry) {
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path)
+        && let Ok(line) = serde_json::to_string(&log_entry) {
             let _ = writeln!(file, "{}", line);
         }
-    }
 
     trim_log_file(path, max_lines);
 }
@@ -178,11 +175,10 @@ fn get_last_log_hash(path: &Path) -> String {
             if trimmed.is_empty() {
                 continue;
             }
-            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                if let Some(hash) = entry.get("hash").and_then(|v| v.as_str()) {
+            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(trimmed)
+                && let Some(hash) = entry.get("hash").and_then(|v| v.as_str()) {
                     return hash.to_string();
                 }
-            }
         }
     }
 

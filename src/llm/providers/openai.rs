@@ -47,11 +47,10 @@ impl OpenAiClient {
             }
         }
         for d in data {
-            if d.content_type == "text/plain" {
-                if let Some(t) = d.content.as_str() {
+            if d.content_type == "text/plain"
+                && let Some(t) = d.content.as_str() {
                     prompt_parts.push(t.to_string());
                 }
-            }
         }
         prompt_parts.join("\n")
     }
@@ -168,8 +167,8 @@ impl OpenAiClient {
             match m.role {
                 Role::Tool => {
                     for part in &m.parts {
-                        if let MessagePart::Part(cp) = part {
-                            if let Some(fr) = &cp.function_response {
+                        if let MessagePart::Part(cp) = part
+                            && let Some(fr) = &cp.function_response {
                                 let tool_call_id =
                                     fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
                                 let response = fr.get("response").cloned().unwrap_or(json!(""));
@@ -184,7 +183,6 @@ impl OpenAiClient {
                                     "content": content
                                 }));
                             }
-                        }
                     }
                 }
                 _ => {
@@ -208,8 +206,8 @@ impl OpenAiClient {
                                 if let Some(t) = &cp.text {
                                     content_parts.push(json!({"type": "text", "text": t}));
                                 }
-                                if let Some(id) = &cp.inline_data {
-                                    if let (Some(mime), Some(data)) =
+                                if let Some(id) = &cp.inline_data
+                                    && let (Some(mime), Some(data)) =
                                         (id.get("mimeType"), id.get("data"))
                                     {
                                         content_parts.push(json!({
@@ -219,7 +217,6 @@ impl OpenAiClient {
                                             }
                                         }));
                                     }
-                                }
                                 if let Some(fc) = &cp.function_call {
                                     tool_calls.push(json!({
                                         "id": fc.get("id").and_then(|v| v.as_str()).unwrap_or(""),

@@ -134,10 +134,10 @@ impl ClientSession {
                                 if !line.trim().starts_with('{') {
                                     continue;
                                 }
-                                if let Ok(message) = serde_json::from_str::<Value>(&line) {
-                                    if let Some(id_val) = message.get("id") {
-                                        if let Some(id) = id_val.as_i64() {
-                                            if let Some(tx) = pending_requests.remove(&id) {
+                                if let Ok(message) = serde_json::from_str::<Value>(&line)
+                                    && let Some(id_val) = message.get("id")
+                                        && let Some(id) = id_val.as_i64()
+                                            && let Some(tx) = pending_requests.remove(&id) {
                                                 if let Some(error) = message.get("error") {
                                                     let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
                                                     let _ = tx.send(Err(anyhow!("{}", msg)));
@@ -146,9 +146,6 @@ impl ClientSession {
                                                     let _ = tx.send(Ok(result));
                                                 }
                                             }
-                                        }
-                                    }
-                                }
                             }
                             Ok(None) => break,
                             Err(e) => {

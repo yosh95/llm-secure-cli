@@ -169,11 +169,10 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
 
     let maybe_register =
         |r: &mut ToolRegistry, name: &str, description: &str, parameters: Value, func: ToolFunc| {
-            if let Some(ref allowed) = allowed_tools {
-                if !allowed.contains(&name.to_string()) {
+            if let Some(ref allowed) = allowed_tools
+                && !allowed.contains(&name.to_string()) {
                     return;
                 }
-            }
             r.register(name, description, parameters, func, true);
         };
 

@@ -186,12 +186,11 @@ pub fn create_or_overwrite_file(args: HashMap<String, Value>) -> anyhow::Result<
     let path = Path::new(path_str);
 
     // Create parent directories if needed
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() && !parent.exists() {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty() && !parent.exists() {
             fs::create_dir_all(parent)
                 .map_err(|e| anyhow::anyhow!("Cannot create directories: {}", e))?;
         }
-    }
 
     let existed = path.exists();
     fs::write(path, content).map_err(|e| anyhow::anyhow!("Cannot write file: {}", e))?;

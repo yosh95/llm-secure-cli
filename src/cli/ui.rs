@@ -258,18 +258,17 @@ pub fn print_tool_result(result: &str) {
                         }
                     }
                 }
-                if let Some(truncated) = v.get("truncated").and_then(|v| v.as_bool()) {
-                    if truncated {
+                if let Some(truncated) = v.get("truncated").and_then(|v| v.as_bool())
+                    && truncated {
                         println!("    {}", "... (results truncated)".yellow().dimmed());
                     }
-                }
                 return;
             }
         }
 
         // Special handling for brave_search results
-        if let Some(results) = v.get("results").and_then(|v| v.as_array()) {
-            if v.get("query").is_some() {
+        if let Some(results) = v.get("results").and_then(|v| v.as_array())
+            && v.get("query").is_some() {
                 for item in results {
                     let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
                     let url = item.get("url").and_then(|v| v.as_str()).unwrap_or("");
@@ -288,7 +287,6 @@ pub fn print_tool_result(result: &str) {
                 }
                 return;
             }
-        }
 
         // Special handling for read_url_content or similar "content" responses
         if let Some(content) = v.get("content").and_then(|v| v.as_str()) {

@@ -27,27 +27,25 @@ impl ChatSession {
 
             current_data = Vec::new();
 
-            if let Some(t) = thought {
-                if !t.trim().is_empty() {
+            if let Some(t) = thought
+                && !t.trim().is_empty() {
                     ui::print_rule(Some("Thought"), Some("bright_black"));
                     ui::print_block(&t, None, Some("bright_black"));
                     ui::print_rule(None, Some("bright_black"));
                 }
-            }
 
-            if let Some(text) = response {
-                if !text.trim().is_empty() {
+            if let Some(text) = response
+                && !text.trim().is_empty() {
                     ui::print_block(&text, Some(&self.client.get_display_name()), Some("cyan"));
                 }
-            }
 
             // Handle incoming images
             let last_msg = self.client.get_state().conversation.last().cloned();
-            if let Some(msg) = last_msg {
-                if msg.role == Role::Assistant || msg.role == Role::Model {
+            if let Some(msg) = last_msg
+                && (msg.role == Role::Assistant || msg.role == Role::Model) {
                     for part in &msg.parts {
-                        if let MessagePart::Part(cp) = part {
-                            if let Some(id) = &cp.inline_data {
+                        if let MessagePart::Part(cp) = part
+                            && let Some(id) = &cp.inline_data {
                                 let b64_data =
                                     id.get("data").and_then(|v| v.as_str()).unwrap_or("");
                                 let mime_type =
@@ -69,20 +67,18 @@ impl ChatSession {
                                     }
                                 }
                             }
-                        }
                     }
                 }
-            }
 
             // Handle tool calls
             let mut tool_results = Vec::new();
             let last_msg = self.client.get_state().conversation.last().cloned();
 
-            if let Some(msg) = last_msg {
-                if msg.role == Role::Assistant || msg.role == Role::Model {
+            if let Some(msg) = last_msg
+                && (msg.role == Role::Assistant || msg.role == Role::Model) {
                     for part in &msg.parts {
-                        if let MessagePart::Part(cp) = part {
-                            if let Some(fc) = &cp.function_call {
+                        if let MessagePart::Part(cp) = part
+                            && let Some(fc) = &cp.function_call {
                                 let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("");
                                 let args = fc
                                     .get("arguments")
@@ -100,8 +96,7 @@ impl ChatSession {
                                     ["path", "directory", "file", "src", "dest", "filename"];
                                 for arg_name in path_args {
                                     if let Some(p_val) = args.get(arg_name).and_then(|v| v.as_str())
-                                    {
-                                        if let Err(e) =
+                                        && let Err(e) =
                                             crate::security::path_validator::validate_path(p_val)
                                         {
                                             let err_msg = format!(
@@ -112,7 +107,6 @@ impl ChatSession {
                                             final_result = Some(serde_json::Value::String(err_msg));
                                             break;
                                         }
-                                    }
                                 }
 
                                 if final_result.is_none() && name == "execute_command" {
@@ -267,8 +261,8 @@ impl ChatSession {
                                         final_result = Some(serde_json::Value::String(result_msg));
                                     }
 
-                                    if final_result.is_none() {
-                                        if let Some(handle) = verifier_handle {
+                                    if final_result.is_none()
+                                        && let Some(handle) = verifier_handle {
                                             let pb_v = ProgressBar::new_spinner();
                                             pb_v.set_style(
                                                 ProgressStyle::default_spinner()
@@ -304,7 +298,6 @@ impl ChatSession {
                                                 ));
                                             }
                                         }
-                                    }
                                 }
 
                                 // --- [PHASE 3] Execution ---
@@ -365,10 +358,8 @@ impl ChatSession {
                                     is_diagnostic: false,
                                 }));
                             }
-                        }
                     }
                 }
-            }
 
             if tool_results.is_empty() {
                 break;

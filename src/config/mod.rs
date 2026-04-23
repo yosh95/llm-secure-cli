@@ -35,8 +35,8 @@ impl ConfigManager {
         ];
 
         for path in dotenv_paths {
-            if path.exists() {
-                if let Ok(content) = fs::read_to_string(path) {
+            if path.exists()
+                && let Ok(content) = fs::read_to_string(path) {
                     for line in content.lines() {
                         let line = line.trim();
                         if line.is_empty() || line.starts_with('#') {
@@ -52,7 +52,6 @@ impl ConfigManager {
                         }
                     }
                 }
-            }
         }
         *env_loaded = true;
     }
@@ -76,13 +75,11 @@ impl ConfigManager {
         ];
 
         for path in config_paths {
-            if path.exists() {
-                if let Ok(content) = fs::read_to_string(path) {
-                    if let Ok(user_value) = toml::from_str::<serde_json::Value>(&content) {
+            if path.exists()
+                && let Ok(content) = fs::read_to_string(path)
+                    && let Ok(user_value) = toml::from_str::<serde_json::Value>(&content) {
                         merge_json(&mut config_value, user_value);
                     }
-                }
-            }
         }
 
         // 3. Final deserialization into AppConfig
@@ -127,11 +124,10 @@ impl ConfigManager {
 
         // Fallback to config
         let config = self.get_config();
-        if let Some(p_cfg) = config.providers.get(provider) {
-            if let Some(key) = &p_cfg.api_key {
+        if let Some(p_cfg) = config.providers.get(provider)
+            && let Some(key) = &p_cfg.api_key {
                 return Some(key.clone());
             }
-        }
         None
     }
 

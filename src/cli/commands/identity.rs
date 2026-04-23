@@ -94,9 +94,9 @@ pub fn list_anchors() {
     if let Ok(entries) = fs::read_dir(anchor_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                if let Ok(content) = fs::read_to_string(&path) {
-                    if let Ok(anchor) = serde_json::from_str::<serde_json::Value>(&content) {
+            if path.extension().and_then(|s| s.to_str()) == Some("json")
+                && let Ok(content) = fs::read_to_string(&path)
+                    && let Ok(anchor) = serde_json::from_str::<serde_json::Value>(&content) {
                         let trace_id = anchor
                             .get("trace_id")
                             .and_then(|v| v.as_str())
@@ -114,8 +114,6 @@ pub fn list_anchors() {
                             trace_id, time, count
                         );
                     }
-                }
-            }
         }
     }
 }

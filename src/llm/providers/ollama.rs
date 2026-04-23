@@ -106,11 +106,10 @@ impl LlmClient for OllamaClient {
         let api_url = self.api_url.clone();
         let res_result = tokio::task::spawn_blocking(move || {
             let mut req = AGENT.post(&api_url);
-            if let Some(key) = api_key {
-                if key != "ollama" && key != "local_bypass" {
+            if let Some(key) = api_key
+                && key != "ollama" && key != "local_bypass" {
                     req = req.header("Authorization", format!("Bearer {}", key));
                 }
-            }
             req.send_json(payload)
         })
         .await?;
@@ -186,11 +185,10 @@ impl LlmClient for OllamaClient {
         let api_url = self.api_url.clone();
         let res_result = tokio::task::spawn_blocking(move || {
             let mut req = AGENT.post(&api_url);
-            if let Some(key) = api_key {
-                if key != "ollama" && key != "local_bypass" {
+            if let Some(key) = api_key
+                && key != "ollama" && key != "local_bypass" {
                     req = req.header("Authorization", format!("Bearer {}", key));
                 }
-            }
             req.send_json(payload)
         })
         .await?;

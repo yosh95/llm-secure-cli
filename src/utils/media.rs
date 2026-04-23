@@ -108,11 +108,10 @@ pub async fn process_single_source(source: &str, pdf_as_base64: bool) -> Option<
         }
     } else {
         let path = Path::new(source);
-        if path.exists() {
-            if let Ok(ds) = process_file(path, pdf_as_base64) {
+        if path.exists()
+            && let Ok(ds) = process_file(path, pdf_as_base64) {
                 return Some(ds);
             }
-        }
     }
     None
 }
@@ -164,11 +163,10 @@ pub fn save_image(b64_data: &str, mime_type: &str, save_path: &str) -> anyhow::R
 
     let mut path = Path::new(save_path).to_path_buf();
     // Expand ~ if present
-    if path.starts_with("~") {
-        if let Some(home) = dirs::home_dir() {
+    if path.starts_with("~")
+        && let Some(home) = dirs::home_dir() {
             path = home.join(path.strip_prefix("~").unwrap());
         }
-    }
 
     fs::create_dir_all(&path)?;
     let full_path = path.join(filename);

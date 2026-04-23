@@ -66,23 +66,22 @@ impl ChatSession {
     pub(crate) fn handle_interruption(&mut self) {
         let state = self.client.get_state_mut();
         let last_msg = state.conversation.last().cloned();
-        if let Some(msg) = last_msg {
-            if msg.role == Role::Assistant || msg.role == Role::Model {
+        if let Some(msg) = last_msg
+            && (msg.role == Role::Assistant || msg.role == Role::Model) {
                 let mut has_unanswered_tools = false;
                 for part in &msg.parts {
-                    if let MessagePart::Part(cp) = part {
-                        if cp.function_call.is_some() {
+                    if let MessagePart::Part(cp) = part
+                        && cp.function_call.is_some() {
                             has_unanswered_tools = true;
                             break;
                         }
-                    }
                 }
 
                 if has_unanswered_tools {
                     let mut tool_results = Vec::new();
                     for part in &msg.parts {
-                        if let MessagePart::Part(cp) = part {
-                            if let Some(fc) = &cp.function_call {
+                        if let MessagePart::Part(cp) = part
+                            && let Some(fc) = &cp.function_call {
                                 let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("");
                                 let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -104,7 +103,6 @@ impl ChatSession {
                                     is_diagnostic: false,
                                 }));
                             }
-                        }
                     }
                     state.conversation.push(Message {
                         role: Role::Tool,
@@ -112,6 +110,5 @@ impl ChatSession {
                     });
                 }
             }
-        }
     }
 }

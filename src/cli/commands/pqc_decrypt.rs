@@ -30,9 +30,9 @@ pub fn decrypt_log_file(input_path: PathBuf, output_path: Option<PathBuf>) {
     let mut decrypted_entries = Vec::new();
     for line in content.lines() {
         if let Ok(mut entry) = serde_json::from_str::<Value>(line) {
-            if entry.get("pqc_confidential") == Some(&Value::Bool(true)) {
-                if let Some(args_val) = entry.get("args") {
-                    if let Ok(packet) = serde_json::from_value::<EncryptedPacket>(args_val.clone())
+            if entry.get("pqc_confidential") == Some(&Value::Bool(true))
+                && let Some(args_val) = entry.get("args")
+                    && let Ok(packet) = serde_json::from_value::<EncryptedPacket>(args_val.clone())
                     {
                         match std::panic::catch_unwind(|| SecureStorage::decrypt(&packet, &kem_sk))
                         {
@@ -50,8 +50,6 @@ pub fn decrypt_log_file(input_path: PathBuf, output_path: Option<PathBuf>) {
                             }
                         }
                     }
-                }
-            }
             decrypted_entries.push(entry);
         }
     }
