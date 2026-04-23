@@ -29,11 +29,12 @@ impl EvaluationContext {
         if let Ok(output) = std::process::Command::new("git")
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
             .output()
-            && output.status.success() {
-                let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                self.attributes
-                    .insert("env.git_branch".to_string(), Value::String(branch));
-            }
+            && output.status.success()
+        {
+            let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            self.attributes
+                .insert("env.git_branch".to_string(), Value::String(branch));
+        }
 
         // Environment attributes: OS
         self.attributes.insert(
@@ -137,10 +138,11 @@ impl PolicyEngine {
         ];
         for arg_name in path_args {
             if let Some(raw_path) = arguments.get(arg_name).and_then(|v| v.as_str())
-                && let Err(e) = validate_path(raw_path) {
-                    log::warn!("Path validation failed for {}: {}", raw_path, e);
-                    return false;
-                }
+                && let Err(e) = validate_path(raw_path)
+            {
+                log::warn!("Path validation failed for {}: {}", raw_path, e);
+                return false;
+            }
         }
         true
     }

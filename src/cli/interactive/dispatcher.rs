@@ -208,13 +208,14 @@ pub fn handle_info(session: &ChatSession) {
         },
     );
     if state.system_prompt_enabled
-        && let Some(sp) = state.get_effective_system_prompt() {
-            println!("  --------------------------------------------------");
-            for line in sp.lines() {
-                println!("  {}", line);
-            }
-            println!("  --------------------------------------------------");
+        && let Some(sp) = state.get_effective_system_prompt()
+    {
+        println!("  --------------------------------------------------");
+        for line in sp.lines() {
+            println!("  {}", line);
         }
+        println!("  --------------------------------------------------");
+    }
     ui::print_key_value(
         "Debug Mode",
         if log::log_enabled!(log::Level::Debug) {

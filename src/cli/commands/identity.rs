@@ -96,24 +96,25 @@ pub fn list_anchors() {
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("json")
                 && let Ok(content) = fs::read_to_string(&path)
-                    && let Ok(anchor) = serde_json::from_str::<serde_json::Value>(&content) {
-                        let trace_id = anchor
-                            .get("trace_id")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("unknown");
-                        let count = anchor
-                            .get("entry_count")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
-                        let time = anchor
-                            .get("timestamp")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("-");
-                        println!(
-                            "  - Trace ID: {} | Time: {} | Logs: {}",
-                            trace_id, time, count
-                        );
-                    }
+                && let Ok(anchor) = serde_json::from_str::<serde_json::Value>(&content)
+            {
+                let trace_id = anchor
+                    .get("trace_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                let count = anchor
+                    .get("entry_count")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let time = anchor
+                    .get("timestamp")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("-");
+                println!(
+                    "  - Trace ID: {} | Time: {} | Logs: {}",
+                    trace_id, time, count
+                );
+            }
         }
     }
 }

@@ -48,9 +48,10 @@ impl OpenAiClient {
         }
         for d in data {
             if d.content_type == "text/plain"
-                && let Some(t) = d.content.as_str() {
-                    prompt_parts.push(t.to_string());
-                }
+                && let Some(t) = d.content.as_str()
+            {
+                prompt_parts.push(t.to_string());
+            }
         }
         prompt_parts.join("\n")
     }
@@ -168,21 +169,21 @@ impl OpenAiClient {
                 Role::Tool => {
                     for part in &m.parts {
                         if let MessagePart::Part(cp) = part
-                            && let Some(fr) = &cp.function_response {
-                                let tool_call_id =
-                                    fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                                let response = fr.get("response").cloned().unwrap_or(json!(""));
-                                let content = if let Some(s) = response.as_str() {
-                                    s.to_string()
-                                } else {
-                                    response.to_string()
-                                };
-                                messages.push(json!({
-                                    "role": "tool",
-                                    "tool_call_id": tool_call_id,
-                                    "content": content
-                                }));
-                            }
+                            && let Some(fr) = &cp.function_response
+                        {
+                            let tool_call_id = fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                            let response = fr.get("response").cloned().unwrap_or(json!(""));
+                            let content = if let Some(s) = response.as_str() {
+                                s.to_string()
+                            } else {
+                                response.to_string()
+                            };
+                            messages.push(json!({
+                                "role": "tool",
+                                "tool_call_id": tool_call_id,
+                                "content": content
+                            }));
+                        }
                     }
                 }
                 _ => {
@@ -209,14 +210,14 @@ impl OpenAiClient {
                                 if let Some(id) = &cp.inline_data
                                     && let (Some(mime), Some(data)) =
                                         (id.get("mimeType"), id.get("data"))
-                                    {
-                                        content_parts.push(json!({
+                                {
+                                    content_parts.push(json!({
                                             "type": "image_url",
                                             "image_url": {
                                                 "url": format!("data:{};base64,{}", mime.as_str().unwrap_or(""), data.as_str().unwrap_or(""))
                                             }
                                         }));
-                                    }
+                                }
                                 if let Some(fc) = &cp.function_call {
                                     tool_calls.push(json!({
                                         "id": fc.get("id").and_then(|v| v.as_str()).unwrap_or(""),

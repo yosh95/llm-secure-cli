@@ -259,34 +259,36 @@ pub fn print_tool_result(result: &str) {
                     }
                 }
                 if let Some(truncated) = v.get("truncated").and_then(|v| v.as_bool())
-                    && truncated {
-                        println!("    {}", "... (results truncated)".yellow().dimmed());
-                    }
+                    && truncated
+                {
+                    println!("    {}", "... (results truncated)".yellow().dimmed());
+                }
                 return;
             }
         }
 
         // Special handling for brave_search results
         if let Some(results) = v.get("results").and_then(|v| v.as_array())
-            && v.get("query").is_some() {
-                for item in results {
-                    let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
-                    let url = item.get("url").and_then(|v| v.as_str()).unwrap_or("");
-                    let snippet = item
-                        .get("description")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    println!("    {} {}", "•".bright_black(), title.bold().cyan());
-                    println!("      {}", url.dimmed().underline());
-                    if !snippet.is_empty() {
-                        for line in snippet.lines() {
-                            println!("      {}", line.dimmed());
-                        }
+            && v.get("query").is_some()
+        {
+            for item in results {
+                let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
+                let url = item.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                let snippet = item
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                println!("    {} {}", "•".bright_black(), title.bold().cyan());
+                println!("      {}", url.dimmed().underline());
+                if !snippet.is_empty() {
+                    for line in snippet.lines() {
+                        println!("      {}", line.dimmed());
                     }
-                    println!();
                 }
-                return;
+                println!();
             }
+            return;
+        }
 
         // Special handling for read_url_content or similar "content" responses
         if let Some(content) = v.get("content").and_then(|v| v.as_str()) {

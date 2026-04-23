@@ -36,22 +36,23 @@ impl ConfigManager {
 
         for path in dotenv_paths {
             if path.exists()
-                && let Ok(content) = fs::read_to_string(path) {
-                    for line in content.lines() {
-                        let line = line.trim();
-                        if line.is_empty() || line.starts_with('#') {
-                            continue;
-                        }
-                        if let Some((key, val)) = line.split_once('=') {
-                            let key = key.trim();
-                            let val = val.trim().trim_matches(|c| c == '\'' || c == '"');
-                            if !key.is_empty() && env::var(key).is_err() {
-                                // TODO: Audit that the environment access only happens in single-threaded code.
-                                unsafe { env::set_var(key, val) };
-                            }
+                && let Ok(content) = fs::read_to_string(path)
+            {
+                for line in content.lines() {
+                    let line = line.trim();
+                    if line.is_empty() || line.starts_with('#') {
+                        continue;
+                    }
+                    if let Some((key, val)) = line.split_once('=') {
+                        let key = key.trim();
+                        let val = val.trim().trim_matches(|c| c == '\'' || c == '"');
+                        if !key.is_empty() && env::var(key).is_err() {
+                            // TODO: Audit that the environment access only happens in single-threaded code.
+                            unsafe { env::set_var(key, val) };
                         }
                     }
                 }
+            }
         }
         *env_loaded = true;
     }
@@ -77,9 +78,10 @@ impl ConfigManager {
         for path in config_paths {
             if path.exists()
                 && let Ok(content) = fs::read_to_string(path)
-                    && let Ok(user_value) = toml::from_str::<serde_json::Value>(&content) {
-                        merge_json(&mut config_value, user_value);
-                    }
+                && let Ok(user_value) = toml::from_str::<serde_json::Value>(&content)
+            {
+                merge_json(&mut config_value, user_value);
+            }
         }
 
         // 3. Final deserialization into AppConfig
@@ -125,9 +127,10 @@ impl ConfigManager {
         // Fallback to config
         let config = self.get_config();
         if let Some(p_cfg) = config.providers.get(provider)
-            && let Some(key) = &p_cfg.api_key {
-                return Some(key.clone());
-            }
+            && let Some(key) = &p_cfg.api_key
+        {
+            return Some(key.clone());
+        }
         None
     }
 

@@ -45,9 +45,10 @@ impl Message {
                 MessagePart::Text(t) => text_parts.push(t.clone()),
                 MessagePart::Part(cp) => {
                     if let Some(t) = &cp.text
-                        && (!cp.is_diagnostic || include_diagnostic) {
-                            text_parts.push(t.clone());
-                        }
+                        && (!cp.is_diagnostic || include_diagnostic)
+                    {
+                        text_parts.push(t.clone());
+                    }
                 }
             }
         }

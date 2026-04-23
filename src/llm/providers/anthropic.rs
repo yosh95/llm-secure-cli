@@ -36,20 +36,21 @@ impl ClaudeClient {
                 let mut tool_content = Vec::new();
                 for part in &m.parts {
                     if let MessagePart::Part(cp) = part
-                        && let Some(fr) = &cp.function_response {
-                            let tool_use_id = fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                            let response = fr.get("response").cloned().unwrap_or(json!(""));
-                            let response_str = if let Some(s) = response.as_str() {
-                                s.to_string()
-                            } else {
-                                response.to_string()
-                            };
-                            tool_content.push(json!({
-                                "type": "tool_result",
-                                "tool_use_id": tool_use_id,
-                                "content": response_str
-                            }));
-                        }
+                        && let Some(fr) = &cp.function_response
+                    {
+                        let tool_use_id = fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                        let response = fr.get("response").cloned().unwrap_or(json!(""));
+                        let response_str = if let Some(s) = response.as_str() {
+                            s.to_string()
+                        } else {
+                            response.to_string()
+                        };
+                        tool_content.push(json!({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use_id,
+                            "content": response_str
+                        }));
+                    }
                 }
                 if !tool_content.is_empty() {
                     messages.push(json!({
@@ -91,9 +92,11 @@ impl ClaudeClient {
 
                         // Text block
                         if let Some(t) = &cp.text
-                            && !t.is_empty() && !cp.is_diagnostic {
-                                content.push(json!({ "type": "text", "text": t }));
-                            }
+                            && !t.is_empty()
+                            && !cp.is_diagnostic
+                        {
+                            content.push(json!({ "type": "text", "text": t }));
+                        }
 
                         // Image / PDF inline data
                         if let Some(inline) = &cp.inline_data {
@@ -395,9 +398,10 @@ impl LlmClient for ClaudeClient {
         // Convert common parameter format to Anthropic's input_schema
         let mut anthropic_tool = tool_schema.clone();
         if let Some(params) = anthropic_tool.as_object_mut()
-            && let Some(p) = params.remove("parameters") {
-                params.insert("input_schema".to_string(), p);
-            }
+            && let Some(p) = params.remove("parameters")
+        {
+            params.insert("input_schema".to_string(), p);
+        }
 
         let mut payload = json!({
             "model": self.base.state.model,
@@ -411,9 +415,10 @@ impl LlmClient for ClaudeClient {
         });
 
         if let Some(sp) = &self.base.state.system_prompt
-            && !sp.is_empty() {
-                payload["system"] = json!([{"type": "text", "text": sp}]);
-            }
+            && !sp.is_empty()
+        {
+            payload["system"] = json!([{"type": "text", "text": sp}]);
+        }
 
         let api_key = self.base.api_key.clone();
         let api_url = self.api_url.clone();

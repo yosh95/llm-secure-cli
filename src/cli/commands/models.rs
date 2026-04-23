@@ -44,13 +44,14 @@ pub async fn list_models(provider_name: &str, models: Vec<String>, verbose: bool
                 let config = CONFIG_MANAGER.get_config();
                 let mut base_url = "http://localhost:11434".to_string();
                 if let Some(p_cfg) = config.providers.get("ollama")
-                    && let Some(api_url) = &p_cfg.api_url {
-                        if api_url.contains("/v1") {
-                            base_url = api_url.split("/v1").next().unwrap().to_string();
-                        } else {
-                            base_url = api_url.clone();
-                        }
+                    && let Some(api_url) = &p_cfg.api_url
+                {
+                    if api_url.contains("/v1") {
+                        base_url = api_url.split("/v1").next().unwrap().to_string();
+                    } else {
+                        base_url = api_url.clone();
                     }
+                }
                 (format!("{}/api/tags", base_url), Vec::new())
             }
             _ => {
@@ -115,9 +116,10 @@ pub async fn list_models(provider_name: &str, models: Vec<String>, verbose: bool
                             _ => None,
                         };
                         if let Some(id_str) = id
-                            && models.contains(&id_str.to_string()) {
-                                println!("{}", serde_json::to_string_pretty(m).unwrap());
-                            }
+                            && models.contains(&id_str.to_string())
+                        {
+                            println!("{}", serde_json::to_string_pretty(m).unwrap());
+                        }
                     }
                 } else if verbose {
                     println!("{:<30} {:<30}", "Model ID", "Details");

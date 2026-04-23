@@ -32,24 +32,22 @@ pub fn decrypt_log_file(input_path: PathBuf, output_path: Option<PathBuf>) {
         if let Ok(mut entry) = serde_json::from_str::<Value>(line) {
             if entry.get("pqc_confidential") == Some(&Value::Bool(true))
                 && let Some(args_val) = entry.get("args")
-                    && let Ok(packet) = serde_json::from_value::<EncryptedPacket>(args_val.clone())
-                    {
-                        match std::panic::catch_unwind(|| SecureStorage::decrypt(&packet, &kem_sk))
+                && let Ok(packet) = serde_json::from_value::<EncryptedPacket>(args_val.clone())
+            {
+                match std::panic::catch_unwind(|| SecureStorage::decrypt(&packet, &kem_sk)) {
+                    Ok(decrypted_bytes) => {
+                        if let Ok(decrypted_json) =
+                            serde_json::from_slice::<Value>(&decrypted_bytes)
                         {
-                            Ok(decrypted_bytes) => {
-                                if let Ok(decrypted_json) =
-                                    serde_json::from_slice::<Value>(&decrypted_bytes)
-                                {
-                                    entry["args"] = decrypted_json;
-                                    entry["pqc_confidential"] =
-                                        Value::String("DECRYPTED".to_string());
-                                }
-                            }
-                            Err(_) => {
-                                ui::report_error("Failed to decrypt entry: decryption error.");
-                            }
+                            entry["args"] = decrypted_json;
+                            entry["pqc_confidential"] = Value::String("DECRYPTED".to_string());
                         }
                     }
+                    Err(_) => {
+                        ui::report_error("Failed to decrypt entry: decryption error.");
+                    }
+                }
+            }
             decrypted_entries.push(entry);
         }
     }

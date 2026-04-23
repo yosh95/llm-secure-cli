@@ -67,48 +67,51 @@ impl ChatSession {
         let state = self.client.get_state_mut();
         let last_msg = state.conversation.last().cloned();
         if let Some(msg) = last_msg
-            && (msg.role == Role::Assistant || msg.role == Role::Model) {
-                let mut has_unanswered_tools = false;
-                for part in &msg.parts {
-                    if let MessagePart::Part(cp) = part
-                        && cp.function_call.is_some() {
-                            has_unanswered_tools = true;
-                            break;
-                        }
-                }
-
-                if has_unanswered_tools {
-                    let mut tool_results = Vec::new();
-                    for part in &msg.parts {
-                        if let MessagePart::Part(cp) = part
-                            && let Some(fc) = &cp.function_call {
-                                let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                                let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
-
-                                let mut fr = HashMap::new();
-                                fr.insert("id".to_string(), serde_json::json!(id));
-                                fr.insert("name".to_string(), serde_json::json!(name));
-                                fr.insert(
-                                    "response".to_string(),
-                                    serde_json::json!("Error: Interrupted by user."),
-                                );
-
-                                tool_results.push(MessagePart::Part(ContentPart {
-                                    text: None,
-                                    inline_data: None,
-                                    function_call: None,
-                                    function_response: Some(fr),
-                                    thought: None,
-                                    thought_signature: None,
-                                    is_diagnostic: false,
-                                }));
-                            }
-                    }
-                    state.conversation.push(Message {
-                        role: Role::Tool,
-                        parts: tool_results,
-                    });
+            && (msg.role == Role::Assistant || msg.role == Role::Model)
+        {
+            let mut has_unanswered_tools = false;
+            for part in &msg.parts {
+                if let MessagePart::Part(cp) = part
+                    && cp.function_call.is_some()
+                {
+                    has_unanswered_tools = true;
+                    break;
                 }
             }
+
+            if has_unanswered_tools {
+                let mut tool_results = Vec::new();
+                for part in &msg.parts {
+                    if let MessagePart::Part(cp) = part
+                        && let Some(fc) = &cp.function_call
+                    {
+                        let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                        let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+
+                        let mut fr = HashMap::new();
+                        fr.insert("id".to_string(), serde_json::json!(id));
+                        fr.insert("name".to_string(), serde_json::json!(name));
+                        fr.insert(
+                            "response".to_string(),
+                            serde_json::json!("Error: Interrupted by user."),
+                        );
+
+                        tool_results.push(MessagePart::Part(ContentPart {
+                            text: None,
+                            inline_data: None,
+                            function_call: None,
+                            function_response: Some(fr),
+                            thought: None,
+                            thought_signature: None,
+                            is_diagnostic: false,
+                        }));
+                    }
+                }
+                state.conversation.push(Message {
+                    role: Role::Tool,
+                    parts: tool_results,
+                });
+            }
+        }
     }
 }

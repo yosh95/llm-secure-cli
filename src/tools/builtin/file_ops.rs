@@ -400,24 +400,27 @@ pub fn grep_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
             } else if path.is_file() {
                 // Check file pattern
                 if let Some(pattern) = file_pattern
-                    && !glob_match(pattern, &name) {
-                        continue;
-                    }
+                    && !glob_match(pattern, &name)
+                {
+                    continue;
+                }
 
                 // Skip large files
                 if let Ok(meta) = path.metadata()
-                    && meta.len() > MAX_FILE_READ_SIZE {
-                        continue;
-                    }
+                    && meta.len() > MAX_FILE_READ_SIZE
+                {
+                    continue;
+                }
 
                 // Skip binary files
                 if let Ok(mut f) = fs::File::open(&path) {
                     use std::io::Read;
                     let mut buf = [0u8; 1024];
                     if let Ok(n) = f.read(&mut buf)
-                        && buf[..n].contains(&0u8) {
-                            continue; // binary
-                        }
+                        && buf[..n].contains(&0u8)
+                    {
+                        continue; // binary
+                    }
                 }
 
                 if let Ok(content) = fs::read_to_string(&path) {

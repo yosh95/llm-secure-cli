@@ -64,18 +64,8 @@ impl GeminiClient {
                             parts.push(part_json);
 
                             if let Some(t) = &cp.text
-                                && !t.is_empty() {
-                                    let mut text_json = json!({"text": t});
-                                    let effective_sig =
-                                        thought_sig.clone().or(prev_thought_sig.clone());
-                                    if let Some(sig) = effective_sig {
-                                        text_json["thoughtSignature"] = json!(sig);
-                                    }
-                                    parts.push(text_json);
-                                }
-                            prev_thought_sig = thought_sig.clone();
-                        } else if let Some(t) = &cp.text
-                            && !t.is_empty() {
+                                && !t.is_empty()
+                            {
                                 let mut text_json = json!({"text": t});
                                 let effective_sig =
                                     thought_sig.clone().or(prev_thought_sig.clone());
@@ -83,8 +73,19 @@ impl GeminiClient {
                                     text_json["thoughtSignature"] = json!(sig);
                                 }
                                 parts.push(text_json);
-                                prev_thought_sig = None;
                             }
+                            prev_thought_sig = thought_sig.clone();
+                        } else if let Some(t) = &cp.text
+                            && !t.is_empty()
+                        {
+                            let mut text_json = json!({"text": t});
+                            let effective_sig = thought_sig.clone().or(prev_thought_sig.clone());
+                            if let Some(sig) = effective_sig {
+                                text_json["thoughtSignature"] = json!(sig);
+                            }
+                            parts.push(text_json);
+                            prev_thought_sig = None;
+                        }
 
                         if let Some(fc) = &cp.function_call {
                             let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("");
@@ -368,11 +369,14 @@ impl LlmClient for GeminiClient {
                     }
                 }
 
-                if full_text.is_empty() && thought_text.is_empty() && msg_parts.is_empty()
+                if full_text.is_empty()
+                    && thought_text.is_empty()
+                    && msg_parts.is_empty()
                     && let Some(reason) = candidate["finishReason"].as_str()
-                        && reason != "STOP" {
-                            full_text.push_str(&format!("[No content. Finish reason: {}]", reason));
-                        }
+                    && reason != "STOP"
+                {
+                    full_text.push_str(&format!("[No content. Finish reason: {}]", reason));
+                }
             } else if let Some(feedback) = res_json["promptFeedback"]["blockReason"].as_str() {
                 return Err(anyhow::anyhow!("Gemini blocked the prompt: {}", feedback));
             }

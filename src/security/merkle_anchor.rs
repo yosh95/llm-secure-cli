@@ -61,9 +61,10 @@ impl SessionAnchorManager {
                 let reader = BufReader::new(file);
                 for line in reader.lines().map_while(Result::ok) {
                     if let Ok(entry) = serde_json::from_str::<Value>(&line)
-                        && entry.get("trace_id").and_then(|v| v.as_str()) == Some(trace_id) {
-                            entries.push(entry);
-                        }
+                        && entry.get("trace_id").and_then(|v| v.as_str()) == Some(trace_id)
+                    {
+                        entries.push(entry);
+                    }
                 }
             }
         }

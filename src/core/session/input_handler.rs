@@ -26,9 +26,9 @@ impl ChatSession {
                     content: serde_json::Value::String(s),
                     ..
                 }) = data.first()
-                {
-                    self.intent = s.clone();
-                }
+            {
+                self.intent = s.clone();
+            }
 
             match self.process_and_print(data).await {
                 Ok(_) => {
