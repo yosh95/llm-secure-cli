@@ -1,5 +1,5 @@
 use crate::llm::models::DataSource;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use chrono;
 use dirs;
 use mime_guess;

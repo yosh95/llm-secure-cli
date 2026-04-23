@@ -2,7 +2,7 @@ use colored::*;
 use comfy_table::Table;
 use pulldown_cmark::{Alignment, Event, Options as CmarkOptions, Parser, Tag, TagEnd};
 use std::fmt::Write;
-use textwrap::{fill, Options as WrapOptions};
+use textwrap::{Options as WrapOptions, fill};
 
 pub struct MarkdownRenderer {
     width: usize,

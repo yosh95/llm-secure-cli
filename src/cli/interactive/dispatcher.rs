@@ -150,13 +150,14 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             };
             let registry = crate::llm::registry::CLIENT_REGISTRY.lock().unwrap();
             // Re-creating the client with the same provider and model will pick up new config/API keys
-            if let Some(new_client) =
-                registry.create_client(&provider, &model, stdout, !render_markdown)
-            {
-                session.switch_client(new_client);
-                ui::report_success("Configuration reloaded from disk.");
-            } else {
-                ui::report_error("Failed to recreate client after reload.");
+            match registry.create_client(&provider, &model, stdout, !render_markdown) {
+                Some(new_client) => {
+                    session.switch_client(new_client);
+                    ui::report_success("Configuration reloaded from disk.");
+                }
+                _ => {
+                    ui::report_error("Failed to recreate client after reload.");
+                }
             }
             CommandResult::Handled
         }
@@ -342,16 +343,18 @@ pub fn handle_model_cmd(session: &mut ChatSession, args: &str) {
         }
     } else {
         let registry = crate::llm::registry::CLIENT_REGISTRY.lock().unwrap();
-        if let Some(new_client) = registry.create_client(&provider, args, stdout, !render_markdown)
-        {
-            session.switch_client(new_client);
-            ui::report_success(&format!(
-                "Model switched to: {} ({})",
-                args,
-                session.client.get_state().model
-            ));
-        } else {
-            ui::report_error(&format!("Failed to switch model to: {}", args));
+        match registry.create_client(&provider, args, stdout, !render_markdown) {
+            Some(new_client) => {
+                session.switch_client(new_client);
+                ui::report_success(&format!(
+                    "Model switched to: {} ({})",
+                    args,
+                    session.client.get_state().model
+                ));
+            }
+            _ => {
+                ui::report_error(&format!("Failed to switch model to: {}", args));
+            }
         }
     }
 }
@@ -376,12 +379,14 @@ pub fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
         };
 
         let registry = crate::llm::registry::CLIENT_REGISTRY.lock().unwrap();
-        if let Some(new_client) = registry.create_client(args, "default", stdout, !render_markdown)
-        {
-            session.switch_client(new_client);
-            ui::report_success(&format!("Switched to provider: {}", args));
-        } else {
-            ui::report_error(&format!("Unknown or inactive provider: {}", args));
+        match registry.create_client(args, "default", stdout, !render_markdown) {
+            Some(new_client) => {
+                session.switch_client(new_client);
+                ui::report_success(&format!("Switched to provider: {}", args));
+            }
+            _ => {
+                ui::report_error(&format!("Unknown or inactive provider: {}", args));
+            }
         }
     }
 }

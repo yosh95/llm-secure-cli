@@ -1,6 +1,6 @@
 use crate::cli::ui;
 use crate::config::CONFIG_MANAGER;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::process::Command;

@@ -58,7 +58,7 @@ pub async fn verify_tool_call_full(
             return (
                 false,
                 format!("[ERROR] Provider not found: {}", provider_alias),
-            )
+            );
         }
     };
 

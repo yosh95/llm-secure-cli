@@ -1,5 +1,5 @@
 use crate::llm::models::{ContentPart, DataSource};
-use crate::security::cass::{RiskLevel, SecurityPosture, CASS_ORCHESTRATOR};
+use crate::security::cass::{CASS_ORCHESTRATOR, RiskLevel, SecurityPosture};
 use std::collections::HashMap;
 use std::fmt;
 

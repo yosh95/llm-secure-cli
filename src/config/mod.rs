@@ -46,7 +46,8 @@ impl ConfigManager {
                             let key = key.trim();
                             let val = val.trim().trim_matches(|c| c == '\'' || c == '"');
                             if !key.is_empty() && env::var(key).is_err() {
-                                env::set_var(key, val);
+                                // TODO: Audit that the environment access only happens in single-threaded code.
+                                unsafe { env::set_var(key, val) };
                             }
                         }
                     }

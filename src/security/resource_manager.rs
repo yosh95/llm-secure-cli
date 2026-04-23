@@ -1,5 +1,5 @@
 #[cfg(unix)]
-use libc::{rlimit, setrlimit, RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE};
+use libc::{RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, rlimit, setrlimit};
 use std::process::Child;
 
 pub fn set_resource_limits(mem_limit_mb: u64, cpu_limit_sec: u64, file_limit_mb: u64) {

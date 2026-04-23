@@ -158,7 +158,10 @@ impl ChatSession {
                                     if !crate::security::policy::POLICY_ENGINE
                                         .evaluate(name, &args, &eval_ctx)
                                     {
-                                        let err_msg = format!("Security Blocked (ABAC Policy): Execution denied for tool '{}'", name);
+                                        let err_msg = format!(
+                                            "Security Blocked (ABAC Policy): Execution denied for tool '{}'",
+                                            name
+                                        );
                                         ui::report_error(&err_msg);
                                         final_result = Some(serde_json::Value::String(err_msg));
                                     }

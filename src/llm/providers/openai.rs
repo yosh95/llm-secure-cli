@@ -320,15 +320,17 @@ impl LlmClient for OpenAiClient {
         });
 
         if self.base.state.tools_enabled && !tool_schemas.is_empty() {
-            payload["tools"] = json!(tool_schemas
-                .into_iter()
-                .map(|s| {
-                    json!({
-                        "type": "function",
-                        "function": s
+            payload["tools"] = json!(
+                tool_schemas
+                    .into_iter()
+                    .map(|s| {
+                        json!({
+                            "type": "function",
+                            "function": s
+                        })
                     })
-                })
-                .collect::<Vec<_>>());
+                    .collect::<Vec<_>>()
+            );
         }
 
         log::debug!(

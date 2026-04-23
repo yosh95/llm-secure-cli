@@ -146,7 +146,9 @@ async fn main() {
                         eprintln!("Run 'llsc identity manifest' if this was intentional.");
                         std::process::exit(1);
                     } else {
-                        ui::report_warning("Integrity Failure: System does not match manifest, but security_level is 'standard'.");
+                        ui::report_warning(
+                            "Integrity Failure: System does not match manifest, but security_level is 'standard'.",
+                        );
                     }
                 }
                 Err(e) => {
@@ -306,7 +308,9 @@ async fn main() {
     let stdout = args.stdout || !is_atty;
 
     if args.raw && !stdout {
-        ui::report_warning("--raw is primarily intended for use with --stdout. In interactive mode, rich rendering is enabled by default.");
+        ui::report_warning(
+            "--raw is primarily intended for use with --stdout. In interactive mode, rich rendering is enabled by default.",
+        );
     }
 
     let client = {

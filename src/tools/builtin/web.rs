@@ -1,5 +1,5 @@
 use crate::consts::{MAX_OUTPUT_CHARS, MAX_OUTPUT_LINES};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 /// Fetch a web page URL or PDF URL and convert the content to Markdown/text.

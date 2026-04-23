@@ -1,8 +1,8 @@
 use crate::consts::{CONFIG_FILE_PATH, LLM_CLI_BASE_DIR};
 use crate::security::identity::IdentityManager;
 use crate::security::pqc::{MldsaVariant, PqcProvider};
-use anyhow::{anyhow, Result};
-use base64::{engine::general_purpose, Engine as _};
+use anyhow::{Result, anyhow};
+use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use pkcs8::{DecodePrivateKey, DecodePublicKey};
 use serde::{Deserialize, Serialize};

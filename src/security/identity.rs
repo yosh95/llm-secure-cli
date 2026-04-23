@@ -2,7 +2,7 @@ use crate::consts::KEY_DIR;
 use crate::security::pqc::{MldsaVariant, MlkemVariant, PQCAgilityManager, PqcProvider};
 use crate::security::pqc_cose::HybridSigner;
 use anyhow::Result;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use once_cell::sync::Lazy;

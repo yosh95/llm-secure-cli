@@ -427,8 +427,8 @@ pub fn ask_confirm(prompt: &str) -> bool {
 }
 
 pub fn get_user_input(prompt: &str) -> String {
-    use rustyline::error::ReadlineError;
     use rustyline::DefaultEditor;
+    use rustyline::error::ReadlineError;
 
     let mut rl = DefaultEditor::new().expect("Failed to create editor");
     match rl.readline(prompt) {

@@ -4,7 +4,7 @@ use crate::security::identity::IdentityManager;
 use crate::security::merkle::MerkleTree;
 use crate::security::pqc::{MldsaVariant, PqcProvider};
 use anyhow::Result;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

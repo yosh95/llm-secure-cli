@@ -1,10 +1,10 @@
+use rustyline::Context;
+use rustyline::Helper;
 use rustyline::completion::{Completer, FilenameCompleter, Pair};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::{CmdKind, Highlighter};
 use rustyline::hint::Hinter;
 use rustyline::validate::Validator;
-use rustyline::Context;
-use rustyline::Helper;
 use std::sync::{Arc, Mutex};
 
 pub struct ChatCompleter {
