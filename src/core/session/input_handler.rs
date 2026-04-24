@@ -102,7 +102,14 @@ impl ChatSession {
                         )
                         .await
                         {
-                            crate::cli::interactive::dispatcher::CommandResult::Exit => break,
+                            crate::cli::interactive::dispatcher::CommandResult::Exit => {
+                                let _ = rl.save_history(&*HISTORY_LOG_PATH);
+                                // Force drop to save session anchor before exit
+                                drop(rl);
+                                let temp_self = std::mem::replace(self, ChatSession::new_empty());
+                                drop(temp_self);
+                                std::process::exit(0);
+                            }
                             crate::cli::interactive::dispatcher::CommandResult::Handled => {
                                 let _ = rl.add_history_entry(&final_trimmed);
                                 (None, true)
@@ -155,7 +162,12 @@ impl ChatSession {
                 }
                 Err(ReadlineError::Eof) => {
                     println!("CTRL-D");
-                    break;
+                    let _ = rl.save_history(&*HISTORY_LOG_PATH);
+                    drop(rl);
+                    // Ensure the session anchor is created by dropping self
+                    let temp_self = std::mem::replace(self, ChatSession::new_empty());
+                    drop(temp_self);
+                    std::process::exit(0);
                 }
                 Err(err) => {
                     ui::report_error(&format!("Error: {:?}", err));

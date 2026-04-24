@@ -1,5 +1,6 @@
 use crate::llm::base::LlmClient;
 use crate::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
+use crate::security::audit::AuditEntry;
 use crate::security::merkle_anchor::SessionAnchorManager;
 use serde_json;
 use std::collections::HashMap;
@@ -14,11 +15,20 @@ pub struct ChatSession {
     pub intent: String,
     pub pending_data: Vec<DataSource>,
     pub trace_id: String,
+    pub audit_entries: Vec<AuditEntry>,
 }
 
 impl Drop for ChatSession {
     fn drop(&mut self) {
-        let _ = SessionAnchorManager::create_anchor(&self.trace_id);
+        let entries_val = self
+            .audit_entries
+            .iter()
+            .map(|e| serde_json::to_value(e).unwrap())
+            .collect::<Vec<_>>();
+
+        if !entries_val.is_empty() {
+            let _ = SessionAnchorManager::create_anchor(&self.trace_id, Some(entries_val));
+        }
     }
 }
 
@@ -27,7 +37,7 @@ impl ChatSession {
         let trace_id = format!("sess-{}", &uuid::Uuid::new_v4().to_string()[..8]);
         let user_id = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
 
-        crate::security::audit::log_audit(
+        let entry = crate::security::audit::log_audit_and_return(
             "session_start",
             "session",
             serde_json::json!({}),
@@ -46,6 +56,46 @@ impl ChatSession {
             intent: String::new(),
             pending_data: Vec::new(),
             trace_id,
+            audit_entries: entry.into_iter().collect(),
+        }
+    }
+
+    /// Create a dummy empty session (internal use only for swapping)
+    pub fn new_empty() -> Self {
+        // This is a minimal client that does nothing
+        struct DummyClient;
+        #[async_trait::async_trait]
+        impl crate::llm::base::LlmClient for DummyClient {
+            fn get_state(&self) -> &crate::llm::models::ClientState {
+                panic!("dummy")
+            }
+            fn get_state_mut(&mut self) -> &mut crate::llm::models::ClientState {
+                panic!("dummy")
+            }
+            fn get_config_section(&self) -> &str {
+                "dummy"
+            }
+            async fn send(
+                &mut self,
+                _: Vec<crate::llm::models::DataSource>,
+            ) -> anyhow::Result<(Option<String>, Option<String>)> {
+                Ok((None, None))
+            }
+            async fn send_as_verifier(
+                &mut self,
+                _: Vec<crate::llm::models::DataSource>,
+                _: serde_json::Value,
+            ) -> anyhow::Result<serde_json::Value> {
+                Ok(serde_json::json!({}))
+            }
+        }
+
+        Self {
+            client: Box::new(DummyClient),
+            intent: String::new(),
+            pending_data: Vec::new(),
+            trace_id: "dummy".to_string(),
+            audit_entries: Vec::new(),
         }
     }
 

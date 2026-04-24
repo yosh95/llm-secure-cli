@@ -143,3 +143,14 @@ impl BaseLlmClientData {
         }
     }
 }
+
+/// Creates a ureq agent with timeout settings from the global config.
+pub fn create_ureq_agent() -> ureq::Agent {
+    let config = CONFIG_MANAGER.get_config();
+    let timeout_secs = config.general.request_timeout;
+
+    ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(timeout_secs)))
+        .build()
+        .into()
+}

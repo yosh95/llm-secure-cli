@@ -157,7 +157,8 @@ gemma = "gemma-4-31b-it"
 default = "gpt-5.4-mini"
 nano = "gpt-5.4-nano"
 mini = "gpt-5.4-mini"
-standard = "gpt-5.4"
+standard = "gpt-5.5"
+pro = "gpt-5.5-pro"
 image = { model = "gpt-image-2", tools = false }
 
 # =============================================================================

@@ -308,27 +308,35 @@ impl ChatSession {
                             });
                             match result {
                                 Ok(v) => {
-                                    crate::security::audit::log_audit(
-                                        "tool_call",
-                                        name,
-                                        serde_json::json!(args),
-                                        v.as_str(),
-                                        Some(0),
-                                        None,
-                                        Some(&audit_ctx),
-                                    );
+                                    if let Some(entry) =
+                                        crate::security::audit::log_audit_and_return(
+                                            "tool_call",
+                                            name,
+                                            serde_json::json!(args),
+                                            v.as_str(),
+                                            Some(0),
+                                            None,
+                                            Some(&audit_ctx),
+                                        )
+                                    {
+                                        self.audit_entries.push(entry);
+                                    }
                                     v
                                 }
                                 Err(e) => {
-                                    crate::security::audit::log_audit(
-                                        "tool_call",
-                                        name,
-                                        serde_json::json!(args),
-                                        None,
-                                        Some(1),
-                                        Some(&e.to_string()),
-                                        Some(&audit_ctx),
-                                    );
+                                    if let Some(entry) =
+                                        crate::security::audit::log_audit_and_return(
+                                            "tool_call",
+                                            name,
+                                            serde_json::json!(args),
+                                            None,
+                                            Some(1),
+                                            Some(&e.to_string()),
+                                            Some(&audit_ctx),
+                                        )
+                                    {
+                                        self.audit_entries.push(entry);
+                                    }
                                     serde_json::Value::String(format!("Error: {}", e))
                                 }
                             }

@@ -1,11 +1,11 @@
-use crate::llm::base::{BaseLlmClientData, LlmClient, ProviderSpec};
+use crate::llm::base::{self, BaseLlmClientData, LlmClient, ProviderSpec};
 use crate::llm::models::{ClientState, ContentPart, DataSource, Message, MessagePart, Role};
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use serde_json::json;
 use std::collections::HashMap;
 
-static AGENT: Lazy<ureq::Agent> = Lazy::new(|| ureq::Agent::config_builder().build().into());
+static AGENT: Lazy<ureq::Agent> = Lazy::new(base::create_ureq_agent);
 const IMAGE_API_URL: &str = "https://api.openai.com/v1/images/generations";
 
 pub struct OpenAiClient {

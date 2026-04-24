@@ -71,8 +71,13 @@ impl SessionAnchorManager {
         entries
     }
 
-    pub fn create_anchor(trace_id: &str) -> Result<Option<String>> {
-        let entries = Self::get_session_entries(trace_id);
+    pub fn create_anchor(trace_id: &str, entries: Option<Vec<Value>>) -> Result<Option<String>> {
+        let entries = if let Some(e) = entries {
+            e
+        } else {
+            Self::get_session_entries(trace_id)
+        };
+
         if entries.is_empty() {
             return Ok(None);
         }

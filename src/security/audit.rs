@@ -9,7 +9,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AuditEntry {
     pub timestamp: String,
     pub trace_id: String,
@@ -40,6 +40,20 @@ pub fn log_audit(
     error: Option<&str>,
     context: Option<&serde_json::Value>,
 ) {
+    let _ = log_audit_and_return(
+        event_type, tool_name, args, output, exit_code, error, context,
+    );
+}
+
+pub fn log_audit_and_return(
+    event_type: &str,
+    tool_name: &str,
+    args: serde_json::Value,
+    output: Option<&str>,
+    exit_code: Option<i32>,
+    error: Option<&str>,
+    context: Option<&serde_json::Value>,
+) -> Option<AuditEntry> {
     let path = &*AUDIT_LOG_PATH;
     let config = CONFIG_MANAGER.get_config();
     let max_lines = config.general.max_audit_log_lines;
@@ -149,7 +163,15 @@ pub fn log_audit(
         let _ = writeln!(file, "{}", line);
     }
 
-    trim_log_file(path, max_lines);
+    // Only trim if the file has grown significantly beyond max_lines to avoid excessive I/O
+    if let Ok(metadata) = fs::metadata(path) {
+        let estimated_line_count = metadata.len() / 1500;
+        if estimated_line_count > (max_lines as u64 * 11 / 10) {
+            trim_log_file(path, max_lines);
+        }
+    }
+
+    Some(log_entry)
 }
 
 fn get_last_log_hash(path: &Path) -> String {
@@ -231,5 +253,61 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
         for line in kept_lines {
             let _ = writeln!(file, "{}", line);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use std::fs;
+
+    #[test]
+    fn test_trim_log_file_and_rotation_marker() {
+        let dir = tempdir().unwrap();
+        let log_path = dir.path().join("test_audit.jsonl");
+
+        // 1. Create 10 dummy log entries
+        let mut entries = Vec::new();
+        let mut last_hash = "0".repeat(64);
+
+        for i in 0..10 {
+            let hash = format!("hash_{}", i);
+            let entry = serde_json::json!({
+                "timestamp": i.to_string(),
+                "event_type": "test",
+                "prev_hash": last_hash,
+                "hash": hash,
+                "status": "SUCCESS"
+            });
+            let line = serde_json::to_string(&entry).unwrap();
+            last_hash = hash;
+            entries.push(line);
+        }
+        fs::write(&log_path, entries.join("\n") + "\n").unwrap();
+
+        // 2. Trim to 5 lines (execution of rotation)
+        // Indices 0-4 should be removed, 5-9 should remain
+        trim_log_file(&log_path, 5);
+
+        // 3. Verification
+        let content = fs::read_to_string(&log_path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+
+        // Expected: Marker(1) + Kept lines(5) = 6 lines
+        assert_eq!(lines.len(), 6, "Should have marker line plus 5 kept lines");
+
+        // Verify the first line is the marker
+        let marker: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(marker["event_type"], "LOG_ROTATION_MARKER");
+        
+        // Marker's prev_hash should be the hash of the last removed entry ("hash_4")
+        assert_eq!(marker["prev_hash"], "hash_4");
+        assert!(marker["hash"].as_str().unwrap().starts_with("ROTATION-NONCE-"));
+
+        // Verify the second line is the first kept log ("hash_5")
+        let first_kept: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
+        assert_eq!(first_kept["hash"], "hash_5");
+        assert_eq!(first_kept["prev_hash"], "hash_4");
     }
 }
