@@ -62,7 +62,10 @@ pub fn html_to_text(html: &str) -> String {
 }
 
 pub fn process_file(path: &Path, _pdf_as_base64: bool) -> anyhow::Result<DataSource> {
-    let metadata = std::collections::HashMap::new();
+    let mut metadata = std::collections::HashMap::new();
+    if let Some(filename) = path.file_name().and_then(|s| s.to_str()) {
+        metadata.insert("filename".to_string(), serde_json::json!(filename));
+    }
     let bytes = fs::read(path)?;
 
     // Use mime_guess to determine the content type

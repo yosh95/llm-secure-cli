@@ -2,15 +2,15 @@ use crate::llm::base::{self, BaseLlmClientData, LlmClient, ProviderSpec};
 use crate::llm::models::{ClientState, ContentPart, DataSource, Message, MessagePart, Role};
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 static AGENT: Lazy<ureq::Agent> = Lazy::new(base::create_ureq_agent);
-const IMAGE_API_URL: &str = "https://api.openai.com/v1/images/generations";
 
 pub struct OpenAiClient {
     pub base: BaseLlmClientData,
     pub api_url: String,
+    image_generation_enabled: bool,
 }
 
 impl OpenAiClient {
@@ -20,345 +20,303 @@ impl OpenAiClient {
             config_section: "openai".to_string(),
             pdf_as_base64: true,
         };
+        let model_config = crate::config::CONFIG_MANAGER.get_model_config("openai", model);
         let base = BaseLlmClientData::new(model, spec, stdout, raw);
+        let model_lc = base.state.model.to_lowercase();
+        let image_generation_enabled = model_config
+            .get("image_generation")
+            .and_then(|v| v.as_bool())
+            .unwrap_or_else(|| {
+                model.eq_ignore_ascii_case("image")
+                    || model_lc.contains("gpt-image")
+                    || model_lc.contains("dall-e")
+                    || model_lc.contains("image")
+            });
+
         Self {
             base,
-            api_url: "https://api.openai.com/v1/chat/completions".to_string(),
+            api_url: "https://api.openai.com/v1/responses".to_string(),
+            image_generation_enabled,
         }
     }
 
-    fn is_image_model(&self) -> bool {
-        let model = self.base.state.model.to_lowercase();
-        model.contains("dall-e") || model.contains("image")
+    fn data_url(mime_type: &str, b64_data: &str) -> String {
+        format!("data:{};base64,{}", mime_type, b64_data)
     }
 
-    fn build_prompt_from_history(&self, data: &[DataSource]) -> String {
-        let mut prompt_parts = Vec::new();
-        for msg in &self.base.state.conversation {
-            for part in &msg.parts {
-                match part {
-                    MessagePart::Text(t) => prompt_parts.push(t.clone()),
-                    MessagePart::Part(cp) => {
-                        if let Some(t) = &cp.text {
-                            prompt_parts.push(t.clone());
+    fn filename_from_data_source(d: &DataSource, fallback: &str) -> String {
+        d.metadata
+            .get("filename")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(fallback)
+            .to_string()
+    }
+
+    fn data_source_to_input_part(d: &DataSource) -> Option<Value> {
+        let content = d.content.as_str().unwrap_or("");
+        if content.is_empty() {
+            return None;
+        }
+
+        if d.content_type == "text/plain" {
+            Some(json!({
+                "type": "input_text",
+                "text": content
+            }))
+        } else if d.content_type.starts_with("image/") {
+            Some(json!({
+                "type": "input_image",
+                "image_url": Self::data_url(&d.content_type, content)
+            }))
+        } else if d.content_type == "application/pdf" {
+            Some(json!({
+                "type": "input_file",
+                "filename": Self::filename_from_data_source(d, "document.pdf"),
+                "file_data": Self::data_url("application/pdf", content)
+            }))
+        } else if d.content_type.starts_with("audio/") || d.content_type.starts_with("video/") {
+            // Audio/video are intentionally not supported for OpenAI Responses in this CLI.
+            Some(json!({
+                "type": "input_text",
+                "text": format!(
+                    "[Unsupported media omitted: {}. Audio/video input is not enabled for the OpenAI Responses provider.]",
+                    d.content_type
+                )
+            }))
+        } else {
+            Some(json!({
+                "type": "input_file",
+                "filename": Self::filename_from_data_source(d, "file.bin"),
+                "file_data": Self::data_url(&d.content_type, content)
+            }))
+        }
+    }
+
+    fn inline_data_to_input_part(inline: &HashMap<String, Value>) -> Option<Value> {
+        let mime = inline
+            .get("mimeType")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let data = inline.get("data").and_then(|v| v.as_str()).unwrap_or("");
+        if mime.is_empty() || data.is_empty() {
+            return None;
+        }
+
+        if mime.starts_with("image/") {
+            Some(json!({
+                "type": "input_image",
+                "image_url": Self::data_url(mime, data)
+            }))
+        } else if mime == "application/pdf" {
+            Some(json!({
+                "type": "input_file",
+                "filename": inline
+                    .get("filename")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("document.pdf"),
+                "file_data": Self::data_url(mime, data)
+            }))
+        } else if mime.starts_with("audio/") || mime.starts_with("video/") {
+            Some(json!({
+                "type": "input_text",
+                "text": format!("[Unsupported media omitted from history: {}]", mime)
+            }))
+        } else {
+            Some(json!({
+                "type": "input_file",
+                "filename": inline
+                    .get("filename")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("file.bin"),
+                "file_data": Self::data_url(mime, data)
+            }))
+        }
+    }
+
+    fn message_to_response_items(&self, m: &Message) -> Vec<Value> {
+        let mut items = Vec::new();
+
+        match m.role {
+            Role::System => {
+                // System prompt is sent via `instructions` instead of as an input item.
+            }
+            Role::Tool => {
+                for part in &m.parts {
+                    if let MessagePart::Part(cp) = part
+                        && let Some(fr) = &cp.function_response
+                    {
+                        let call_id = fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                        if call_id.is_empty() {
+                            continue;
                         }
+                        let response = fr.get("response").cloned().unwrap_or(json!(""));
+                        let output = response
+                            .as_str()
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| response.to_string());
+
+                        items.push(json!({
+                            "type": "function_call_output",
+                            "call_id": call_id,
+                            "output": output
+                        }));
                     }
                 }
             }
-        }
-        for d in data {
-            if d.content_type == "text/plain"
-                && let Some(t) = d.content.as_str()
-            {
-                prompt_parts.push(t.to_string());
-            }
-        }
-        prompt_parts.join("\n")
-    }
+            Role::User | Role::Assistant | Role::Model => {
+                let role = match m.role {
+                    Role::User => "user",
+                    Role::Assistant | Role::Model => "assistant",
+                    _ => unreachable!(),
+                };
 
-    async fn send_image_generation(
-        &mut self,
-        data: Vec<DataSource>,
-    ) -> anyhow::Result<(Option<String>, Option<String>)> {
-        let full_prompt = self.build_prompt_from_history(&data);
-        let payload = json!({
-            "model": self.base.state.model,
-            "prompt": full_prompt,
-            "n": 1,
-            "size": "1024x1024",
-        });
+                let mut content_parts = Vec::new();
 
-        let mut retries = 0;
-        let max_retries = 3;
-        let mut backoff = std::time::Duration::from_secs(2);
-
-        let res = loop {
-            let api_key = self.base.api_key.clone();
-            let payload_clone = payload.clone();
-
-            let res_result = tokio::task::spawn_blocking(move || {
-                let mut req = AGENT.post(IMAGE_API_URL);
-                if let Some(key) = api_key {
-                    req = req.header("Authorization", format!("Bearer {}", key));
-                }
-                req.send_json(payload_clone)
-            })
-            .await?;
-
-            match res_result {
-                Ok(r) => break r,
-                Err(e) => {
-                    let err_msg = e.to_string();
-                    let should_retry = err_msg.contains("429")
-                        || err_msg.contains("500")
-                        || err_msg.contains("502")
-                        || err_msg.contains("503")
-                        || err_msg.contains("504");
-
-                    if should_retry && retries < max_retries {
-                        log::warn!(
-                            "OpenAI Image API error ({}) hit. Retrying in {:?}...",
-                            err_msg,
-                            backoff
-                        );
-                        tokio::time::sleep(backoff).await;
-                        retries += 1;
-                        backoff *= 2;
-                        continue;
-                    }
-                    return Err(anyhow::anyhow!("OpenAI Image API request failed: {}", e));
-                }
-            }
-        };
-
-        let status = res.status();
-        if !status.is_success() {
-            let err_text = res.into_body().read_to_string().unwrap_or_default();
-            return Err(anyhow::anyhow!(
-                "OpenAI Image API error ({}): {}",
-                status,
-                err_text
-            ));
-        }
-
-        let res_json: serde_json::Value = res.into_body().read_json()?;
-
-        let data_item = res_json["data"]
-            .get(0)
-            .ok_or_else(|| anyhow::anyhow!("No image data in response"))?;
-        let revised_prompt = data_item.get("revised_prompt").and_then(|v| v.as_str());
-        let mut img_data = None;
-        let mut mime_type = "image/png".to_string();
-
-        if let Some(b64) = data_item.get("b64_json").and_then(|v| v.as_str()) {
-            img_data = Some(b64.to_string());
-        } else if let Some(url) = data_item.get("url").and_then(|v| v.as_str()) {
-            let (fetched_data, fetched_mime) =
-                crate::utils::media::fetch_url_content(url, true).await?;
-            img_data = Some(fetched_data);
-            mime_type = fetched_mime;
-        }
-
-        let Some(img_data_str) = img_data else {
-            return Ok((Some("Failed to retrieve image data.".to_string()), None));
-        };
-
-        let save_path = &crate::config::CONFIG_MANAGER
-            .get_config()
-            .general
-            .image_save_path;
-        let saved_path = crate::utils::media::save_image(&img_data_str, &mime_type, save_path)?;
-
-        let mut display_text = format!("Image saved to {}", saved_path);
-        if let Some(rp) = revised_prompt {
-            display_text.push_str(&format!("\n\n**Revised Prompt:** {}", rp));
-        }
-
-        let mut inline_data = HashMap::new();
-        inline_data.insert("mimeType".to_string(), json!(mime_type));
-        inline_data.insert("data".to_string(), json!(img_data_str));
-
-        let model_msg = Message {
-            role: Role::Assistant,
-            parts: vec![
-                MessagePart::Text(display_text.clone()),
-                MessagePart::Part(ContentPart {
-                    text: None,
-                    inline_data: Some(inline_data),
-                    function_call: None,
-                    function_response: None,
-                    thought: None,
-                    thought_signature: None,
-                    is_diagnostic: false,
-                }),
-            ],
-        };
-
-        self.update_history(&data, model_msg);
-
-        Ok((Some(display_text), None))
-    }
-
-    fn build_messages(&self, data: &[DataSource]) -> Vec<serde_json::Value> {
-        let mut messages = Vec::new();
-
-        // Prepend system prompt if enabled
-        if let Some(sp) = self.base.state.get_effective_system_prompt() {
-            messages.push(json!({
-                "role": "system",
-                "content": sp
-            }));
-        }
-
-        for m in &self.base.state.conversation {
-            match m.role {
-                Role::Tool => {
-                    for part in &m.parts {
-                        if let MessagePart::Part(cp) = part
-                            && let Some(fr) = &cp.function_response
-                        {
-                            let tool_call_id = fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                            let response = fr.get("response").cloned().unwrap_or(json!(""));
-                            let content = if let Some(s) = response.as_str() {
-                                s.to_string()
-                            } else {
-                                response.to_string()
-                            };
-                            messages.push(json!({
-                                "role": "tool",
-                                "tool_call_id": tool_call_id,
-                                "content": content
-                            }));
-                        }
-                    }
-                }
-                _ => {
-                    let role = match m.role {
-                        Role::System => "system",
-                        Role::User => "user",
-                        Role::Assistant | Role::Model => "assistant",
-                        Role::Tool => unreachable!(),
-                    };
-
-                    let mut msg = json!({ "role": role });
-                    let mut content_parts = Vec::new();
-                    let mut tool_calls = Vec::new();
-
-                    for part in &m.parts {
-                        match part {
-                            MessagePart::Text(t) => {
-                                content_parts.push(json!({"type": "text", "text": t}));
+                for part in &m.parts {
+                    match part {
+                        MessagePart::Text(t) => {
+                            if !t.is_empty() {
+                                let part_type = if role == "assistant" {
+                                    "output_text"
+                                } else {
+                                    "input_text"
+                                };
+                                content_parts.push(json!({
+                                    "type": part_type,
+                                    "text": t
+                                }));
                             }
-                            MessagePart::Part(cp) => {
-                                if let Some(t) = &cp.text {
-                                    content_parts.push(json!({"type": "text", "text": t}));
-                                }
-                                if let Some(id) = &cp.inline_data
-                                    && let (Some(mime), Some(data)) =
-                                        (id.get("mimeType"), id.get("data"))
-                                {
-                                    content_parts.push(json!({
-                                            "type": "image_url",
-                                            "image_url": {
-                                                "url": format!("data:{};base64,{}", mime.as_str().unwrap_or(""), data.as_str().unwrap_or(""))
-                                            }
-                                        }));
-                                }
-                                if let Some(fc) = &cp.function_call {
-                                    tool_calls.push(json!({
-                                        "id": fc.get("id").and_then(|v| v.as_str()).unwrap_or(""),
-                                        "type": "function",
-                                        "function": {
-                                            "name": fc.get("name").and_then(|v| v.as_str()).unwrap_or(""),
-                                            "arguments": fc.get("arguments").map(|v| v.to_string()).unwrap_or_else(|| "{}".to_string())
-                                        }
+                        }
+                        MessagePart::Part(cp) => {
+                            if let Some(t) = &cp.text
+                                && !t.is_empty()
+                            {
+                                let part_type = if role == "assistant" {
+                                    "output_text"
+                                } else {
+                                    "input_text"
+                                };
+                                content_parts.push(json!({
+                                    "type": part_type,
+                                    "text": t
+                                }));
+                            }
+
+                            // Preserve user-provided images/files/PDFs. Assistant-generated images are
+                            // summarized as text to avoid re-uploading outputs as assistant input.
+                            if role == "user"
+                                && let Some(inline) = &cp.inline_data
+                                && let Some(part) = Self::inline_data_to_input_part(inline)
+                            {
+                                content_parts.push(part);
+                            }
+
+                            if let Some(fc) = &cp.function_call {
+                                let call_id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                                if !call_id.is_empty() && !name.is_empty() {
+                                    let arguments = fc
+                                        .get("arguments")
+                                        .map(|v| {
+                                            v.as_str()
+                                                .map(|s| s.to_string())
+                                                .unwrap_or_else(|| v.to_string())
+                                        })
+                                        .unwrap_or_else(|| "{}".to_string());
+                                    items.push(json!({
+                                        "type": "function_call",
+                                        "call_id": call_id,
+                                        "name": name,
+                                        "arguments": arguments
                                     }));
                                 }
                             }
                         }
                     }
+                }
 
-                    // If it's a simple text message, use the string format for better compatibility
-                    // Otherwise use the array format for multimodal support
-                    if !content_parts.is_empty() {
-                        if content_parts.len() == 1 && content_parts[0]["type"] == "text" {
-                            msg["content"] = content_parts[0]["text"].clone();
-                        } else {
-                            msg["content"] = json!(content_parts);
-                        }
-                    } else if role == "assistant" && !tool_calls.is_empty() {
-                        msg["content"] = json!(null);
-                    }
-
-                    if !tool_calls.is_empty() {
-                        msg["tool_calls"] = json!(tool_calls);
-                    }
-
-                    messages.push(msg);
+                if !content_parts.is_empty() {
+                    items.push(json!({
+                        "type": "message",
+                        "role": role,
+                        "content": content_parts
+                    }));
                 }
             }
         }
 
-        // Handle new data from DataSource
-        let mut new_parts = Vec::new();
-        for d in data {
-            if d.content_type == "text/plain" {
-                new_parts.push(json!({"type": "text", "text": d.content.as_str().unwrap_or("")}));
-            } else if d.content_type.starts_with("image/") {
-                new_parts.push(json!({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": format!("data:{};base64,{}", d.content_type, d.content.as_str().unwrap_or(""))
-                    }
-                }));
-            }
+        items
+    }
+
+    fn build_responses_input(&self, data: &[DataSource]) -> Vec<Value> {
+        let mut input = Vec::new();
+
+        for m in &self.base.state.conversation {
+            input.extend(self.message_to_response_items(m));
         }
+
+        let new_parts = data
+            .iter()
+            .filter_map(Self::data_source_to_input_part)
+            .collect::<Vec<_>>();
 
         if !new_parts.is_empty() {
-            if new_parts.len() == 1 && new_parts[0]["type"] == "text" {
-                messages.push(json!({
-                    "role": "user",
-                    "content": new_parts[0]["text"].clone()
-                }));
-            } else {
-                messages.push(json!({
-                    "role": "user",
-                    "content": new_parts
-                }));
-            }
+            input.push(json!({
+                "type": "message",
+                "role": "user",
+                "content": new_parts
+            }));
         }
 
-        messages
-    }
-}
-
-#[async_trait]
-impl LlmClient for OpenAiClient {
-    fn get_state(&self) -> &ClientState {
-        &self.base.state
-    }
-    fn get_state_mut(&mut self) -> &mut ClientState {
-        &mut self.base.state
-    }
-    fn get_config_section(&self) -> &str {
-        &self.base.config_section
+        input
     }
 
-    async fn send(
-        &mut self,
-        data: Vec<DataSource>,
-    ) -> anyhow::Result<(Option<String>, Option<String>)> {
-        if self.is_image_model() {
-            return self.send_image_generation(data).await;
+    fn build_responses_tools(&self, tool_schemas: Vec<Value>) -> Vec<Value> {
+        let mut tools = Vec::new();
+
+        if self.base.state.tools_enabled {
+            tools.extend(tool_schemas.into_iter().map(|s| {
+                json!({
+                    "type": "function",
+                    "name": s.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                    "description": s.get("description").and_then(|v| v.as_str()).unwrap_or(""),
+                    "parameters": s.get("parameters").cloned().unwrap_or_else(|| json!({"type":"object","properties":{}}))
+                })
+            }));
         }
 
-        let messages = self.build_messages(&data);
-        let tool_schemas = crate::tools::registry::REGISTRY
-            .lock()
-            .unwrap()
-            .get_tool_schemas();
+        if self.image_generation_enabled {
+            tools.push(json!({
+                "type": "image_generation"
+            }));
+        }
 
+        tools
+    }
+
+    fn build_payload(&self, data: &[DataSource], tool_schemas: Vec<Value>) -> Value {
         let mut payload = json!({
             "model": self.base.state.model,
-            "messages": messages,
+            "input": self.build_responses_input(data),
+            "store": false
         });
 
-        if self.base.state.tools_enabled && !tool_schemas.is_empty() {
-            payload["tools"] = json!(
-                tool_schemas
-                    .into_iter()
-                    .map(|s| {
-                        json!({
-                            "type": "function",
-                            "function": s
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            );
+        if let Some(instructions) = self.base.state.get_effective_system_prompt() {
+            payload["instructions"] = json!(instructions);
         }
 
+        let tools = self.build_responses_tools(tool_schemas);
+        if !tools.is_empty() {
+            payload["tools"] = json!(tools);
+        }
+
+        payload
+    }
+
+    async fn post_responses(&self, payload: Value, context: &str) -> anyhow::Result<Value> {
         log::debug!(
-            "OpenAI Request Payload: {}",
+            "OpenAI Responses Request Payload: {}",
             serde_json::to_string_pretty(&payload).unwrap_or_default()
         );
 
@@ -392,8 +350,9 @@ impl LlmClient for OpenAiClient {
 
                     if should_retry && retries < max_retries {
                         log::warn!(
-                            "OpenAI API error ({}) hit. Retrying in {:?}...",
+                            "OpenAI Responses API error ({}) in {}. Retrying in {:?}...",
                             err_msg,
+                            context,
                             backoff
                         );
                         tokio::time::sleep(backoff).await;
@@ -401,65 +360,138 @@ impl LlmClient for OpenAiClient {
                         backoff *= 2;
                         continue;
                     }
-                    return Err(anyhow::anyhow!("OpenAI API request failed: {}", e));
+                    return Err(anyhow::anyhow!(
+                        "OpenAI Responses API request failed in {}: {}",
+                        context,
+                        e
+                    ));
                 }
             }
         };
 
         let status = res.status();
-        let res_json: serde_json::Value = res.into_body().read_json().unwrap_or_default();
+        let res_json: Value = res.into_body().read_json().unwrap_or_default();
         log::debug!(
-            "OpenAI Response ({}): {}",
+            "OpenAI Responses Response ({}): {}",
             status,
             serde_json::to_string_pretty(&res_json).unwrap_or_default()
         );
 
         if !status.is_success() {
             if let Some(err) = res_json.get("error") {
-                return Err(anyhow::anyhow!("OpenAI API error ({}): {}", status, err));
-            } else {
                 return Err(anyhow::anyhow!(
-                    "OpenAI API error ({}): {}",
+                    "OpenAI Responses API error ({}) in {}: {}",
                     status,
-                    res_json
+                    context,
+                    err
                 ));
             }
+            return Err(anyhow::anyhow!(
+                "OpenAI Responses API error ({}) in {}: {}",
+                status,
+                context,
+                res_json
+            ));
         }
 
-        let choice = &res_json["choices"][0];
-        let message = &choice["message"];
+        Ok(res_json)
+    }
 
-        // Extract text
+    fn parse_output_text_from_content(
+        content: &[Value],
+        full_text: &mut String,
+        model_parts: &mut Vec<MessagePart>,
+    ) {
+        for part in content {
+            let part_type = part.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            if matches!(part_type, "output_text" | "text" | "input_text")
+                && let Some(t) = part.get("text").and_then(|v| v.as_str())
+            {
+                full_text.push_str(t);
+                model_parts.push(MessagePart::Text(t.to_string()));
+            }
+        }
+    }
+
+    fn parse_responses_output(&self, res_json: &Value) -> (String, Vec<MessagePart>) {
         let mut full_text = String::new();
-        if let Some(t) = message["content"].as_str() {
-            full_text.push_str(t);
-        }
-
         let mut model_parts = Vec::new();
-        if !full_text.is_empty() {
-            model_parts.push(MessagePart::Text(full_text.clone()));
+
+        if let Some(t) = res_json.get("output_text").and_then(|v| v.as_str())
+            && !t.is_empty()
+        {
+            full_text.push_str(t);
+            model_parts.push(MessagePart::Text(t.to_string()));
         }
 
-        // Handle OpenAI-style content parts (some models return array of parts including images)
-        if let Some(parts) = message["content"].as_array() {
-            for part in parts {
-                if let Some(t) = part["text"].as_str() {
-                    if full_text.is_empty() {
-                        full_text.push_str(t);
+        if let Some(output) = res_json.get("output").and_then(|v| v.as_array()) {
+            for item in output {
+                let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                match item_type {
+                    "message" => {
+                        if let Some(content) = item.get("content").and_then(|v| v.as_array()) {
+                            // Avoid duplicate text when output_text already contained the aggregate.
+                            if full_text.is_empty() {
+                                Self::parse_output_text_from_content(
+                                    content,
+                                    &mut full_text,
+                                    &mut model_parts,
+                                );
+                            }
+                        }
                     }
-                    model_parts.push(MessagePart::Text(t.to_string()));
-                }
-                if let Some(img) = part["image_url"].as_object() {
-                    let url = img.get("url").and_then(|v| v.as_str()).unwrap_or("");
-                    if url.starts_with("data:image/") {
-                        if let Some(comma_pos) = url.find(',') {
-                            let mime = url[5..comma_pos].split(';').next().unwrap_or("");
-                            let data = &url[comma_pos + 1..];
-                            full_text.push_str(&format!("[Image: {}]", mime));
+                    "function_call" => {
+                        let call_id = item
+                            .get("call_id")
+                            .or_else(|| item.get("id"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let name = item
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let args_str = item
+                            .get("arguments")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("{}")
+                            .to_string();
+                        let args: HashMap<String, Value> =
+                            serde_json::from_str(&args_str).unwrap_or_default();
+
+                        let mut function_call = HashMap::new();
+                        function_call.insert("name".to_string(), json!(name));
+                        function_call.insert("arguments".to_string(), json!(args));
+                        function_call.insert("id".to_string(), json!(call_id));
+
+                        model_parts.push(MessagePart::Part(ContentPart {
+                            text: None,
+                            inline_data: None,
+                            function_call: Some(function_call),
+                            function_response: None,
+                            thought: None,
+                            thought_signature: None,
+                            is_diagnostic: false,
+                        }));
+                    }
+                    "image_generation_call" => {
+                        if let Some(b64) = item.get("result").and_then(|v| v.as_str()) {
+                            let mime_type = item
+                                .get("mime_type")
+                                .or_else(|| item.get("mimeType"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("image/png")
+                                .to_string();
+                            if full_text.is_empty() {
+                                full_text.push_str("[Generated image]");
+                            } else {
+                                full_text.push_str("\n[Generated image]");
+                            }
 
                             let mut inline_data = HashMap::new();
-                            inline_data.insert("mimeType".to_string(), json!(mime));
-                            inline_data.insert("data".to_string(), json!(data));
+                            inline_data.insert("mimeType".to_string(), json!(mime_type));
+                            inline_data.insert("data".to_string(), json!(b64));
 
                             model_parts.push(MessagePart::Part(ContentPart {
                                 text: None,
@@ -471,39 +503,44 @@ impl LlmClient for OpenAiClient {
                                 is_diagnostic: false,
                             }));
                         }
-                    } else if !url.is_empty() {
-                        full_text.push_str(&format!("[Image URL: {}]", url));
                     }
+                    _ => {}
                 }
             }
         }
 
-        if let Some(tool_calls) = message["tool_calls"].as_array() {
-            for tc in tool_calls {
-                let id = tc["id"].as_str().unwrap_or("").to_string();
-                let name = tc["function"]["name"].as_str().unwrap_or("").to_string();
-                let args_str = tc["function"]["arguments"]
-                    .as_str()
-                    .unwrap_or("{}")
-                    .to_string();
-                let args: HashMap<String, serde_json::Value> =
-                    serde_json::from_str(&args_str).unwrap_or_default();
+        (full_text, model_parts)
+    }
+}
 
-                let mut function_call = HashMap::new();
-                function_call.insert("name".to_string(), json!(name));
-                function_call.insert("arguments".to_string(), json!(args));
-                function_call.insert("id".to_string(), json!(id));
+#[async_trait]
+impl LlmClient for OpenAiClient {
+    fn get_state(&self) -> &ClientState {
+        &self.base.state
+    }
 
-                model_parts.push(MessagePart::Part(ContentPart {
-                    text: None,
-                    inline_data: None,
-                    function_call: Some(function_call),
-                    function_response: None,
-                    thought: None,
-                    thought_signature: None,
-                    is_diagnostic: false,
-                }));
-            }
+    fn get_state_mut(&mut self) -> &mut ClientState {
+        &mut self.base.state
+    }
+
+    fn get_config_section(&self) -> &str {
+        &self.base.config_section
+    }
+
+    async fn send(
+        &mut self,
+        data: Vec<DataSource>,
+    ) -> anyhow::Result<(Option<String>, Option<String>)> {
+        let tool_schemas = crate::tools::registry::REGISTRY
+            .lock()
+            .unwrap()
+            .get_tool_schemas();
+        let payload = self.build_payload(&data, tool_schemas);
+        let res_json = self.post_responses(payload, "chat").await?;
+
+        let (full_text, mut model_parts) = self.parse_responses_output(&res_json);
+        if model_parts.is_empty() && full_text.is_empty() {
+            model_parts.push(MessagePart::Text("".to_string()));
         }
 
         let model_msg = Message {
@@ -526,84 +563,52 @@ impl LlmClient for OpenAiClient {
     async fn send_as_verifier(
         &mut self,
         data: Vec<DataSource>,
-        tool_schema: serde_json::Value,
-    ) -> anyhow::Result<serde_json::Value> {
-        let messages = self.build_messages(&data);
+        tool_schema: Value,
+    ) -> anyhow::Result<Value> {
         let tool_name = tool_schema["name"].as_str().unwrap_or("verify").to_string();
-
-        let payload = json!({
+        let mut payload = json!({
             "model": self.base.state.model,
-            "messages": messages,
+            "input": self.build_responses_input(&data),
             "tools": [{
                 "type": "function",
-                "function": tool_schema
+                "name": tool_schema.get("name").and_then(|v| v.as_str()).unwrap_or("verify"),
+                "description": tool_schema.get("description").and_then(|v| v.as_str()).unwrap_or(""),
+                "parameters": tool_schema.get("parameters").cloned().unwrap_or_else(|| json!({"type":"object","properties":{}}))
             }],
             "tool_choice": {
                 "type": "function",
-                "function": { "name": tool_name }
-            }
+                "name": tool_name
+            },
+            "store": false
         });
 
-        let mut retries = 0;
-        let max_retries = 3;
-        let mut backoff = std::time::Duration::from_secs(2);
-
-        let res = loop {
-            let api_key = self.base.api_key.clone();
-            let api_url = self.api_url.clone();
-            let payload_clone = payload.clone();
-
-            let res_result = tokio::task::spawn_blocking(move || {
-                let mut req = AGENT.post(&api_url);
-                if let Some(key) = api_key {
-                    req = req.header("Authorization", format!("Bearer {}", key));
-                }
-                req.send_json(payload_clone)
-            })
-            .await?;
-
-            match res_result {
-                Ok(r) => break r,
-                Err(e) => {
-                    let err_msg = e.to_string();
-                    let should_retry = err_msg.contains("429")
-                        || err_msg.contains("500")
-                        || err_msg.contains("502")
-                        || err_msg.contains("503")
-                        || err_msg.contains("504");
-
-                    if should_retry && retries < max_retries {
-                        log::warn!(
-                            "OpenAI API error ({}) in verifier. Retrying in {:?}...",
-                            err_msg,
-                            backoff
-                        );
-                        tokio::time::sleep(backoff).await;
-                        retries += 1;
-                        backoff *= 2;
-                        continue;
-                    }
-                    return Err(anyhow::anyhow!("OpenAI API request failed: {}", e));
-                }
-            }
-        };
-
-        let status = res.status();
-        if !status.is_success() {
-            let res_json: serde_json::Value = res.into_body().read_json().unwrap_or_default();
-            return Err(anyhow::anyhow!(
-                "OpenAI verifier error ({}): {}",
-                status,
-                res_json
-            ));
+        if let Some(instructions) = self.base.state.get_effective_system_prompt() {
+            payload["instructions"] = json!(instructions);
         }
 
-        let res_json: serde_json::Value = res.into_body().read_json()?;
-        let args_str = res_json["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("No tool call arguments in OpenAI response"))?;
+        let res_json = self.post_responses(payload, "verifier").await?;
+        let output = res_json
+            .get("output")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("No output in OpenAI Responses verifier response"))?;
 
-        let args: serde_json::Value = serde_json::from_str(args_str)?;
-        Ok(args)
+        for item in output {
+            if item.get("type").and_then(|v| v.as_str()) == Some("function_call") {
+                let args_str = item
+                    .get("arguments")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "No function call arguments in OpenAI Responses verifier response"
+                        )
+                    })?;
+                let args: Value = serde_json::from_str(args_str)?;
+                return Ok(args);
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "No function_call item in OpenAI Responses verifier response"
+        ))
     }
 }

@@ -259,8 +259,8 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn test_trim_log_file_and_rotation_marker() {
@@ -300,10 +300,15 @@ mod tests {
         // Verify the first line is the marker
         let marker: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
         assert_eq!(marker["event_type"], "LOG_ROTATION_MARKER");
-        
+
         // Marker's prev_hash should be the hash of the last removed entry ("hash_4")
         assert_eq!(marker["prev_hash"], "hash_4");
-        assert!(marker["hash"].as_str().unwrap().starts_with("ROTATION-NONCE-"));
+        assert!(
+            marker["hash"]
+                .as_str()
+                .unwrap()
+                .starts_with("ROTATION-NONCE-")
+        );
 
         // Verify the second line is the first kept log ("hash_5")
         let first_kept: serde_json::Value = serde_json::from_str(lines[1]).unwrap();

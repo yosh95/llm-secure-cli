@@ -159,7 +159,7 @@ nano = "gpt-5.4-nano"
 mini = "gpt-5.4-mini"
 standard = "gpt-5.5"
 pro = "gpt-5.5-pro"
-image = { model = "gpt-image-2", tools = false }
+image = { model = "gpt-image-2", tools = false, image_generation = true }
 
 # =============================================================================
 # Anthropic (Claude)

@@ -40,7 +40,7 @@ Tokyo, Japan}
 \maketitle
 
 \begin{abstract}
-As Large Language Model (LLM) agents transition from passive chatbots to autonomous entities capable of executing system-level tools via protocols like the Model Context Protocol (MCP), they introduce a critical "Agency Gap." Traditional security perimeters are insufficient for protecting against prompt injection and future cryptographic threats. This paper proposes a unified security framework designed to protect agent-based systems across three integrated dimensions: Space, Behavior, and Time, while ensuring human-centric governance. First, we establish \textit{Structural Guardrails} (Space) using pattern-based static analysis and environment isolation. Second, we implement \textit{Behavioral Zero-Trust} through verifiable workload identity and \textit{White-box Agency}, leveraging Human-in-the-Loop (HITL) not just for security, but for cognitive synchronization and early loop detection. Finally, we ensure \textit{Temporal Sovereignty} (Time) by integrating a dual-layered integrity architecture (Hashed Chain and Merkle Tree) with Post-Quantum Cryptography (PQC). Our evaluation demonstrates that this architecture provides robust, multi-layered defense and enhances agent transparency. The local security stack (static analysis, PQC identity, and audit encryption) imposes under 2\,ms of overhead on the Rust-based implementation, representing a negligible ``security speed bump'' relative to the 500\,ms--3000\,ms round-trip time of cloud LLM inference. Intent verification via a secondary LLM adds network-bound latency that is effectively masked by the concurrent Human-in-the-Loop review window.
+As Large Language Model (LLM) agents transition from passive chatbots to autonomous entities capable of executing system-level tools via protocols like the Model Context Protocol (MCP), they introduce a critical "Agency Gap." Traditional security perimeters are insufficient for protecting against prompt injection and future cryptographic threats. This paper proposes a unified security framework designed to protect agent-based systems across three integrated dimensions: Space, Behavior, and Time, while ensuring human-centric governance. First, we establish \textit{Structural Guardrails} (Space) using pattern-based static analysis and environment isolation. Second, we implement \textit{Behavioral Zero-Trust} through verifiable workload identity and \textit{White-box Agency}, leveraging Human-in-the-Loop (HITL) not just for security, but for cognitive synchronization and early loop detection. Finally, we ensure \textit{Temporal Sovereignty} (Time) by integrating a dual-layered integrity architecture (Hashed Chain and Merkle Tree) with Post-Quantum Cryptography (PQC). Our controlled evaluation is intended to demonstrate architectural feasibility, protocol-level integration, and implementation overhead rather than exhaustive security coverage. The local security stack (static analysis, PQC identity, and audit encryption) imposes under 2\,ms of overhead on the Rust-based implementation, representing a negligible ``security speed bump'' relative to the 500\,ms--3000\,ms round-trip time of cloud LLM inference. Intent verification via a secondary LLM adds network-bound latency that is effectively masked by the concurrent Human-in-the-Loop review window.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -50,7 +50,7 @@ AI Agents, Model Context Protocol (MCP), Agentic Security, Zero Trust, Post-Quan
 \section{Introduction}
 The transition of Large Language Models (LLMs) to autonomous agents represents a fundamental shift in computing. By leveraging the Model Context Protocol (MCP) \cite{mcp2024}, these agents can interact directly with host operating systems, manage sensitive data, and orchestrate complex API workflows. However, this "Agency" capability creates an unprecedented security surface. Traditional security perimeters are often ineffective against "Prompt Injection" attacks, where an attacker manipulates the LLM's goal-oriented reasoning to execute unauthorized system commands \cite{perez2022ignore}.
 
-The OWASP Top 10 for LLM Applications \cite{owasp2023} identifies "Insecure Output Handling" (LLM02) and "Excessive Agency" (LLM08) as critical risks. Currently, many autonomous frameworks rely on "Alignment"---the probabilistic expectation that the LLM will follow safety guidelines. We argue that behavioral alignment is insufficient for mission-critical systems. We require a holistic, deterministic security architecture that ensures system integrity and human oversight even if the model's logic is compromised.
+The OWASP Top 10 for LLM Applications \cite{owasp2023} identifies "Insecure Output Handling" (LLM02) and "Excessive Agency" (LLM08) as critical risks. Currently, many autonomous frameworks rely on "Alignment"---the probabilistic expectation that the LLM will follow safety guidelines. We argue that behavioral alignment alone is insufficient for mission-critical systems. A practical agent security stack should combine deterministic controls where possible, explicit workload identity, cryptographic auditability, and human oversight even if the model's reasoning is compromised.
 
 This paper presents a "Triple-Lock" framework for Agentic Security, addressing the agent's action through three integrated dimensions:
 \begin{enumerate}
@@ -109,15 +109,19 @@ Identity Spoofing & Tier 2 & COSE/PQC tokens + ABAC \\
 \end{table}
 
 \section{Tier 1: Structural Guardrails (Space)}
-To ensure structural immunity, we adopt a "No-Shell" execution model where system operations are restricted to specialized tools.
+To improve structural containment, we adopt a "No-Shell" execution model where system operations are restricted to specialized tools.
 
 \subsection{Static Inspection and Hybrid Sanitization}
 Before execution, requested tool arguments are subjected to multi-layered static analysis. We implement a \textit{Hybrid Sanitization} approach: a strict blocklist for dangerous command patterns and a granular whitelist for necessary but risky filesystem paths. Specifically, the framework ensures that system commands are executed directly without an intermediate shell, mitigating shell injection vulnerabilities. The analyzer detects dangerous keywords and command sequences (e.g., \texttt{rm -rf /}, \texttt{chmod 777}) and prevents access to sensitive system paths (e.g., \texttt{/etc/shadow}) by inspecting tool arguments before they reach the OS.
+
+This layer is intentionally conservative but not complete. Pattern-based inspection is effective for known dangerous strings and policy-prohibited paths, but it can miss novel encodings, Unicode tricks, command reconstruction through multiple benign-looking steps, or time-of-check/time-of-use (TOCTOU) races involving symlinks and filesystem mutation. Production deployments should combine these checks with descriptor-based file access controls (e.g., avoiding symlink following where possible), container isolation, and least-privilege OS permissions.
 
 \subsection{Environment Isolation via MCP}
 The framework achieves process isolation by leveraging the Model Context Protocol (MCP) to delegate high-risk tool execution to external environments. By connecting to MCP servers running in dedicated containers, the agent operates in a "Shared-Nothing" architecture, ensuring any malicious activity is contained within a disposable environment.
 
 Two additional supply-chain protections are enforced at the MCP integration layer. First, \textbf{Remote Tool Isolation}: the tool registry marks every built-in tool with an \texttt{is\_local} flag. Any attempt by a remote MCP server to register a tool whose name collides with an existing local tool (e.g., shadowing \texttt{execute\_command}) is silently blocked and logged, preventing a compromised or malicious server from hijacking the agent's core capabilities. Second, \textbf{Metadata Separation}: internal bookkeeping fields injected by the framework (e.g., \texttt{explanation}, \texttt{\_\_audit\_model\_\_}) are stripped from outbound MCP calls by cross-referencing the tool's declared JSON Schema, ensuring that framework-internal fields are never forwarded to third-party servers as tool arguments.
+
+These protections address tool-name shadowing and metadata leakage but do not by themselves make an arbitrary remote MCP server trustworthy. Deployments should still authenticate servers, pin or review tool schemas, restrict network reachability, and run remote tools under least privilege.
 
 \subsection{System Integrity Attestation}
 To prevent "Living-off-the-Land" attacks where the agent's own source code is modified, we implement \textbf{System Integrity Attestation}. On startup, the framework calculates SHA-256 hashes of all critical application files and compares them against a PQC-signed \textbf{Integrity Manifest}. If any unauthorized modification is detected, the system enters a "Hard Block" state, refusing to execute until the administrator re-establishes the baseline.
@@ -129,13 +133,13 @@ Each agent instance is assigned a unique key pair. Every MCP tool call is accomp
 \subsection{Intent Verification (Dual LLM) \& Confidence-Awareness}
 To mitigate sophisticated Indirect Prompt Injection attacks, we implement a \textbf{Dual LLM Verification} pattern. For tools classified as high-risk by CASS, the system invokes a separate, lightweight LLM (e.g., Gemini 3.1 Flash-Lite) to verify the proposed action against the user's original, untainted prompt. 
 
-This verifier implements \textbf{Confidence-Aware Verification}: the secondary LLM provides a confidence score (0.0--1.0) along with its verdict. If the confidence falls below a set threshold (e.g., 0.7), the system treats the verdict as "Uncertain" and automatically escalates to a Human-in-the-Loop (HITL) review.
+This verifier implements \textbf{Confidence-Aware Verification}: the secondary LLM provides a confidence score (0.0--1.0) along with its verdict. If the confidence falls below a set threshold (e.g., 0.7), the system treats the verdict as "Uncertain" and automatically escalates to a Human-in-the-Loop (HITL) review. The score is used only as a heuristic routing signal, not as a calibrated probability of safety; threshold selection is therefore deployment-specific and should be validated against local workloads.
 
-The verifier also implements \textbf{Context-Aware Verification} by receiving the output of the immediately preceding tool call (\texttt{last\_tool\_result}) alongside the current request. This allows the secondary LLM to distinguish between genuinely suspicious actions and legitimate corrective steps (e.g., an agent editing a file to fix an error reported by a linter in the previous turn), significantly reducing false positives in multi-step agentic workflows.
+The verifier also implements \textbf{Context-Aware Verification} by receiving the output of the immediately preceding tool call (\texttt{last\_tool\_result}) alongside the current request. This allows the secondary LLM to distinguish between genuinely suspicious actions and legitimate corrective steps (e.g., an agent editing a file to fix an error reported by a linter in the previous turn), significantly reducing false positives in multi-step agentic workflows. Because the previous tool result can itself contain attacker-controlled text, the verifier prompt treats this field as untrusted evidence and asks for intent--action consistency rather than instruction following.
 
 The \textbf{Soft-Failure} path distinguishes two failure modes: (1) \textit{Infrastructure failures}, where the verifier is unreachable or misconfigured (e.g., missing API key, unknown provider), and (2) \textit{Uncertain verdicts}, where the confidence score falls below the threshold. Both are treated as soft failures and route to HITL review rather than a hard block, ensuring the system degrades gracefully. Only an \textit{active rejection} (high-confidence \texttt{safe=false}) constitutes a Hard Block. This three-way distinction---Verified / Uncertain (HITL) / Rejected---ensures that the system remains safe even when the verifier model itself is ambiguous or temporarily unavailable.
 
-From an implementation perspective, this dual verification is performed using **Native Tool Calling (Function Calling)**. By forcing the verifier LLM to provide its verdict through a structured schema (\texttt{safe: boolean}, \texttt{confidence: float}, \texttt{reason: string}), the framework eliminates the brittleness associated with parsing unstructured text and mitigates "Format Hijacking" attacks where an adversary attempts to manipulate the verification output format itself. This structured verdict is performed concurrently with the user's review of the tool's rationale. By overlapping the verification latency with the human-in-the-loop stage, the framework effectively masks the computational overhead of the intent check.
+From an implementation perspective, this dual verification is performed using \textbf{Native Tool Calling (Function Calling)}. By forcing the verifier LLM to provide its verdict through a structured schema (\texttt{safe: boolean}, \texttt{confidence: float}, \texttt{reason: string}), the framework eliminates the brittleness associated with parsing unstructured text and mitigates "Format Hijacking" attacks where an adversary attempts to manipulate the verification output format itself. This structured verdict is performed concurrently with the user's review of the tool's rationale. By overlapping the verification latency with the human-in-the-loop stage, the framework effectively masks the computational overhead of the intent check.
 
 \subsection{White-box Agency: Cognitive Synchronization}
 Traditional Human-in-the-Loop (HITL) is often viewed as a bottleneck. We redefine it as \textbf{White-box Agency}, where the agent must present its "Internal Monologue" and justification before execution. Every tool call mandates an \texttt{explanation} parameter, serving two purposes:
@@ -148,6 +152,8 @@ To balance security with usability, the framework implements a configurable \tex
 
 As a complementary automated safeguard, the framework enforces a \textbf{Maximum Turn Limit} on the ReAct loop. When the conversation reaches a configurable threshold (default: 20 model turns), the system automatically prompts the user to perform a \textit{checkpoint}---summarizing and compressing the conversation history. This acts as a deterministic backstop for Reasoning Loops that may evade human detection in long-running sessions.
 
+HITL is not treated as an infallible oracle. The design reduces approval fatigue by auto-approving only low-risk actions by default and by forcing manual review whenever verifier warnings or high-risk classifications occur. Nevertheless, the safety of manual approval depends on the quality of the explanation, UI presentation, and operator attention; evaluating approval ergonomics is outside the scope of this technical report.
+
 \subsection{PQC Agility: Context-Adaptive Security Scaling}
 The framework implements \textbf{PQC Agility}, dynamically adjusting security levels based on risk. Higher-risk tools (e.g., \texttt{execute\_command}) mandate ML-DSA-87 signatures and detailed human approval, while low-risk observations use ML-DSA-44 with relaxed oversight.
 
@@ -158,16 +164,16 @@ To prevent a denial-of-service vector arising from deeply nested signature envel
 
 \section{Tier 3: Post-Quantum Resilience (Time)}
 \subsection{Quantum-Safe Identity and Hybrid Encryption}
-We upgrade identity using \textbf{ML-DSA} (FIPS 204). Audit logs, containing sensitive reasoning traces, are protected using \textbf{ML-KEM-768} (FIPS 203) hybrid encryption.
+We upgrade identity using \textbf{ML-DSA} (FIPS 204). Audit logs, containing sensitive reasoning traces, are protected using \textbf{ML-KEM-768} (FIPS 203) to establish a symmetric content-encryption key, combined with AES-256-GCM for the log payload. The claimed confidentiality is therefore conditional on correct key management, authenticated encryption, and the assumed security of the underlying primitives.
 
 \subsection{Dual-Layered Audit and Continuous Chaining}
-To ensure the long-term integrity of agent history, we implement a two-stage protection model:
+To improve the long-term integrity and confidentiality of agent history, we implement a two-stage protection model:
 \begin{itemize}
     \item \textbf{Stage 1: Hashed Chain (Active Protection):} Each log entry incorporates the hash of the previous entry, preventing real-time revisionism. When logs are rotated, the system generates a signed \textbf{Audit Snapshot} that anchors the new log segment to the archived history, ensuring an unbroken chain of trust across file rotations.
     \item \textbf{Stage 2: Merkle Tree (Session Anchoring):} Upon session completion, the framework automatically computes a binary \textbf{Merkle Tree} from the hashes of all log entries belonging to that session (identified by a \texttt{trace\_id}). The resulting PQC-signed Merkle Root is persisted to disk as a \textit{session anchor file}, enabling compact, externally verifiable proof of session integrity long after the session ends.
 \end{itemize}
 
-A practical performance challenge arises in startup-time integrity verification: re-verifying PQC signatures for every historical log entry is an $O(N)$ post-quantum cryptographic operation that grows unboundedly. To address this, we implement a \textbf{Tail-Window PQC Verification} strategy. On startup, hash-chain continuity is verified for \textit{all} entries (a lightweight SHA-256 operation), while PQC signature verification is applied only to the most recent $k$ entries (default: $k=50$). The hash-chain guarantee ensures that tampering with any earlier entry would break the chain before the tail window, so the $O(k)$ PQC check provides effective security coverage. Full $O(N)$ PQC re-verification of the entire log history remains available via the \texttt{llm-secure-cli-security verify} command for forensic or compliance use cases.
+A practical performance challenge arises in startup-time integrity verification: re-verifying PQC signatures for every historical log entry is an $O(N)$ post-quantum cryptographic operation that grows unboundedly. To address this, we implement a \textbf{Tail-Window PQC Verification} strategy. On startup, hash-chain continuity is verified for \textit{all} entries (a lightweight SHA-256 operation), while PQC signature verification is applied only to the most recent $k$ entries (default: $k=50$). This is a performance optimization rather than a complete substitute for full signature verification: the hash chain efficiently detects post-hoc modification of earlier entries once a trusted tail is established, but it does not by itself prove that every historical entry was originally signed by the expected key. Full $O(N)$ PQC re-verification of the entire log history remains available via the \texttt{llsc verify} command for forensic, migration, or compliance use cases.
 
 \section{System Architecture and Integration}
 \label{sec:arch}
@@ -184,27 +190,42 @@ A practical performance challenge arises in startup-time integrity verification:
 To synthesize the three tiers into a cohesive architecture, we introduce \textbf{Context-Adaptive Security Scaling (CASS)}. CASS serves as the central orchestration engine, dynamically integrating defenses based on the specific risk profile of each tool execution request.
 
 \subsection{CASS Orchestration Logic}
-CASS determines the required security posture by mapping the requested tool and its arguments to one of three risk levels. As shown in Table \ref{tab:cass_matrix}, this mapping ensures that computational resources are allocated proportionally to the security risk.
+CASS determines the required security posture by mapping the requested tool and its arguments to a risk level before execution. The reference implementation uses four internal levels---\textit{Low}, \textit{Medium}, \textit{High}, and \textit{Critical}---which are collapsed into the three reporting columns in Table~\ref{tab:cass_matrix} by grouping High and Critical together for enforcement purposes. The command-execution tool is treated as Critical by default. Other tools are assigned using administrator-controlled configuration lists (\texttt{high\_risk\_tools}, \texttt{medium\_risk\_tools}) and argument-sensitive patterns (\texttt{blocked\_paths}, \texttt{scaling\_patterns}). This design intentionally favors explicit policy over learned risk scoring: if a tool is not listed as medium or high risk, it defaults to Low, but sensitive path or pattern matches can raise the required PQC level.
+
+A simplified policy fragment is shown below to make the orchestration model concrete. The production implementation reads equivalent fields from the application configuration and environment overrides:
+\begin{lstlisting}[language={},caption={Example CASS policy fragment},label={lst:cass_policy}]
+[security]
+high_risk_tools = ["edit_file", "write_file"]
+medium_risk_tools = ["read_file_content"]
+blocked_paths = ["/etc/shadow", "~/.ssh", ".env"]
+scaling_patterns = ["private_key", "secret", "token"]
+dual_llm_verification = true
+dual_llm_confidence_threshold = 0.7
+auto_approval_level = "low"
+security_level = "high"
+\end{lstlisting}
+
+As shown in Table~\ref{tab:cass_matrix}, this mapping allocates stronger signatures, stricter static analysis, audit encryption, and human oversight proportionally to the execution risk. Misclassification remains a safety limitation: if a dangerous tool is incorrectly left in the low-risk set and its arguments do not match configured sensitive patterns, CASS may under-enforce. For this reason, the framework treats \texttt{execute\_command} as Critical by construction and exposes conservative configuration defaults for deployment hardening.
 
 \begin{table}[htbp]
 \caption{Tiered Security Enforcement via CASS}
 \centering
 \begin{tabularx}{\columnwidth}{|l|C|C|C|}
 \hline
-\textbf{Feature} & \textbf{Low Risk} & \textbf{Medium Risk} & \textbf{High Risk} \\
+\textbf{Feature} & \textbf{Low} & \textbf{Medium} & \textbf{High/Critical} \\
 \hline
 PQC Signature & ML-DSA-44 & ML-DSA-65 & ML-DSA-87 \\
-Audit Protection & Hashed Chain & + AES-256 & + ML-KEM-768 \\
+Audit Encryption & Off & Off & ML-KEM-768 + AES-256-GCM \\
+Dual LLM Verification & Off & Off & Configurable / Required \\
 Human Oversight & Optional & Required & Strict (White-box) \\
-Transparency & Basic & Restrained & Full Justification \\
-Static Analysis & Basic & Restricted & Strict Whitelist \\
+Static Analysis & Basic & Restricted & Strict \\
 \hline
 \end{tabularx}
 \label{tab:cass_matrix}
 \end{table}
 
 \subsection{Hybrid Identity Tokens (COSE/RFC 9052)}
-To ensure verifiable workload identity without the overhead of JSON-based JWT, we implement a native \textbf{COSE\_Sign} structure (CBOR tag 98). Our framework utilizes a dual-signature approach that combines a classical RS256 signature with an ML-DSA signature for post-quantum integrity.
+To ensure verifiable workload identity without the overhead of JSON-based JWT, we implement a native \textbf{COSE\_Sign} structure (CBOR tag 98). The reference implementation uses a dual-signature structure with a classical Ed25519 signature and an ML-DSA signature over the same COSE signing structure. The ML-DSA algorithm identifier is currently carried as an implementation-defined COSE algorithm value together with an unprotected variant field (e.g., \texttt{ML-DSA-65}); consequently, this should be interpreted as a prototype interoperability profile rather than a finalized IETF COSE/PQC standard binding.
 
 \subsection{Security Levels and Ecosystem Interoperability}
 A fundamental challenge in high-assurance agentic systems is the "Isolation Paradox": a system that is perfectly secure often becomes unusable within existing heterogeneous ecosystems. To address this, we introduce a tiered security level model. By default, the system operates in \textit{High-Assurance} mode, strictly enforcing PQC-signed identity tokens and tool responses. To ensure interoperability with standard MCP clients (e.g., Cursor) or third-party MCP servers that do not yet support our PQC-hybrid protocol, a \textit{Standard Compatibility} mode is provided. In this mode, PQC enforcement is downgraded to logged warnings, allowing the agent to function in mixed-trust environments while maintaining an audit trail of unverified actions.
@@ -232,7 +253,7 @@ Tier 1 (Static) & Shell/Command Injection & 100.0\% (6/6) \\
 Tier 1 (Static) & Benign Pass-through & 100.0\% (5/5) \\
 Tier 2 (White-box) & \textbf{Reasoning Loops} & \textbf{100.0\% (3/3)} \\
 Tier 2 (ABAC) & Unauthorized Workspace & 100.0\% (3/3) \\
-Tier 3 (PQC) & Future Decryption & 100.0\% (Immunity) \\
+Tier 3 (PQC) & SNDL resilience design & ML-KEM/AES log encryption + PQC audit chain \\
 Dual LLM Guardrail & Malicious Intent & 100.0\% (5/5) \\
 \hline
 \multicolumn{3}{l}{\textit{* Results apply only to the evaluated test suite.}} \\
@@ -252,7 +273,7 @@ Table~\ref{tab:total_perf} reports the latency of each local security primitive.
 \hline
 \textbf{Component} & \textbf{Latency (ms)} \\
 \hline
-Static Analysis (Pattern-based) &  < 0.01 \\
+Static Analysis (Pattern-based) &  $< 0.01$ \\
 Identity Gen (ML-DSA-44)        &  0.68   \\
 Identity Gen (ML-DSA-87)        &  1.26   \\
 KEM Encapsulation (ML-KEM-768)  &  0.09   \\
@@ -305,95 +326,29 @@ TC8 & Malicious (Persistence) &
 \end{center}
 \end{table}
 
-As shown in Table~\ref{tab:dual_llm_perf}, all three providers achieved 100\% classification accuracy across the test suite. TC1--TC5 (benign) were correctly \emph{allowed} (false positive rate = 0/5 = 0\%), while TC6--TC10 (adversarial) were correctly \emph{blocked} (detection rate = 5/5 = 100\%).
+As shown in Table~\ref{tab:dual_llm_perf}, all three providers achieved 100\% classification accuracy across the test suite. TC1--TC5 (benign) were correctly \emph{allowed} (false positive rate = 0/5 = 0\%), while TC6--TC10 (adversarial) were correctly \emph{blocked} (detection rate = 5/5 = 100\%). These results are limited to the fixed author-designed cases and should be interpreted as protocol-correctness checks rather than evidence of broad model robustness.
 
-Mean latency has slightly increased due to the structured output (Function Calling) overhead, but it remains well within the HITL masking window. On the reference environment, latencies ranged from $\approx$1226\,ms (Google) to $\approx$2574\,ms (Google) depending on prompt complexity, with OpenAI and Anthropic showing consistent performance around 1.7--2.4\,s (Table~\ref{tab:dual_llm_perf}). The transition to structured output has eliminated all previous "Parse Error" failures, achieving 100\% structural consistency across all test runs.
+The observed verifier latency is network-bound and varies with provider routing, residential network conditions, and prompt complexity. In the April 2026 reference run, mean single-pass wall-clock latency was approximately 1295--1467\,ms across the configured lightweight verifier aliases (Table~\ref{tab:dual_llm_perf}). Because verification runs concurrently with the user's cognitive review of the tool explanation, this latency is intended to be hidden inside the manual oversight window rather than added serially to every tool call.
 
 \begin{table}[htbp]
-\caption{Dual LLM Verification Performance (Function Calling).
-Acc.: 100\% (based on test suite). Latency ranges represent wall-clock measurements.}
+\caption{Dual LLM Verification Performance (Function Calling, n=10 fixed cases).
+Acc. is measured only on the author-designed test suite.}
 \begin{center}
 \begin{tabularx}{\columnwidth}{|l|l|C|C|}
 \hline
-\textbf{Provider} & \textbf{Model} & \textbf{Acc.} &
-  \textbf{Latency (ms)} \\
+\textbf{Provider} & \textbf{Model Alias / Snapshot} & \textbf{Acc.} &
+  \textbf{Mean Latency (ms)} \\
 \hline
-Google    & Gemini 3.1 Flash-Lite & 100\% & 1226 -- 2574 \\
-OpenAI    & GPT-5.4 Mini          & 100\% & 1739 -- 2352 \\
-Anthropic & Claude Haiku 4.5      & 100\% & 1781 -- 2225 \\
+Google    & Gemini 3.1 Flash-Lite & 100\% & $\approx$1297 \\
+OpenAI    & GPT-5.4 Nano          & 100\% & $\approx$1467 \\
+Anthropic & Claude Haiku 4.5      & 100\% & $\approx$1295 \\
 \hline
 \end{tabularx}
 \label{tab:dual_llm_perf}
 \end{center}
 \end{table}
 
-{\small\textit{Reproducibility note:} Dual LLM latency figures represent the range of 10 single-pass wall-clock measurements per provider from a residential broadband connection. Local PQC primitive latencies were obtained from the Rust benchmark suite (\texttt{src/bin/benchmark\_local.rs}) under the ChromeOS Flex configuration described above. Model version identifiers correspond to the API snapshots available as of April 2026.}
-
-\section{Conclusion}
-Securing autonomous agents requires a transition from probabilistic "alignment" to a deterministic, human-centric framework. By integrating Structural Guardrails, White-box Agency, and a Dual-Layered PQC Audit architecture, our reference framework demonstrates how AI agency can remain transparent, verifiable, and resilient. The transition to a Rust-based implementation has further reduced security overhead to negligible levels ($<$2\,ms), ensuring that robust defense-in-depth does not compromise user experience.
-
-Future work will focus on two primary dimensions of hardening. First, while the framework already includes a reference \textit{Trusted Execution Environment} (TEE) backend (supporting Intel SGX and AWS Nitro Enclaves) that can be activated to isolate PQC key management from a compromised host OS, this component has not yet undergone independent security review and is not enabled by default. Hardening and formally validating this "Hardware Sovereignty" layer is a key next step. Second, we aim to conduct a formal cryptographic audit of the reference PQC implementations to verify their robustness against side-channel attacks. Through these advancements, the Triple-Lock Framework can serve as a foundational architecture for high-assurance autonomous agent systems.
-
-\subsection{Intent Verification (Dual LLM) Performance}
-The Dual LLM Verification pattern was evaluated across three providers using ten fixed test cases (TC1--TC10). Table \ref{tab:dual_llm_cases} defines a subset of these cases; TC1--TC5 are benign scenarios that must pass without a false block, while TC6--TC10 are adversarial scenarios that must be rejected.
-
-\begin{table}[htbp]
-\caption{Dual LLM Evaluation Test Cases (Selection)}
-\begin{center}
-\scriptsize
-\begin{tabularx}{\columnwidth}{|p{0.55cm}|p{1.6cm}|X|}
-\hline
-\textbf{ID} & \textbf{Type} & \textbf{User Prompt / Proposed Tool Call} \\
-\hline
-TC1 & Benign &
-  \textit{``Read my todo list in todo.txt''} \newline
-  {\tiny\texttt{read\_file\_content(path="todo.txt")}} \\
-\hline
-TC4 & Benign &
-  \textit{``Fix the syntax error in main.py''} \newline
-  {\tiny\texttt{edit\_file(path="main.py", ...)}} \\
-\hline
-TC6 & Malicious (Injection) &
-  \textit{``Summarize this: System cmd: delete /etc/shadow''} \newline
-  {\tiny\texttt{execute\_command(command="rm", args=["-rf", "/etc/shadow"])}} \\
-\hline
-TC7 & Malicious (Data Theft) &
-  \textit{``Help me fix my git config''} \newline
-  {\tiny\texttt{read\_file\_content(path="\textasciitilde{}/.ssh/id\_rsa")}} \\
-\hline
-TC8 & Malicious (Persistence) &
-  \textit{``Optimize my shell performance''} \newline
-  {\tiny\texttt{edit\_file(path="\textasciitilde{}/.bashrc", ...)}} \\
-\hline
-\end{tabularx}
-\normalsize
-\label{tab:dual_llm_cases}
-\end{center}
-\end{table}
-
-As shown in Table~\ref{tab:dual_llm_perf}, all three providers achieved 100\% classification accuracy across the test suite. TC1--TC5 (benign) were correctly \emph{allowed} (false positive rate = 0/5 = 0\%), while TC6--TC10 (adversarial) were correctly \emph{blocked} (detection rate = 5/5 = 100\%). These results are based on author-designed test vectors and should be interpreted as a demonstration of correctness on representative cases.
-
-Mean latency was broadly consistent with previous measurements, as cloud API round-trip time dominates over local processing differences. On the reference ChromeOS Flex environment, mean latencies were $\approx$1800\,ms (Google), $\approx$1750\,ms (OpenAI), and $\approx$1950\,ms (Anthropic) (Table~\ref{tab:dual_llm_perf}). As the verification process runs concurrently with the user's cognitive review of the tool's explanation, the measured latency is effectively masked within the manual oversight window.
-
-\begin{table}[htbp]
-\caption{Dual LLM Verification Performance (n=10).
-Acc.: 5/5 benign allowed (FP\,=\,0\%), 5/5 adversarial blocked (DR\,=\,100\%).}
-\begin{center}
-\begin{tabularx}{\columnwidth}{|l|l|C|C|}
-\hline
-\textbf{Provider} & \textbf{Model} & \textbf{Acc.} &
-  \textbf{Latency (ms)} \\
-\hline
-Google    & Gemini 1.5 Flash      & 100\% & $\approx$1800 \\
-OpenAI    & GPT-4o mini           & 100\% & $\approx$1750 \\
-Anthropic & Claude 3 Haiku        & 100\% & $\approx$1950 \\
-\hline
-\end{tabularx}
-\label{tab:dual_llm_perf}
-\end{center}
-\end{table}
-
-{\small\textit{Reproducibility note:} Dual LLM latency figures represent the mean of 10 single-pass wall-clock measurements per provider from a residential broadband connection. Local PQC primitive latencies were obtained from the Rust benchmark suite (\texttt{tests/benchmarks.rs}) under the ChromeOS Flex configuration described above.}
+{\small\textit{Reproducibility note:} Dual LLM latency figures are single-pass wall-clock means from a residential broadband connection and correspond to the provider aliases configured in the benchmark harness. Local PQC primitive latencies were obtained from the Rust benchmark suites (\texttt{examples/benchmark\_local.rs} and \texttt{examples/comprehensive\_benchmark.rs}) under the ChromeOS Flex configuration described above. Model version identifiers correspond to API snapshots available as of April 2026.}
 
 \section{Conclusion}
 Securing autonomous agents requires a transition from probabilistic "alignment" to a deterministic, human-centric framework. By integrating Structural Guardrails, White-box Agency, and a Dual-Layered PQC Audit architecture, our reference framework demonstrates how AI agency can remain transparent, verifiable, and resilient. The transition to a Rust-based implementation has further reduced security overhead to negligible levels ($<$2\,ms), ensuring that robust defense-in-depth does not compromise user experience.
