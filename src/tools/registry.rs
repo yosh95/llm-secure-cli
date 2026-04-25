@@ -68,9 +68,12 @@ impl ToolRegistry {
     }
 
     pub fn register_remote_tool(&mut self, tool: &Value) {
-        let name = tool["name"].as_str().unwrap().to_string();
-        let original_name = tool["original_name"].as_str().unwrap().to_string();
-        let server_name = tool["server_name"].as_str().unwrap().to_string();
+        let name = tool["name"]
+            .as_str()
+            .unwrap_or("unknown_remote_tool")
+            .to_string();
+        let original_name = tool["original_name"].as_str().unwrap_or("").to_string();
+        let server_name = tool["server_name"].as_str().unwrap_or("").to_string();
         let description = tool["description"].as_str().unwrap_or("").to_string();
         let parameters = tool["parameters"].clone();
 
@@ -78,6 +81,11 @@ impl ToolRegistry {
         let func_original_name = original_name.clone();
 
         let func: ToolFunc = Arc::new(move |args| {
+            if func_server_name.is_empty() || func_original_name.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "Invalid MCP tool definition: missing server/original name"
+                ));
+            }
             let mcp = &crate::tools::mcp::manager::MCP_MANAGER;
             let rt = tokio::runtime::Handle::current();
             let result = tokio::task::block_in_place(|| {

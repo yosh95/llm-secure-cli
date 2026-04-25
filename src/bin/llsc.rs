@@ -304,7 +304,8 @@ async fn main() {
 
     let model = args.model.unwrap_or_else(|| "default".to_string());
 
-    let is_atty = unsafe { libc::isatty(0) != 0 };
+    use std::io::{IsTerminal, stdin};
+    let is_atty = stdin().is_terminal();
     let stdout = args.stdout || !is_atty;
 
     if args.raw && !stdout {

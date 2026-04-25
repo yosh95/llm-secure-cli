@@ -92,67 +92,10 @@ impl ChatSession {
 
                         let mut final_result = None;
 
-                        // --- [PHASE 1] Lightweight Fast Checks ---
-                        let path_args = ["path", "directory", "file", "src", "dest", "filename"];
-                        for arg_name in path_args {
-                            if let Some(p_val) = args.get(arg_name).and_then(|v| v.as_str())
-                                && let Err(e) =
-                                    crate::security::path_validator::validate_path(p_val)
-                            {
-                                let err_msg = format!("Security Blocked (Path Guardrails): {}", e);
-                                ui::report_error(&err_msg);
-                                final_result = Some(serde_json::Value::String(err_msg));
-                                break;
-                            }
-                        }
-
-                        if final_result.is_none() && name == "execute_command" {
-                            let program =
-                                args.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                            let cmd_args: Vec<String> = args
-                                .get("args")
-                                .and_then(|v| v.as_array())
-                                .map(|arr| {
-                                    arr.iter()
-                                        .filter_map(|v| v.as_str())
-                                        .map(|s| s.to_string())
-                                        .collect()
-                                })
-                                .unwrap_or_default();
-
-                            let (safe, violations) =
-                                crate::security::static_analyzer::StaticAnalyzer::check(
-                                    program, &cmd_args,
-                                );
-                            if !safe {
-                                let err_msg = format!(
-                                    "Security Blocked (Static Analysis): {}",
-                                    violations.join(", ")
-                                );
-                                ui::report_error(&err_msg);
-                                final_result = Some(serde_json::Value::String(err_msg));
-                            }
-                        }
-
-                        if final_result.is_none() {
-                            let mut eval_ctx = crate::security::policy::EvaluationContext::new();
-                            eval_ctx
-                                .set_attribute("tool", serde_json::Value::String(name.to_string()));
-                            eval_ctx.set_attribute(
-                                "resource.id",
-                                serde_json::Value::String(name.to_string()),
-                            );
-
-                            if !crate::security::policy::POLICY_ENGINE
-                                .evaluate(name, &args, &eval_ctx)
-                            {
-                                let err_msg = format!(
-                                    "Security Blocked (ABAC Policy): Execution denied for tool '{}'",
-                                    name
-                                );
-                                ui::report_error(&err_msg);
-                                final_result = Some(serde_json::Value::String(err_msg));
-                            }
+                        // --- [PHASE 1] Lightweight Fast Checks (Common Validation) ---
+                        if let Err(e) = crate::security::validate_tool_call(name, &args) {
+                            ui::report_error(&e);
+                            final_result = Some(serde_json::Value::String(e));
                         }
 
                         // --- [PHASE 2] High-Assurance Checks ---

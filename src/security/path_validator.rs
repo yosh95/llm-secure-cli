@@ -37,15 +37,21 @@ pub fn validate_path(path_str: &str) -> Result<PathBuf, PathValidationError> {
         PathBuf::from(path_str)
     };
 
-    // Canonicalize
-    let path_obj = path.clean(); // Simplified, in real use we'd want absolute path
-    let abs_path = if path_obj.is_absolute() {
-        path_obj
+    // Canonicalize or Clean
+    let abs_path = if path.exists() {
+        path.canonicalize().map_err(|e| {
+            PathValidationError(format!("Failed to resolve path (canonicalize): {}", e))
+        })?
     } else {
-        std::env::current_dir()
-            .unwrap_or_default()
-            .join(path_obj)
-            .clean()
+        let path_obj = path.clean();
+        if path_obj.is_absolute() {
+            path_obj
+        } else {
+            std::env::current_dir()
+                .unwrap_or_default()
+                .join(path_obj)
+                .clean()
+        }
     };
 
     // 2. Block sensitive paths

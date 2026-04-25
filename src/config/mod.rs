@@ -67,7 +67,13 @@ impl ConfigManager {
         // 1. Load defaults from embedded defaults.toml
         let defaults_toml = include_str!("defaults.toml");
         let mut config_value: serde_json::Value =
-            toml::from_str(defaults_toml).expect("Failed to parse embedded defaults.toml");
+            toml::from_str(defaults_toml).unwrap_or_else(|e| {
+                eprintln!(
+                    "CRITICAL ERROR: Failed to parse embedded defaults.toml: {}",
+                    e
+                );
+                std::process::exit(1);
+            });
 
         // 2. Load user config from files and merge them
         let config_paths = [
@@ -77,16 +83,26 @@ impl ConfigManager {
 
         for path in config_paths {
             if path.exists()
-                && let Ok(content) = fs::read_to_string(path)
-                && let Ok(user_value) = toml::from_str::<serde_json::Value>(&content)
+                && let Ok(content) = fs::read_to_string(&path)
             {
-                merge_json(&mut config_value, user_value);
+                match toml::from_str::<serde_json::Value>(&content) {
+                    Ok(user_value) => merge_json(&mut config_value, user_value),
+                    Err(e) => {
+                        eprintln!("Warning: Failed to parse config file at {:?}: {}", path, e)
+                    }
+                }
             }
         }
 
         // 3. Final deserialization into AppConfig
-        let final_config: AppConfig = serde_json::from_value(config_value)
-            .expect("Failed to deserialize merged configuration");
+        let final_config: AppConfig = serde_json::from_value(config_value).unwrap_or_else(|e| {
+            eprintln!(
+                "CRITICAL ERROR: Failed to deserialize merged configuration: {}",
+                e
+            );
+            eprintln!("Please check your ~/.llm_secure_cli/config.toml for schema errors.");
+            std::process::exit(1);
+        });
 
         *app_config_lock = Some(final_config.clone());
         final_config
