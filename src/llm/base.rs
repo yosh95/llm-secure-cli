@@ -89,12 +89,7 @@ pub struct BaseLlmClientData {
 }
 
 impl BaseLlmClientData {
-    pub fn new(
-        initial_model_alias: &str,
-        spec: ProviderSpec,
-        stdout: bool,
-        render_markdown: bool,
-    ) -> Self {
+    pub fn new(initial_model_alias: &str, spec: ProviderSpec, stdout: bool, raw: bool) -> Self {
         let config_section = spec.config_section.clone();
         let api_key = CONFIG_MANAGER.get_api_key(&config_section);
         let model_config = CONFIG_MANAGER.get_model_config(&config_section, initial_model_alias);
@@ -132,7 +127,7 @@ impl BaseLlmClientData {
             system_prompt_enabled: true,
             system_prompt,
             stdout,
-            render_markdown,
+            render_markdown: !raw,
             live_debug: false,
         };
 

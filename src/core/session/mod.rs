@@ -2,6 +2,7 @@ use crate::llm::base::LlmClient;
 use crate::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
 use crate::security::audit::AuditEntry;
 use crate::security::merkle_anchor::SessionAnchorManager;
+use crate::security::verification_cache::VerificationCache;
 use serde_json;
 use std::collections::HashMap;
 use uuid;
@@ -16,6 +17,7 @@ pub struct ChatSession {
     pub pending_data: Vec<DataSource>,
     pub trace_id: String,
     pub audit_entries: Vec<AuditEntry>,
+    pub verification_cache: VerificationCache,
 }
 
 impl Drop for ChatSession {
@@ -57,20 +59,26 @@ impl ChatSession {
             pending_data: Vec::new(),
             trace_id,
             audit_entries: entry.into_iter().collect(),
+            verification_cache: VerificationCache::new(),
         }
     }
 
     /// Create a dummy empty session (internal use only for swapping)
     pub fn new_empty() -> Self {
-        // This is a minimal client that does nothing
-        struct DummyClient;
+        // This is a minimal client that does nothing.
+        // It exists solely so that `std::mem::replace` has a valid placeholder
+        // to swap in while the real session is being dropped. None of its
+        // methods should ever be called after the swap.
+        struct DummyClient {
+            state: crate::llm::models::ClientState,
+        }
         #[async_trait::async_trait]
         impl crate::llm::base::LlmClient for DummyClient {
             fn get_state(&self) -> &crate::llm::models::ClientState {
-                panic!("dummy")
+                &self.state
             }
             fn get_state_mut(&mut self) -> &mut crate::llm::models::ClientState {
-                panic!("dummy")
+                &mut self.state
             }
             fn get_config_section(&self) -> &str {
                 "dummy"
@@ -91,11 +99,24 @@ impl ChatSession {
         }
 
         Self {
-            client: Box::new(DummyClient),
+            client: Box::new(DummyClient {
+                state: crate::llm::models::ClientState {
+                    model: String::new(),
+                    provider: String::new(),
+                    conversation: Vec::new(),
+                    tools_enabled: false,
+                    system_prompt_enabled: false,
+                    system_prompt: None,
+                    stdout: false,
+                    render_markdown: false,
+                    live_debug: false,
+                },
+            }),
             intent: String::new(),
             pending_data: Vec::new(),
             trace_id: "dummy".to_string(),
             audit_entries: Vec::new(),
+            verification_cache: VerificationCache::new(),
         }
     }
 

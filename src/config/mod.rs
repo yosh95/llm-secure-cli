@@ -47,8 +47,16 @@ impl ConfigManager {
                         let key = key.trim();
                         let val = val.trim().trim_matches(|c| c == '\'' || c == '"');
                         if !key.is_empty() && env::var(key).is_err() {
-                            // TODO: Audit that the environment access only happens in single-threaded code.
-                            unsafe { env::set_var(key, val) };
+                            // Safety: `env_loaded` is a Mutex that is held for the
+                            // entire duration of this function. The flag is set to
+                            // `true` before the lock is released, so this block is
+                            // guaranteed to execute at most once across all threads.
+                            // No other thread can call `set_var` concurrently through
+                            // this path, satisfying the single-writer requirement.
+                            #[allow(unused_unsafe)]
+                            unsafe {
+                                env::set_var(key, val)
+                            };
                         }
                     }
                 }
@@ -111,17 +119,24 @@ impl ConfigManager {
     pub fn get_api_key(&self, provider: &str) -> Option<String> {
         self.load_env_files();
 
-        // Special case for Ollama
+        // Special case for Ollama:
+        // Return "local_bypass" ONLY when the configured endpoint is actually local.
+        // Cloud endpoints (e.g. https://ollama.cloud/...) must go through the normal
+        // API-key lookup so that the Authorization header is sent correctly.
         if provider == "ollama" {
             let config = self.get_config();
             if let Some(p_cfg) = config.providers.get("ollama") {
                 let base_url = p_cfg.api_url.as_deref().unwrap_or("");
-                if base_url.contains("localhost")
-                    || base_url.contains("127.0.0.1")
-                    || base_url.is_empty()
-                {
+                let is_local = base_url.is_empty()
+                    || base_url.contains("localhost")
+                    || base_url.contains("127.0.0.1");
+                if is_local {
                     return Some("local_bypass".to_string());
                 }
+                // Cloud endpoint: fall through to env-var / config key lookup below.
+            } else {
+                // No ollama config at all → assume local
+                return Some("local_bypass".to_string());
             }
         }
 

@@ -47,6 +47,13 @@ impl StaticAnalyzer {
             {
                 violations.push("Destructive removal of sensitive directory".to_string());
             }
+            // Note: `execute_command` spawns processes directly without a shell,
+            // so pipe characters ('|') in arguments are passed as literal strings
+            // and never interpreted by a shell. This check therefore only catches
+            // cases where the full command string is inspected via
+            // `is_dangerous_command` (e.g. the legacy string-based path). It is
+            // retained as an additional heuristic signal for the Dual LLM verifier
+            // context and to guard `is_dangerous_command` callers.
             "curl" | "wget" => {
                 let has_pipe = args.iter().any(|arg| arg.contains('|'));
                 let has_sh = args

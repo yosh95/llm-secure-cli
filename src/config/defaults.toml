@@ -59,6 +59,12 @@ blocked_filenames = [
     "*.ppk",                    # PuTTY private key
 ]
 
+# Sandbox Level (none | landlock | full)
+# - none:     No sandbox restrictions (default).
+# - landlock: Restricts filesystem access using Linux Landlock LSM.
+# - full:     Landlock + seccomp-bpf (requires external helper).
+sandbox_level = "none"
+
 # Whitelist-based Tool Loading
 # If specified, only the tools in this list will be loaded.
 # This applies to both built-in tools and remote MCP tools.
@@ -173,12 +179,23 @@ sonnet = "claude-sonnet-4-6"
 opus = "claude-opus-4-7"
 
 # =============================================================================
-# Ollama (Local LLMs)
+# Ollama (Local LLMs / Ollama Cloud)
 # =============================================================================
+# Local Ollama:
+#   api_url = "http://localhost:11434/v1/chat/completions"
+#
+# Ollama Cloud example (set OLLAMA_API_KEY env var with your token):
+#   api_url = "https://ollama.com/v1/chat/completions"
 [ollama]
 api_url = "http://localhost:11434/v1/chat/completions"
 [ollama.models]
 default = "gemma4:e2b"
+# Ollama Cloud models (tools/function-calling supported)
+# deepseek = "deepseek-v4-flash:cloud"
+# kimi = "kimi-k2.6:cloud"
+# gemma = "gemma4:31b-cloud"
+# glm = "glm-5.1:cloud"
+# qwen = "qwen3.5:2b"
 
 # =============================================================================
 # Model Context Protocol (MCP) Servers

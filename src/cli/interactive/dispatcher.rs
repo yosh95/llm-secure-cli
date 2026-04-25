@@ -139,18 +139,18 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
         }
         "reload" => {
             crate::config::CONFIG_MANAGER.reload();
-            let (provider, model, stdout, render_markdown) = {
+            let (provider, model, stdout, raw) = {
                 let state = session.client.get_state();
                 (
                     state.provider.clone(),
                     state.model.clone(),
                     state.stdout,
-                    state.render_markdown,
+                    !state.render_markdown,
                 )
             };
             let registry = crate::llm::registry::CLIENT_REGISTRY.lock().unwrap();
             // Re-creating the client with the same provider and model will pick up new config/API keys
-            match registry.create_client(&provider, &model, stdout, !render_markdown) {
+            match registry.create_client(&provider, &model, stdout, raw) {
                 Some(new_client) => {
                     session.switch_client(new_client);
                     ui::report_success("Configuration reloaded from disk.");
@@ -296,13 +296,13 @@ pub fn handle_tools(session: &mut ChatSession, args: &str) {
 }
 
 pub fn handle_model_cmd(session: &mut ChatSession, args: &str) {
-    let (provider, current_model, stdout, render_markdown) = {
+    let (provider, current_model, stdout, raw) = {
         let state = session.client.get_state();
         (
             state.provider.clone(),
             state.model.clone(),
             state.stdout,
-            state.render_markdown,
+            !state.render_markdown,
         )
     };
 
@@ -343,7 +343,7 @@ pub fn handle_model_cmd(session: &mut ChatSession, args: &str) {
         }
     } else {
         let registry = crate::llm::registry::CLIENT_REGISTRY.lock().unwrap();
-        match registry.create_client(&provider, args, stdout, !render_markdown) {
+        match registry.create_client(&provider, args, stdout, raw) {
             Some(new_client) => {
                 session.switch_client(new_client);
                 ui::report_success(&format!(
@@ -373,13 +373,13 @@ pub fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
         }
         ui::print_rule(None, Some("magenta"));
     } else {
-        let (stdout, render_markdown) = {
+        let (stdout, raw) = {
             let state = session.client.get_state();
-            (state.stdout, state.render_markdown)
+            (state.stdout, !state.render_markdown)
         };
 
         let registry = crate::llm::registry::CLIENT_REGISTRY.lock().unwrap();
-        match registry.create_client(args, "default", stdout, !render_markdown) {
+        match registry.create_client(args, "default", stdout, raw) {
             Some(new_client) => {
                 session.switch_client(new_client);
                 ui::report_success(&format!("Switched to provider: {}", args));

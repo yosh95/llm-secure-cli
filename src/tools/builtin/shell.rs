@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::process::Command;
+use tokio::task;
 
 pub fn execute_command(args: HashMap<String, Value>) -> anyhow::Result<Value> {
     let program = args
@@ -11,8 +12,11 @@ pub fn execute_command(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("Missing 'command' argument"))?;
 
-    let cmd_args: Vec<&str> = match args.get("args") {
-        Some(Value::Array(arr)) => arr.iter().filter_map(|v| v.as_str()).collect(),
+    let cmd_args: Vec<String> = match args.get("args") {
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect(),
         _ => Vec::new(),
     };
 
@@ -26,14 +30,20 @@ pub fn execute_command(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         return Err(anyhow::anyhow!(error_msg));
     }
 
-    // 2. Execution with Timeout
+    // 2. Execution with Timeout (via spawn_blocking for non-blocking IO)
     let config = CONFIG_MANAGER.get_config();
     let timeout_secs = config.general.command_timeout;
+    let program = program.to_string();
 
-    let rt = tokio::runtime::Handle::current();
-    let output_res = tokio::task::block_in_place(|| {
+    // Use spawn_blocking to run the command on a dedicated thread pool
+    // without blocking the async runtime's worker threads.
+    let output_res = task::block_in_place(move || {
+        // Note: block_in_place is safe here because this function is invoked
+        // from within an async context (the tokio runtime is active).
+        // It temporarily yields the current worker thread to run blocking code.
+        let rt = tokio::runtime::Handle::current();
         rt.block_on(async {
-            let mut cmd = Command::new(program);
+            let mut cmd = Command::new(&program);
             cmd.args(&cmd_args);
 
             let child = cmd

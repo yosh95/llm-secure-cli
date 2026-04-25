@@ -13,9 +13,15 @@ pub mod pqc;
 pub mod pqc_cose;
 pub mod resource_manager;
 pub mod static_analyzer;
+pub mod verification_cache;
 
 /// Validates a tool call using Phase 1 security checks (Path, Static Analysis, ABAC).
 /// Returns Ok(()) if safe, or Err(message) if blocked.
+///
+/// NOTE: Path validation here and inside `PolicyEngine::verify_path_guardrails`
+/// are intentionally duplicated as defence-in-depth layers. If you update the
+/// path-argument list in one place, be sure to update the other as well to keep
+/// them in sync.
 pub fn validate_tool_call(
     name: &str,
     args: &serde_json::Map<String, serde_json::Value>,

@@ -72,30 +72,20 @@ impl ToolRegistry {
             .as_str()
             .unwrap_or("unknown_remote_tool")
             .to_string();
-        let original_name = tool["original_name"].as_str().unwrap_or("").to_string();
-        let server_name = tool["server_name"].as_str().unwrap_or("").to_string();
+        let _original_name = tool["original_name"].as_str().unwrap_or("").to_string();
+        let _server_name = tool["server_name"].as_str().unwrap_or("").to_string();
         let description = tool["description"].as_str().unwrap_or("").to_string();
         let parameters = tool["parameters"].clone();
 
-        let func_server_name = server_name.clone();
-        let func_original_name = original_name.clone();
-
-        let func: ToolFunc = Arc::new(move |args| {
-            if func_server_name.is_empty() || func_original_name.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "Invalid MCP tool definition: missing server/original name"
-                ));
-            }
-            let mcp = &crate::tools::mcp::manager::MCP_MANAGER;
-            let rt = tokio::runtime::Handle::current();
-            let result = tokio::task::block_in_place(|| {
-                rt.block_on(mcp.call_tool(&func_server_name, &func_original_name, json!(args)))
-            });
-
-            match result {
-                Ok(s) => Ok(json!(s)),
-                Err(e) => Err(anyhow::anyhow!("MCP Error: {}", e)),
-            }
+        // MCP tools are executed asynchronously via ChatSession::execute_tool
+        // to avoid tokio::task::block_in_place. The registry entry serves
+        // schema/metadata purposes only.
+        let name_for_error = name.clone();
+        let func: ToolFunc = Arc::new(move |_args| {
+            Err(anyhow::anyhow!(
+                "MCP tool '{}' should be executed via async path in ChatSession::execute_tool",
+                name_for_error
+            ))
         });
 
         self.register(&name, &description, parameters, func, false);

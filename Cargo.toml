@@ -48,6 +48,9 @@ html2text = "0.17"
 difflib = "0.4"
 urlencoding = "2.1"
 rustyline = "18.0"
+async-recursion = "1.1"
+# landlock for sandboxing (conditional on Linux)
+landlock = "0.4"
 # PQC support (Pure Rust)
 saorsa-pqc = "0.5"
 aes-gcm = "0.10"

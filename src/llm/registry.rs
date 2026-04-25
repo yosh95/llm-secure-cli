@@ -36,6 +36,23 @@ impl ClientRegistry {
         stdout: bool,
         raw: bool,
     ) -> Option<Box<dyn LlmClient>> {
+        // Special handling for custom OpenAI-compatible endpoints
+        if name == "custom" || name == "local" {
+            let config_manager = &crate::config::CONFIG_MANAGER;
+            let config = config_manager.get_config();
+            if let Some(custom) = config.providers.get("custom")
+                && let Some(ref api_url) = custom.api_url
+                && let Some(api_key) = config_manager.get_api_key("custom")
+                && !api_key.is_empty()
+            {
+                return Some(Box::new(
+                    crate::llm::providers::openai_compatible::OpenAiCompatibleClient::new(
+                        api_url, &api_key, model, stdout, raw,
+                    ),
+                ));
+            }
+            return None;
+        }
         self.factories.get(name).map(|f| f(model, stdout, raw))
     }
 

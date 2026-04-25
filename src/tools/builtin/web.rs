@@ -211,6 +211,14 @@ fn call_brave_api(query: &str, count: usize, api_key: &str) -> anyhow::Result<Ve
 }
 
 /// Basic SSRF protection: reject private/loopback/reserved IP ranges.
+///
+/// Limitation: DNS-based SSRF (DNS rebinding) is not fully mitigated here.
+/// When the host is a hostname (not a raw IP), only a short blocklist of
+/// well-known loopback names (`localhost`, `*.local`, `*.internal`) is checked.
+/// A hostname that resolves to a private IP at runtime (e.g. via split-horizon
+/// DNS) will pass this check. For high-security environments, route all
+/// outbound requests through a dedicated egress proxy with full DNS resolution
+/// and IP filtering instead of relying solely on this check.
 fn validate_url_ssrf(url: &str) -> anyhow::Result<()> {
     use std::net::IpAddr;
 

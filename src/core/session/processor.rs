@@ -92,17 +92,31 @@ impl ChatSession {
 
                         let mut final_result = None;
 
-                        // --- [PHASE 1] Lightweight Fast Checks (Common Validation) ---
+                        // --- [PHASE 1] Lightweight Fast Checks ---
                         if let Err(e) = crate::security::validate_tool_call(name, &args) {
                             ui::report_error(&e);
                             final_result = Some(serde_json::Value::String(e));
                         }
 
                         // --- [PHASE 2] High-Assurance Checks ---
-                        if final_result.is_none() {
-                            let mut verifier_handle = None;
-                            let config = crate::config::CONFIG_MANAGER.get_config();
-                            if config.security.dual_llm_verification.unwrap_or(false) {
+                        let mut verifier_result: Option<(bool, String)> = None;
+                        let mut verifier_handle: Option<tokio::task::JoinHandle<(bool, String)>> =
+                            None;
+                        let config = crate::config::CONFIG_MANAGER.get_config();
+
+                        if final_result.is_none()
+                            && config.security.dual_llm_verification.unwrap_or(false)
+                        {
+                            let args_value = serde_json::json!(args);
+                            // Check session cache first
+                            if let Some(cached) = self.verification_cache.get(name, &args_value) {
+                                ui::report_success(&format!(
+                                    "[Cached] Intent Verified: {}",
+                                    cached.reason
+                                ));
+                                verifier_result = Some((cached.safe, cached.reason));
+                            } else {
+                                // Build intent context for verification
                                 let user_history: Vec<String> = self
                                     .client
                                     .get_state()
@@ -157,60 +171,90 @@ impl ChatSession {
                                     .await
                                 }));
                             }
+                        }
 
-                            let risk_level =
-                                crate::security::cass::CASS_ORCHESTRATOR.evaluate_risk(name);
-                            let auto_approval = config
-                                .security
-                                .auto_approval_level
-                                .as_deref()
-                                .unwrap_or("none");
+                        // Risk evaluation & auto-approval
+                        let risk_level =
+                            crate::security::cass::CASS_ORCHESTRATOR.evaluate_risk(name);
+                        let auto_approval = config
+                            .security
+                            .auto_approval_level
+                            .as_deref()
+                            .unwrap_or("none");
 
-                            let mut approved = false;
-                            if auto_approval == "low" && risk_level == RiskLevel::Low {
-                                approved = true;
-                                ui::report_success("Auto-approved (Low Risk)");
-                            } else if auto_approval == "medium"
-                                && (risk_level == RiskLevel::Low || risk_level == RiskLevel::Medium)
-                            {
-                                approved = true;
-                                ui::report_success("Auto-approved (Medium Risk)");
-                            }
+                        let mut approved = false;
+                        if auto_approval == "low" && risk_level == RiskLevel::Low {
+                            approved = true;
+                            ui::report_success("Auto-approved (Low Risk)");
+                        } else if auto_approval == "medium"
+                            && (risk_level == RiskLevel::Low || risk_level == RiskLevel::Medium)
+                        {
+                            approved = true;
+                            ui::report_success("Auto-approved (Medium Risk)");
+                        }
 
-                            if !approved {
-                                match ui::ask_confirm(&format!("Execute {}", name)) {
-                                    Some(val) => approved = val,
-                                    None => {
-                                        self.handle_interruption();
-                                        return Ok(());
+                        if !approved {
+                            match ui::ask_confirm(&format!("Execute {}", name)) {
+                                Some(val) => approved = val,
+                                None => {
+                                    // User hit Ctrl+C: abort the background verifier task
+                                    // before returning so it does not keep running.
+                                    if let Some(handle) = verifier_handle.take() {
+                                        handle.abort();
                                     }
+                                    self.handle_interruption();
+                                    return Ok(());
                                 }
                             }
+                        }
 
-                            if !approved {
-                                ui::report_warning("Execution cancelled by user.");
-                                match ui::get_user_input("Provide feedback (optional): ") {
-                                    Some(feedback) => {
-                                        let result_msg = if feedback.trim().is_empty() {
-                                            "Error: Execution cancelled by user.".to_string()
-                                        } else {
-                                            format!(
-                                                "Error: Execution cancelled by user. Feedback: {}",
-                                                feedback
-                                            )
-                                        };
-                                        final_result = Some(serde_json::Value::String(result_msg));
+                        if !approved {
+                            ui::report_warning("Execution cancelled by user.");
+                            match ui::get_user_input("Provide feedback (optional): ") {
+                                Some(feedback) => {
+                                    let result_msg = if feedback.trim().is_empty() {
+                                        "Error: Execution cancelled by user.".to_string()
+                                    } else {
+                                        format!(
+                                            "Error: Execution cancelled by user. Feedback: {}",
+                                            feedback
+                                        )
+                                    };
+                                    // Abort the background verifier task since we will
+                                    // not be awaiting it anymore.
+                                    if let Some(handle) = verifier_handle.take() {
+                                        handle.abort();
                                     }
-                                    None => {
-                                        self.handle_interruption();
-                                        return Ok(());
+                                    final_result = Some(serde_json::Value::String(result_msg));
+                                }
+                                None => {
+                                    // User hit Ctrl+C during feedback prompt.
+                                    if let Some(handle) = verifier_handle.take() {
+                                        handle.abort();
                                     }
+                                    self.handle_interruption();
+                                    return Ok(());
                                 }
                             }
+                        }
 
-                            if final_result.is_none()
-                                && let Some(handle) = verifier_handle
-                            {
+                        // Resolve verification result (cache or fresh)
+                        if final_result.is_none() {
+                            if let Some((safe, reason)) = verifier_result {
+                                // Cache hit
+                                if !safe {
+                                    ui::report_error(&format!(
+                                        "Dual LLM Verification failed: {}",
+                                        reason
+                                    ));
+                                    final_result = Some(serde_json::Value::String(format!(
+                                        "Security Policy Violation: {}",
+                                        reason
+                                    )));
+                                } else {
+                                    ui::report_success(&format!("Intent Verified: {}", reason));
+                                }
+                            } else if let Some(handle) = verifier_handle {
                                 let pb_v = ProgressBar::new_spinner();
                                 pb_v.set_style(
                                     ProgressStyle::default_spinner()
@@ -223,6 +267,16 @@ impl ChatSession {
                                     (false, "Verification task panicked".to_string())
                                 });
                                 pb_v.finish_and_clear();
+
+                                // Cache the result
+                                let args_value = serde_json::json!(args);
+                                self.verification_cache.set(
+                                    name,
+                                    &args_value,
+                                    safe,
+                                    reason.clone(),
+                                );
+
                                 if !safe {
                                     ui::report_error(&format!(
                                         "Dual LLM Verification failed: {}",
@@ -242,8 +296,9 @@ impl ChatSession {
                         let result_value = if let Some(res) = final_result {
                             res
                         } else {
-                            let result =
-                                self.execute_tool(name, args.clone().into_iter().collect());
+                            let result = self
+                                .execute_tool(name, args.clone().into_iter().collect())
+                                .await;
                             let audit_ctx = serde_json::json!({
                                 "trace_id": self.trace_id,
                                 "model": self.client.get_state().model,
