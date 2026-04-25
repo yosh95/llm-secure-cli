@@ -2,7 +2,7 @@
 # General Settings
 # =============================================================================
 [general]
-unified_default_provider = "openai"
+unified_default_provider = "google"
 pdf_as_base64 = true
 request_timeout = 1800
 command_timeout = 300
@@ -113,8 +113,8 @@ low_risk_tools = [
 #    "lite" model (e.g., gemini-3.1-flash-lite, gpt-5.4-mini) to minimize latency.
 # 3. Ensure the secondary provider has its API key set in your environment.
 dual_llm_verification = true
-dual_llm_provider = "openai"
-dual_llm_model = "nano"
+dual_llm_provider = "google"
+dual_llm_model = "lite"
 dual_llm_confidence_threshold = 0.7
 
 # =============================================================================
@@ -154,7 +154,7 @@ gemma = "gemma-4-31b-it"
 # =============================================================================
 [openai]
 [openai.models]
-default = "gpt-5.5"
+default = "gpt-5.4-mini"
 nano = "gpt-5.4-nano"
 mini = "gpt-5.4-mini"
 standard = "gpt-5.5"
