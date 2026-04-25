@@ -187,15 +187,15 @@ opus = "claude-opus-4-7"
 # Ollama Cloud example (set OLLAMA_API_KEY env var with your token):
 #   api_url = "https://ollama.com/v1/chat/completions"
 [ollama]
-api_url = "http://localhost:11434/v1/chat/completions"
+api_url = "https://ollama.com/v1/chat/completions"
 [ollama.models]
-default = "gemma4:e2b"
+default = "gemma4:31b-cloud"
 # Ollama Cloud models (tools/function-calling supported)
-# deepseek = "deepseek-v4-flash:cloud"
-# kimi = "kimi-k2.6:cloud"
-# gemma = "gemma4:31b-cloud"
-# glm = "glm-5.1:cloud"
-# qwen = "qwen3.5:2b"
+deepseek = "deepseek-v4-flash:cloud"
+kimi = "kimi-k2.6:cloud"
+gemma = "gemma4:31b-cloud"
+glm = "glm-5.1:cloud"
+qwen = "qwen3.5:2b"
 
 # =============================================================================
 # Model Context Protocol (MCP) Servers
