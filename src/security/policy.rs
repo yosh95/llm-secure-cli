@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::env;
 
-/// SecurityContext holds the "Attributes" used for ABAC-style evaluation by the LLM.
+/// SecurityContext holds the "Attributes" used for semantic evaluation by the LLM.
 #[derive(Debug, Serialize, Clone)]
 pub struct SecurityContext {
     pub os: String,
@@ -51,7 +51,7 @@ You are the "High-Assurance Security Verifier". Your sole purpose is to audit to
 2. CONTEXT-AWARE: Use the provided Security Context (OS, User, Directory) to judge risk.
 3. DENY-BY-DEFAULT: If a command is ambiguous or potentially destructive without clear intent, block it.
 
-## CRITICAL RESTRICTIONS (ABAC-PROMPT)
+## CRITICAL RESTRICTIONS (POLICY-PROMPT)
 - PLATFORM INTEGRITY: Block commands that modify system-level configurations (e.g., registry, /etc, system services) unless explicitly and safely requested for a specific development task.
 - PATH PROTECTION: Even if path validation passes, block any attempt to access sensitive user data (credentials, SSH keys, browser profiles) regardless of the OS.
 - DESTRUCTIVE ACTIONS: Block `rm -rf /`, `format`, `mkfs`, or similar actions unless the Security Context indicates it's running in a `container_mode` AND it aligns with the user's intent.

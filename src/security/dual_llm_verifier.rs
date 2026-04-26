@@ -5,10 +5,10 @@ use serde_json::{Value, json};
 
 /// DualLLMVerifier implements the "Intent and Policy Verification" logic.
 /// It uses a secondary LLM to judge if a tool call is safe based on the user's intent
-/// and the system's hardcoded Security Constitution (AI-native ABAC).
+/// and the system's hardcoded Security Constitution.
 ///
-/// NOTE: The Verifier LLM must NOT be configured with any tools itself to prevent
-/// secondary prompt injection risks. It acts strictly as a text-based auditor.
+/// NOTE: The Verifier LLM must NOT be configured with any tools itself (except the verdict tool)
+/// to prevent secondary prompt injection risks.
 pub struct DualLLMVerifier {
     verifier_llm: Box<dyn LlmClient>,
 }
@@ -93,11 +93,32 @@ impl DualLLMVerifier {
         );
 
         let user_prompt = format!(
-            "USER INTENT: \"{}\"\n\nPROPOSED TOOL CALL:\nTool: {}\nArguments: {}\n\nShould this execution be allowed? Respond with 'ALLOW' or 'BLOCK: <reason>'.",
+            "USER INTENT: \"{}\"\n\nPROPOSED TOOL CALL:\nTool: {}\nArguments: {}\n\nEvaluate if this tool call is safe according to the security constitution and current context.",
             user_query,
             tool_name,
             serde_json::to_string_pretty(tool_args).unwrap_or_default()
         );
+
+        // Define the structured tool schema for the verdict
+        let verify_tool_schema = json!({
+            "name": "submit_verdict",
+            "description": "Submit the security evaluation result for a tool call.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "decision": {
+                        "type": "string",
+                        "enum": ["ALLOW", "BLOCK"],
+                        "description": "The security decision. ALLOW if safe, BLOCK if risky or violates policy."
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "A detailed explanation of the decision, referencing specific policy violations if blocked."
+                    }
+                },
+                "required": ["decision", "reason"]
+            }
+        });
 
         // Configure client for a one-off verification
         self.verifier_llm.get_state_mut().conversation.clear();
@@ -111,21 +132,17 @@ impl DualLLMVerifier {
             metadata: std::collections::HashMap::new(),
         }];
 
-        // The verifier does NOT include tools in its request.
-        match self.verifier_llm.send(data).await {
-            Ok((Some(response), _)) => {
-                let resp = response.trim();
-                if resp.to_uppercase().starts_with("ALLOW") {
+        // Use the specialized structured output path
+        match self.verifier_llm.send_as_verifier(data, verify_tool_schema).await {
+            Ok(args) => {
+                let decision = args.get("decision").and_then(|v| v.as_str()).unwrap_or("");
+                let reason = args.get("reason").and_then(|v| v.as_str()).unwrap_or("No reason provided");
+
+                if decision == "ALLOW" {
                     VerificationResult::Allowed
-                } else if resp.to_uppercase().starts_with("BLOCK") {
-                    VerificationResult::Rejected(resp.replace("BLOCK:", "").trim().to_string())
                 } else {
-                    // Fail-safe
-                    VerificationResult::Rejected(format!("Ambiguous verification result: {}", resp))
+                    VerificationResult::Rejected(reason.to_string())
                 }
-            }
-            Ok((None, _)) => {
-                VerificationResult::Error("Verifier LLM returned empty response".to_string())
             }
             Err(e) => VerificationResult::Error(format!("Verifier LLM error: {}", e)),
         }

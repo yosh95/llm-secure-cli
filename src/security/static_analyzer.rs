@@ -10,7 +10,7 @@ impl StaticAnalyzer {
         let violations = Vec::new();
 
         // Minimalist approach: We no longer maintain a blacklist of binaries here.
-        // The LLM-based ABAC (Security Constitution) handles the semantic risk.
+        // The LLM-based policy engine (Security Constitution) handles the semantic risk.
         // This avoids platform-dependent complexity (Windows vs Linux command names).
 
         (violations.is_empty(), violations)

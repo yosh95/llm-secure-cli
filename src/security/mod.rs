@@ -1,4 +1,3 @@
-// pub mod abac;
 pub mod audit;
 pub mod cass;
 pub mod dual_llm_verifier;
@@ -13,7 +12,6 @@ pub mod pqc;
 pub mod pqc_cose;
 pub mod resource_manager;
 pub mod static_analyzer;
-pub mod verification_cache;
 
 /// Validates a tool call using Phase 1 security checks (Path, Basic Sanity).
 /// Returns Ok(()) if safe, or Err(message) if blocked.
@@ -41,7 +39,7 @@ pub fn validate_tool_call(
         }
     }
 
-    // Note: ABAC and Intent alignment are now deferred to the Dual LLM Verifier,
+    // Note: Intent alignment and semantic safety are now deferred to the Dual LLM Verifier,
     // which uses the Security Context and Constitution for a holistic semantic check.
 
     Ok(())

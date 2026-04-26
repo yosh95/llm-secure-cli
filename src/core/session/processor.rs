@@ -99,7 +99,7 @@ impl ChatSession {
                         }
 
                         // --- [PHASE 2] High-Assurance Checks ---
-                        let mut verifier_result: Option<(bool, String)> = None;
+                        let _verifier_result: Option<(bool, String)> = None;
                         let mut verifier_handle: Option<tokio::task::JoinHandle<(bool, String)>> =
                             None;
                         let config = crate::config::CONFIG_MANAGER.get_config();
@@ -107,72 +107,62 @@ impl ChatSession {
                         if final_result.is_none()
                             && config.security.dual_llm_verification.unwrap_or(false)
                         {
-                            let args_value = serde_json::json!(args);
-                            // Check session cache first
-                            if let Some(cached) = self.verification_cache.get(name, &args_value) {
-                                ui::report_success(&format!(
-                                    "[Cached] Intent Verified: {}",
-                                    cached.reason
-                                ));
-                                verifier_result = Some((cached.safe, cached.reason));
-                            } else {
-                                // Build intent context for verification
-                                let user_history: Vec<String> = self
-                                    .client
-                                    .get_state()
-                                    .conversation
-                                    .iter()
-                                    .filter(|m| m.role == Role::User)
+                            // Build intent context for verification
+                            let user_history: Vec<String> = self
+                                .client
+                                .get_state()
+                                .conversation
+                                .iter()
+                                .filter(|m| m.role == Role::User)
+                                .rev()
+                                .take(5)
+                                .map(|m| {
+                                    let text = m.get_text(true);
+                                    if text.chars().count() > 1000 {
+                                        let head: String = text.chars().take(500).collect();
+                                        let tail: String = text
+                                            .chars()
+                                            .rev()
+                                            .take(500)
+                                            .collect::<String>()
+                                            .chars()
+                                            .rev()
+                                            .collect();
+                                        format!("{}...[TRUNCATED]...{}", head, tail)
+                                    } else {
+                                        text
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .into_iter()
+                                .rev()
+                                .collect();
+
+                            let mut intent_context = user_history.join("\n---\n");
+                            if intent_context.chars().count() > 4000 {
+                                intent_context = intent_context
+                                    .chars()
                                     .rev()
-                                    .take(5)
-                                    .map(|m| {
-                                        let text = m.get_text(true);
-                                        if text.chars().count() > 1000 {
-                                            let head: String = text.chars().take(500).collect();
-                                            let tail: String = text
-                                                .chars()
-                                                .rev()
-                                                .take(500)
-                                                .collect::<String>()
-                                                .chars()
-                                                .rev()
-                                                .collect();
-                                            format!("{}...[TRUNCATED]...{}", head, tail)
-                                        } else {
-                                            text
-                                        }
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .into_iter()
+                                    .take(4000)
+                                    .collect::<String>()
+                                    .chars()
                                     .rev()
                                     .collect();
-
-                                let mut intent_context = user_history.join("\n---\n");
-                                if intent_context.chars().count() > 4000 {
-                                    intent_context = intent_context
-                                        .chars()
-                                        .rev()
-                                        .take(4000)
-                                        .collect::<String>()
-                                        .chars()
-                                        .rev()
-                                        .collect();
-                                }
-
-                                let name_clone = name.to_string();
-                                let args_clone = serde_json::json!(args);
-                                verifier_handle = Some(tokio::spawn(async move {
-                                    crate::security::dual_llm_verifier::verify_tool_call_full(
-                                        &intent_context,
-                                        &name_clone,
-                                        &args_clone,
-                                        None,
-                                        None,
-                                        None,
-                                    )
-                                    .await
-                                }));
                             }
+
+                            let name_clone = name.to_string();
+                            let args_clone = serde_json::json!(args);
+                            verifier_handle = Some(tokio::spawn(async move {
+                                crate::security::dual_llm_verifier::verify_tool_call_full(
+                                    &intent_context,
+                                    &name_clone,
+                                    &args_clone,
+                                    None,
+                                    None,
+                                    None,
+                                )
+                                .await
+                            }));
                         }
 
                         // Risk evaluation & auto-approval
@@ -240,57 +230,32 @@ impl ChatSession {
                             }
                         }
 
-                        // Resolve verification result (cache or fresh)
-                        if final_result.is_none() {
-                            if let Some((safe, reason)) = verifier_result {
-                                // Cache hit
-                                if !safe {
-                                    ui::report_error(&format!(
-                                        "Dual LLM Verification failed: {}",
-                                        reason
-                                    ));
-                                    final_result = Some(serde_json::Value::String(format!(
-                                        "Security Policy Violation: {}",
-                                        reason
-                                    )));
-                                } else {
-                                    ui::report_success(&format!("Intent Verified: {}", reason));
-                                }
-                            } else if let Some(handle) = verifier_handle {
-                                let pb_v = ProgressBar::new_spinner();
-                                pb_v.set_style(
-                                    ProgressStyle::default_spinner()
-                                        .template("{spinner:.yellow} {msg}")?,
-                                );
-                                pb_v.set_message("Finalizing intent verification...");
-                                pb_v.enable_steady_tick(std::time::Duration::from_millis(100));
+                        // Resolve verification result
+                        if final_result.is_none() && let Some(handle) = verifier_handle {
+                            let pb_v = ProgressBar::new_spinner();
+                            pb_v.set_style(
+                                ProgressStyle::default_spinner()
+                                    .template("{spinner:.yellow} {msg}")?,
+                            );
+                            pb_v.set_message("Finalizing intent verification...");
+                            pb_v.enable_steady_tick(std::time::Duration::from_millis(100));
 
-                                let (safe, reason) = handle.await.unwrap_or_else(|_| {
-                                    (false, "Verification task panicked".to_string())
-                                });
-                                pb_v.finish_and_clear();
+                            let (safe, reason) = handle.await.unwrap_or_else(|_| {
+                                (false, "Verification task panicked".to_string())
+                            });
+                            pb_v.finish_and_clear();
 
-                                // Cache the result
-                                let args_value = serde_json::json!(args);
-                                self.verification_cache.set(
-                                    name,
-                                    &args_value,
-                                    safe,
-                                    reason.clone(),
-                                );
-
-                                if !safe {
-                                    ui::report_error(&format!(
-                                        "Dual LLM Verification failed: {}",
-                                        reason
-                                    ));
-                                    final_result = Some(serde_json::Value::String(format!(
-                                        "Security Policy Violation: {}",
-                                        reason
-                                    )));
-                                } else {
-                                    ui::report_success(&format!("Intent Verified: {}", reason));
-                                }
+                            if !safe {
+                                ui::report_error(&format!(
+                                    "Dual LLM Verification failed: {}",
+                                    reason
+                                ));
+                                final_result = Some(serde_json::Value::String(format!(
+                                    "Security Policy Violation: {}",
+                                    reason
+                                )));
+                            } else {
+                                ui::report_success(&format!("Intent Verified: {}", reason));
                             }
                         }
 

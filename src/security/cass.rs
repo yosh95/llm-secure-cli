@@ -23,11 +23,14 @@ pub struct CASSOrchestrator;
 impl CASSOrchestrator {
     pub fn evaluate_risk(&self, tool_name: &str) -> RiskLevel {
         let config = CONFIG_MANAGER.get_config();
-        // `execute_command` is always at least Critical because it allows
-        // arbitrary process spawning. Listing it in high_risk_tools in the
-        // config is harmless but has no effect on the minimum risk level.
+        let dual_llm_enabled = config.security.dual_llm_verification.unwrap_or(false);
+
         if tool_name == "execute_command" {
-            return RiskLevel::Critical;
+            if !dual_llm_enabled {
+                return RiskLevel::Critical;
+            } else {
+                return RiskLevel::High;
+            }
         }
         if config
             .security

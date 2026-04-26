@@ -2,7 +2,6 @@ use crate::llm::base::LlmClient;
 use crate::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
 use crate::security::audit::AuditEntry;
 use crate::security::merkle_anchor::SessionAnchorManager;
-use crate::security::verification_cache::VerificationCache;
 use serde_json;
 use std::collections::HashMap;
 use uuid;
@@ -17,7 +16,6 @@ pub struct ChatSession {
     pub pending_data: Vec<DataSource>,
     pub trace_id: String,
     pub audit_entries: Vec<AuditEntry>,
-    pub verification_cache: VerificationCache,
 }
 
 impl Drop for ChatSession {
@@ -59,7 +57,6 @@ impl ChatSession {
             pending_data: Vec::new(),
             trace_id,
             audit_entries: entry.into_iter().collect(),
-            verification_cache: VerificationCache::new(),
         }
     }
 
@@ -116,7 +113,6 @@ impl ChatSession {
             pending_data: Vec::new(),
             trace_id: "dummy".to_string(),
             audit_entries: Vec::new(),
-            verification_cache: VerificationCache::new(),
         }
     }
 

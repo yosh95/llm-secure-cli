@@ -33,7 +33,7 @@ impl LlmClient for MockLlmClient {
         _tool_schema: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
         Ok(json!({
-            "safe": !self.response.starts_with("BLOCK"),
+            "decision": if self.response.starts_with("BLOCK") { "BLOCK" } else { "ALLOW" },
             "reason": self.response.clone()
         }))
     }
