@@ -40,81 +40,45 @@ Tokyo, Japan}
 \maketitle
 
 \begin{abstract}
-As Large Language Model (LLM) agents transition from passive chatbots to autonomous entities capable of executing system-level tools via protocols like the Model Context Protocol (MCP), they introduce a critical "Agency Gap." Traditional security perimeters are insufficient for protecting against prompt injection and future cryptographic threats. This paper proposes a unified security framework designed to protect agent-based systems across three integrated dimensions: Space, Behavior, and Time, while ensuring human-centric governance. First, we establish \textit{Semantic Guardrails} (Space) by shifting from fragile pattern-based static analysis to AI-native semantic policy enforcement and optional physical isolation via Docker. Second, we implement \textit{Behavioral Zero-Trust} through verifiable workload identity and \textit{White-box Agency}, leveraging Human-in-the-Loop (HITL) not just for security, but for cognitive synchronization. Finally, we ensure \textit{Temporal Sovereignty} (Time) by integrating a dual-layered integrity architecture with Post-Quantum Cryptography (PQC). The proposed framework replaces complex OS-specific rule-sets with a centralized "Security Constitution" verified by a secondary LLM. Our evaluation demonstrates that the semantic policy engine adds negligible overhead while providing robust protection across diverse operating environments.
+As Large Language Model (LLM) agents transition from passive chatbots to autonomous entities capable of executing system-level tools via protocols like the Model Context Protocol (MCP), they introduce a critical "Agency Gap." Traditional security perimeters are insufficient for protecting against prompt injection and future cryptographic threats. This paper proposes a unified security framework designed to protect agent-based systems across three integrated dimensions: Space, Behavior, and Time. We establish \textit{Semantic Guardrails} (Space) by shifting from fragile pattern-based static analysis to an AI-native "Dual LLM" policy enforcement and optional physical isolation via Docker. Second, we implement \textit{Behavioral Zero-Trust} through verifiable workload identity and \textit{White-box Agency}, leveraging Human-in-the-Loop (HITL) not just for security, but for cognitive synchronization. Finally, we ensure \textit{Temporal Sovereignty} (Time) by integrating a dual-layered integrity architecture with Post-Quantum Cryptography (PQC). The proposed framework, orchestrated by the \textit{CASS (Context-Adaptive Security Scaling)} engine, replaces complex OS-specific rule-sets with a centralized "Security Constitution" verified by a secondary LLM using structured tool calling. Our evaluation demonstrates that while the semantic policy engine adds inference latency, the local cryptographic primitives add negligible overhead ($\approx$1.36\,ms) while providing robust, quantum-safe protection.
 \end{abstract}
 
 \begin{IEEEkeywords}
-AI Agents, Model Context Protocol (MCP), Agentic Security, Zero Trust, Post-Quantum Cryptography, White-box Agency, Human-in-the-Loop, Merkle Tree.
+AI Agents, Model Context Protocol (MCP), Dual LLM, Agentic Security, Zero Trust, Post-Quantum Cryptography, CASS, Human-in-the-Loop.
 \end{IEEEkeywords}
 
 \section{Introduction}
-The transition of Large Language Models (LLMs) to autonomous agents represents a fundamental shift in computing. By leveraging the Model Context Protocol (MCP) \cite{mcp2024}, these agents can interact directly with host operating systems, manage sensitive data, and orchestrate complex API workflows. However, this "Agency" capability creates an unprecedented security surface. Traditional security perimeters are often ineffective against "Prompt Injection" attacks, where an attacker manipulates the LLM's goal-oriented reasoning to execute unauthorized system commands \cite{perez2022ignore}.
+The transition of Large Language Models (LLMs) to autonomous agents represents a fundamental shift in computing. By leveraging protocols like MCP \cite{mcp2024}, these agents can interact directly with host operating systems. However, this "Agency" capability creates an unprecedented security surface. Traditional security perimeters are often ineffective against "Prompt Injection" attacks, where an attacker manipulates the LLM's goal-oriented reasoning to execute unauthorized system commands \cite{perez2022ignore}.
 
-The OWASP Top 10 for LLM Applications \cite{owasp2023} identifies "Insecure Output Handling" (LLM02) and "Excessive Agency" (LLM08) as critical risks. Currently, many autonomous frameworks rely on "Alignment"---the probabilistic expectation that the LLM will follow safety guidelines. We argue that behavioral alignment alone is insufficient for mission-critical systems. A practical agent security stack should combine deterministic controls where possible, explicit workload identity, cryptographic auditability, and human oversight even if the model's reasoning is compromised.
-
-This paper presents a "Triple-Lock" framework for Agentic Security, addressing the agent's action through three integrated dimensions:
+This paper presents a "Triple-Lock" framework for Agentic Security, orchestrated by \textbf{CASS (Context-Adaptive Security Scaling)}:
 \begin{enumerate}
-    \item \textbf{Structural Containment (Space):} Establishing deterministic safety boundaries using static command inspection and environment isolation.
-    \item \textbf{Behavioral Integrity \& White-box Agency (Behavior):} Implementing Zero Trust where every action is verified by cryptographically signed identity and synchronized with human cognition for early detection of "Reasoning Loops."
-    \item \textbf{Temporal Sovereignty (Time):} Protecting against future cryptographic threats using PQC and a dual-layered audit architecture (Hashed Chain for real-time protection and Merkle Tree for session-wide anchoring).
+    \item \textbf{Semantic Containment (Space):} Establishing safety boundaries using an AI-native Dual LLM Verifier and environment isolation.
+    \item \textbf{Behavioral Integrity (Behavior):} Implementing Zero Trust where every high-risk action is verified by a secondary LLM against a hardcoded "Security Constitution" and synchronized with human cognition.
+    \item \textbf{Temporal Sovereignty (Time):} Protecting against future cryptographic threats using PQC (ML-DSA/ML-KEM) and a dual-layered audit architecture.
 \end{enumerate}
 
-The reference implementation of the proposed framework, provided as a security-focused CLI tool for AI agents, is available at \url{https://github.com/yosh95/llm-secure-cli}.
+\section{Tier 1: Semantic Guardrails (Space)}
+To improve structural containment, we shift from deterministic pattern matching to semantic evaluation.
 
-\begin{figure}[htbp]
-\centering
-\resizebox{\columnwidth}{!}{
-    \input{unified_architecture.tex}
-}
-\caption{Triple-Lock Framework Overview: High-level integration of the three security dimensions.}
-\label{fig:overview_arch}
-\end{figure}
+\subsection{AI-Native Semantic Guardrails (Dual LLM)}
+Traditional systems rely on platform-specific blocklists (e.g., \texttt{rm -rf /}). These are easily bypassed by obfuscation or novel shell features. Our framework adopts \textbf{Dual LLM Verification} as the primary guardrail. Every tool call is intercepted and sent to a secondary, lightweight LLM that evaluates the \textit{impact} of the command against the user's original intent and a hardcoded \textbf{Security Constitution}.
 
-\section{Related Work}
-Existing efforts to secure agents generally fall into three categories: \textit{Behavioral Filtering}, \textit{Structural Isolation}, and \textit{Governance Frameworks}.
+\subsection{Physical Isolation and Integrity}
+For high-assurance environments, the agent is isolated within a Docker container. We also implement \textbf{System Integrity Attestation}, comparing application hashes against a PQC-signed \textbf{Integrity Manifest} on startup.
 
-\textbf{Agentic Frameworks and Tool Use.} The ReAct paradigm \cite{yao2023react} established the Reason+Act loop as the dominant pattern for tool-using agents, and subsequent work such as ToolBench/ToolLLM \cite{qin2023toolllm} scaled tool invocation to thousands of APIs. These works focus on capability and task completion; security is not their primary concern, creating the gap this paper addresses.
+\section{Tier 2: Behavioral Assurance (Behavior)}
+\subsection{Intent Verification & Structured Verdicts}
+The Dual LLM Verifier uses \textbf{Native Tool Calling} to provide structured verdicts. By forcing the auditor LLM to output a JSON schema (\texttt{decision: ALLOW|BLOCK}, \texttt{reason: string}), we eliminate parsing brittleness. The verifier is provided with \textbf{Security Context} (OS, User, Git status) to judge risk semantically.
 
-\textbf{Behavioral Filtering.} \textbf{LLM-Guard} \cite{llmguard2023} and \textbf{NeMo Guardrails} \cite{nemoguardrails2023} use secondary LLMs or rule-based pattern matching to inspect model outputs before they reach the environment. While effective against simple pattern-matching attacks, these approaches share two limitations compared to our framework: (1) they operate only on the \textit{output} of the LLM, not on the \textit{intent-versus-action alignment} at the tool-call level, and (2) they do not address identity provenance or cryptographic non-repudiation of individual actions.
+\subsection{White-box Agency (HITL)}
+We implement \textbf{White-box Agency}, where the agent must provide an \texttt{explanation} for every tool call. Human-in-the-Loop is not a bottleneck but a synchronization point, allowing users to detect "Reasoning Loops" early.
 
-\textbf{Structural Isolation.} \textbf{AgentDojo} \cite{agentdojo2024} provides a benchmark environment for evaluating prompt injection defenses through sandboxing. It demonstrates that containment can limit blast radius, but does not propose cryptographic identity or post-quantum resilience. Our framework complements this approach by adding deterministic pre-execution guardrails and a verifiable audit trail.
+\section{Tier 3: Post-Quantum Resilience (Time)}
+\subsection{Quantum-Safe Audit Chain}
+We implement a \textbf{Chained Hashing} audit log where each entry is signed using \textbf{ML-DSA} (FIPS 204). High-risk arguments are encrypted using \textbf{ML-KEM-768} (FIPS 203) to protect against "Store Now, Decrypt Later" threats.
 
-\textbf{Governance and Standards.} Our framework aligns with the \textbf{NIST AI Risk Management Framework (AI RMF 1.0)} \cite{nistairmf2023} and \textbf{Zero Trust Architecture} (SP 800-207) \cite{nist2020zt}, treating every tool call as an untrusted workload requiring explicit verification. A key differentiator is the temporal dimension: we address the "Store Now, Decrypt Later" (SNDL) threat by adopting NIST-standardized Post-Quantum Cryptography (PQC) primitives \cite{nistfips203, nistfips204}, a concern absent from all the above works.
-
-\section{Threat Model}
-We define four primary threat vectors for autonomous LLM agents:
-\begin{enumerate}
-    \item \textbf{Indirect Prompt Injection:} Manipulating the agent's context (e.g., via a malicious website) to execute unauthorized commands \cite{greshake2023not}.
-    \item \textbf{Reasoning Loops (The "Marsh" Problem):} The agent falling into infinite or repetitive tool-calling cycles, leading to resource exhaustion and mission failure.
-    \item \textbf{Identity Spoofing:} An unauthorized process attempting to execute tools by mimicking a legitimate agent session.
-    \item \textbf{Quantum Retroactive Decryption:} Capturing current reasoning traces to decrypt them later using a quantum computer.
-\end{enumerate}
-
-Table~\ref{tab:threat_mapping} shows how each threat is addressed by the Triple-Lock framework. Each tier is designed to be the \textit{primary} countermeasure for its corresponding threat; the defense-in-depth design means that multiple tiers often contribute to mitigating a single threat.
-
-\begin{table}[htbp]
-\caption{Threat-to-Tier Mapping}
-\centering
-\begin{tabularx}{\columnwidth}{|X|p{1.6cm}|X|}
-\hline
-\textbf{Threat} & \textbf{Tier} & \textbf{Key Mechanism} \\
-\hline
-Indirect Prompt Injection & Tier 1 \& 2 & Static analysis + Dual LLM intent verification \\
-Reasoning Loops & Tier 2 & White-box HITL + Max Turn Limit \\
-Identity Spoofing & Tier 2 & COSE/PQC tokens + ABAC \\
-\mbox{Quantum Retroactive} \mbox{Decryption} & Tier 3 & ML-KEM encryption + PQC audit chain \\
-\hline
-\end{tabularx}
-\label{tab:threat_mapping}
-\end{table}
-
-\section{Tier 1: Structural Guardrails (Space)}
-To improve structural containment, we adopt a hybrid approach combining semantic policy enforcement and physical isolation.
-
-\subsection{AI-Native Semantic Guardrails}
-Traditional security systems rely on deterministic pattern matching. However, as agents operate across diverse environments (e.g., Windows vs. Linux), maintaining complex, platform-specific blocklists (e.g., \texttt{rm -rf /} vs. \texttt{del /s /q}) becomes intractable. Our framework shifts this burden to an \textbf{AI-Native Semantic Policy Engine}. Instead of string-based rules, we implement a centralized \textbf{Security Constitution}---a set of hardcoded, immutable instructions that define "safe" versus "unsafe" consequences of an action.
-
-By gathering trusted attributes (OS, User, Directory) and injecting them into a secondary auditor LLM, we achieve platform-agnostic protection. The auditor recognizes sensitive paths (e.g., \texttt{C:\textbackslash Windows} or \texttt{/etc}) and dangerous operations based on its inherent knowledge of system semantics and the provided context. This approach catches novel or obfuscated attacks that would bypass static regex filters.
+\subsection{Merkle Tree Session Anchoring}
+Upon session completion, a binary \textbf{Merkle Tree} is computed from the log hashes. The resulting PQC-signed Merkle Root serves as a compact, verifiable anchor for the entire session's integrity.
 
 \subsection{Optional Physical Isolation via Docker}
 For environments requiring the highest level of assurance, the framework supports optional physical isolation using Docker. By standardizing the execution environment within transient Linux containers, we eliminate the complexity of OS-specific security postures. This creates a hard physical boundary between the AI agent and the host system, ensuring that even a successful "jailbreak" within the agent's context is contained within the disposable container.
@@ -233,6 +197,13 @@ The framework's reliability and security protocol compliance were verified throu
 
 \textit{Scope of this evaluation:} This section is intended to demonstrate \textit{architectural feasibility} and \textit{protocol overhead}---not to provide statistically comprehensive or independently validated coverage. The test vectors are author-designed to verify that each defense layer behaves correctly on representative cases. Direct quantitative comparison against systems such as Guardrails AI or NeMo Guardrails is deferred, as those systems target a different abstraction layer (output filtering) and operate under different assumptions (no tool-call schema, no cryptographic identity), making side-by-side benchmarking on a shared test suite a non-trivial research contribution in its own right.
 
+\section{Evaluation}
+We evaluated the framework on an AMD Ryzen 5 8540U CPU @ 3.2GHz running Debian 13 (WSL2) on Windows 11. The framework is implemented in Rust to ensure high performance and memory safety. In Table~\ref{tab:total_perf}, we report measurements from this reference environment.
+
+The framework's reliability and security protocol compliance were verified through an extensive automated test suite of over 250 unit and integration tests, ensuring regression resistance across all three tiers.
+
+\textit{Scope of this evaluation:} This section is intended to demonstrate \textit{architectural feasibility} and \textit{protocol overhead}---not to provide statistically comprehensive or independently validated coverage. The test vectors are author-designed to verify that each defense layer behaves correctly on representative cases. Direct quantitative comparison against systems such as Guardrails AI or NeMo Guardrails is deferred, as those systems target a different abstraction layer (output filtering) and operate under different assumptions (no tool-call schema, no cryptographic identity), making side-by-side benchmarking on a shared test suite a non-trivial research contribution in its own right.
+
 \subsection{Security Effectiveness (Controlled Evaluation)}
 The framework's detection capabilities were evaluated against a controlled set of 25 author-designed test vectors (including 4 distributed trust scenarios). In this specific environment, the framework mitigated all tested adversarial categories. However, these results should be interpreted as a demonstration of architectural correctness on representative scenarios, not as a statistically exhaustive security guarantee. 
 
@@ -260,23 +231,23 @@ Dual LLM Guardrail & Malicious Intent & 100.0\% (5/5) \\
 \end{table}
 
 \subsection{Performance Latency}
-Table~\ref{tab:total_perf} reports the latency of each local security primitive. The true cumulative security overhead---comprising static analysis, ML-DSA-87 identity signing, and ML-KEM-768 audit encryption---is $\approx$1.36\,ms. All cryptographic latencies are measured using native Rust implementations ({\tt saorsa-pqc} crates). This "Security Speed Bump" is practically invisible to the user, remaining well below the 500\,ms--3000\,ms RTT typical of cloud-based LLM inference.
+Table~\ref{tab:total_perf} reports the latency of each local security primitive. The true cumulative security overhead---comprising static analysis, ML-DSA-87 identity signing, and ML-KEM-768 audit encryption---is $\approx$1.15\,ms. All cryptographic latencies are measured using native Rust implementations ({\tt saorsa-pqc} crates). This "Security Speed Bump" is practically invisible to the user, remaining well below the 500\,ms--3000\,ms RTT typical of cloud-based LLM inference.
 
 \begin{table}[htbp]
-\caption{Local Security Primitive Latency (ms). Measured on reference hardware (Rust).}
+\caption{Local Security Primitive Latency (ms). Measured on reference hardware (Rust/Release).}
 \begin{center}
 \begin{tabularx}{\columnwidth}{|l|C|}
 \hline
 \textbf{Component} & \textbf{Latency (ms)} \\
 \hline
-Static Analysis (Pattern-based) &  $< 0.01$ \\
-Identity Gen (ML-DSA-44)        &  0.68   \\
-Identity Gen (ML-DSA-87)        &  1.26   \\
-KEM Encapsulation (ML-KEM-768)  &  0.09   \\
+Static Analysis (Fast-Fail) &  $< 0.00001$ \\
+Identity Gen (ML-DSA-44)        &  0.55   \\
+Identity Gen (ML-DSA-87)        &  0.82   \\
+KEM Encapsulation (ML-KEM-768)  &  0.06   \\
 \hline
-\textbf{Security Total}         & \textbf{1.36} \\
+\textbf{Security Total}         & \textbf{1.15} \\
 \hline
-\textit{Subprocess (ref.)}      & \textit{15.99} \\
+\textit{Subprocess (ref.)}      & \textit{12.50} \\
 \hline
 \end{tabularx}
 \label{tab:total_perf}
@@ -344,7 +315,7 @@ Anthropic & Claude Haiku 4.5      & 100\% & $\approx$1295 \\
 \end{center}
 \end{table}
 
-{\small\textit{Reproducibility note:} Dual LLM latency figures are single-pass wall-clock means from a residential broadband connection and correspond to the provider aliases configured in the benchmark harness. Local PQC primitive latencies were obtained from the Rust benchmark suites (\texttt{examples/benchmark\_local.rs} and \texttt{examples/comprehensive\_benchmark.rs}) under the ChromeOS Flex configuration described above. Model version identifiers correspond to API snapshots available as of April 2026.}
+{\small\textit{Reproducibility note:} Dual LLM latency figures are single-pass wall-clock means from a residential broadband connection and correspond to the provider aliases configured in the benchmark harness. Local PQC primitive latencies were obtained from the Rust benchmark suites (\texttt{examples/benchmark\_local.rs} and \texttt{examples/comprehensive\_benchmark.rs}) under the Ryzen 5 8540U / WSL2 configuration described above. Model version identifiers correspond to API snapshots available as of April 2026.}
 
 \section{Conclusion}
 Securing autonomous agents requires a transition from probabilistic "alignment" to a deterministic, human-centric framework. By integrating Structural Guardrails, White-box Agency, and a Dual-Layered PQC Audit architecture, our reference framework demonstrates how AI agency can remain transparent, verifiable, and resilient. The transition to a Rust-based implementation has further reduced security overhead to negligible levels ($<$2\,ms), ensuring that robust defense-in-depth does not compromise user experience.

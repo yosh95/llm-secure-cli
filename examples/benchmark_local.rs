@@ -3,25 +3,17 @@ use llm_secure_cli::security::static_analyzer::StaticAnalyzer;
 use std::time::Instant;
 
 fn main() {
-    println!("\n=== Rust Local Primitives Benchmark ===");
+    println!("\n=== High-Assurance Primitives Benchmark (Local) ===");
 
-    // 1. Static Analysis
-    let code = "import os; os.system('ls')";
-    let start = Instant::now();
-    for _ in 0..1000 {
-        StaticAnalyzer::is_obviously_malicious(code);
-    }
-    let elapsed = start.elapsed();
-    println!("Static Analysis (1000 runs): {:?}", elapsed);
-    println!("Static Analysis (avg): {:?} per run", elapsed / 1000);
-
-    // 2. ML-DSA Keygen/Sign/Verify
+    // 1. PQC Primitives (Primary Security Layer)
+    println!("\n[1] Post-Quantum Cryptography (ML-DSA / ML-KEM)");
     for variant in [
         MldsaVariant::Mldsa44,
         MldsaVariant::Mldsa65,
         MldsaVariant::Mldsa87,
     ] {
         let name = variant.to_str();
+        // ... (existing keygen/sign/verify logic remains, but clearly marked as primary)
 
         // Keygen
         let start = Instant::now();
@@ -72,4 +64,15 @@ fn main() {
     let elapsed = start.elapsed();
     println!("ML-KEM-768 Decaps (1000 runs): {:?}", elapsed);
     println!("ML-KEM-768 Decaps (avg): {:?} per run", elapsed / 1000);
+
+    // 2. Minimalist Fast-Fail (Deterministic Secondary Layer)
+    println!("\n[2] Minimalist Fast-Fail (Static Analysis)");
+    let code = "import os; os.system('ls')";
+    let start = Instant::now();
+    for _ in 0..1000 {
+        StaticAnalyzer::is_obviously_malicious(code);
+    }
+    let elapsed = start.elapsed();
+    println!("Fast-Fail Check (1000 runs): {:?}", elapsed);
+    println!("Fast-Fail Check (avg): {:?} per run", elapsed / 1000);
 }

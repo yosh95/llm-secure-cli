@@ -39,12 +39,13 @@ Space Beh Time
 
 ## Tier 1 — Structural Guardrails (Space)
 
-### AI-native Policy Engine (Semantic Guardrails)
+### AI-native Policy Engine (Semantic Guardrails & Dual LLM)
 
-Instead of fragile, platform-dependent regex patterns (e.g., `rm -rf /` or Windows-specific commands), `llm-secure-cli` uses an **AI-native Policy Engine**.
+Instead of fragile, platform-dependent regex patterns (e.g., `rm -rf /` or Windows-specific commands), `llm-secure-cli` uses an **AI-native Policy Engine** powered by a **Dual LLM Verifier**.
 - **Security Constitution**: A hardcoded, immutable system instruction that the auditor LLM must follow.
-- **Context Injection**: Attributes like OS, User, and Current Directory are injected into every verification request.
-- **Semantic Analysis**: The auditor understands the *impact* of a command, catching novel or obfuscated attacks that would bypass static analysis.
+- **Structured Verdicts**: The auditor provides a structured decision (ALLOW/BLOCK) using function calling, preventing parsing errors.
+- **CASS Orchestration**: The **Context-Adaptive Security Scaling** engine determines the risk level and required PQC strength before any tool is executed.
+- **Semantic Analysis**: The auditor understands the *impact* of a command in context, catching novel or obfuscated attacks that would bypass static analysis.
 
 ### Physical Isolation (Docker / WSL2)
 
