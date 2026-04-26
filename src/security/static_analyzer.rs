@@ -17,6 +17,8 @@ pub struct Violation {
 
 static DANGEROUS_BINARIES: &[&str] = &[
     "mkfs", "fdisk", "parted", "dd", "passwd", "chown", "chmod", "kill", "reboot", "shutdown",
+    // Windows specific
+    "format", "diskpart", "net", "netsh", "reg", "taskkill", "schtasks", "powershell", "pwsh", "cmd",
 ];
 
 static SENSITIVE_PATHS: Lazy<Vec<Regex>> = Lazy::new(|| {
@@ -27,6 +29,10 @@ static SENSITIVE_PATHS: Lazy<Vec<Regex>> = Lazy::new(|| {
         Regex::new(r"^/proc/.*").unwrap(),
         Regex::new(r"^/sys/.*").unwrap(),
         Regex::new(r"^/dev/.*").unwrap(),
+        // Windows specific (case-insensitive)
+        Regex::new(r"(?i)^[a-z]:\\windows\\.*").unwrap(),
+        Regex::new(r"(?i)^[a-z]:\\users\\[^\\]+\\appdata\\.*").unwrap(),
+        Regex::new(r"(?i)^[a-z]:\\systemvolumeinformation.*").unwrap(),
     ]
 });
 

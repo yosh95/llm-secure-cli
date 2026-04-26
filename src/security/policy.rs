@@ -21,7 +21,9 @@ impl EvaluationContext {
     /// Load attributes from the system environment and execution context
     fn load_system_attributes(&mut self) {
         // Subject attributes
-        let user = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
+        let user = std::env::var("USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .unwrap_or_else(|_| "unknown".to_string());
         self.attributes
             .insert("subject.id".to_string(), Value::String(user));
 

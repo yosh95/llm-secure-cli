@@ -42,7 +42,8 @@ allowed_env_vars = []
 
 # Explicitly forbidden paths. Use absolute paths or "~" expansion.
 blocked_paths = [
-    "/etc", "/var", "/root", "/bin", "/sbin", "/usr", "/dev", "/proc", "/sys", "/boot", "~/.ssh"
+    "/etc", "/var", "/root", "/bin", "/sbin", "/usr", "/dev", "/proc", "/sys", "/boot", "~/.ssh",
+    "C:/Windows", "C:/System Volume Information", "C:/Recovery", "C:/Users/Public"
 ]
 
 # Filename blocklist — fnmatch patterns matched against the bare filename.

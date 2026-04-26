@@ -12,6 +12,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -99,23 +100,23 @@ impl IdentityManager {
     }
 
     fn write_private_file(path: &Path, content: &[u8]) -> Result<()> {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)?;
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+
+        let mut file = options.open(path)?;
         file.write_all(content)?;
         Ok(())
     }
 
     fn write_public_file(path: &Path, content: &[u8]) -> Result<()> {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o644)
-            .open(path)?;
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        options.mode(0o644);
+
+        let mut file = options.open(path)?;
         file.write_all(content)?;
         Ok(())
     }
@@ -151,7 +152,9 @@ impl IdentityManager {
     }
 
     pub fn get_local_identity() -> String {
-        let user = std::env::var("USER").unwrap_or_else(|_| "unknown_user".to_string());
+        let user = std::env::var("USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .unwrap_or_else(|_| "unknown_user".to_string());
         let hostname = hostname::get()
             .map(|h| h.to_string_lossy().into_owned())
             .unwrap_or_else(|_| "unknown_host".to_string());

@@ -29,8 +29,8 @@ pub fn validate_path(path_str: &str) -> Result<PathBuf, PathValidationError> {
     // Expand user if path starts with ~
     let path = if let Some(after_tilde) = path_str.strip_prefix('~') {
         if let Some(home) = dirs::home_dir() {
-            // strip the leading '~' then any single '/' separator
-            let rest = after_tilde.trim_start_matches('/');
+            // strip the leading '~' then any single '/' or '\' separator
+            let rest = after_tilde.trim_start_matches(['/', '\\']);
             if rest.is_empty() {
                 home
             } else {

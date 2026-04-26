@@ -48,6 +48,9 @@ impl IntegrityVerifier {
             .parent()
             .ok_or_else(|| anyhow!("Could not get binary directory"))?;
 
+        #[cfg(windows)]
+        let tool_binaries = ["llsc.exe"];
+        #[cfg(not(windows))]
         let tool_binaries = ["llsc"];
 
         let mut found_any = false;

@@ -1,5 +1,6 @@
 use crate::consts::LLM_CLI_BASE_DIR;
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 

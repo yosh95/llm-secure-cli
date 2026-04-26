@@ -58,7 +58,7 @@ pub fn html_to_text(html: &str) -> String {
     let re_style = Regex::new(r"(?is)<style[^>]*>.*?</style>").unwrap();
     let cleaned = re_script.replace_all(html, "");
     let cleaned = re_style.replace_all(&cleaned, "");
-    html2text::from_read(cleaned.as_bytes(), 100).unwrap_or_else(|_| cleaned.to_string())
+    html2text::from_read(cleaned.as_bytes(), 100)
 }
 
 pub fn process_file(path: &Path, _pdf_as_base64: bool) -> anyhow::Result<DataSource> {
