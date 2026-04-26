@@ -87,9 +87,6 @@ llsc "Analyze this website" https://example.com
 
 # List available models
 llsc models
-
-# Benchmark provider latency
-llsc benchmark openai gpt-4o
 ```
 
 ## Core Features
@@ -118,6 +115,12 @@ As a tool designed with **CISSP/CISA/CCSP** principles and **EU AI Act** complia
 - **Risk-based Scaling (CASS)**: Security requirements (PQC signature level, audit encryption) automatically scale based on the tool's risk level (HIGH/MEDIUM/LOW) via the **CASS (Context-Adaptive Security Scaling)** orchestrator.
 - **Intent Verification**: Every high-risk action is cross-verified by a separate, lightweight "Verifier" LLM to ensure the proposed tool call aligns with the user's original intent.
 - **Minimalist Fast-fail**: A lightweight syntactic check still blocks obviously malicious characters in **nanoseconds**, while the heavy lifting of security judgment is shifted to the Dual LLM.
+- **Dual LLM Performance (Benchmark results, n=115)**: 
+  | Provider | Model | Accuracy | Avg Latency | Note |
+  | :--- | :--- | :--- | :--- | :--- |
+  | **Google** | Gemini 3.1 Flash-Lite | **94.8%** | **~1.1s** | **Recommended** (Fast & Accurate) |
+  | OpenAI | GPT-5.4 Nano | 74.8% | ~1.9s | High False Positive rate (Conservative) |
+  | Anthropic | Claude Haiku 4.5 | 94.8% | ~3.3s | Accurate but higher latency |
 - **PQC Performance**: On modern hardware (e.g., Ryzen 5 8540U), the total local security overhead for high-risk operations (ML-DSA-87 signing + ML-KEM encryption) is **under 1.2ms**, ensuring security does not compromise the user experience.
 - **Physical Isolation (Docker)**: The agent can be run inside a Docker container to provide a hard boundary between the AI and the host system.
 
@@ -195,18 +198,19 @@ llsc decrypt-log <input>      # Decrypt PQC-encrypted audit logs
 ## Utility Commands
 ```bash
 llsc models                   # List available models for active providers
-llsc benchmark <provider> <model>  # Benchmark Dual LLM verification latency
 ```
 
 ## Development & Benchmarks
 To run the local security primitive benchmarks (Static Analysis, PQC Keygen/Sign/Verify):
 ```bash
-cargo run --bin benchmark_local
+cargo bench --bench benchmark_local
 ```
 
 To run the internal Dual LLM verification scenarios (requires API keys):
 ```bash
-cargo run --bin benchmark_dual_llm
+cargo bench --bench benchmark_dual_llm
+# Or with a custom scenarios JSON file:
+cargo bench --bench benchmark_dual_llm -- path/to/your_scenarios.json
 ```
 
 ##  License
@@ -307,9 +311,6 @@ llsc "このWebサイトを解析して" https://example.com
 
 # 利用可能なモデル一覧を表示する
 llsc models
-
-# プロバイダーのレイテンシを測定する
-llsc benchmark openai gpt-4o
 ```
 
 ## 主な機能 (実用ツールとして)
@@ -335,6 +336,12 @@ AIがファイル操作、Web検索、Python実行などのツールを自律的
 - **AIネイティブ・ポリシーエンジン**: 複雑なTOMLルールの代わりに、ハードコードされた **セキュリティ憲法（Security Constitution）** を使用します。システムは自動的に実行コンテキスト（OS、ユーザー、ディレクトリ、Gitステータス）を収集し、セカンダリLLMがそれらを意味論的に判断します。
 - **リスクベース・スケーリング**: ツールのリスクレベル（HIGH/MEDIUM/LOW）に応じて、要求されるセキュリティ強度が自動的に変化します。
 - **意図の検証 (Dual LLM)**: 全ての高リスクな操作は、軽量な「検証用LLM」によって元のプロンプトおよびセキュリティ憲法と照合されます。これにより、高度なプロンプトインジェクションによる意図しない操作を動的に防止します。
+- **Dual LLM パフォーマンス (ベンチマーク結果、n=115)**: 
+  | プロバイダー | モデル | 正解率 | 平均レイテンシ | 備考 |
+  | :--- | :--- | :--- | :--- | :--- |
+  | **Google** | Gemini 3.1 Flash-Lite | **94.8%** | **約1.1秒** | **推奨** (高速かつ高精度) |
+  | OpenAI | GPT-5.4 Nano | 74.8% | 約1.9秒 | 過検知が多い (保守的な傾向) |
+  | Anthropic | Claude Haiku 4.5 | 94.8% | 約3.3秒 | 高精度だが低速 |
 - **物理的隔離 (Docker)**: エージェントをDockerコンテナ内で実行することで、AIとホストシステムの間に強力な境界を設けることができます。これにより、WindowsやLinuxといったプラットフォームの違いを意識せずに一貫したセキュリティを実現します。
 - **最小限の高速チェック**: 明らかに不正な文字の混入などは軽量な静的チェックで即座に遮断しますが、高度なリスク判断はDual LLMにシフトすることで、誤検知と運用の煩雑さを大幅に軽減しています。
 
@@ -412,18 +419,19 @@ llsc decrypt-log <input>      # 耐量子暗号（PQC）で暗号化された監
 ## ユーティリティコマンド
 ```bash
 llsc models                   # アクティブなプロバイダーの利用可能モデルを表示
-llsc benchmark <provider> <model>  # Dual LLM検証のレイテンシを測定
 ```
 
 ## 開発とベンチマーク
 ローカルのセキュリティプリミティブ（静的解析、PQC鍵生成/署名/検証）のベンチマークを実行するには：
 ```bash
-cargo run --bin benchmark_local
+cargo bench --bench benchmark_local
 ```
 
 内部的な Dual LLM 検証シナリオを実行するには（APIキーが必要）：
 ```bash
-cargo run --bin benchmark_dual_llm
+cargo bench --bench benchmark_dual_llm
+# またはカスタムのシナリオJSONファイルを指定する場合：
+cargo bench --bench benchmark_dual_llm -- path/to/your_scenarios.json
 ```
 
 ##  License

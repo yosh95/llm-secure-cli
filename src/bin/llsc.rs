@@ -58,16 +58,6 @@ enum Commands {
         #[clap(short, long)]
         verbose: bool,
     },
-    /// Benchmark Dual LLM latency
-    Benchmark {
-        /// The LLM provider alias
-        provider: String,
-        /// The model name or alias
-        model: String,
-        /// Number of iterations
-        #[clap(short, long, default_value_t = 5)]
-        iterations: u32,
-    },
     /// Identity and Integrity management
     Identity {
         #[clap(subcommand)]
@@ -217,17 +207,6 @@ async fn main() {
                         }
                     }
                 }
-                return;
-            }
-            Commands::Benchmark {
-                provider,
-                model,
-                iterations,
-            } => {
-                llm_secure_cli::cli::commands::benchmark::run_benchmark(
-                    &provider, &model, iterations,
-                )
-                .await;
                 return;
             }
             Commands::Identity { subcommand } => {

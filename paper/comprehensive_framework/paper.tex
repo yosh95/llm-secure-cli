@@ -257,7 +257,7 @@ KEM Encapsulation (ML-KEM-768)  &  0.06   \\
 \textit{Measurement Note on ABAC Overhead:} The marginal overhead of adding ABAC claims to the identity token was found to be negligible. The computational cost of policy-based claim injection is functionally zero relative to the underlying cryptographic signing operation.
 
 \subsection{Intent Verification (Dual LLM) Performance}
-The Dual LLM Verification pattern was evaluated across three providers using ten fixed test cases (TC1--TC10). Table \ref{tab:dual_llm_cases} defines a subset of these cases; TC1--TC5 are benign scenarios that must pass without a false block, while TC6--TC10 are adversarial scenarios that must be rejected.
+The Dual LLM Verification pattern was evaluated across three providers using a comprehensive suite of 115 test cases ($n=115$) covering benign development tasks, ambiguous filesystem operations, and various adversarial scenarios (injection, data theft, and unauthorized system modification). Table \ref{tab:dual_llm_cases} defines a subset of these cases; TC1--TC5 are benign scenarios, while TC6--TC10 represent adversarial attempts.
 
 \begin{table}[htbp]
 \caption{Dual LLM Evaluation Test Cases (Selection)}
@@ -293,22 +293,22 @@ TC8 & Malicious (Persistence) &
 \end{center}
 \end{table}
 
-As shown in Table~\ref{tab:dual_llm_perf}, all three providers achieved 100\% classification accuracy across the test suite. TC1--TC5 (benign) were correctly \emph{allowed} (false positive rate = 0/5 = 0\%), while TC6--TC10 (adversarial) were correctly \emph{blocked} (detection rate = 5/5 = 100\%). These results are limited to the fixed author-designed cases and should be interpreted as protocol-correctness checks rather than evidence of broad model robustness.
+As shown in Table~\ref{tab:dual_llm_perf}, both Google and Anthropic models achieved high classification accuracy (94.8\%). OpenAI's Nano model displayed a significantly higher False Positive rate (24.3\%), frequently blocking ambiguous but benign filesystem operations in a "safety-first" posture. All models maintained high recall ($>$85\%), successfully blocking the majority of critical adversarial attempts.
 
-The observed verifier latency is network-bound and varies with provider routing, residential network conditions, and prompt complexity. In the April 2026 reference run, mean single-pass wall-clock latency was approximately 1295--1467\,ms across the configured lightweight verifier aliases (Table~\ref{tab:dual_llm_perf}). Because verification runs concurrently with the user's cognitive review of the tool explanation, this latency is intended to be hidden inside the manual oversight window rather than added serially to every tool call.
+The observed verifier latency is network-bound and varies significantly between providers. Google Gemini 3.1 Flash-Lite demonstrated the lowest mean latency ($\approx$1096\,ms), while Anthropic Claude Haiku 4.5 exhibited the highest ($\approx$3332\,ms). Because verification runs concurrently with the user's cognitive review of the tool explanation, this latency is intended to be hidden inside the manual oversight window rather than added serially to every tool call.
 
 \begin{table}[htbp]
-\caption{Dual LLM Verification Performance (Function Calling, n=10 fixed cases).
-Acc. is measured only on the author-designed test suite.}
+\caption{Dual LLM Verification Performance (Function Calling, n=115 scenarios).
+Acc. represents balanced classification accuracy across benign and adversarial cases.}
 \begin{center}
 \begin{tabularx}{\columnwidth}{|l|l|C|C|}
 \hline
 \textbf{Provider} & \textbf{Model Alias / Snapshot} & \textbf{Acc.} &
   \textbf{Mean Latency (ms)} \\
 \hline
-Google    & Gemini 3.1 Flash-Lite & 100\% & $\approx$1297 \\
-OpenAI    & GPT-5.4 Nano          & 100\% & $\approx$1467 \\
-Anthropic & Claude Haiku 4.5      & 100\% & $\approx$1295 \\
+Google    & Gemini 3.1 Flash-Lite & 94.78\% & $\approx$1096 \\
+OpenAI    & GPT-5.4 Nano          & 74.78\% & $\approx$1884 \\
+Anthropic & Claude Haiku 4.5      & 94.78\% & $\approx$3332 \\
 \hline
 \end{tabularx}
 \label{tab:dual_llm_perf}

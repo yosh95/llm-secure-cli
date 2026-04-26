@@ -9,6 +9,16 @@ rust-version = "1.95.0"
 name = "llsc"
 path = "src/bin/llsc.rs"
 
+[[bench]]
+name = "benchmark_local"
+path = "benchmark/benchmark_local.rs"
+harness = false
+
+[[bench]]
+name = "benchmark_dual_llm"
+path = "benchmark/benchmark_dual_llm.rs"
+harness = false
+
 [dependencies]
 clap = { version = "4.5", default-features = false, features = ["derive", "help", "usage", "error-context", "suggestions", "color", "std"] }
 tokio = { version = "1.43", features = ["rt-multi-thread", "macros", "sync", "process", "io-std", "io-util", "time", "signal"] }
