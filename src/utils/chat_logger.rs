@@ -11,10 +11,10 @@ pub fn log_chat(role: &Role, content: &str) {
     let max_lines = config.general.max_chat_log_lines;
 
     // Ensure directory exists
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
-            let _ = fs::create_dir_all(parent);
-        }
+    if let Some(parent) = path.parent()
+        && !parent.exists()
+    {
+        let _ = fs::create_dir_all(parent);
     }
 
     let timestamp = Utc::now().to_rfc3339();

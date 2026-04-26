@@ -207,19 +207,32 @@ pub struct EncryptedPacket {
 pub struct SecureStorage;
 
 impl SecureStorage {
-    pub fn encrypt(data: &[u8], recipient_public_key: &[u8]) -> EncryptedPacket {
+    pub fn encrypt(data: &[u8], recipient_public_key: &[u8]) -> anyhow::Result<EncryptedPacket> {
         log::debug!("SecureStorage: Encrypting {} bytes of data", data.len());
         let (shared_secret, kem_ct) =
             PqcProvider::encapsulate_mlkem(recipient_public_key, MlkemVariant::Mlkem768);
 
+        if shared_secret == vec![0; 32] && recipient_public_key.is_empty() {
+            return Err(anyhow::anyhow!(
+                "Encryption failed: Recipient public key is empty"
+            ));
+        }
+
         // Use first 32 bytes of shared secret for AES-256
         let key = &shared_secret[..32];
-        let cipher = Aes256Gcm::new_from_slice(key).unwrap();
+        let cipher = Aes256Gcm::new_from_slice(key)
+            .map_err(|_| anyhow::anyhow!("Failed to initialize AES-GCM"))?;
 
         let nonce_bytes: [u8; 12] = rand::random();
         let nonce = Nonce::from(nonce_bytes);
 
-        let ciphertext_with_tag = cipher.encrypt(&nonce, data).expect("encryption failure!");
+        let ciphertext_with_tag = cipher
+            .encrypt(&nonce, data)
+            .map_err(|e| anyhow::anyhow!("AES encryption failure: {}", e))?;
+
+        if ciphertext_with_tag.len() < 16 {
+            return Err(anyhow::anyhow!("Encryption failed: Ciphertext too short"));
+        }
 
         let tag_start = ciphertext_with_tag.len() - 16;
         let aes_ct = &ciphertext_with_tag[..tag_start];
@@ -231,42 +244,62 @@ impl SecureStorage {
             aes_ct.len()
         );
 
-        EncryptedPacket {
+        Ok(EncryptedPacket {
             kem_ct: general_purpose::STANDARD.encode(kem_ct),
             aes_ct: general_purpose::STANDARD.encode(aes_ct),
             nonce: general_purpose::STANDARD.encode(nonce_bytes),
             tag: general_purpose::STANDARD.encode(tag),
             algo: "ML-KEM-768/AES-256-GCM".to_string(),
-        }
+        })
     }
 
-    pub fn decrypt(packet: &EncryptedPacket, private_key: &[u8]) -> Vec<u8> {
+    pub fn decrypt(packet: &EncryptedPacket, private_key: &[u8]) -> anyhow::Result<Vec<u8>> {
         log::debug!("SecureStorage: Decrypting packet (algo: {})", packet.algo);
-        let kem_ct = general_purpose::STANDARD.decode(&packet.kem_ct).unwrap();
+
+        let kem_ct = general_purpose::STANDARD
+            .decode(&packet.kem_ct)
+            .map_err(|e| anyhow::anyhow!("Invalid KEM ciphertext encoding: {}", e))?;
+
         let shared_secret =
             PqcProvider::decapsulate_mlkem(&kem_ct, private_key, MlkemVariant::Mlkem768);
 
+        if shared_secret == vec![0; 32] && private_key.is_empty() {
+            return Err(anyhow::anyhow!("Decryption failed: Private key is empty"));
+        }
+
         let key = &shared_secret[..32];
-        let cipher = Aes256Gcm::new_from_slice(key).unwrap();
+        let cipher = Aes256Gcm::new_from_slice(key)
+            .map_err(|_| anyhow::anyhow!("Failed to initialize AES-GCM"))?;
 
-        let nonce_bytes = general_purpose::STANDARD.decode(&packet.nonce).unwrap();
-        let nonce = Nonce::from(<[u8; 12]>::try_from(nonce_bytes).expect("invalid nonce length"));
+        let nonce_bytes = general_purpose::STANDARD
+            .decode(&packet.nonce)
+            .map_err(|e| anyhow::anyhow!("Invalid nonce encoding: {}", e))?;
 
-        let aes_ct = general_purpose::STANDARD.decode(&packet.aes_ct).unwrap();
-        let tag = general_purpose::STANDARD.decode(&packet.tag).unwrap();
+        let nonce = Nonce::from(
+            <[u8; 12]>::try_from(nonce_bytes)
+                .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?,
+        );
+
+        let aes_ct = general_purpose::STANDARD
+            .decode(&packet.aes_ct)
+            .map_err(|e| anyhow::anyhow!("Invalid AES ciphertext encoding: {}", e))?;
+
+        let tag = general_purpose::STANDARD
+            .decode(&packet.tag)
+            .map_err(|e| anyhow::anyhow!("Invalid tag encoding: {}", e))?;
 
         let mut combined = aes_ct;
         combined.extend_from_slice(&tag);
 
         let decrypted = cipher
             .decrypt(&nonce, combined.as_slice())
-            .expect("decryption failure!");
+            .map_err(|e| anyhow::anyhow!("AES decryption failure: {}", e))?;
 
         log::debug!(
             "SecureStorage: Decryption successful ({} bytes)",
             decrypted.len()
         );
-        decrypted
+        Ok(decrypted)
     }
 }
 

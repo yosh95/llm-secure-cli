@@ -251,7 +251,8 @@ fn generate_diff(original: &str, new_content: &str) -> String {
             return "--- original\n+++ modified\n (no changes)\n".to_string();
         } else {
             // Fallback for very small changes or whitespace differences
-            return format!("--- original\n+++ modified\n[Content changed, but diff is empty]\n");
+            return "--- original\n+++ modified\n[Content changed, but diff is empty]\n"
+                .to_string();
         }
     }
 

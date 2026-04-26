@@ -100,9 +100,18 @@ pub fn log_audit_and_return(
         && let Ok(pk) = crate::security::identity::IdentityManager::get_kem_public_key()
     {
         let arg_bytes = serde_json::to_vec(&args).unwrap_or_default();
-        let packet = crate::security::pqc::SecureStorage::encrypt(&arg_bytes, &pk);
-        final_args = serde_json::to_value(packet).unwrap_or(args);
-        pqc_encrypted = true;
+        match crate::security::pqc::SecureStorage::encrypt(&arg_bytes, &pk) {
+            Ok(packet) => {
+                final_args = serde_json::to_value(packet).unwrap_or(args);
+                pqc_encrypted = true;
+            }
+            Err(e) => {
+                eprintln!(
+                    "[ERROR] PQC encryption for audit log failed: {}. Logging unencrypted.",
+                    e
+                );
+            }
+        }
     }
 
     let mut log_entry = AuditEntry {

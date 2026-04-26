@@ -1,7 +1,6 @@
-use once_cell::sync::Lazy;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
 pub type ToolFunc = Arc<dyn Fn(HashMap<String, Value>) -> anyhow::Result<Value> + Send + Sync>;
 
@@ -134,7 +133,7 @@ impl ToolRegistry {
     }
 }
 
-pub static REGISTRY: Lazy<Mutex<ToolRegistry>> = Lazy::new(|| {
+pub static REGISTRY: LazyLock<Mutex<ToolRegistry>> = LazyLock::new(|| {
     let mut r = ToolRegistry::new();
     register_builtin_tools(&mut r);
     Mutex::new(r)

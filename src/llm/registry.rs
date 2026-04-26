@@ -1,7 +1,6 @@
 use crate::llm::base::LlmClient;
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 pub type ClientFactory = fn(model: &str, stdout: bool, raw: bool) -> Box<dyn LlmClient>;
 
@@ -9,8 +8,8 @@ pub struct ClientRegistry {
     factories: HashMap<String, ClientFactory>,
 }
 
-pub static CLIENT_REGISTRY: Lazy<Mutex<ClientRegistry>> =
-    Lazy::new(|| Mutex::new(ClientRegistry::new()));
+pub static CLIENT_REGISTRY: LazyLock<Mutex<ClientRegistry>> =
+    LazyLock::new(|| Mutex::new(ClientRegistry::new()));
 
 impl Default for ClientRegistry {
     fn default() -> Self {

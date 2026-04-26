@@ -35,7 +35,7 @@ pub fn decrypt_log_file(input_path: PathBuf, output_path: Option<PathBuf>) {
                 && let Ok(packet) = serde_json::from_value::<EncryptedPacket>(args_val.clone())
             {
                 match std::panic::catch_unwind(|| SecureStorage::decrypt(&packet, &kem_sk)) {
-                    Ok(decrypted_bytes) => {
+                    Ok(Ok(decrypted_bytes)) => {
                         if let Ok(decrypted_json) =
                             serde_json::from_slice::<Value>(&decrypted_bytes)
                         {
@@ -43,8 +43,11 @@ pub fn decrypt_log_file(input_path: PathBuf, output_path: Option<PathBuf>) {
                             entry["pqc_confidential"] = Value::String("DECRYPTED".to_string());
                         }
                     }
+                    Ok(Err(e)) => {
+                        ui::report_error(&format!("Failed to decrypt entry: {}", e));
+                    }
                     Err(_) => {
-                        ui::report_error("Failed to decrypt entry: decryption error.");
+                        ui::report_error("Failed to decrypt entry: decryption panicked.");
                     }
                 }
             }

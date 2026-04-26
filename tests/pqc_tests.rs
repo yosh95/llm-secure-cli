@@ -72,8 +72,8 @@ fn test_secure_storage_hybrid_encryption() {
     let (pk, sk) = PqcProvider::generate_mlkem_keypair(MlkemVariant::Mlkem768);
     let original_data = b"Sensitive post-quantum data content";
 
-    let packet = SecureStorage::encrypt(original_data, &pk);
-    let decrypted_data = SecureStorage::decrypt(&packet, &sk);
+    let packet = SecureStorage::encrypt(original_data, &pk).expect("Encryption failed");
+    let decrypted_data = SecureStorage::decrypt(&packet, &sk).expect("Decryption failed");
 
     assert_eq!(
         original_data.to_vec(),
