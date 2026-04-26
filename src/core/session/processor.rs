@@ -39,6 +39,7 @@ impl ChatSession {
                 && !text.trim().is_empty()
             {
                 ui::print_block(&text, Some(&self.client.get_display_name()), Some("cyan"));
+                crate::utils::chat_logger::log_chat(&crate::llm::models::Role::Assistant, &text);
             }
 
             // Handle incoming images

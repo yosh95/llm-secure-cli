@@ -238,6 +238,18 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
         .unwrap_or_else(|| "0".repeat(64));
 
     let kept_lines = &lines[lines.len() - max_lines..];
+    let removed_lines = &lines[..lines.len() - max_lines];
+
+    // Create archive if there are removed lines
+    if !removed_lines.is_empty() {
+        let config = CONFIG_MANAGER.get_config();
+        let max_archives = config.general.max_audit_archives;
+        if max_archives > 0 {
+            let _ = crate::utils::logging::rotate_file(path, max_archives);
+            // Now 'path' has been moved to 'path.1' (and others shifted).
+            // We need to create a new 'path' file.
+        }
+    }
 
     if let Ok(mut file) = std::fs::File::create(path) {
         // Add a continuity marker as the first line of the new truncated log

@@ -162,9 +162,12 @@ fn finalize_edit(
 
     fs::write(path, new_content).map_err(|e| anyhow::anyhow!("Cannot write file: {}", e))?;
 
+    let diff = generate_diff(original, new_content);
+
     Ok(json!({
         "success": true,
         "path": path_str,
+        "diff": diff,
         "match_type": match_type,
         "message": format!("File edited successfully ({} match).", match_type)
     }))
@@ -184,6 +187,13 @@ pub fn create_or_overwrite_file(args: HashMap<String, Value>) -> anyhow::Result<
         .ok_or_else(|| anyhow::anyhow!("'content' is required"))?;
 
     let path = Path::new(path_str);
+    let existed = path.exists();
+
+    let original = if existed {
+        fs::read_to_string(path).ok()
+    } else {
+        None
+    };
 
     // Create parent directories if needed
     if let Some(parent) = path.parent()
@@ -194,14 +204,21 @@ pub fn create_or_overwrite_file(args: HashMap<String, Value>) -> anyhow::Result<
             .map_err(|e| anyhow::anyhow!("Cannot create directories: {}", e))?;
     }
 
-    let existed = path.exists();
     fs::write(path, content).map_err(|e| anyhow::anyhow!("Cannot write file: {}", e))?;
+
+    let diff = if let Some(orig) = original {
+        generate_diff(&orig, content)
+    } else {
+        // For new files, show a diff showing all lines added
+        generate_diff("", content)
+    };
 
     Ok(json!({
         "success": true,
         "path": path_str,
         "bytes_written": content.len(),
         "created": !existed,
+        "diff": diff,
         "message": if existed {
             format!("File overwritten: {}", path_str)
         } else {
@@ -214,34 +231,29 @@ pub fn create_or_overwrite_file(args: HashMap<String, Value>) -> anyhow::Result<
 // Helper functions
 // ---------------------------------------------------------------------------
 
-/// Generate a simple line-based diff for display purposes.
+/// Generate a unified diff for display purposes.
 fn generate_diff(original: &str, new_content: &str) -> String {
-    let orig_lines: Vec<&str> = original.lines().collect();
-    let new_lines: Vec<&str> = new_content.lines().collect();
+    let orig_lines: Vec<String> = original.lines().map(|s| format!("{}\n", s)).collect();
+    let new_lines: Vec<String> = new_content.lines().map(|s| format!("{}\n", s)).collect();
 
-    let mut diff = String::new();
-    diff.push_str("--- original\n");
-    diff.push_str("+++ modified\n");
+    let diff = difflib::unified_diff(
+        &orig_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        &new_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        "original",
+        "modified",
+        "",
+        "",
+        3,
+    );
 
-    let max_len = orig_lines.len().max(new_lines.len());
-    for i in 0..max_len {
-        match (orig_lines.get(i), new_lines.get(i)) {
-            (Some(o), Some(n)) if o == n => {
-                diff.push_str(&format!(" {}\n", o));
-            }
-            (Some(o), Some(n)) => {
-                diff.push_str(&format!("-{}\n", o));
-                diff.push_str(&format!("+{}\n", n));
-            }
-            (Some(o), None) => {
-                diff.push_str(&format!("-{}\n", o));
-            }
-            (None, Some(n)) => {
-                diff.push_str(&format!("+{}\n", n));
-            }
-            (None, None) => {}
+    if diff.is_empty() {
+        if original == new_content {
+            return "--- original\n+++ modified\n (no changes)\n".to_string();
+        } else {
+            // Fallback for very small changes or whitespace differences
+            return format!("--- original\n+++ modified\n[Content changed, but diff is empty]\n");
         }
     }
 
-    diff
+    diff.join("")
 }

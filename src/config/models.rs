@@ -17,6 +17,10 @@ pub struct GeneralConfig {
     pub max_audit_log_lines: usize,
     #[serde(default = "default_max_audit_archives")]
     pub max_audit_archives: usize,
+    #[serde(default = "default_max_chat_log")]
+    pub max_chat_log_lines: usize,
+    #[serde(default = "default_max_chat_archives")]
+    pub max_chat_archives: usize,
     #[serde(default = "default_image_save_path")]
     pub image_save_path: String,
 }
@@ -42,6 +46,12 @@ fn default_max_audit_log() -> usize {
 fn default_max_audit_archives() -> usize {
     10
 }
+fn default_max_chat_log() -> usize {
+    5000
+}
+fn default_max_chat_archives() -> usize {
+    5
+}
 fn default_image_save_path() -> String {
     "~/Pictures/llsc".to_string()
 }
@@ -56,6 +66,8 @@ impl Default for GeneralConfig {
             max_security_log_lines: default_max_security_log(),
             max_audit_log_lines: default_max_audit_log(),
             max_audit_archives: default_max_audit_archives(),
+            max_chat_log_lines: default_max_chat_log(),
+            max_chat_archives: default_max_chat_archives(),
             image_save_path: default_image_save_path(),
         }
     }

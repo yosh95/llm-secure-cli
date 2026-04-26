@@ -28,6 +28,7 @@ impl ChatSession {
                 }) = data.first()
             {
                 self.intent = s.clone();
+                crate::utils::chat_logger::log_chat(&crate::llm::models::Role::User, s);
             }
 
             match self.process_and_print(data).await {
@@ -133,6 +134,11 @@ impl ChatSession {
                     if self.intent.is_empty() {
                         self.intent = final_content.clone();
                     }
+
+                    crate::utils::chat_logger::log_chat(
+                        &crate::llm::models::Role::User,
+                        &final_content,
+                    );
 
                     let mut data = std::mem::take(&mut self.pending_data);
                     data.push(DataSource {
