@@ -12,8 +12,6 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
-#[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -46,11 +44,6 @@ impl IdentityManager {
 
         if !KEY_DIR.exists() {
             fs::create_dir_all(&*KEY_DIR)?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                fs::set_permissions(&*KEY_DIR, fs::Permissions::from_mode(0o700))?;
-            }
         }
 
         // Classical Ed25519 Keys
@@ -102,8 +95,6 @@ impl IdentityManager {
     fn write_private_file(path: &Path, content: &[u8]) -> Result<()> {
         let mut options = fs::OpenOptions::new();
         options.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        options.mode(0o600);
 
         let mut file = options.open(path)?;
         file.write_all(content)?;
@@ -113,8 +104,6 @@ impl IdentityManager {
     fn write_public_file(path: &Path, content: &[u8]) -> Result<()> {
         let mut options = fs::OpenOptions::new();
         options.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        options.mode(0o644);
 
         let mut file = options.open(path)?;
         file.write_all(content)?;

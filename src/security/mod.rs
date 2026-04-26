@@ -1,4 +1,4 @@
-pub mod abac;
+// pub mod abac;
 pub mod audit;
 pub mod cass;
 pub mod dual_llm_verifier;
@@ -15,18 +15,13 @@ pub mod resource_manager;
 pub mod static_analyzer;
 pub mod verification_cache;
 
-/// Validates a tool call using Phase 1 security checks (Path, Static Analysis, ABAC).
+/// Validates a tool call using Phase 1 security checks (Path, Basic Sanity).
 /// Returns Ok(()) if safe, or Err(message) if blocked.
-///
-/// NOTE: Path validation here and inside `PolicyEngine::verify_path_guardrails`
-/// are intentionally duplicated as defence-in-depth layers. If you update the
-/// path-argument list in one place, be sure to update the other as well to keep
-/// them in sync.
 pub fn validate_tool_call(
     name: &str,
     args: &serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), String> {
-    // 1. Path Guardrails
+    // 1. Path Guardrails (Simplified)
     let path_args = ["path", "directory", "file", "src", "dest", "filename"];
     for arg_name in path_args {
         if let Some(p_val) = args.get(arg_name).and_then(|v| v.as_str())
@@ -36,41 +31,18 @@ pub fn validate_tool_call(
         }
     }
 
-    // 2. Static Analysis (specifically for shell commands)
+    // 2. Fast-fail Syntactic Check
     if name == "execute_command" {
         let program = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
-        let cmd_args: Vec<String> = args
-            .get("args")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let (safe, violations) =
-            crate::security::static_analyzer::StaticAnalyzer::check(program, &cmd_args);
-        if !safe {
-            return Err(format!(
-                "Security Blocked (Static Analysis): {}",
-                violations.join(", ")
-            ));
+        if crate::security::static_analyzer::StaticAnalyzer::is_obviously_malicious(program) {
+            return Err(
+                "Security Blocked (Static Analysis): Malicious characters detected.".to_string(),
+            );
         }
     }
 
-    // 3. ABAC Policy Engine
-    let mut eval_ctx = crate::security::policy::EvaluationContext::new();
-    eval_ctx.set_attribute("tool", serde_json::Value::String(name.to_string()));
-    eval_ctx.set_attribute("resource.id", serde_json::Value::String(name.to_string()));
-
-    if !crate::security::policy::POLICY_ENGINE.evaluate(name, args, &eval_ctx) {
-        return Err(format!(
-            "Security Blocked (ABAC Policy): Execution denied for tool '{}'",
-            name
-        ));
-    }
+    // Note: ABAC and Intent alignment are now deferred to the Dual LLM Verifier,
+    // which uses the Security Context and Constitution for a holistic semantic check.
 
     Ok(())
 }

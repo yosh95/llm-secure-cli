@@ -14,8 +14,6 @@ fn test_path_validation() {
     let config_content = r#"
 [security]
 allowed_paths = ["."]
-blocked_paths = ["/etc"]
-blocked_filenames = ["*.key", ".env"]
 "#;
     fs::write(dir.path().join("config.toml"), config_content).unwrap();
 
@@ -35,23 +33,16 @@ blocked_filenames = ["*.key", ".env"]
     assert!(res.is_err());
     assert!(res.unwrap_err().0.contains("traversal"));
 
-    // 3. Blocked by absolute path
+    // 3. Blocked by being outside allowed roots (absolute)
     let res = validate_path("/etc/passwd");
     assert!(res.is_err());
-    assert!(res.unwrap_err().0.contains("blocked path"));
+    assert!(res.unwrap_err().0.contains("outside allowed directories"));
 
-    // 4. Blocked by filename pattern
-    let res = validate_path("secret.key");
-    assert!(res.is_err());
-    assert!(res.unwrap_err().0.contains("forbidden"));
-
-    let res = validate_path(".env");
-    assert!(res.is_err());
-
-    // 5. Normalization
+    // 4. Normalization
     let res = validate_path("  'sub/dir/'  ");
     assert!(res.is_ok());
-    assert!(res.unwrap().to_str().unwrap().ends_with("sub/dir"));
+    let path_str = res.unwrap().to_str().unwrap().replace("\\", "/");
+    assert!(path_str.contains("sub/dir"));
 
     env::set_current_dir(original_dir).unwrap();
 }

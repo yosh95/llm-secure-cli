@@ -9,7 +9,7 @@ fn main() {
     let code = "import os; os.system('ls')";
     let start = Instant::now();
     for _ in 0..1000 {
-        StaticAnalyzer::is_dangerous_command(code);
+        StaticAnalyzer::is_obviously_malicious(code);
     }
     let elapsed = start.elapsed();
     println!("Static Analysis (1000 runs): {:?}", elapsed);

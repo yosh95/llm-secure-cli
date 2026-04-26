@@ -1,43 +1,15 @@
-#[cfg(unix)]
-use libc::{RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, rlimit, setrlimit};
 use std::process::Child;
 
+/// Set resource limits for the current process.
+/// In the modern Docker-centric model, we offload hard resource enforcement
+/// to the container runtime (e.g., --memory, --cpus).
+/// This function is now a stub to maintain API compatibility and simplify OS-specific code.
 pub fn set_resource_limits(_mem_limit_mb: u64, _cpu_limit_sec: u64, _file_limit_mb: u64) {
-    #[cfg(unix)]
-    unsafe {
-        // CPU time limit
-        let cpu_limit = rlimit {
-            rlim_cur: _cpu_limit_sec,
-            rlim_max: _cpu_limit_sec + 5,
-        };
-        setrlimit(RLIMIT_CPU, &cpu_limit);
-
-        // Address space (Memory) limit
-        // Skip on Android/Termux if necessary (detection logic needed or just try and ignore error)
-        let mem_limit = _mem_limit_mb * 1024 * 1024;
-        let mem_rlimit = rlimit {
-            rlim_cur: mem_limit,
-            rlim_max: mem_limit,
-        };
-        setrlimit(RLIMIT_AS, &mem_rlimit);
-
-        // File size limit
-        let file_limit = _file_limit_mb * 1024 * 1024;
-        let file_rlimit = rlimit {
-            rlim_cur: file_limit,
-            rlim_max: file_limit,
-        };
-        setrlimit(RLIMIT_FSIZE, &file_rlimit);
-    }
+    // No-op: Offloaded to Docker or OS-native limits (if applicable).
+    // This avoids using 'libc' and platform-specific rlimit calls.
 }
 
+/// Best-effort resource limiting for a child process.
 pub fn limit_process_resources(_child: &Child, _mem_limit_mb: u64) {
-    // best effort: set priority/niceness
-    #[cfg(unix)]
-    unsafe {
-        libc::setpriority(libc::PRIO_PROCESS, _child.id() as libc::id_t, 10);
-    }
-
-    // On Windows, one might use Job Objects or other APIs,
-    // but without extra crates it's complex.
+    // No-op: Offloaded to containerization or higher-level OS management.
 }

@@ -57,6 +57,19 @@ The accompanying [Technical Report](paper/comprehensive_framework/paper.pdf) det
     ```
 5.  **Help**: Type `/help` inside the chat to see all commands.
 
+### Docker Isolation (Optional)
+Run the agent in a completely isolated container to protect your host system:
+1. **Build**: `docker build -t llm-secure-cli .`
+2. **Run**:
+   ```bash
+   docker run -it --rm \
+     -v ~/.llm_secure_cli:/root/.llm_secure_cli \
+     -v $(pwd):/workspace \
+     -e GOOGLE_API_KEY=$GOOGLE_API_KEY \
+     -e OPENAI_API_KEY=$OPENAI_API_KEY \
+     llm-secure-cli
+   ```
+
 ### One-Shot Examples
 ```bash
 # Ask a question using the default provider (Gemini)
@@ -99,29 +112,13 @@ The AI agent autonomously uses tools to perform complex tasks, such as file mana
 
 As a tool designed with **CISSP/CISA/CCSP** principles and **EU AI Act** compliance in mind, `llm-secure-cli` implements a multi-layered security architecture to mitigate the risks associated with autonomous AI agents.
 
-### 1. Access Control (ABAC)
-`llm-secure-cli` implements **Attribute-Based Access Control (ABAC)**, providing granular security based on execution context and resource attributes.
-- **Custom Rule Engine**: Define fine-grained policies in `config.toml` based on user identity, environment (Git branch, OS), and PQC verification status.
+### 1. Access Control (AI-native ABAC)
+`llm-secure-cli` implements a modern **Attribute-Based Access Control (ABAC)**, moving away from fragile, platform-dependent static rules.
+- **AI-native Policy Engine**: Replaces complex TOML rules with a hardcoded **Security Constitution**. The system automatically gathers context (OS, User, Directory, Git status) and uses a secondary LLM to judge risks semantically.
 - **Risk-based Scaling**: Security requirements automatically scale based on the tool's risk level (HIGH/MEDIUM/LOW).
-- **Intent Verification (Dual LLM)**: High-risk actions are cross-verified by a separate, lightweight "Verifier" LLM (e.g., Gemini Flash Lite) to ensure the proposed tool call aligns with the user's original intent, mitigating sophisticated prompt injection. 
-  - **Asynchronous Execution**: To minimize latency, verification runs in the background while the user reviews the tool's explanation. The result is synchronized at the moment of approval, providing a seamless high-assurance experience.
-  - In `high` security mode, a functional Dual LLM provider is **required**.
-  - If the secondary LLM is misconfigured or unreachable (Soft Failure), the system will fallback to explicit manual user approval rather than failing open.
-  - If the intent check actively rejects the call (Hard Block), the execution is strictly denied.
-- **Identity Proof**: High-risk actions require a valid **PQC-signed identity token**. In `high` mode, execution is blocked if keys are missing.
-- **Compatibility Mode**: Use `LLM_CLI_SECURITY_LEVEL=standard` or set `security_level = "standard"` in `config.toml` to enable interoperability with non-llm-secure-cli clients or legacy MCP servers, downgrading PQC enforcement and integrity checks to warnings.
-  ```toml
-  [security]
-  security_level = "standard"
-  ```
-- **Pattern-based Static Analysis**: Every tool command and argument is inspected before execution to block dangerous patterns (`rm -rf /`, `mkfs`, etc.) and ensure system integrity. This lightweight analysis provides deterministic safety boundaries with minimal overhead.
-- **Path Guardrails**: Tools are restricted by path attributes (defaulting to the current directory). The policy engine now inspects multiple argument names (`path`, `directory`, `file`, `src`, `dest`, etc.) to prevent bypass.
-- **Tool Whitelisting**: A restricted list of authorized tools (both built-in and remote MCP) can be defined in `config.toml`. Only whitelisted tools will be registered, providing an additional layer of defense-in-depth by reducing the available attack surface.
-  ```toml
-  [security]
-  allowed_tools = ["read_file_content", "grep_files", "brave_search"] # Only these tools will be loaded
-  ```
-- **Explanation Enforcement**: Every tool mandates an `explanation` parameter, forcing the LLM to justify its intent.
+- **Intent Verification (Dual LLM)**: Every high-risk action is cross-verified by a separate, lightweight "Verifier" LLM to ensure the proposed tool call aligns with the user's original intent and the system's security policy.
+- **Physical Isolation (Docker)**: The agent can be run inside a Docker container to provide a hard boundary between the AI and the host system, making security posture platform-agnostic (Windows/Linux/macOS).
+- **Minimalist Fast-fail**: A lightweight syntactic check still blocks obviously malicious characters, but the heavy lifting of security judgment is shifted to the Dual LLM.
 
 ### 2. Identity & Non-Repudiation (Experimental Reference)
 - **Distributed Trust Model**: Implements a decentralized identity model where clients and servers only exchange public keys. This is designed to explore how to prevent lateral movement if a single component is compromised; however, it requires thorough evaluation before use in production environments.
@@ -280,6 +277,19 @@ For detailed architectural insights and the academic background of our security 
     ```
 5.  **ヘルプ**: チャット内で `/help` と入力するとコマンド一覧が表示されます。
 
+### Docker による隔離環境 (任意)
+ホストシステムを保護するために、完全に隔離されたコンテナ内でエージェントを実行できます。
+1. **ビルド**: `docker build -t llm-secure-cli .`
+2. **実行**:
+   ```bash
+   docker run -it --rm \
+     -v ~/.llm_secure_cli:/root/.llm_secure_cli \
+     -v $(pwd):/workspace \
+     -e GOOGLE_API_KEY=$GOOGLE_API_KEY \
+     -e OPENAI_API_KEY=$OPENAI_API_KEY \
+     llm-secure-cli
+   ```
+
 ### ワンショット実行例
 ```bash
 # デフォルトのプロバイダー（Gemini）で質問する
@@ -320,29 +330,13 @@ AIがファイル操作、Web検索、Python実行などのツールを自律的
 
 本ツールは **CISSP/CISA/CCSP** の各ドメインにおける管理策、および **EU AI Act（欧州AI法）** の技術的要件を意識して設計されています。
 
-### 1. 属性ベースアクセス制御 (ABAC)
-`llm-secure-cli` は、実行コンテキストとリソース属性に基づいた **属性ベースアクセス制御 (ABAC)** を採用し、高度に粒度の細かいセキュリティを実現しています。
-- **カスタムルールエンジン**: ユーザー識別子、環境（Gitブランチ、OS）、PQC検証ステータスなどに基づいた詳細なポリシーを `config.toml` で定義可能です。
+### 1. 属性ベースアクセス制御 (AI-native ABAC)
+`llm-secure-cli` は、OSに依存する脆弱な静的ルールを廃止し、最新の **属性ベースアクセス制御 (ABAC)** を採用しています。
+- **AIネイティブ・ポリシーエンジン**: 複雑なTOMLルールの代わりに、ハードコードされた **セキュリティ憲法（Security Constitution）** を使用します。システムは自動的に実行コンテキスト（OS、ユーザー、ディレクトリ、Gitステータス）を収集し、セカンダリLLMがそれらを意味論的に判断します。
 - **リスクベース・スケーリング**: ツールのリスクレベル（HIGH/MEDIUM/LOW）に応じて、要求されるセキュリティ強度が自動的に変化します。
-- **意図の検証 (Dual LLM)**: 高リスクな操作は、軽量な「検証用LLM」（例：Gemini Flash Lite）によって元のプロンプトと照合されます。これにより、高度なプロンプトインジェクションによる意図しない操作を動的に防止します。
-  - **バックグラウンド実行**: 検証はユーザーが説明文を確認して承認（HITL）を行う裏で非同期に実行されます。これにより、高度な検証に伴う待機時間を最小化し、ストレスのない操作感を実現しています。
-  - `high` セキュリティモードでは、機能する Dual LLM プロバイダーの設定が **必須** です。
-  - セカンダリLLMが未設定または到達不能な場合（Soft Failure）、フェイルオープンを防ぐため、システムは常に手動のユーザー承認にフォールバックします。
-  - 意図チェックが明示的に拒絶した場合（Hard Block）、実行は厳格に拒否されます。
-- **アイデンティティ証明**: 高リスクな操作には、**耐量子暗号 (PQC)** による署名付き証明が必要です。`high` モードでは、鍵が不足している場合、実行がブロックされます。
-- **互換モード**: `LLM_CLI_SECURITY_LEVEL=standard` を環境変数で設定するか、`config.toml` 内で `security_level = "standard"` を設定することで、PQC非対応のクライアントやサーバーとの相互運用を許可し、整合性チェックのエラーを警告表示のみにダウングレードします。
-  ```toml
-  [security]
-  security_level = "standard"
-  ```
-- **パターンベースの静的解析**: 全てのツールコマンドと引数は実行前に解析され、危険なパターン（`rm -rf /`, `mkfs`等）を遮断します。この軽量な解析により、最小限のオーバーヘッドで決定論的な安全境界を提供します。
-- **パス・ガードレール**: 操作可能な範囲を属性（ディレクトリ・パスなど）で制限します。ポリシーエンジンは複数の引数名（`path`, `directory`, `file`, `src`, `dest`など）を検査し、バイパスを防止します。
-- **ツールのホワイトリスト化**: `config.toml` で許可するツール（組み込みおよびリモートMCP）を明示的に指定できます。ホワイトリストに記載されていないツールはレジストリに登録されず、攻撃表面を最小限に抑える防御層として機能します。
-  ```toml
-  [security]
-  allowed_tools = ["read_file_content", "grep_files", "brave_search"] # 指定したツールのみがロードされます
-  ```
-- **説明の強制**: 全てのツールは `explanation` パラメータを必須とし、LLMにその意図を正当化させます。
+- **意図の検証 (Dual LLM)**: 全ての高リスクな操作は、軽量な「検証用LLM」によって元のプロンプトおよびセキュリティ憲法と照合されます。これにより、高度なプロンプトインジェクションによる意図しない操作を動的に防止します。
+- **物理的隔離 (Docker)**: エージェントをDockerコンテナ内で実行することで、AIとホストシステムの間に強力な境界を設けることができます。これにより、WindowsやLinuxといったプラットフォームの違いを意識せずに一貫したセキュリティを実現します。
+- **最小限の高速チェック**: 明らかに不正な文字の混入などは軽量な静的チェックで即座に遮断しますが、高度なリスク判断はDual LLMにシフトすることで、誤検知と運用の煩雑さを大幅に軽減しています。
 
 ### 2. アイデンティティと非否認性 (実験的参照実装)
 - **分散型トラストモデル**: クライアントとサーバーが公開鍵のみを交換する分散型アイデンティティモデルを実装。特定のコンポーネントが侵害された際の横展開を防止する手法を探求していますが、エンタープライズ領域での利用には十分な評価が必要です。

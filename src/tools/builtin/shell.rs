@@ -20,10 +20,9 @@ pub fn execute_command(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         _ => Vec::new(),
     };
 
-    // 1. Static Analysis (Enhanced Regex-based)
-    let full_command = format!("{} {}", program, cmd_args.join(" "));
+    // 1. Static Analysis (Minimalist/Semantic focus)
     let (safe, violations) =
-        crate::security::static_analyzer::StaticAnalyzer::is_dangerous_command(&full_command);
+        crate::security::static_analyzer::StaticAnalyzer::check(program, &cmd_args);
     if !safe {
         let error_msg = format!("Security Blocked: {}", violations.join(", "));
         ui::report_error(&error_msg);

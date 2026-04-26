@@ -6,8 +6,6 @@ unified_default_provider = "google"
 pdf_as_base64 = true
 request_timeout = 1800
 command_timeout = 300
-max_command_memory_mb = 1024
-max_command_file_size_mb = 100
 max_security_log_lines = 1000
 max_audit_log_lines = 10000
 max_audit_archives = 10
@@ -24,8 +22,8 @@ max_audit_archives = 10
 #   - Ollama:       No API key required for local usage.
 
 # Security Level (high | standard)
-# - high (default): Strict PQC enforcement for all high-risk tool calls.
-# - standard: Compatibility mode for non-llm-secure-cli clients or legacy MCP servers.
+# - high (default): Strict PQC enforcement and mandatory Dual LLM verification for high-risk calls.
+# - standard: Compatibility mode; warnings instead of blocks for some integrity checks.
 security_level = "high"
 
 # Auto-Approval Policy
@@ -33,43 +31,15 @@ security_level = "high"
 # - "none":   All tools require manual approval (Safest).
 # - "low":    Only low_risk_tools (e.g., list_files) are auto-approved.
 # - "medium": Low and medium risk tools are auto-approved.
-# Note: Any 'verification_warning' from Dual LLM will always force manual approval.
+# Note: Any 'block' or 'warning' from the Dual LLM auditor will always force manual intervention.
 auto_approval_level = "none"
 
-# Path-based access control (Resource Attributes)
+# Path-based access control (Basic Whitelist)
+# Complex OS-specific blacklists are now handled semantically by the AI Policy Engine.
 allowed_paths = ["."]
-allowed_env_vars = []
-
-# Explicitly forbidden paths. Use absolute paths or "~" expansion.
-blocked_paths = [
-    "/etc", "/var", "/root", "/bin", "/sbin", "/usr", "/dev", "/proc", "/sys", "/boot", "~/.ssh",
-    "C:/Windows", "C:/System Volume Information", "C:/Recovery", "C:/Users/Public"
-]
-
-# Filename blocklist — fnmatch patterns matched against the bare filename.
-# Unlike blocked_paths, these protect sensitive files that live *inside* the
-# working directory (allowed_paths). The agent cannot read them via
-# read_file_content, grep_files or search_files. If access is truly needed, it must go
-# through execute_command (HIGH risk, always HITL).
-blocked_filenames = [
-    # Environment / secrets files
-    ".env", ".env.*",           # .env, .env.local, .env.production, etc.
-    "*.pem", "*.key", "*.p12", "*.pfx",   # TLS/SSL private keys & certificates
-    "*.cer", "*.crt",           # Certificates (may contain private key)
-    "id_rsa", "id_ecdsa", "id_ed25519",   # SSH private keys (non-dot names)
-    "*.ppk",                    # PuTTY private key
-]
-
-# Sandbox Level (none | landlock | full)
-# - none:     No sandbox restrictions (default).
-# - landlock: Restricts filesystem access using Linux Landlock LSM.
-# - full:     Landlock + seccomp-bpf (requires external helper).
-sandbox_level = "none"
 
 # Whitelist-based Tool Loading
 # If specified, only the tools in this list will be loaded.
-# This applies to both built-in tools and remote MCP tools.
-# If commented out or empty (None), all tools are loaded by default.
 allowed_tools = [
     "list_files_in_directory",
     "read_file_content",
@@ -83,65 +53,29 @@ allowed_tools = [
 ]
 
 # Risk Level Classification
-#
-# HIGH   - Irreversible writes / external network access.
-#          Always requires explicit human approval; never auto-approved.
-# MEDIUM - Local data read-only access.
-#          Exposes file or directory contents to the LLM; no writes.
-# LOW    - Metadata only (file names, sizes, timestamps).
-#          Never reads file contents.
-
 high_risk_tools = [
-    "execute_command",          # Arbitrary command execution: highest risk
-    "edit_file",                # Partial file overwrite: irreversible change
-    "create_or_overwrite_file", # Full file overwrite: irreversible change
-    "read_url_content",         # External network call: SSRF / data-exfiltration risk
-    "brave_search",             # External network call: data-exfiltration risk
+    "execute_command",          # Arbitrary command execution
+    "edit_file",                # Partial file overwrite
+    "create_or_overwrite_file", # Full file overwrite
+    "read_url_content",         # External network call
+    "brave_search",             # External network call
 ]
 medium_risk_tools = [
-    "read_file_content", # Reads file contents and exposes them to the LLM (no writes)
-    "grep_files",        # Full-text scans and exposes file contents to the LLM (no writes)
+    "read_file_content", # Reads file contents
+    "grep_files",        # Full-text scans
 ]
-# Low-risk tools that only expose metadata, never file contents
 low_risk_tools = [
-    "list_files_in_directory", # File names, sizes, timestamps only (no content exposure)
-    "search_files",            # File name pattern matching only (no content exposure)
+    "list_files_in_directory", # Metadata only
+    "search_files",            # Filename matching only
 ]
 
-# Security Posture (CASS)
-# All high-risk and medium-risk tools now require PQC identity proof by default
-# for robust non-repudiation and integrity.
-
-# Dual LLM Verification (Dynamic Guardrails)
-# Validates high-risk tool execution against user intent using a lightweight model.
-# To use this feature:
-# 1. Set dual_llm_verification = true.
-# 2. Configure a secondary provider/model. It's recommended to use a fast,
-#    "lite" model (e.g., gemini-3.1-flash-lite, gpt-5.4-mini) to minimize latency.
-# 3. Ensure the secondary provider has its API key set in your environment.
+# Dual LLM Verification (AI-native ABAC / Semantic Firewall)
+# Validates tool calls using a secondary LLM with a hardcoded Security Constitution.
+# This replaces complex, fragile, and OS-dependent static analysis rules.
 dual_llm_verification = true
 dual_llm_provider = "google"
 dual_llm_model = "lite"
 dual_llm_confidence_threshold = 0.7
-
-# =============================================================================
-# Attribute-Based Access Control (ABAC) Rules
-# =============================================================================
-# Define custom rules based on execution context attributes.
-# Rules are evaluated in order; the first matching rule determines the effect.
-# Available attributes:
-# - subject.id (Current OS user)
-# - env.git_branch (Current Git branch)
-# - env.os (OS name)
-# - env.cwd (Current working directory)
-# - subject.has_pqc_proof (Boolean: Whether PQC signature is present)
-#
-# Example:
-# [[security.abac_rules]]
-# name = "Allow main branch"
-# description = "Always allow operations when on main branch for rapid development"
-# match_attributes = { "env.git_branch" = "main" }
-# effect = "allow"
 
 # =============================================================================
 # Google Gemini
@@ -182,16 +116,10 @@ opus = "claude-opus-4-7"
 # =============================================================================
 # Ollama (Local LLMs / Ollama Cloud)
 # =============================================================================
-# Local Ollama:
-#   api_url = "http://localhost:11434/v1/chat/completions"
-#
-# Ollama Cloud example (set OLLAMA_API_KEY env var with your token):
-#   api_url = "https://ollama.com/v1/chat/completions"
 [ollama]
 api_url = "https://ollama.com/v1/chat/completions"
 [ollama.models]
 default = "gemma4:31b-cloud"
-# Ollama Cloud models (tools/function-calling supported)
 deepseek = "deepseek-v4-flash:cloud"
 kimi = "kimi-k2.6:cloud"
 gemma = "gemma4:31b-cloud"
@@ -199,39 +127,10 @@ glm = "glm-5.1:cloud"
 qwen = "qwen3.5:2b"
 
 # =============================================================================
-# Model Context Protocol (MCP) Servers
-# =============================================================================
-# Each [[mcp_servers]] entry defines a server that the AI agent can use.
-#
-# zero_trust (Boolean):
-# If true, llm-secure-cli injects a Post-Quantum Cryptography (PQC) signed Identity Token
-# and its public keys into the server's environment (MCP_AUTH_TOKEN).
-# The remote server (if llm-secure-cli based) will verify this token to enforce ABAC.
-# Default is false.
-#
-# Example: Connecting to a remote server via SSH to use llm-secure-cli's MCP mode.
-# This allows the AI agent to execute commands on the remote server as tools.
-#
-# [[mcp_servers]]
-# name = "remote-agent"
-# command = "ssh"
-# args = ["-T", "user@remote-host", "llsc", "--mcp-server"]
-# zero_trust = true
-
-# =============================================================================
 # Templates (Reusable Prompts)
 # =============================================================================
-# [templates]
-# analyze = """
-# Analyze the current directory structure and provide a summary of the project's purpose,
-# key files, and how they interact. This should help as a project onboarding guide.
-# """
-# review = """
-# Perform a thorough code review of the provided snippet or file. Focus on:
-# 1. Readability and maintainability.
-# 2. Potential bugs or edge cases.
-# 3. Performance bottlenecks.
-# 4. Security vulnerabilities.
-# 5. Adherence to coding standards and best practices.
-# """
-
+[templates]
+analyze = """
+Analyze the current directory structure and provide a summary of the project's purpose,
+key files, and how they interact.
+"""

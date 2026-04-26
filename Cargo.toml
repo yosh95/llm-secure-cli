@@ -47,7 +47,6 @@ mime_guess = "2.0"
 difflib = "0.4"
 html2text = "0.12"
 urlencoding = "2.1"
-# PQC support (Pure Rust)
 saorsa-pqc = "0.5"
 aes-gcm = "0.10"
 ciborium = "0.2"
@@ -57,13 +56,6 @@ uuid = { version = "1.10", features = ["v4"] }
 hostname = "0.4"
 rand = "0.8"
 constant_time_eq = "0.5"
-
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
-
-[target.'cfg(target_os = "linux")'.dependencies]
-landlock = "0.4"
-
 
 [dev-dependencies]
 tokio-test = "0.4"

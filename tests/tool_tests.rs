@@ -133,13 +133,16 @@ async fn test_shell_execute_command() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_shell_security_block() {
-    let mut args = HashMap::new();
-    args.insert("command".to_string(), json!("rm"));
+    use llm_secure_cli::security::validate_tool_call;
+
+    let mut args = serde_json::Map::new();
+    args.insert("command".to_string(), json!("rm\0"));
     args.insert("args".to_string(), json!(["-rf", "/"]));
 
-    let res = execute_command(args);
+    // validate_tool_call should block due to the null byte (obviously malicious)
+    let res = validate_tool_call("execute_command", &args);
     assert!(res.is_err());
-    assert!(res.unwrap_err().to_string().contains("Security Blocked"));
+    assert!(res.unwrap_err().contains("Security Blocked"));
 }
 
 #[test]

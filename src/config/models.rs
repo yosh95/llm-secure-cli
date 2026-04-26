@@ -11,12 +11,6 @@ pub struct GeneralConfig {
     pub request_timeout: u64,
     #[serde(default = "default_command_timeout")]
     pub command_timeout: u64,
-    #[serde(default = "default_max_file_size")]
-    pub max_command_file_size_mb: u64,
-    #[serde(default = "default_max_memory")]
-    pub max_command_memory_mb: u64,
-    #[serde(default = "default_max_chat_log")]
-    pub max_chat_log_lines: usize,
     #[serde(default = "default_max_security_log")]
     pub max_security_log_lines: usize,
     #[serde(default = "default_max_audit_log")]
@@ -39,15 +33,6 @@ fn default_request_timeout() -> u64 {
 fn default_command_timeout() -> u64 {
     300
 }
-fn default_max_file_size() -> u64 {
-    100
-}
-fn default_max_memory() -> u64 {
-    1024
-}
-fn default_max_chat_log() -> usize {
-    10000
-}
 fn default_max_security_log() -> usize {
     1000
 }
@@ -68,9 +53,6 @@ impl Default for GeneralConfig {
             pdf_as_base64: default_true(),
             request_timeout: default_request_timeout(),
             command_timeout: default_command_timeout(),
-            max_command_file_size_mb: default_max_file_size(),
-            max_command_memory_mb: default_max_memory(),
-            max_chat_log_lines: default_max_chat_log(),
             max_security_log_lines: default_max_security_log(),
             max_audit_log_lines: default_max_audit_log(),
             max_audit_archives: default_max_audit_archives(),
@@ -93,24 +75,16 @@ pub struct ProviderConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SecurityConfig {
-    #[serde(default = "default_roles")]
-    pub default_roles: Vec<String>,
-    #[serde(default = "default_user_id")]
-    pub default_user_id: String,
     #[serde(default = "default_allowed_paths")]
     pub allowed_paths: Vec<String>,
     #[serde(default)]
     pub blocked_paths: Vec<String>,
-    #[serde(default)]
-    pub blocked_filenames: Vec<String>,
     #[serde(default)]
     pub high_risk_tools: Vec<String>,
     #[serde(default)]
     pub medium_risk_tools: Vec<String>,
     #[serde(default)]
     pub low_risk_tools: Vec<String>,
-    #[serde(default)]
-    pub allowed_env_vars: Vec<String>,
     #[serde(default)]
     pub allowed_tools: Option<Vec<String>>,
     #[serde(default = "default_true")]
@@ -129,26 +103,8 @@ pub struct SecurityConfig {
     pub dual_llm_confidence_threshold: f64,
     #[serde(default = "default_security_level")]
     pub security_level: String,
-    #[serde(default = "default_sandbox_level")]
-    pub sandbox_level: String,
-    #[serde(default)]
-    pub abac_rules: Vec<AbacRule>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AbacRule {
-    pub name: String,
-    pub description: Option<String>,
-    pub match_attributes: HashMap<String, serde_json::Value>,
-    pub effect: String, // "allow", "deny"
-}
-
-fn default_roles() -> Vec<String> {
-    vec!["user".to_string()]
-}
-fn default_user_id() -> String {
-    "current_user".to_string()
-}
 fn default_allowed_paths() -> Vec<String> {
     vec![".".to_string()]
 }
@@ -161,22 +117,15 @@ fn default_security_level() -> String {
 fn default_confidence_threshold() -> f64 {
     0.7
 }
-fn default_sandbox_level() -> String {
-    "none".to_string()
-}
 
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
-            default_roles: default_roles(),
-            default_user_id: default_user_id(),
             allowed_paths: default_allowed_paths(),
             blocked_paths: Vec::new(),
-            blocked_filenames: Vec::new(),
             high_risk_tools: Vec::new(),
             medium_risk_tools: Vec::new(),
             low_risk_tools: Vec::new(),
-            allowed_env_vars: Vec::new(),
             allowed_tools: None,
             static_analysis_is_error: true,
             scaling_patterns: Vec::new(),
@@ -186,8 +135,6 @@ impl Default for SecurityConfig {
             dual_llm_model: "lite".to_string(),
             dual_llm_confidence_threshold: default_confidence_threshold(),
             security_level: default_security_level(),
-            sandbox_level: default_sandbox_level(),
-            abac_rules: Vec::new(),
         }
     }
 }

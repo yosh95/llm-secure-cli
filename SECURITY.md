@@ -39,36 +39,25 @@ Space Beh Time
 
 ## Tier 1 — Structural Guardrails (Space)
 
-### Pattern-based Static Analysis
+### AI-native Policy Engine (Semantic Guardrails)
 
-The `execute_command` tool performs static analysis on the command string before execution using a strict pattern matcher:
+Instead of fragile, platform-dependent regex patterns (e.g., `rm -rf /` or Windows-specific commands), `llm-secure-cli` uses an **AI-native Policy Engine**.
+- **Security Constitution**: A hardcoded, immutable system instruction that the auditor LLM must follow.
+- **Context Injection**: Attributes like OS, User, and Current Directory are injected into every verification request.
+- **Semantic Analysis**: The auditor understands the *impact* of a command, catching novel or obfuscated attacks that would bypass static analysis.
 
-| Blocked pattern | Example |
-|---|---|
-| Destructive commands | `rm -rf /`, `mkfs`, `dd if=` |
-| System config changes | `> /etc/`, `chown`, `passwd` |
-| Permission changes | `chmod -R 777` |
-| Process termination | `kill -9` |
+### Physical Isolation (Docker / WSL2)
 
-### Path Guardrails
+`llm-secure-cli` is designed to be run within isolated environments.
+- **Docker-native Posture**: Running the agent inside a Docker container provides a physical boundary between the AI and the host system. This makes the security posture uniform across Windows, Linux, and macOS by standardizing on a Linux container environment.
 
-All file-system operations are resolved against the workspace root (defaults
-to `.`).  Symbolic-link traversal is validated.  Paths are normalised to
-absolute form before comparison against `allowed_paths` / `blocked_paths`
-defined in `defaults.toml`. The policy engine inspects multiple argument
-names (`path`, `directory`, `file`, `src`, `dest`, etc.) to prevent bypass:
+### Path Guardrails (Simplified)
 
-```toml
-[security]
-allowed_paths = ["."]
-blocked_paths = ["/etc", "/var", "~/.ssh"]
-```
+Paths are normalized to absolute form and checked against a basic whitelist (`allowed_paths`). Complex OS-specific blacklists are deprecated in favor of the Semantic Policy Engine, which recognizes sensitive paths like `C:\Windows` or `/etc` based on its inherent knowledge and the provided context.
 
 ### Resource Limits
 
-OS-level `rlimit` caps cap memory usage and wall-clock execution time for
-sandboxed processes.  Output length is enforced by `tool_executor.rs` to
-prevent Denial-of-Wallet attacks.
+In the modern architecture, hard resource enforcement (Memory, CPU) is offloaded to the **Isolation Layer** (e.g., Docker flags `--memory`, `--cpus`). Code-level `rlimit` is kept as a stub to maintain cross-platform compatibility without `libc` dependencies. Output length is still enforced by `tool_executor.rs` to prevent Denial-of-Wallet attacks.
 
 ### Environment Isolation (MCP)
 
@@ -152,46 +141,18 @@ _COSE_HEADER_ALG =  1     # RFC 9052 §3.1
 _COSE_SIGN_TAG   = 98     # CBOR tag for COSE_Sign
 ```
 
-### ABAC Policy Engine
+### AI-native ABAC (Policy Constitution)
 
-`llm-secure-cli` utilizes a flexible **Attribute-Based Access Control (ABAC)** engine that evaluates both system-provided attributes and user-defined rules. 
+`llm-secure-cli` utilizes an AI-native **Attribute-Based Access Control (ABAC)** model. Instead of maintaining thousand-line JSON/TOML rule-sets, the system gathers trusted context attributes and delegates the evaluation to a "Security Constitution".
 
-Claims embedded in the COSE payload carry execution-context attributes used for ABAC evaluation:
+**Attributes Gathered for Evaluation:**
+- `os`: The operating system (e.g., "linux", "windows").
+- `user`: The current system user.
+- `current_dir`: The current working directory.
+- `container_mode`: Whether Docker isolation is active.
+- `is_git_repo`: Whether the session is inside a Git repository.
 
-| Claim | Description |
-|---|---|
-| `tool` | Requested tool name |
-| `risk_level` | `low` / `medium` / `high` |
-| `workspace` | SHA-256 of the current workspace root path |
-| `iat` / `exp` | Issued-at / expiry (Unix timestamps) |
-| `integrity_attestation` | Signed manifest of core security files |
-
-#### Custom ABAC Rules
-
-Users can define custom fine-grained policies in `config.toml` using the `abac_rules` array. These rules are evaluated before default guardrails.
-
-**Available Attributes for Matching:**
-- `subject.id`: The current OS user (e.g., "alice").
-- `env.os`: The operating system (e.g., "linux", "macos").
-- `env.git_branch`: The current Git branch name (if in a Git repo).
-- `env.cwd`: The current working directory.
-- `subject.has_pqc_proof`: Whether the request has a valid PQC signature (boolean).
-
-**Example Configuration:**
-
-```toml
-[[security.abac_rules]]
-name = "Restrict Production Branch"
-description = "Deny all tool execution when on the main branch for safety."
-match_attributes = { "env.git_branch" = "main" }
-effect = "deny"
-
-[[security.abac_rules]]
-name = "Allow trusted user"
-description = "Explicitly allow operations for a specific administrative user."
-match_attributes = { "subject.id" = "admin-user" }
-effect = "allow"
-```
+These attributes are bundled into a **Security Context** and verified by the Dual LLM against the **Security Constitution** (a hardcoded, non-overridable policy set in the code). This allows for dynamic, context-aware decisions like "Allow deletions only if running inside a container" without complex manual configuration.
 
 Implementation: `src/security/abac.rs` and `src/security/policy.rs`.
 

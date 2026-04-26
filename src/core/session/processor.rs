@@ -162,10 +162,12 @@ impl ChatSession {
                                 let name_clone = name.to_string();
                                 let args_clone = serde_json::json!(args);
                                 verifier_handle = Some(tokio::spawn(async move {
-                                    crate::security::dual_llm_verifier::verify_tool_call(
+                                    crate::security::dual_llm_verifier::verify_tool_call_full(
                                         &intent_context,
                                         &name_clone,
                                         &args_clone,
+                                        None,
+                                        None,
                                         None,
                                     )
                                     .await

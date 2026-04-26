@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Phase 1
     section("Phase 1: Structural Guardrails (Space)");
     let code = "import os; os.system('rm -rf /')";
-    let (mean, std) = timeit(|| StaticAnalyzer::is_dangerous_command(code), 1000);
+    let (mean, std) = timeit(|| StaticAnalyzer::is_obviously_malicious(code), 1000);
     println!(
         "Static Analysis (Pattern)  : {:.4} ms  (σ={:.4} ms, n=1000)",
         mean, std

@@ -1,130 +1,133 @@
-use crate::config::CONFIG_MANAGER;
 use crate::llm::base::LlmClient;
 use crate::llm::models::DataSource;
-use crate::llm::registry::CLIENT_REGISTRY;
-use serde_json::json;
-use std::collections::HashMap;
+use crate::security::policy::{SECURITY_CONSTITUTION, SecurityContext};
+use serde_json::{Value, json};
 
-pub struct DualLlmVerifier {
-    pub client: Box<dyn LlmClient>,
+/// DualLLMVerifier implements the "Intent and Policy Verification" logic.
+/// It uses a secondary LLM to judge if a tool call is safe based on the user's intent
+/// and the system's hardcoded Security Constitution (AI-native ABAC).
+///
+/// NOTE: The Verifier LLM must NOT be configured with any tools itself to prevent
+/// secondary prompt injection risks. It acts strictly as a text-based auditor.
+pub struct DualLLMVerifier {
+    verifier_llm: Box<dyn LlmClient>,
 }
 
-impl DualLlmVerifier {
-    pub fn new(client: Box<dyn LlmClient>) -> Self {
-        Self { client }
-    }
-
-    pub async fn verify(
-        &mut self,
-        intent: &str,
-        tool_name: &str,
-        tool_args: &serde_json::Value,
-    ) -> anyhow::Result<bool> {
-        let (safe, _) = verify_tool_call(intent, tool_name, tool_args, None).await;
-        Ok(safe)
-    }
+#[derive(Debug, PartialEq)]
+pub enum VerificationResult {
+    Allowed,
+    Rejected(String),
+    Error(String),
 }
 
+/// Validates a tool call using a secondary LLM.
+/// Returns true if safe, false if blocked or error.
 pub async fn verify_tool_call(
-    user_prompt: &str,
+    user_query: &str,
     tool_name: &str,
-    args: &serde_json::Value,
-    last_tool_result: Option<&str>,
-) -> (bool, String) {
-    verify_tool_call_full(user_prompt, tool_name, args, last_tool_result, None, None).await
+    tool_args: &Value,
+    context: Option<SecurityContext>,
+) -> bool {
+    let (safe, _) =
+        verify_tool_call_full(user_query, tool_name, tool_args, context, None, None).await;
+    safe
 }
 
+/// Validates a tool call using a secondary LLM and returns full details.
 pub async fn verify_tool_call_full(
-    user_prompt: &str,
+    user_query: &str,
     tool_name: &str,
-    args: &serde_json::Value,
-    last_tool_result: Option<&str>,
-    provider_override: Option<String>,
-    model_override: Option<String>,
+    tool_args: &Value,
+    context: Option<SecurityContext>,
+    provider: Option<String>,
+    model: Option<String>,
 ) -> (bool, String) {
-    let config = CONFIG_MANAGER.get_config();
-    let provider_alias =
-        provider_override.unwrap_or_else(|| config.security.dual_llm_provider.clone());
-    let model_alias = model_override.unwrap_or_else(|| config.security.dual_llm_model.clone());
+    let config = crate::config::CONFIG_MANAGER.get_config();
+    let p = provider.unwrap_or(config.security.dual_llm_provider.clone());
+    let m = model.unwrap_or(config.security.dual_llm_model.clone());
 
-    let client = {
-        let registry = CLIENT_REGISTRY.lock().unwrap();
-        registry.create_client(&provider_alias, &model_alias, false, true)
-    };
-
-    let mut client = match client {
+    let client = match crate::llm::registry::CLIENT_REGISTRY
+        .lock()
+        .unwrap()
+        .create_client(&p, &m, false, true)
+    {
         Some(c) => c,
         None => {
             return (
                 false,
-                format!("[ERROR] Provider not found: {}", provider_alias),
+                format!("Error: Could not create verifier client for {}/{}", p, m),
             );
         }
     };
 
-    // --- VERIFICATION TOOL SCHEMA ---
-    let verify_tool = json!({
-        "name": "verify_security_intent",
-        "description": "Report the security analysis of a proposed tool call.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "safe": {
-                    "type": "boolean",
-                    "description": "True if the tool call is safe and aligns with the user's original intent."
-                },
-                "confidence": {
-                    "type": "number",
-                    "description": "Confidence level of the analysis (0.0 to 1.0)."
-                },
-                "reason": {
-                    "type": "string",
-                    "description": "Brief explanation of the decision."
-                }
-            },
-            "required": ["safe", "confidence", "reason"]
-        }
-    });
+    let ctx = context.unwrap_or_else(|| SecurityContext::gather(&config.security.security_level));
 
-    // --- STRUCTURED INPUT ---
-    let mut user_content = format!("### USER INTENT:\n{}\n\n", user_prompt);
+    let mut verifier = DualLLMVerifier::new(client);
+    match verifier
+        .verify(user_query, tool_name, tool_args, &ctx)
+        .await
+    {
+        VerificationResult::Allowed => (true, "Allowed".to_string()),
+        VerificationResult::Rejected(reason) => (false, reason),
+        VerificationResult::Error(e) => (false, format!("Verifier Error: {}", e)),
+    }
+}
 
-    if let Some(res) = last_tool_result {
-        user_content.push_str(&format!("### LAST OBSERVATION:\n{}\n\n", res));
+impl DualLLMVerifier {
+    pub fn new(llm: Box<dyn LlmClient>) -> Self {
+        Self { verifier_llm: llm }
     }
 
-    user_content.push_str(&format!(
-        "### PROPOSED TOOL CALL:\n- Tool: {}\n- Arguments: {}\n\n\
-        Analyze the security and intent alignment. Use the verify_security_intent tool to report your findings.",
-        tool_name,
-        serde_json::to_string(args).unwrap_or_default()
-    ));
+    pub async fn verify(
+        &mut self,
+        user_query: &str,
+        tool_name: &str,
+        tool_args: &Value,
+        context: &SecurityContext,
+    ) -> VerificationResult {
+        // Build the semantic security check prompt
+        let system_prompt = format!(
+            "{}\n\n## CURRENT SECURITY CONTEXT\n```json\n{}\n```",
+            SECURITY_CONSTITUTION,
+            serde_json::to_string_pretty(context).unwrap_or_default()
+        );
 
-    let data = vec![DataSource {
-        content: json!(user_content),
-        content_type: "text/plain".to_string(),
-        is_file_or_url: false,
-        metadata: HashMap::new(),
-    }];
+        let user_prompt = format!(
+            "USER INTENT: \"{}\"\n\nPROPOSED TOOL CALL:\nTool: {}\nArguments: {}\n\nShould this execution be allowed? Respond with 'ALLOW' or 'BLOCK: <reason>'.",
+            user_query,
+            tool_name,
+            serde_json::to_string_pretty(tool_args).unwrap_or_default()
+        );
 
-    // Set system prompt on client state
-    let system_prompt = "You are a Security Verifier. Analyze tool calls against user intent.";
-    client.get_state_mut().system_prompt = Some(system_prompt.to_string());
+        // Configure client for a one-off verification
+        self.verifier_llm.get_state_mut().conversation.clear();
+        self.verifier_llm.get_state_mut().system_prompt = Some(system_prompt);
+        self.verifier_llm.get_state_mut().system_prompt_enabled = true;
 
-    match client.send_as_verifier(data, verify_tool).await {
-        Ok(v) => {
-            let safe = v["safe"].as_bool().unwrap_or(false);
-            let confidence = v["confidence"].as_f64().unwrap_or(1.0);
-            let reason = v["reason"].as_str().unwrap_or("").to_string();
+        let data = vec![DataSource {
+            content: json!(user_prompt),
+            content_type: "text/plain".to_string(),
+            is_file_or_url: false,
+            metadata: std::collections::HashMap::new(),
+        }];
 
-            if confidence < config.security.dual_llm_confidence_threshold {
-                return (
-                    false,
-                    format!("[LOW_CONFIDENCE:{:.2}] {}", confidence, reason),
-                );
+        // The verifier does NOT include tools in its request.
+        match self.verifier_llm.send(data).await {
+            Ok((Some(response), _)) => {
+                let resp = response.trim();
+                if resp.to_uppercase().starts_with("ALLOW") {
+                    VerificationResult::Allowed
+                } else if resp.to_uppercase().starts_with("BLOCK") {
+                    VerificationResult::Rejected(resp.replace("BLOCK:", "").trim().to_string())
+                } else {
+                    // Fail-safe
+                    VerificationResult::Rejected(format!("Ambiguous verification result: {}", resp))
+                }
             }
-            (safe, reason)
+            Ok((None, _)) => {
+                VerificationResult::Error("Verifier LLM returned empty response".to_string())
+            }
+            Err(e) => VerificationResult::Error(format!("Verifier LLM error: {}", e)),
         }
-        Err(e) => (false, format!("[ERROR] Verification failed: {}", e)),
     }
 }
