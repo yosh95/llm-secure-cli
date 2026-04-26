@@ -184,8 +184,7 @@ pub fn list_files_in_directory(args: HashMap<String, Value>) -> anyhow::Result<V
                 .strip_prefix(base_path)
                 .unwrap_or(&path)
                 .to_string_lossy()
-                .to_string();
-
+                .replace('\\', "/");
             if let Ok(metadata) = path.metadata() {
                 let mtime = metadata
                     .modified()
@@ -428,7 +427,7 @@ pub fn grep_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
                         if regex.is_match(line) {
                             let rel = path.strip_prefix(base).unwrap_or(&path);
                             results.push(json!({
-                                "file": rel.to_string_lossy().to_string(),
+                                "file": rel.to_string_lossy().replace('\\', "/"),
                                 "line": line_no + 1,
                                 "text": line.trim().to_string()
                             }));
@@ -534,10 +533,9 @@ pub fn search_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
                 let rel = path.strip_prefix(base).unwrap_or(&path);
                 results.push(json!({
                     "type": if path.is_dir() { "dir" } else { "file" },
-                    "path": rel.to_string_lossy().to_string()
+                    "path": rel.to_string_lossy().replace('\\', "/")
                 }));
             }
-
             if path.is_dir() {
                 walk_search(&path, base, pattern, exclude_patterns, results);
             }

@@ -123,14 +123,18 @@ fn contains_exact_line(content: &str, line: &str) -> bool {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_shell_execute_command() {
     let mut args = HashMap::new();
-    args.insert("command".to_string(), json!("echo"));
-    args.insert("args".to_string(), json!(["hello", "world"]));
+    if cfg!(windows) {
+        args.insert("command".to_string(), json!("cmd"));
+        args.insert("args".to_string(), json!(["/C", "echo hello world"]));
+    } else {
+        args.insert("command".to_string(), json!("echo"));
+        args.insert("args".to_string(), json!(["hello", "world"]));
+    }
 
     let res = execute_command(args).unwrap();
     assert_eq!(res["stdout"].as_str().unwrap().trim(), "hello world");
     assert_eq!(res["exit_code"].as_i64().unwrap(), 0);
 }
-
 #[tokio::test(flavor = "multi_thread")]
 async fn test_shell_security_block() {
     use llm_secure_cli::security::validate_tool_call;
