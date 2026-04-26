@@ -133,10 +133,17 @@ impl DualLLMVerifier {
         }];
 
         // Use the specialized structured output path
-        match self.verifier_llm.send_as_verifier(data, verify_tool_schema).await {
+        match self
+            .verifier_llm
+            .send_as_verifier(data, verify_tool_schema)
+            .await
+        {
             Ok(args) => {
                 let decision = args.get("decision").and_then(|v| v.as_str()).unwrap_or("");
-                let reason = args.get("reason").and_then(|v| v.as_str()).unwrap_or("No reason provided");
+                let reason = args
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("No reason provided");
 
                 if decision == "ALLOW" {
                     VerificationResult::Allowed

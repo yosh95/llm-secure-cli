@@ -231,7 +231,9 @@ impl ChatSession {
                         }
 
                         // Resolve verification result
-                        if final_result.is_none() && let Some(handle) = verifier_handle {
+                        if final_result.is_none()
+                            && let Some(handle) = verifier_handle
+                        {
                             let pb_v = ProgressBar::new_spinner();
                             pb_v.set_style(
                                 ProgressStyle::default_spinner()
