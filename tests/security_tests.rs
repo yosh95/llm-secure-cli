@@ -10,15 +10,12 @@ fn test_path_validation() {
     let original_dir = env::current_dir().unwrap();
     env::set_current_dir(dir.path()).unwrap();
 
-    // Create a dummy config.toml in the temp dir
-    let config_content = r#"
-[security]
-allowed_paths = ["."]
-"#;
-    fs::write(dir.path().join("config.toml"), config_content).unwrap();
-
-    // Reload config to pick up the new config.toml
-    CONFIG_MANAGER.reload();
+    // Use set_config instead of writing to disk and reloading
+    {
+        let mut config = CONFIG_MANAGER.get_config();
+        config.security.allowed_paths = vec![".".to_string()];
+        CONFIG_MANAGER.set_config(config);
+    }
 
     // 1. Allowed path (current directory)
     let res = validate_path("test.txt");

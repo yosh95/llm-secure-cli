@@ -163,13 +163,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let tool = "read_file_content";
         let args = json!({"path": "todo.txt", "explanation": "Reading requested file."});
 
-        // Ensure provider and model are set in environment/config for this call
-        // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::set_var("LLM_CLI_SECURITY_DUAL_LLM_PROVIDER", provider) };
-        // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::set_var("LLM_CLI_SECURITY_DUAL_LLM_MODEL", model) };
-        // Reload config manager to pick up environment overrides
-        CONFIG_MANAGER.reload();
+        // Use set_config to update provider and model for verification
+        {
+            let mut config = CONFIG_MANAGER.get_config();
+            config.security.dual_llm_provider = provider.to_string();
+            config.security.dual_llm_model = model.to_string();
+            CONFIG_MANAGER.set_config(config);
+        }
 
         let has_key = CONFIG_MANAGER.get_api_key(provider).is_some();
         if has_key {

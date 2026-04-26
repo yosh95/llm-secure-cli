@@ -137,30 +137,6 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             handle_checkpoint(session).await;
             CommandResult::Handled
         }
-        "reload" => {
-            crate::config::CONFIG_MANAGER.reload();
-            let (provider, model, stdout, raw) = {
-                let state = session.client.get_state();
-                (
-                    state.provider.clone(),
-                    state.model.clone(),
-                    state.stdout,
-                    !state.render_markdown,
-                )
-            };
-            let registry = crate::llm::registry::CLIENT_REGISTRY.lock().unwrap();
-            // Re-creating the client with the same provider and model will pick up new config/API keys
-            match registry.create_client(&provider, &model, stdout, raw) {
-                Some(new_client) => {
-                    session.switch_client(new_client);
-                    ui::report_success("Configuration reloaded from disk.");
-                }
-                _ => {
-                    ui::report_error("Failed to recreate client after reload.");
-                }
-            }
-            CommandResult::Handled
-        }
         _ => {
             ui::report_error(&format!("Unknown command: /{}", cmd));
             CommandResult::Handled
@@ -453,6 +429,5 @@ pub fn print_help() {
     println!("  /model, /m      Switch models");
     println!("  /provider, /p   Switch provider");
     println!("  /checkpoint, /cp Summarize and compress history");
-    println!("  /reload         Reload configuration");
     println!();
 }

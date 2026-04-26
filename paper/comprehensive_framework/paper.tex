@@ -67,7 +67,7 @@ Traditional systems rely on platform-specific blocklists (e.g., \texttt{rm -rf /
 For high-assurance environments, the agent is isolated within a Docker container. We also implement \textbf{System Integrity Attestation}, comparing application hashes against a PQC-signed \textbf{Integrity Manifest} on startup.
 
 \section{Tier 2: Behavioral Assurance (Behavior)}
-\subsection{Intent Verification & Structured Verdicts}
+\subsection{Intent Verification \& Structured Verdicts}
 The Dual LLM Verifier uses \textbf{Native Tool Calling} to provide structured verdicts. By forcing the auditor LLM to output a JSON schema (\texttt{decision: ALLOW|BLOCK}, \texttt{reason: string}), we eliminate parsing brittleness. The verifier is provided with \textbf{Security Context} (OS, User, Git status) to judge risk semantically.
 
 \subsection{White-box Agency (HITL)}

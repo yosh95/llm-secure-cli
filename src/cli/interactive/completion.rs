@@ -42,7 +42,6 @@ impl ChatCompleter {
                 "/p",
                 "/checkpoint",
                 "/cp",
-                "/reload",
             ],
             current_provider,
         }

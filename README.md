@@ -149,7 +149,6 @@ Inside the `llsc` interactive session:
 - `/raw`: Show conversation as raw text.
 - `/dump`: Dump conversation history as JSON.
 - `/cp`: Checkpoint (Summarize and clear history).
-- `/reload`: Reload configuration from disk.
 
 ### Keybindings
 - **Newline**: `Ctrl+J` (Insert a newline without submitting).
@@ -367,7 +366,6 @@ AIがファイル操作、Web検索、Python実行などのツールを自律的
 - `/raw`: 会話をそのままのテキストとして表示。
 - `/dump`: 会話履歴をJSON形式でダンプ。
 - `/cp`: チェックポイント (会話の要約と履歴のクリア)。
-- `/reload`: 設定をディスクから再読み込み。
 
 ### キーバインド
 - **改行**: `Ctrl+J` (送信せずに次の行へ移動)。

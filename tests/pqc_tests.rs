@@ -165,22 +165,14 @@ fn test_pqc_agility_manager() {
     use llm_secure_cli::config::CONFIG_MANAGER;
     use llm_secure_cli::security::pqc::MldsaVariant;
     use llm_secure_cli::security::pqc::PQCAgilityManager;
-    use std::fs;
-    use tempfile::tempdir;
 
-    let dir = tempdir().unwrap();
-    let config_path = dir.path().join("config.toml");
-    let config_content = r#"
-[security]
-high_risk_tools = ["execute_command"]
-scaling_patterns = ["/etc/shadow"]
-"#;
-    fs::write(&config_path, config_content).unwrap();
-
-    // Point CONFIG_MANAGER to this new config
-    let original_cwd = std::env::current_dir().unwrap();
-    std::env::set_current_dir(dir.path()).unwrap();
-    CONFIG_MANAGER.reload();
+    // Use set_config instead of writing to disk and reloading
+    {
+        let mut config = CONFIG_MANAGER.get_config();
+        config.security.high_risk_tools = vec!["execute_command".to_string()];
+        config.security.scaling_patterns = vec!["/etc/shadow".to_string()];
+        CONFIG_MANAGER.set_config(config);
+    }
 
     // Normal tool, low risk
     let level = PQCAgilityManager::get_required_level("ls", None, "low");
@@ -198,8 +190,6 @@ scaling_patterns = ["/etc/shadow"]
     let args = serde_json::json!({"path": "/etc/shadow"});
     let level = PQCAgilityManager::get_required_level("read_file", Some(&args), "low");
     assert_eq!(level, MldsaVariant::Mldsa87);
-
-    std::env::set_current_dir(original_cwd).unwrap();
 }
 
 #[test]

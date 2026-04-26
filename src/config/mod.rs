@@ -228,11 +228,9 @@ impl ConfigManager {
         result
     }
 
-    pub fn reload(&self) {
+    pub fn set_config(&self, config: AppConfig) {
         let mut app_config_lock = self.app_config.lock().unwrap();
-        *app_config_lock = None;
-        let mut env_loaded = self.env_loaded.lock().unwrap();
-        *env_loaded = false;
+        *app_config_lock = Some(config);
     }
 }
 
