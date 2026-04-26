@@ -2,19 +2,19 @@
 use libc::{RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, rlimit, setrlimit};
 use std::process::Child;
 
-pub fn set_resource_limits(mem_limit_mb: u64, cpu_limit_sec: u64, file_limit_mb: u64) {
+pub fn set_resource_limits(_mem_limit_mb: u64, _cpu_limit_sec: u64, _file_limit_mb: u64) {
     #[cfg(unix)]
     unsafe {
         // CPU time limit
         let cpu_limit = rlimit {
-            rlim_cur: cpu_limit_sec,
-            rlim_max: cpu_limit_sec + 5,
+            rlim_cur: _cpu_limit_sec,
+            rlim_max: _cpu_limit_sec + 5,
         };
         setrlimit(RLIMIT_CPU, &cpu_limit);
 
         // Address space (Memory) limit
         // Skip on Android/Termux if necessary (detection logic needed or just try and ignore error)
-        let mem_limit = mem_limit_mb * 1024 * 1024;
+        let mem_limit = _mem_limit_mb * 1024 * 1024;
         let mem_rlimit = rlimit {
             rlim_cur: mem_limit,
             rlim_max: mem_limit,
@@ -22,7 +22,7 @@ pub fn set_resource_limits(mem_limit_mb: u64, cpu_limit_sec: u64, file_limit_mb:
         setrlimit(RLIMIT_AS, &mem_rlimit);
 
         // File size limit
-        let file_limit = file_limit_mb * 1024 * 1024;
+        let file_limit = _file_limit_mb * 1024 * 1024;
         let file_rlimit = rlimit {
             rlim_cur: file_limit,
             rlim_max: file_limit,
