@@ -89,7 +89,7 @@ pub fn read_url_content(args: HashMap<String, Value>, _config: AppConfig) -> any
 
 /// Search the web using the Brave Search API.
 /// Returns titles, snippets, and URLs of relevant results.
-pub fn brave_search(args: HashMap<String, Value>, config: AppConfig) -> anyhow::Result<Value> {
+pub fn brave_search(args: HashMap<String, Value>, _config: AppConfig) -> anyhow::Result<Value> {
     let query = args
         .get("query")
         .and_then(|v| v.as_str())
@@ -102,7 +102,7 @@ pub fn brave_search(args: HashMap<String, Value>, config: AppConfig) -> anyhow::
         .unwrap_or(10);
 
     let api_key = crate::config::CONFIG_MANAGER
-        .get_api_key_from_config(&config, "brave")
+        .get_api_key("brave")
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "Brave Search API key not configured. Set BRAVE_API_KEY environment variable."
