@@ -26,10 +26,14 @@ impl ChatSession {
             }
         }
 
-        // Local built-in tools: synchronous execution
-        let registry = crate::tools::registry::REGISTRY.lock().unwrap();
-        if let Some(tool) = registry.tools.get(name) {
-            (tool.func)(args)
+        // Local built-in tools: asynchronous execution
+        let fut = {
+            let registry = crate::tools::registry::REGISTRY.lock().unwrap();
+            registry.tools.get(name).map(|tool| (tool.func)(args))
+        };
+
+        if let Some(fut) = fut {
+            fut.await
         } else {
             Err(anyhow::anyhow!("Tool not found: {}", name))
         }

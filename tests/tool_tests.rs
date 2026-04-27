@@ -131,7 +131,7 @@ async fn test_shell_execute_command() {
         args.insert("args".to_string(), json!(["hello", "world"]));
     }
 
-    let res = execute_command(args).unwrap();
+    let res = execute_command(args).await.unwrap();
     assert_eq!(res["stdout"].as_str().unwrap().trim(), "hello world");
     assert_eq!(res["exit_code"].as_i64().unwrap(), 0);
 }

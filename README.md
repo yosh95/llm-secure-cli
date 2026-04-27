@@ -58,17 +58,34 @@ The accompanying [Technical Report](paper/comprehensive_framework/paper.pdf) det
 5.  **Help**: Type `/help` inside the chat to see all commands.
 
 ### Docker Isolation (Optional)
-Run the agent in a completely isolated container to protect your host system:
+Run the agent in a completely isolated container to protect your host system. In `high` security mode (default), you must initialize the integrity manifest within the mounted volume.
+
 1. **Build**: `docker build -t llm-secure-cli .`
-2. **Run**:
+2. **Setup API Keys**:
+   - **Option A: `.env` file (Recommended)**: Place a `.env` file in your host's `~/.llm_secure_cli/` directory.
+     ```bash
+     # ~/.llm_secure_cli/.env
+     OPENAI_API_KEY=sk-...
+     GEMINI_API_KEY=AIza...
+     ```
+   - **Option B: Environment Variables**: Pass them via the `-e` flag during `docker run`.
+3. **Initialize (Required for first run or after updates)**:
+   Generate keys and authorize the container binary.
+   ```bash
+   # Generate identity keys
+   docker run -it --rm -v ~/.llm_secure_cli:/root/.llm_secure_cli llm-secure-cli identity keygen
+   # Create integrity manifest
+   docker run -it --rm -v ~/.llm_secure_cli:/root/.llm_secure_cli llm-secure-cli identity manifest
+   ```
+4. **Run**:
    ```bash
    docker run -it --rm \
      -v ~/.llm_secure_cli:/root/.llm_secure_cli \
      -v $(pwd):/workspace \
-     -e GOOGLE_API_KEY=$GOOGLE_API_KEY \
-     -e OPENAI_API_KEY=$OPENAI_API_KEY \
-     llm-secure-cli
+     llm-secure-cli "Summarize the files in this directory"
    ```
+
+> **Note**: If you rebuild or pull a new image, the binary hash will change. You must run the `identity manifest` command again to authorize the new version.
 
 ### One-Shot Examples
 ```bash
@@ -282,17 +299,34 @@ For detailed architectural insights and the academic background of our security 
 5.  **ヘルプ**: チャット内で `/help` と入力するとコマンド一覧が表示されます。
 
 ### Docker による隔離環境 (任意)
-ホストシステムを保護するために、完全に隔離されたコンテナ内でエージェントを実行できます。
+ホストシステムを保護するために、完全に隔離されたコンテナ内でエージェントを実行できます。`high`セキュリティモード（デフォルト）では、ボリュームマウント時に整合性マニフェストを初期化する必要があります。
+
 1. **ビルド**: `docker build -t llm-secure-cli .`
-2. **実行**:
+2. **APIキーの設定**:
+   - **オプションA: `.env` ファイルを使用 (推奨)**: ホストの `~/.llm_secure_cli/.env` にキーを記述します。
+     ```bash
+     # ~/.llm_secure_cli/.env
+     OPENAI_API_KEY=sk-...
+     GEMINI_API_KEY=AIza...
+     ```
+   - **オプションB: 環境変数**: `docker run` 時に `-e` オプションで渡します。
+3. **初期化 (初回および更新時に必須)**:
+   鍵を生成し、コンテナ内のバイナリを承認します。
+   ```bash
+   # 署名用キーの生成
+   docker run -it --rm -v ~/.llm_secure_cli:/root/.llm_secure_cli llm-secure-cli identity keygen
+   # 整合性マニフェストの作成
+   docker run -it --rm -v ~/.llm_secure_cli:/root/.llm_secure_cli llm-secure-cli identity manifest
+   ```
+4. **実行**:
    ```bash
    docker run -it --rm \
      -v ~/.llm_secure_cli:/root/.llm_secure_cli \
      -v $(pwd):/workspace \
-     -e GOOGLE_API_KEY=$GOOGLE_API_KEY \
-     -e OPENAI_API_KEY=$OPENAI_API_KEY \
-     llm-secure-cli
+     llm-secure-cli "このディレクトリのファイルを要約して"
    ```
+
+> **注意**: Dockerイメージをビルドし直したり更新したりすると、バイナリのハッシュ値が変わります。その場合は再度 `identity manifest` を実行して新しいバージョンを承認してください。
 
 ### ワンショット実行例
 ```bash

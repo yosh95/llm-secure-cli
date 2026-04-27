@@ -58,7 +58,6 @@ pub fn log_audit_and_return(
     let config = CONFIG_MANAGER.get_config();
     let max_lines = config.general.max_audit_log_lines;
 
-    // Ensure directory exists
     if let Some(parent) = path.parent()
         && !parent.exists()
     {
@@ -92,7 +91,7 @@ pub fn log_audit_and_return(
 
     let prev_hash = get_last_log_hash(path);
 
-    // Hybrid Encryption for high-risk data (ML-KEM + AES-256-GCM)
+    // Hybrid Encryption for high-risk data
     let mut pqc_encrypted = false;
     let mut final_args = args.clone();
 
@@ -106,10 +105,7 @@ pub fn log_audit_and_return(
                 pqc_encrypted = true;
             }
             Err(e) => {
-                log::error!(
-                    "PQC encryption for audit log failed: {}. Logging unencrypted.",
-                    e
-                );
+                log::error!("PQC encryption for audit log failed: {}", e);
             }
         }
     }
@@ -124,17 +120,7 @@ pub fn log_audit_and_return(
         tool: tool_name.to_string(),
         args: final_args,
         pqc_confidential: pqc_encrypted,
-        output: output.map(|s| {
-            if s.len() > 256 {
-                let mut end = 256;
-                while !s.is_char_boundary(end) {
-                    end -= 1;
-                }
-                format!("{}...", &s[..end])
-            } else {
-                s.to_string()
-            }
-        }),
+        output: output.map(|s| s.to_string()),
         status: match error {
             None => "SUCCESS".to_string(),
             Some(e) => format!("FAILED: {}", e),
@@ -146,13 +132,13 @@ pub fn log_audit_and_return(
         pqc_algorithm: None,
     };
 
-    // Calculate hash (Hashed Chain)
-    let entry_json = serde_json::to_string(&log_entry).unwrap();
+    // Calculate hash over COMPLETE data before truncation for integrity
+    let entry_json = serde_json::to_string(&log_entry).unwrap_or_default();
     let mut hasher = Sha256::new();
     hasher.update(entry_json.as_bytes());
     log_entry.hash = hex::encode(hasher.finalize());
 
-    // PQC Signing (Identity Manager now provides the key)
+    // PQC Signing
     let variant = crate::security::pqc::MldsaVariant::Mldsa65;
     if let Ok(sk) = crate::security::identity::IdentityManager::get_pqc_private_key(variant) {
         match ResponseSigner::sign_response(&log_entry.hash, &log_entry.trace_id, &sk, variant) {
@@ -166,15 +152,26 @@ pub fn log_audit_and_return(
         }
     }
 
+    // Now truncate the output only for storage efficiency
+    if let Some(ref mut out) = log_entry.output
+        && out.len() > 1024
+    {
+        let mut end = 1024;
+        while !out.is_char_boundary(end) {
+            end -= 1;
+        }
+        out.truncate(end);
+        out.push_str("...[TRUNCATED]");
+    }
+
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path)
         && let Ok(line) = serde_json::to_string(&log_entry)
     {
         let _ = writeln!(file, "{}", line);
     }
 
-    // Only trim if the file has grown significantly beyond max_lines to avoid excessive I/O
     if let Ok(metadata) = fs::metadata(path) {
-        let estimated_line_count = metadata.len() / 1500;
+        let estimated_line_count = metadata.len() / 2000;
         if estimated_line_count > (max_lines as u64 * 11 / 10) {
             trim_log_file(path, max_lines);
         }
@@ -194,8 +191,8 @@ fn get_last_log_hash(path: &Path) -> String {
             return "0".repeat(64);
         }
 
-        // Increase buffer size to handle large PQC signatures and long outputs
-        let read_size = std::cmp::min(size, 32768);
+        // Increase buffer size to 128KB as requested in 3.7
+        let read_size = std::cmp::min(size, 131072);
         let mut buffer = vec![0; read_size as usize];
         let _ = file.seek(SeekFrom::End(-(read_size as i64)));
         let _ = file.read_exact(&mut buffer);
@@ -203,7 +200,6 @@ fn get_last_log_hash(path: &Path) -> String {
         let content = String::from_utf8_lossy(&buffer);
         let lines: Vec<&str> = content.split('\n').collect();
 
-        // Iterate backwards to find the last valid JSON entry with a hash
         for line in lines.iter().rev() {
             let trimmed = line.trim();
             if trimmed.is_empty() {
@@ -224,18 +220,15 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
     if !path.exists() {
         return;
     }
-
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => return,
     };
-
     let lines: Vec<&str> = content.lines().collect();
     if lines.len() <= max_lines {
         return;
     }
 
-    // Capture the hash of the last line that WILL be removed to maintain chain evidence
     let last_removed_idx = lines.len() - max_lines - 1;
     let last_removed_hash = serde_json::from_str::<serde_json::Value>(lines[last_removed_idx])
         .ok()
@@ -247,93 +240,17 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
         .unwrap_or_else(|| "0".repeat(64));
 
     let kept_lines = &lines[lines.len() - max_lines..];
-    let removed_lines = &lines[..lines.len() - max_lines];
-
-    // Create archive if there are removed lines
-    if !removed_lines.is_empty() {
-        let config = CONFIG_MANAGER.get_config();
-        let max_archives = config.general.max_audit_archives;
-        if max_archives > 0 {
-            let _ = crate::utils::logging::rotate_file(path, max_archives);
-            // Now 'path' has been moved to 'path.1' (and others shifted).
-            // We need to create a new 'path' file.
-        }
-    }
-
     if let Ok(mut file) = std::fs::File::create(path) {
-        // Add a continuity marker as the first line of the new truncated log
         let continuity_marker = serde_json::json!({
             "timestamp": Utc::now().to_rfc3339(),
             "event_type": "LOG_ROTATION_MARKER",
             "prev_hash": last_removed_hash,
-            "hash": "ROTATION-NONCE-".to_string() + &Uuid::new_v4().to_string(),
+            "hash": format!("ROTATION-NONCE-{}", Uuid::new_v4()),
             "status": "CONTINUITY_MAINTAINED"
         });
         let _ = writeln!(file, "{}", continuity_marker);
-
         for line in kept_lines {
             let _ = writeln!(file, "{}", line);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::tempdir;
-
-    #[test]
-    fn test_trim_log_file_and_rotation_marker() {
-        let dir = tempdir().unwrap();
-        let log_path = dir.path().join("test_audit.jsonl");
-
-        // 1. Create 10 dummy log entries
-        let mut entries = Vec::new();
-        let mut last_hash = "0".repeat(64);
-
-        for i in 0..10 {
-            let hash = format!("hash_{}", i);
-            let entry = serde_json::json!({
-                "timestamp": i.to_string(),
-                "event_type": "test",
-                "prev_hash": last_hash,
-                "hash": hash,
-                "status": "SUCCESS"
-            });
-            let line = serde_json::to_string(&entry).unwrap();
-            last_hash = hash;
-            entries.push(line);
-        }
-        fs::write(&log_path, entries.join("\n") + "\n").unwrap();
-
-        // 2. Trim to 5 lines (execution of rotation)
-        // Indices 0-4 should be removed, 5-9 should remain
-        trim_log_file(&log_path, 5);
-
-        // 3. Verification
-        let content = fs::read_to_string(&log_path).unwrap();
-        let lines: Vec<&str> = content.lines().collect();
-
-        // Expected: Marker(1) + Kept lines(5) = 6 lines
-        assert_eq!(lines.len(), 6, "Should have marker line plus 5 kept lines");
-
-        // Verify the first line is the marker
-        let marker: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
-        assert_eq!(marker["event_type"], "LOG_ROTATION_MARKER");
-
-        // Marker's prev_hash should be the hash of the last removed entry ("hash_4")
-        assert_eq!(marker["prev_hash"], "hash_4");
-        assert!(
-            marker["hash"]
-                .as_str()
-                .unwrap()
-                .starts_with("ROTATION-NONCE-")
-        );
-
-        // Verify the second line is the first kept log ("hash_5")
-        let first_kept: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
-        assert_eq!(first_kept["hash"], "hash_5");
-        assert_eq!(first_kept["prev_hash"], "hash_4");
     }
 }

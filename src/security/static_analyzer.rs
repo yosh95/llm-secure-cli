@@ -1,29 +1,34 @@
 /// StaticAnalyzer provides a "Fast Fail" mechanism for deterministic security blocks.
 ///
-/// In the modern AI-native security model, we offload complex risk assessment
-/// to the Dual LLM Verifier. This analyzer is kept minimal to handle only
-/// obvious syntactic anomalies with zero latency.
+/// 【Architectural Principle】
+/// This tool adopts "AI-native ABAC" and does not maintain platform-dependent static
+/// rules (e.g., banning specific command names like curl), which leads to maintenance
+/// quagmires. Complex intent judgment and risk assessment are delegated entirely to
+/// Phase 2: "Dual LLM Verifier".
 pub struct StaticAnalyzer;
 
 impl StaticAnalyzer {
     pub fn check(_command: &str, _args: &[String]) -> (bool, Vec<String>) {
         let violations = Vec::new();
 
-        // Minimalist approach: We no longer maintain a blacklist of binaries here.
-        // The LLM-based policy engine (Security Constitution) handles the semantic risk.
-        // This avoids platform-dependent complexity (Windows vs Linux command names).
+        // Since we use Command::new which does not invoke a shell,
+        // command line injection risks are structurally eliminated.
+        // To avoid platform-dependent complexity, we do not block anything here.
 
         (violations.is_empty(), violations)
     }
 
-    /// Fast-check for dangerous shell characters in a raw string
+    /// Block only physical anomalies that could disrupt the tool execution engine
+    /// or log output.
     pub fn is_obviously_malicious(input: &str) -> bool {
-        // Only block things that could break the tool-call parser itself
-        input.contains('\0')
+        // Block NULL bytes and control characters except for newline, carriage return, and tab.
+        // These can cause unstable behavior in OS or terminals.
+        input
+            .chars()
+            .any(|c| c == '\0' || (c.is_control() && c != '\n' && c != '\r' && c != '\t'))
     }
 
     /// Backwards compatibility for benchmarks and older tests.
-    /// In the new model, we favor semantic LLM-based analysis over regex-style blacklists.
     pub fn is_dangerous_command(input: &str) -> bool {
         Self::is_obviously_malicious(input)
     }

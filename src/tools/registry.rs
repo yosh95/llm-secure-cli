@@ -1,8 +1,11 @@
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, LazyLock, Mutex};
 
-pub type ToolFunc = Arc<dyn Fn(HashMap<String, Value>) -> anyhow::Result<Value> + Send + Sync>;
+pub type ToolFuture = Pin<Box<dyn Future<Output = anyhow::Result<Value>> + Send>>;
+pub type ToolFunc = Arc<dyn Fn(HashMap<String, Value>) -> ToolFuture + Send + Sync>;
 
 pub struct Tool {
     pub name: String,
@@ -71,26 +74,23 @@ impl ToolRegistry {
             .as_str()
             .unwrap_or("unknown_remote_tool")
             .to_string();
-        let _original_name = tool["original_name"].as_str().unwrap_or("").to_string();
-        let _server_name = tool["server_name"].as_str().unwrap_or("").to_string();
         let description = tool["description"].as_str().unwrap_or("").to_string();
         let parameters = tool["parameters"].clone();
 
-        // MCP tools are executed asynchronously via ChatSession::execute_tool
-        // to avoid tokio::task::block_in_place. The registry entry serves
-        // schema/metadata purposes only.
         let name_for_error = name.clone();
         let func: ToolFunc = Arc::new(move |_args| {
-            Err(anyhow::anyhow!(
-                "MCP tool '{}' should be executed via async path in ChatSession::execute_tool",
-                name_for_error
-            ))
+            let n = name_for_error.clone();
+            Box::pin(async move {
+                Err(anyhow::anyhow!(
+                    "MCP tool '{}' should be executed via async path in ChatSession::execute_tool",
+                    n
+                ))
+            })
         });
 
         self.register(&name, &description, parameters, func, false);
     }
 
-    /// Get OpenAI-compatible tool schemas
     pub fn get_tool_schemas(&self) -> Vec<Value> {
         self.tools
             .values()
@@ -104,7 +104,6 @@ impl ToolRegistry {
             .collect()
     }
 
-    /// Get Gemini-compatible function declarations
     pub fn get_tool_schemas_gemini(&self) -> Vec<Value> {
         self.tools
             .values()
@@ -118,7 +117,6 @@ impl ToolRegistry {
             .collect()
     }
 
-    /// Get Anthropic-compatible tool schemas
     pub fn get_tool_schemas_anthropic(&self) -> Vec<Value> {
         self.tools
             .values()
@@ -181,243 +179,161 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
         json!({
             "type": "object",
             "properties": {
-                "directory": {
-                    "type": "string",
-                    "description": "Target directory (default: current directory)."
-                },
-                "depth": {
-                    "type": "integer",
-                    "description": "Maximum depth for recursive listing.",
-                    "default": 1
-                },
-                "ignore_patterns": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of patterns to ignore (e.g. ['node_modules'])."
-                },
-                "include_hidden": {
-                    "type": "boolean",
-                    "description": "If true, show hidden files and directories.",
-                    "default": false
-                },
-                "max_files": {
-                    "type": "integer",
-                    "description": "Maximum number of files to list. (Default: 500)",
-                    "default": 500
-                }
+                "directory": { "type": "string", "description": "Target directory (default: current directory)." },
+                "depth": { "type": "integer", "description": "Maximum depth for recursive listing.", "default": 1 },
+                "ignore_patterns": { "type": "array", "items": {"type": "string"}, "description": "List of patterns to ignore." },
+                "include_hidden": { "type": "boolean", "description": "If true, show hidden files.", "default": false },
+                "max_files": { "type": "integer", "description": "Max files to list.", "default": 500 }
             }
         }),
-        Arc::new(crate::tools::builtin::file_ops::list_files_in_directory),
+        Arc::new(|args| {
+            Box::pin(async move { crate::tools::builtin::file_ops::list_files_in_directory(args) })
+        }),
     );
 
     maybe_register(
         r,
         "read_file_content",
-        "Read content from a text file or PDF. For PDFs, text content will be extracted. \
-         IMPORTANT: This tool can read up to 500 lines or 30000 characters at once. \
-         If a file is longer, the tail will be omitted. \
-         Use 'start_line' and 'end_line' to read specific chunks of large files.",
+        "Read content from a text file or PDF.",
         json!({
             "type": "object",
             "properties": {
                 "path": {"type": "string", "description": "File path."},
-                "start_line": {
-                    "type": "integer",
-                    "description": "First line to read (1-indexed).",
-                    "default": 1
-                },
-                "end_line": {
-                    "type": "integer",
-                    "description": "Last line to read (Max 500 lines from start_line recommended)."
-                },
-                "with_line_numbers": {
-                    "type": "boolean",
-                    "description": "If true, adds line numbers to the output.",
-                    "default": false
-                }
+                "start_line": {"type": "integer", "default": 1},
+                "end_line": {"type": "integer"},
+                "with_line_numbers": {"type": "boolean", "default": false}
             },
             "required": ["path"]
         }),
-        Arc::new(crate::tools::builtin::file_ops::read_file_content),
+        Arc::new(|args| {
+            Box::pin(async move { crate::tools::builtin::file_ops::read_file_content(args) })
+        }),
     );
 
     maybe_register(
         r,
         "grep_files",
-        "Search for a regex pattern in files within a directory (like grep). \
-         Automatically excludes common junk directories like .git, node_modules, and \
-         cache to provide clean and fast results.",
+        "Search for a regex pattern in files.",
         json!({
             "type": "object",
             "properties": {
-                "directory": {
-                    "type": "string",
-                    "description": "Directory to search in (default: current directory)."
-                },
-                "query": {
-                    "type": "string",
-                    "description": "Regex pattern to search for in file contents."
-                },
-                "file_pattern": {
-                    "type": "string",
-                    "description": "File pattern to include (e.g., '*.py')."
-                }
+                "directory": {"type": "string"},
+                "query": {"type": "string"},
+                "file_pattern": {"type": "string"}
             },
             "required": ["query"]
         }),
-        Arc::new(crate::tools::builtin::file_ops::grep_files),
+        Arc::new(|args| Box::pin(async move { crate::tools::builtin::file_ops::grep_files(args) })),
     );
 
     maybe_register(
         r,
         "search_files",
-        "Search for files or directories by name pattern within a directory.",
+        "Search for files by name pattern.",
         json!({
             "type": "object",
             "properties": {
-                "directory": {
-                    "type": "string",
-                    "description": "Directory to search in (default: current directory)."
-                },
-                "pattern": {
-                    "type": "string",
-                    "description": "Pattern to match (e.g., 'test*.py' or '*config*')."
-                },
-                "exclude_patterns": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of patterns to exclude."
-                }
+                "directory": {"type": "string"},
+                "pattern": {"type": "string"},
+                "exclude_patterns": {"type": "array", "items": {"type": "string"}}
             },
             "required": ["pattern"]
         }),
-        Arc::new(crate::tools::builtin::file_ops::search_files),
+        Arc::new(|args| {
+            Box::pin(async move { crate::tools::builtin::file_ops::search_files(args) })
+        }),
     );
 
     maybe_register(
         r,
         "edit_file",
-        "Edit a file by replacing a specific block of text. \
-         First tries an exact match. If that fails, it tries a fuzzy match (ignoring leading/trailing whitespace on each line). \
-         The fuzzy match only succeeds if it finds exactly one unique match in the file.",
+        "Edit a file by replacing a block of text.",
         json!({
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Path to the file to edit."},
-                "search": {
-                    "type": "string",
-                    "description": "The block of text to find in the file. Context (surrounding lines) is recommended for fuzzy matching."
-                },
-                "replace": {
-                    "type": "string",
-                    "description": "The new text to replace the found block with."
-                },
-                "dry_run": {
-                    "type": "boolean",
-                    "description": "If true, show diff without applying changes.",
-                    "default": false
-                }
+                "path": {"type": "string"},
+                "search": {"type": "string"},
+                "replace": {"type": "string"},
+                "dry_run": {"type": "boolean", "default": false}
             },
             "required": ["path", "search", "replace"]
         }),
-        Arc::new(crate::tools::builtin::file_modification::edit_file),
+        Arc::new(|args| {
+            Box::pin(async move { crate::tools::builtin::file_modification::edit_file(args) })
+        }),
     );
 
     maybe_register(
         r,
         "create_or_overwrite_file",
-        "Write full content to a file. Overwrites existing files.",
+        "Write full content to a file.",
         json!({
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Path to save the file."},
-                "content": {
-                    "type": "string",
-                    "description": "The complete file content to write. This field is REQUIRED and must contain the full text of the file. Do not omit this field."
-                }
+                "path": {"type": "string"},
+                "content": {"type": "string"}
             },
             "required": ["path", "content"]
         }),
-        Arc::new(crate::tools::builtin::file_modification::create_or_overwrite_file),
+        Arc::new(|args| {
+            Box::pin(async move {
+                crate::tools::builtin::file_modification::create_or_overwrite_file(args)
+            })
+        }),
     );
 
     maybe_register(
         r,
         "read_url_content",
-        "Fetch a web page URL or PDF URL and convert the content to Markdown or text. \
-         For PDFs, text content will be extracted. \
-         IMPORTANT: This tool can read up to 500 lines or 30000 characters at once. \
-         If the content is longer, the tail will be omitted. \
-         Use 'start_line' and 'end_line' to read specific chunks of large pages.",
+        "Fetch a web page or PDF.",
         json!({
             "type": "object",
             "properties": {
-                "url": {"type": "string", "description": "Target URL."},
-                "start_line": {
-                    "type": "integer",
-                    "description": "First line to read (1-indexed).",
-                    "default": 1
-                },
-                "end_line": {
-                    "type": "integer",
-                    "description": "Last line to read (Max 500 lines from start_line recommended)."
-                }
+                "url": {"type": "string"},
+                "start_line": {"type": "integer", "default": 1},
+                "end_line": {"type": "integer"}
             },
             "required": ["url"]
         }),
-        Arc::new(crate::tools::builtin::web::read_url_content),
+        Arc::new(|args| {
+            Box::pin(async move { crate::tools::builtin::web::read_url_content(args) })
+        }),
     );
 
-    // Brave Search: register only if API key is available
     let brave_key = crate::config::CONFIG_MANAGER.get_api_key("brave");
     if brave_key.is_some() {
         maybe_register(
             r,
             "brave_search",
-            "Search the web for current information using the Brave Search API. \
-             Returns a list of relevant search results including titles, snippets, and URLs. \
-             Use this tool when you need to find information from the internet.",
+            "Search the web using Brave Search API.",
             json!({
                 "type": "object",
                 "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query to execute."
-                    },
-                    "count": {
-                        "type": "integer",
-                        "description": "Number of results to return (max 20).",
-                        "default": 10
-                    }
+                    "query": {"type": "string"},
+                    "count": {"type": "integer", "default": 10}
                 },
                 "required": ["query"]
             }),
-            Arc::new(crate::tools::builtin::web::brave_search),
+            Arc::new(|args| {
+                Box::pin(async move { crate::tools::builtin::web::brave_search(args) })
+            }),
         );
     }
 
     maybe_register(
         r,
         "execute_command",
-        "Execute a system command directly without a shell. \
-         Use 'command' for the executable (e.g., 'ls', 'git') and 'args' for its arguments. \
-         IMPORTANT: 'args' must NOT include the executable name. \
-         This is secure against shell injection and handles special characters like backticks or quotes correctly.",
+        "Execute a system command without a shell.",
         json!({
             "type": "object",
             "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The executable to run (e.g., 'rm', 'ls', 'git')."
-                },
-                "args": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": "List of arguments to pass to the executable. Do NOT include the command name itself here. For example, if command is 'rm', args should be ['test.txt'], NOT ['rm', 'test.txt']."
-                }
+                "command": {"type": "string"},
+                "args": {"type": "array", "items": { "type": "string" }}
             },
             "required": ["command", "args"]
         }),
-        Arc::new(crate::tools::builtin::shell::execute_command),
+        Arc::new(|args| {
+            Box::pin(async move { crate::tools::builtin::shell::execute_command(args).await })
+        }),
     );
 }

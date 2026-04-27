@@ -1,5 +1,5 @@
 # --- Build Stage ---
-FROM rust:1.95-slim-bookworm AS builder
+FROM rust:slim-trixie AS builder
 
 WORKDIR /app
 # Copy the entire project
@@ -8,7 +8,7 @@ COPY . .
 RUN cargo build --release
 
 # --- Runtime Stage (Sandbox Environment) ---
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 # Install basic tools for the agent
 RUN apt-get update && apt-get install -y \
@@ -22,16 +22,16 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the binary from the builder stage
-# Cargo installs the binary to target/release/llsc
 COPY --from=builder /app/target/release/llsc /usr/local/bin/llsc
 
-# Create directory for the config file
+# Ensure the config directory exists
 RUN mkdir -p /root/.llm_secure_cli
 
 # Set the working directory
 WORKDIR /workspace
 
 # Default security level
+# In 'high' mode, llsc will refuse to start if the binary or manifest is tampered with.
 ENV LLM_CLI_SECURITY_LEVEL=high
 
 # Set the binary as the entry point

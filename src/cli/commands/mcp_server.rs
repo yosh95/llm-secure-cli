@@ -21,24 +21,28 @@ pub async fn run_mcp_server() -> Result<()> {
             let tool_name_for_closure = tool_name.clone();
 
             mcp.tool(&tool_name, move |args| {
-                // Convert Value to HashMap<String, Value>
-                let mut args_map = HashMap::new();
-                let mut json_map = serde_json::Map::new();
-                if let Some(obj) = args.as_object() {
-                    for (k, v) in obj {
-                        args_map.insert(k.clone(), v.clone());
-                        json_map.insert(k.clone(), v.clone());
+                let tool_func = tool_func.clone();
+                let tool_name_for_closure = tool_name_for_closure.clone();
+                async move {
+                    // Convert Value to HashMap<String, Value>
+                    let mut args_map = HashMap::new();
+                    let mut json_map = serde_json::Map::new();
+                    if let Some(obj) = args.as_object() {
+                        for (k, v) in obj {
+                            args_map.insert(k.clone(), v.clone());
+                            json_map.insert(k.clone(), v.clone());
+                        }
                     }
-                }
 
-                // Security: Apply Phase 1 security checks
-                if let Err(e) =
-                    crate::security::validate_tool_call(&tool_name_for_closure, &json_map)
-                {
-                    return Err(anyhow::anyhow!(e));
-                }
+                    // Security: Apply Phase 1 security checks
+                    if let Err(e) =
+                        crate::security::validate_tool_call(&tool_name_for_closure, &json_map)
+                    {
+                        return Err(anyhow::anyhow!(e));
+                    }
 
-                (tool_func)(args_map)
+                    (tool_func)(args_map).await
+                }
             });
         }
     }

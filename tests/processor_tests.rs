@@ -9,9 +9,11 @@ use llm_secure_cli::llm::registry::CLIENT_REGISTRY;
 use serde_json::json;
 use std::collections::HashMap;
 
+type MockResponse = (Option<String>, Option<String>, Option<Vec<MessagePart>>);
+
 struct MockProcessorClient {
     state: ClientState,
-    responses: Vec<(Option<String>, Option<String>, Option<Vec<MessagePart>>)>,
+    responses: Vec<MockResponse>,
     call_count: usize,
 }
 

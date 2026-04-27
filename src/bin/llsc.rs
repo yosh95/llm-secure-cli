@@ -120,16 +120,29 @@ async fn main() {
 
     if !is_identity_cmd {
         let verifier = llm_secure_cli::security::integrity::IntegrityVerifier::new();
-        if verifier.manifest_path.exists() {
+        let config = llm_secure_cli::config::CONFIG_MANAGER.get_config();
+        let security_level = std::env::var("LLM_CLI_SECURITY_LEVEL")
+            .unwrap_or_else(|_| config.security.security_level.clone());
+
+        if !verifier.manifest_path.exists() {
+            if security_level == "high" {
+                ui::report_error("SECURITY FAILURE: Integrity manifest not found.");
+                eprintln!("In 'high' security mode, a signed manifest is required for startup.");
+                eprintln!(
+                    "Please run 'llsc identity manifest' to authorize the current system state."
+                );
+                std::process::exit(1);
+            } else {
+                ui::report_warning(
+                    "Integrity manifest missing. Running without system verification.",
+                );
+            }
+        } else {
             match verifier.verify() {
                 Ok(true) => {
                     // Integrity OK
                 }
                 Ok(false) => {
-                    let config = llm_secure_cli::config::CONFIG_MANAGER.get_config();
-                    let security_level = std::env::var("LLM_CLI_SECURITY_LEVEL")
-                        .unwrap_or_else(|_| config.security.security_level.clone());
-
                     if security_level == "high" {
                         ui::report_error("CRITICAL: SYSTEM INTEGRITY FAILURE");
                         eprintln!("Unauthorized modifications detected in binary or config.");

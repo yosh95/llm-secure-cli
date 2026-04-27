@@ -232,9 +232,15 @@ impl ClientSession {
     }
 }
 
+use std::future::Future;
+use std::pin::Pin;
+
+pub type FastMcpToolFn =
+    Box<dyn Fn(Value) -> Pin<Box<dyn Future<Output = Result<Value>> + Send>> + Send + Sync>;
+
 pub struct FastMcp {
     pub name: String,
-    pub tools: HashMap<String, Box<dyn Fn(Value) -> Result<Value> + Send + Sync>>,
+    pub tools: HashMap<String, FastMcpToolFn>,
 }
 
 impl FastMcp {
@@ -245,11 +251,13 @@ impl FastMcp {
         }
     }
 
-    pub fn tool<F>(&mut self, name: &str, func: F)
+    pub fn tool<F, Fut>(&mut self, name: &str, func: F)
     where
-        F: Fn(Value) -> Result<Value> + Send + Sync + 'static,
+        F: Fn(Value) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Value>> + Send + 'static,
     {
-        self.tools.insert(name.to_string(), Box::new(func));
+        self.tools
+            .insert(name.to_string(), Box::new(move |args| Box::pin(func(args))));
     }
 
     pub async fn run(&self) -> Result<()> {
@@ -317,7 +325,7 @@ impl FastMcp {
 
                         let result = if let Some(name) = tool_name {
                             if let Some(tool) = self.tools.get(name) {
-                                match tool(arguments) {
+                                match tool(arguments).await {
                                     Ok(res) => Ok(res),
                                     Err(e) => Err(e.to_string()),
                                 }
