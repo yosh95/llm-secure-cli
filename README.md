@@ -40,6 +40,8 @@ The accompanying [Technical Report](paper/comprehensive_framework/paper.pdf) det
     git clone https://github.com/yosh95/llm-secure-cli-rust.git
     cd llm-secure-cli-rust
     cargo install --path .
+    # Generate a manifest file
+    llsc identity manifest
     ```
 2.  **Set API Keys**: `llsc` requires API keys to be set as environment variables.
     ```bash
@@ -282,6 +284,8 @@ For detailed architectural insights and the academic background of our security 
     git clone https://github.com/yosh95/llm-secure-cli-rust.git
     cd llm-secure-cli-rust
     cargo install --path .
+    # manifestの生成
+    llsc identity manifest
     ```
 2.  **APIキーの設定**: APIキーを環境変数として設定します。
     ```bash
