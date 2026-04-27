@@ -13,6 +13,17 @@ impl std::fmt::Display for PathValidationError {
 
 impl std::error::Error for PathValidationError {}
 
+fn strip_unc_prefix(path: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let path_str = path.to_string_lossy();
+        if path_str.starts_with(r"\\?\") {
+            return PathBuf::from(&path_str[4..]);
+        }
+    }
+    path
+}
+
 /// validate_path ensures a path is normalized and checks if it falls under
 /// the authorized areas. We use OS-level canonicalization to resolve symlinks
 /// and maintain a strict physical boundary.
@@ -39,7 +50,14 @@ pub fn validate_path(path_str: &str) -> Result<PathBuf, PathValidationError> {
     // 3. Resolve physical entity (Symbolic links)
     // If the file does not exist (e.g. creating a new file), we resolve its
     // parent directory to ensure the root is valid.
-    let canonical_path = std::fs::canonicalize(&cleaned_path).unwrap_or(cleaned_path);
+    let canonical_path = std::fs::canonicalize(&cleaned_path).unwrap_or_else(|_| {
+        if let Some(parent) = cleaned_path.parent() {
+            if let Ok(canonical_parent) = std::fs::canonicalize(parent) {
+                return canonical_parent.join(cleaned_path.file_name().unwrap_or_default());
+            }
+        }
+        cleaned_path
+    });
 
     let config = CONFIG_MANAGER.get_config();
     let security_config = &config.security;
@@ -60,8 +78,13 @@ pub fn validate_path(path_str: &str) -> Result<PathBuf, PathValidationError> {
             }
         });
 
+        let (cp, ar) = (
+            strip_unc_prefix(canonical_path.clone()),
+            strip_unc_prefix(allowed_root),
+        );
+
         // Check if the resolved path falls under an allowed root
-        if canonical_path.starts_with(&allowed_root) || canonical_path == allowed_root {
+        if cp.starts_with(&ar) || cp == ar {
             is_allowed = true;
             break;
         }
