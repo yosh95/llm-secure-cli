@@ -153,9 +153,9 @@ _COSE_SIGN_TAG   = 98     # CBOR tag for COSE_Sign
 - `container_mode`: Whether Docker isolation is active.
 - `is_git_repo`: Whether the session is inside a Git repository.
 
-These attributes are bundled into a **Security Context** and verified by the Dual LLM against the **Security Constitution** (a hardcoded, non-overridable policy set in the code). This allows for dynamic, context-aware decisions like "Allow deletions only if running inside a container" without complex manual configuration.
+These attributes are bundled into a **Security Context** and verified by the Dual LLM against the **Security Constitution** (a hardcoded, non-overridable policy set in the code). This allows for dynamic, context-aware decisions like "Allow deletions only if running inside a container" without complex manual configuration or OS-dependent static rules.
 
-Implementation: `src/security/abac.rs` and `src/security/policy.rs`.
+Implementation: `src/security/policy.rs` and `src/security/dual_llm_verifier.rs`.
 
 Risk-level classification in `defaults.toml`:
 
@@ -248,11 +248,9 @@ shared secrets:
     `ResponseSigner` signature using the Server's public key (if trusted),
     while the Server verifies the `IdentityToken` using the Agent's public key.
 
-### Trust Resolution & KMS Integration (Enterprise)
-
-To support large-scale deployments, `llm-secure-cli` abstracts key resolution
-through the `TrustResolver` interface (`src/security/trust.rs`). This
-allows for seamless transition between local and enterprise trust models:
+### Trust Resolution (Enterprise Architecture)
+ 
+ To support large-scale deployments, the architecture is designed to abstract key resolution. This allows for a transition between local and enterprise trust models:
 
 | Resolver | Storage Mechanism | Use Case |
 |---|---|---|

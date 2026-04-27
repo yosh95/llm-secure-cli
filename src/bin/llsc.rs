@@ -254,7 +254,8 @@ async fn main() {
     }
 
     if args.mcp_server {
-        if let Err(e) = llm_secure_cli::cli::commands::mcp_server::run_mcp_server().await {
+        let config = llm_secure_cli::config::CONFIG_MANAGER.get_config();
+        if let Err(e) = llm_secure_cli::cli::commands::mcp_server::run_mcp_server(config).await {
             ui::report_error(&format!("MCP Server Error: {}", e));
             std::process::exit(1);
         }
@@ -323,7 +324,7 @@ async fn main() {
             }
         }
 
-        let mut session = ChatSession::new(client);
+        let mut session = ChatSession::new(client, config.clone());
 
         let mut all_sources = args.sources;
         if !is_atty {

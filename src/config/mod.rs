@@ -166,6 +166,51 @@ impl ConfigManager {
 
         // Fallback to config
         let config = self.get_config();
+        self.get_api_key_from_config(&config, provider)
+    }
+
+    pub fn get_api_key_from_config(&self, config: &AppConfig, provider: &str) -> Option<String> {
+        // Special case for Ollama:
+        if provider == "ollama" {
+            if let Some(p_cfg) = config.providers.get("ollama") {
+                let base_url = p_cfg.api_url.as_deref().unwrap_or("");
+                let is_local = base_url.is_empty()
+                    || base_url.contains("localhost")
+                    || base_url.contains("127.0.0.1");
+                if is_local {
+                    return Some("local_bypass".to_string());
+                }
+            } else {
+                return Some("local_bypass".to_string());
+            }
+        }
+
+        let env_vars = match provider {
+            "google" => vec!["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+            "openai" => vec!["OPENAI_API_KEY"],
+            "anthropic" => vec!["ANTHROPIC_API_KEY"],
+            "ollama" => vec!["OLLAMA_API_KEY"],
+            "brave" => vec!["BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY"],
+            _ => vec![],
+        };
+
+        // 1. Check internal cache (from .env)
+        {
+            let cache = self.env_cache.lock().unwrap();
+            for var in &env_vars {
+                if let Some(val) = cache.get(*var) {
+                    return Some(val.clone());
+                }
+            }
+        }
+
+        // 2. Check system environment
+        for var in env_vars {
+            if let Ok(val) = env::var(var) {
+                return Some(val);
+            }
+        }
+
         if let Some(p_cfg) = config.providers.get(provider)
             && let Some(key) = &p_cfg.api_key
         {

@@ -1,3 +1,4 @@
+use llm_secure_cli::config::models::SecurityConfig;
 use llm_secure_cli::security::static_analyzer::StaticAnalyzer;
 use llm_secure_cli::security::validate_tool_call;
 use serde_json::json;
@@ -12,18 +13,19 @@ fn test_static_analyzer_obviously_malicious() {
 #[test]
 fn test_validate_tool_call_path_blocks() {
     // Testing validate_tool_call which implements the new Phase 1 logic
+    let config = SecurityConfig::default();
 
     // 1. Path Traversal
     let mut args = serde_json::Map::new();
     args.insert("path".to_string(), json!("../../../etc/passwd"));
-    let result = validate_tool_call("read_file", &args);
+    let result = validate_tool_call("read_file", &args, &config);
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Path Guardrails"));
 
     // 2. Safe path (assuming current dir or allowed paths in default config)
     let mut args = serde_json::Map::new();
     args.insert("path".to_string(), json!("README.md"));
-    let result = validate_tool_call("read_file", &args);
+    let result = validate_tool_call("read_file", &args, &config);
     // This might fail if README.md is not in allowed_paths,
     // but usually "." is in allowed_paths.
     // Let's check the result.
@@ -36,9 +38,10 @@ fn test_validate_tool_call_path_blocks() {
 #[test]
 fn test_validate_tool_call_static_analysis() {
     // Testing obviously malicious characters in execute_command
+    let config = SecurityConfig::default();
     let mut args = serde_json::Map::new();
     args.insert("command".to_string(), json!("ls\0"));
-    let result = validate_tool_call("execute_command", &args);
+    let result = validate_tool_call("execute_command", &args, &config);
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Static Analysis"));
 }

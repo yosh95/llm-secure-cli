@@ -94,7 +94,9 @@ impl ChatSession {
                         let mut final_result = None;
 
                         // --- [PHASE 1] Lightweight Fast Checks ---
-                        if let Err(e) = crate::security::validate_tool_call(name, &args) {
+                        if let Err(e) =
+                            crate::security::validate_tool_call(name, &args, &self.config.security)
+                        {
                             ui::report_error(&e);
                             final_result = Some(serde_json::Value::String(e));
                         }
@@ -103,10 +105,9 @@ impl ChatSession {
                         let _verifier_result: Option<(bool, String)> = None;
                         let mut verifier_handle: Option<tokio::task::JoinHandle<(bool, String)>> =
                             None;
-                        let config = crate::config::CONFIG_MANAGER.get_config();
 
                         if final_result.is_none()
-                            && config.security.dual_llm_verification.unwrap_or(false)
+                            && self.config.security.dual_llm_verification.unwrap_or(false)
                         {
                             // Build intent context for verification
                             let user_history: Vec<String> = self
@@ -153,12 +154,14 @@ impl ChatSession {
 
                             let name_clone = name.to_string();
                             let args_clone = serde_json::json!(args);
+                            let config_clone = self.config.security.clone();
                             verifier_handle = Some(tokio::spawn(async move {
                                 crate::security::dual_llm_verifier::verify_tool_call_full(
                                     &intent_context,
                                     &name_clone,
                                     &args_clone,
                                     None,
+                                    &config_clone,
                                     None,
                                     None,
                                 )
@@ -167,9 +170,10 @@ impl ChatSession {
                         }
 
                         // Risk evaluation & auto-approval
-                        let risk_level =
-                            crate::security::cass::CASS_ORCHESTRATOR.evaluate_risk(name);
-                        let auto_approval = config
+                        let risk_level = crate::security::cass::CASS_ORCHESTRATOR
+                            .evaluate_risk(name, &self.config.security);
+                        let auto_approval = self
+                            .config
                             .security
                             .auto_approval_level
                             .as_deref()
@@ -285,6 +289,8 @@ impl ChatSession {
                                             Some(0),
                                             None,
                                             Some(&audit_ctx),
+                                            &self.config,
+                                            None,
                                         )
                                     {
                                         self.audit_entries.push(entry);
@@ -301,6 +307,8 @@ impl ChatSession {
                                             Some(1),
                                             Some(&e.to_string()),
                                             Some(&audit_ctx),
+                                            &self.config,
+                                            None,
                                         )
                                     {
                                         self.audit_entries.push(entry);

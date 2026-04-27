@@ -128,7 +128,8 @@ As a tool designed with **CISSP/CISA/CCSP** principles and **EU AI Act** complia
 
 ### 1. Access Control (AI-native ABAC & Semantic Guardrails)
 `llm-secure-cli` implements a modern **Attribute-Based Access Control (ABAC)**, moving away from fragile, platform-dependent static rules.
-- **AI-native Policy Engine (Dual LLM)**: Replaces complex regex blocklists with a hardcoded **Security Constitution**. The system automatically gathers context (OS, User, Directory, Git status) and uses a secondary LLM to judge risks semantically using structured verdicts.
+- **AI-native Policy Engine (Dual LLM)**: Replaces complex regex blocklists with a hardcoded **Security Constitution**. The system automatically gathers context (OS, User, Directory, Git status) and uses a secondary LLM to judge risks semantically using structured verdicts. This avoids the quagmire of platform-dependent static rules.
+- **Path Guardrails (Physical Boundary)**: Paths are recursively normalized and validated against a whitelist. Even for new files, the system resolves the physical parent directory to prevent symlink-based escapes.
 - **Risk-based Scaling (CASS)**: Security requirements (PQC signature level, audit encryption) automatically scale based on the tool's risk level (HIGH/MEDIUM/LOW) via the **CASS (Context-Adaptive Security Scaling)** orchestrator.
 - **Intent Verification**: Every high-risk action is cross-verified by a separate, lightweight "Verifier" LLM to ensure the proposed tool call aligns with the user's original intent.
 - **Minimalist Fast-fail**: A lightweight syntactic check still blocks obviously malicious characters in **nanoseconds**, while the heavy lifting of security judgment is shifted to the Dual LLM.

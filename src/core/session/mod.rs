@@ -1,3 +1,4 @@
+use crate::config::models::AppConfig;
 use crate::llm::base::LlmClient;
 use crate::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
 use crate::security::audit::AuditEntry;
@@ -12,6 +13,7 @@ pub mod tool_executor;
 
 pub struct ChatSession {
     pub client: Box<dyn LlmClient>,
+    pub config: AppConfig,
     pub intent: String,
     pub pending_data: Vec<DataSource>,
     pub trace_id: String,
@@ -33,7 +35,7 @@ impl Drop for ChatSession {
 }
 
 impl ChatSession {
-    pub fn new(client: Box<dyn LlmClient>) -> Self {
+    pub fn new(client: Box<dyn LlmClient>, config: AppConfig) -> Self {
         let trace_id = format!("sess-{}", &uuid::Uuid::new_v4().to_string()[..8]);
         let user_id = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
 
@@ -49,10 +51,13 @@ impl ChatSession {
                 "model": client.get_state().model,
                 "user_id": user_id
             })),
+            &config,
+            None,
         );
 
         Self {
             client,
+            config,
             intent: String::new(),
             pending_data: Vec::new(),
             trace_id,
@@ -109,6 +114,7 @@ impl ChatSession {
                     live_debug: false,
                 },
             }),
+            config: AppConfig::default(),
             intent: String::new(),
             pending_data: Vec::new(),
             trace_id: "dummy".to_string(),

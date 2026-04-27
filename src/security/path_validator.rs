@@ -1,4 +1,3 @@
-use crate::config::CONFIG_MANAGER;
 use path_clean::PathClean;
 use std::path::PathBuf;
 
@@ -27,7 +26,10 @@ fn strip_unc_prefix(path: PathBuf) -> PathBuf {
 /// validate_path ensures a path is normalized and checks if it falls under
 /// the authorized areas. We use OS-level canonicalization to resolve symlinks
 /// and maintain a strict physical boundary.
-pub fn validate_path(path_str: &str) -> Result<PathBuf, PathValidationError> {
+pub fn validate_path(
+    path_str: &str,
+    config: &crate::config::models::SecurityConfig,
+) -> Result<PathBuf, PathValidationError> {
     let path_str = path_str.trim().trim_matches('\'').trim_matches('"').trim();
 
     // 1. Basic construction
@@ -48,19 +50,32 @@ pub fn validate_path(path_str: &str) -> Result<PathBuf, PathValidationError> {
     let cleaned_path = path.clean();
 
     // 3. Resolve physical entity (Symbolic links)
-    // If the file does not exist (e.g. creating a new file), we resolve its
-    // parent directory to ensure the root is valid.
-    let canonical_path = std::fs::canonicalize(&cleaned_path).unwrap_or_else(|_| {
-        if let Some(parent) = cleaned_path.parent() {
-            if let Ok(canonical_parent) = std::fs::canonicalize(parent) {
-                return canonical_parent.join(cleaned_path.file_name().unwrap_or_default());
+    // We walk up the directory tree until we find a path that exists on disk,
+    // then canonicalize it to resolve symlinks, and append the non-existent tail.
+    let mut parts = Vec::new();
+    let mut current = cleaned_path.clone();
+    let canonical_path = loop {
+        if let Ok(canonical) = std::fs::canonicalize(&current) {
+            let mut res = canonical;
+            for part in parts.into_iter().rev() {
+                res.push(part);
             }
+            break res;
         }
-        cleaned_path
-    });
+        if let Some(file_name) = current.file_name() {
+            parts.push(file_name.to_os_string());
+        }
+        if let Some(parent) = current.parent() {
+            if parent == current {
+                break cleaned_path; // Root reached
+            }
+            current = parent.to_path_buf();
+        } else {
+            break cleaned_path;
+        }
+    };
 
-    let config = CONFIG_MANAGER.get_config();
-    let security_config = &config.security;
+    let security_config = config;
 
     // 4. Simple Whitelist Check
     let mut is_allowed = false;

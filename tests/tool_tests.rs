@@ -1,3 +1,4 @@
+use llm_secure_cli::config::models::AppConfig;
 use llm_secure_cli::tools::builtin::file_modification::{create_or_overwrite_file, edit_file};
 use llm_secure_cli::tools::builtin::file_ops::{
     grep_files, list_files_in_directory, read_file_content, search_files,
@@ -12,6 +13,11 @@ use tempfile::tempdir;
 fn test_file_ops_list_and_search() {
     let dir = tempdir().unwrap();
     let root = dir.path();
+
+    // Setup allowed paths for test
+    let mut config = AppConfig::default();
+    let canon_path = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    config.security.allowed_paths = vec![".".to_string(), canon_path.to_string_lossy().to_string()];
 
     // Setup directory structure
     // root/
@@ -34,7 +40,7 @@ fn test_file_ops_list_and_search() {
     let mut args = HashMap::new();
     args.insert("directory".to_string(), json!(root_str));
     args.insert("depth".to_string(), json!(1));
-    let res = list_files_in_directory(args).unwrap();
+    let res = list_files_in_directory(args, config.clone()).unwrap();
     let files = res["files"].as_array().unwrap();
     assert!(files.iter().any(|f| f["path"] == "file1.txt"));
     assert!(files.iter().any(|f| f["path"] == "subdir"));
@@ -44,7 +50,7 @@ fn test_file_ops_list_and_search() {
     let mut args = HashMap::new();
     args.insert("directory".to_string(), json!(root_str));
     args.insert("depth".to_string(), json!(2));
-    let res = list_files_in_directory(args).unwrap();
+    let res = list_files_in_directory(args, config.clone()).unwrap();
     let files = res["files"].as_array().unwrap();
     assert!(files.iter().any(|f| f["path"] == "subdir/file2.rs"));
     assert!(!files.iter().any(|f| f["path"] == "subdir/.hidden_file")); // hidden excluded by default
@@ -54,7 +60,7 @@ fn test_file_ops_list_and_search() {
     args.insert("directory".to_string(), json!(root_str));
     args.insert("depth".to_string(), json!(2));
     args.insert("include_hidden".to_string(), json!(true));
-    let res = list_files_in_directory(args).unwrap();
+    let res = list_files_in_directory(args, config.clone()).unwrap();
     let files = res["files"].as_array().unwrap();
     assert!(files.iter().any(|f| f["path"] == "subdir/.hidden_file"));
 
@@ -62,7 +68,7 @@ fn test_file_ops_list_and_search() {
     let mut args = HashMap::new();
     args.insert("directory".to_string(), json!(root_str));
     args.insert("pattern".to_string(), json!("*.rs"));
-    let res = search_files(args.clone()).unwrap();
+    let res = search_files(args.clone(), config.clone()).unwrap();
     let results = res["results"].as_array().unwrap();
     assert!(results.iter().any(|r| r["path"] == "subdir/file2.rs"));
 
@@ -70,7 +76,7 @@ fn test_file_ops_list_and_search() {
     let mut args = HashMap::new();
     args.insert("directory".to_string(), json!(root_str));
     args.insert("pattern".to_string(), json!("*file*"));
-    let res = search_files(args).unwrap();
+    let res = search_files(args, config.clone()).unwrap();
     let results = res["results"].as_array().unwrap();
     assert!(results.iter().any(|r| r["path"] == "file1.txt"));
     assert!(results.iter().any(|r| r["path"] == "subdir/file2.rs"));
@@ -80,13 +86,17 @@ fn test_file_ops_list_and_search() {
 fn test_file_ops_grep() {
     let dir = tempdir().unwrap();
     let root = dir.path();
-    fs::write(root.join("test.txt"), "line one\ntarget line\nline three").unwrap();
     let root_str = root.to_str().unwrap();
+
+    let mut config = AppConfig::default();
+    config.security.allowed_paths = vec![".".to_string(), root_str.to_string()];
+
+    fs::write(root.join("test.txt"), "line one\ntarget line\nline three").unwrap();
 
     let mut args = HashMap::new();
     args.insert("directory".to_string(), json!(root_str));
     args.insert("query".to_string(), json!("target"));
-    let res = grep_files(args).unwrap();
+    let res = grep_files(args, config).unwrap();
     let matches = res["matches"].as_array().unwrap();
     assert_eq!(matches.len(), 1);
     assert_eq!(matches[0]["file"], "test.txt");
@@ -98,8 +108,14 @@ fn test_file_ops_grep() {
 fn test_read_file_content_options() {
     let dir = tempdir().unwrap();
     let file_path = dir.path().join("test.txt");
-    fs::write(&file_path, "line1\nline2\nline3\nline4").unwrap();
     let path_str = file_path.to_str().unwrap();
+
+    let mut config = AppConfig::default();
+    // Canonicalize the allowed path to match validator behavior
+    let canon_path = std::fs::canonicalize(dir.path()).unwrap_or_else(|_| dir.path().to_path_buf());
+    config.security.allowed_paths = vec![".".to_string(), canon_path.to_string_lossy().to_string()];
+
+    fs::write(&file_path, "line1\nline2\nline3\nline4").unwrap();
 
     // Test with line numbers
     let mut args = HashMap::new();
@@ -108,7 +124,7 @@ fn test_read_file_content_options() {
     args.insert("end_line".to_string(), json!(3));
     args.insert("with_line_numbers".to_string(), json!(true));
 
-    let res = read_file_content(args).unwrap();
+    let res = read_file_content(args, config).unwrap();
     let content = res.as_str().unwrap();
     assert!(content.contains("   2 | line2"));
     assert!(content.contains("   3 | line3"));
@@ -131,7 +147,8 @@ async fn test_shell_execute_command() {
         args.insert("args".to_string(), json!(["hello", "world"]));
     }
 
-    let res = execute_command(args).await.unwrap();
+    let config = AppConfig::default();
+    let res = execute_command(args, config).await.unwrap();
     assert_eq!(res["stdout"].as_str().unwrap().trim(), "hello world");
     assert_eq!(res["exit_code"].as_i64().unwrap(), 0);
 }
@@ -143,8 +160,9 @@ async fn test_shell_security_block() {
     args.insert("command".to_string(), json!("rm\0"));
     args.insert("args".to_string(), json!(["-rf", "/"]));
 
+    let config = AppConfig::default();
     // validate_tool_call should block due to the null byte (obviously malicious)
-    let res = validate_tool_call("execute_command", &args);
+    let res = validate_tool_call("execute_command", &args, &config.security);
     assert!(res.is_err());
     assert!(res.unwrap_err().contains("Security Blocked"));
 }
@@ -155,12 +173,17 @@ fn test_file_modification_tools() {
     let file_path = dir.path().join("test.txt");
     let path_str = file_path.to_str().unwrap();
 
+    let mut config = AppConfig::default();
+    let canon_path = std::fs::canonicalize(dir.path()).unwrap_or_else(|_| dir.path().to_path_buf());
+    config.security.allowed_paths = vec![".".to_string(), canon_path.to_string_lossy().to_string()];
+
     // 1. Create file
     let mut args = HashMap::new();
     args.insert("path".to_string(), json!(path_str));
     args.insert("content".to_string(), json!("line1\nline2\nline3"));
 
-    let res = create_or_overwrite_file(args).expect("create_or_overwrite_file failed");
+    let res =
+        create_or_overwrite_file(args, config.clone()).expect("create_or_overwrite_file failed");
     assert!(res["success"].as_bool().unwrap());
     assert_eq!(
         fs::read_to_string(&file_path).unwrap(),
@@ -173,7 +196,7 @@ fn test_file_modification_tools() {
     args.insert("search".to_string(), json!("line2"));
     args.insert("replace".to_string(), json!("line2 modified"));
 
-    let res = edit_file(args).expect("edit_file failed");
+    let res = edit_file(args, config.clone()).expect("edit_file failed");
     assert!(res["success"].as_bool().unwrap());
     assert_eq!(
         fs::read_to_string(&file_path).unwrap(),
@@ -186,7 +209,7 @@ fn test_file_modification_tools() {
     args.insert("search".to_string(), json!("  line3  ")); // Whitespace difference
     args.insert("replace".to_string(), json!("line3 modified"));
 
-    let res = edit_file(args).expect("Fuzzy match should now succeed");
+    let res = edit_file(args, config.clone()).expect("Fuzzy match should now succeed");
     assert!(res["success"].as_bool().unwrap());
     assert_eq!(res["match_type"].as_str().unwrap(), "fuzzy");
     assert_eq!(
@@ -202,7 +225,8 @@ fn test_edit_file_not_found() {
     args.insert("search".to_string(), json!("search"));
     args.insert("replace".to_string(), json!("replace"));
 
-    let res = edit_file(args);
+    let config = AppConfig::default();
+    let res = edit_file(args, config);
     assert!(res.is_err());
 }
 
@@ -210,15 +234,19 @@ fn test_edit_file_not_found() {
 fn test_read_file_content_range_panic_fix() {
     let dir = tempdir().unwrap();
     let file_path = dir.path().join("test_read.txt");
-    fs::write(&file_path, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10").unwrap();
     let path_str = file_path.to_str().unwrap();
+
+    let mut config = AppConfig::default();
+    config.security.allowed_paths = vec![".".to_string(), path_str.to_string()];
+
+    fs::write(&file_path, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10").unwrap();
 
     let mut args = HashMap::new();
     args.insert("path".to_string(), json!(path_str));
     args.insert("start_line".to_string(), json!(8));
     args.insert("end_line".to_string(), json!(3));
 
-    let res = read_file_content(args)
+    let res = read_file_content(args, config)
         .expect("read_file_content should return Ok even with invalid range");
     let error_msg = res.as_str().unwrap();
     assert!(error_msg.contains("Error: start_line (8) is greater than end_line (3)"));

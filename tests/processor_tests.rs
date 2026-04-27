@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use llm_secure_cli::config::CONFIG_MANAGER;
 use llm_secure_cli::core::session::ChatSession;
 use llm_secure_cli::llm::base::LlmClient;
 use llm_secure_cli::llm::models::{
@@ -75,15 +74,12 @@ impl LlmClient for MockProcessorClient {
 
 #[tokio::test]
 async fn test_processor_tool_execution_flow() {
-    // 1. Setup Mock Config for Auto-approval
-    {
-        let mut config = CONFIG_MANAGER.get_config();
-        config.security.auto_approval_level = Some("low".to_string());
-        config.security.low_risk_tools = vec!["list_files_in_directory".to_string()];
-        config.security.dual_llm_verification = Some(true);
-        config.security.dual_llm_provider = "mock".to_string();
-        CONFIG_MANAGER.set_config(config);
-    }
+    // 1. Setup Config for Auto-approval
+    let mut config = llm_secure_cli::config::models::AppConfig::default();
+    config.security.auto_approval_level = Some("low".to_string());
+    config.security.low_risk_tools = vec!["list_files_in_directory".to_string()];
+    config.security.dual_llm_verification = Some(true);
+    config.security.dual_llm_provider = "mock".to_string();
 
     // 2. Register Mock Client in Registry for Verifier
     {
@@ -144,6 +140,7 @@ async fn test_processor_tool_execution_flow() {
 
     let mut session = ChatSession {
         client: Box::new(mock_client),
+        config,
         intent: "test".to_string(),
         pending_data: Vec::new(),
         trace_id: "test-trace".to_string(),

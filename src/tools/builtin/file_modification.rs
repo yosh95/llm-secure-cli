@@ -1,3 +1,4 @@
+use crate::config::models::AppConfig;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
@@ -5,7 +6,7 @@ use std::path::Path;
 
 /// Edit a file by replacing a specific block of text.
 /// First tries an exact match. If that fails, tries a fuzzy match (ignoring leading/trailing whitespace on each line).
-pub fn edit_file(args: HashMap<String, Value>) -> anyhow::Result<Value> {
+pub fn edit_file(args: HashMap<String, Value>, config: AppConfig) -> anyhow::Result<Value> {
     let path_str = args
         .get("path")
         .and_then(|v| v.as_str())
@@ -26,18 +27,21 @@ pub fn edit_file(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let path = Path::new(path_str);
+    let path = match crate::security::path_validator::validate_path(path_str, &config.security) {
+        Ok(p) => p,
+        Err(e) => return Err(anyhow::anyhow!("Security Error: {}", e)),
+    };
     if !path.exists() {
         return Err(anyhow::anyhow!("File not found: {}", path_str));
     }
 
     let original =
-        fs::read_to_string(path).map_err(|e| anyhow::anyhow!("Cannot read file: {}", e))?;
+        fs::read_to_string(&path).map_err(|e| anyhow::anyhow!("Cannot read file: {}", e))?;
 
     // 1. Try exact match
     if original.contains(search_str) {
         let new_content = original.replacen(search_str, replace_str, 1);
-        return finalize_edit(path, &original, &new_content, dry_run, path_str, "exact");
+        return finalize_edit(&path, &original, &new_content, dry_run, path_str, "exact");
     }
 
     // 2. Try fuzzy match (line-by-line, ignoring leading/trailing whitespace)
@@ -118,7 +122,7 @@ pub fn edit_file(args: HashMap<String, Value>) -> anyhow::Result<Value> {
 
         new_content.push_str(&original[end_byte..]);
 
-        return finalize_edit(path, &original, &new_content, dry_run, path_str, "fuzzy");
+        return finalize_edit(&path, &original, &new_content, dry_run, path_str, "fuzzy");
     }
 
     if matches.len() > 1 {
@@ -175,7 +179,10 @@ fn finalize_edit(
 
 /// Write full content to a file. Overwrites existing files.
 /// Creates parent directories if they don't exist.
-pub fn create_or_overwrite_file(args: HashMap<String, Value>) -> anyhow::Result<Value> {
+pub fn create_or_overwrite_file(
+    args: HashMap<String, Value>,
+    config: AppConfig,
+) -> anyhow::Result<Value> {
     let path_str = args
         .get("path")
         .and_then(|v| v.as_str())
@@ -186,11 +193,14 @@ pub fn create_or_overwrite_file(args: HashMap<String, Value>) -> anyhow::Result<
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("'content' is required"))?;
 
-    let path = Path::new(path_str);
+    let path = match crate::security::path_validator::validate_path(path_str, &config.security) {
+        Ok(p) => p,
+        Err(e) => return Err(anyhow::anyhow!("Security Error: {}", e)),
+    };
     let existed = path.exists();
 
     let original = if existed {
-        fs::read_to_string(path).ok()
+        fs::read_to_string(&path).ok()
     } else {
         None
     };
@@ -204,7 +214,7 @@ pub fn create_or_overwrite_file(args: HashMap<String, Value>) -> anyhow::Result<
             .map_err(|e| anyhow::anyhow!("Cannot create directories: {}", e))?;
     }
 
-    fs::write(path, content).map_err(|e| anyhow::anyhow!("Cannot write file: {}", e))?;
+    fs::write(&path, content).map_err(|e| anyhow::anyhow!("Cannot write file: {}", e))?;
 
     let diff = if let Some(orig) = original {
         generate_diff(&orig, content)

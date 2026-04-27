@@ -1,3 +1,4 @@
+use crate::config::models::SecurityConfig;
 use crate::llm::models::{ContentPart, DataSource};
 use crate::security::cass::{CASS_ORCHESTRATOR, RiskLevel, SecurityPosture};
 use std::collections::HashMap;
@@ -56,7 +57,12 @@ impl<'a> fmt::Debug for ToolExecutionContext<'a> {
 }
 
 impl<'a> ToolExecutionContext<'a> {
-    pub fn new(session: &'a dyn AgentContext, part: ContentPart, duration: Option<f64>) -> Self {
+    pub fn new(
+        session: &'a dyn AgentContext,
+        part: ContentPart,
+        duration: Option<f64>,
+        config: &SecurityConfig,
+    ) -> Self {
         let mut tool_id = "unknown".to_string();
         let mut call_id = None;
         let mut name = "unknown".to_string();
@@ -94,8 +100,8 @@ impl<'a> ToolExecutionContext<'a> {
             (None, name.clone())
         };
 
-        let risk_level = CASS_ORCHESTRATOR.evaluate_risk(&base_name);
-        let security_requirements = CASS_ORCHESTRATOR.get_security_requirements(&base_name);
+        let risk_level = CASS_ORCHESTRATOR.evaluate_risk(&base_name, config);
+        let security_requirements = CASS_ORCHESTRATOR.get_security_requirements(&base_name, config);
 
         Self {
             session,

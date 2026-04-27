@@ -1,3 +1,4 @@
+use crate::config::models::AppConfig;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::future::Future;
@@ -5,7 +6,7 @@ use std::pin::Pin;
 use std::sync::{Arc, LazyLock, Mutex};
 
 pub type ToolFuture = Pin<Box<dyn Future<Output = anyhow::Result<Value>> + Send>>;
-pub type ToolFunc = Arc<dyn Fn(HashMap<String, Value>) -> ToolFuture + Send + Sync>;
+pub type ToolFunc = Arc<dyn Fn(HashMap<String, Value>, AppConfig) -> ToolFuture + Send + Sync>;
 
 pub struct Tool {
     pub name: String,
@@ -78,7 +79,7 @@ impl ToolRegistry {
         let parameters = tool["parameters"].clone();
 
         let name_for_error = name.clone();
-        let func: ToolFunc = Arc::new(move |_args| {
+        let func: ToolFunc = Arc::new(move |_args, _config| {
             let n = name_for_error.clone();
             Box::pin(async move {
                 Err(anyhow::anyhow!(
@@ -186,8 +187,10 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
                 "max_files": { "type": "integer", "description": "Max files to list.", "default": 500 }
             }
         }),
-        Arc::new(|args| {
-            Box::pin(async move { crate::tools::builtin::file_ops::list_files_in_directory(args) })
+        Arc::new(|args, config| {
+            Box::pin(async move {
+                crate::tools::builtin::file_ops::list_files_in_directory(args, config)
+            })
         }),
     );
 
@@ -205,8 +208,10 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             },
             "required": ["path"]
         }),
-        Arc::new(|args| {
-            Box::pin(async move { crate::tools::builtin::file_ops::read_file_content(args) })
+        Arc::new(|args, config| {
+            Box::pin(
+                async move { crate::tools::builtin::file_ops::read_file_content(args, config) },
+            )
         }),
     );
 
@@ -223,7 +228,9 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             },
             "required": ["query"]
         }),
-        Arc::new(|args| Box::pin(async move { crate::tools::builtin::file_ops::grep_files(args) })),
+        Arc::new(|args, config| {
+            Box::pin(async move { crate::tools::builtin::file_ops::grep_files(args, config) })
+        }),
     );
 
     maybe_register(
@@ -239,8 +246,8 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             },
             "required": ["pattern"]
         }),
-        Arc::new(|args| {
-            Box::pin(async move { crate::tools::builtin::file_ops::search_files(args) })
+        Arc::new(|args, config| {
+            Box::pin(async move { crate::tools::builtin::file_ops::search_files(args, config) })
         }),
     );
 
@@ -258,8 +265,10 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             },
             "required": ["path", "search", "replace"]
         }),
-        Arc::new(|args| {
-            Box::pin(async move { crate::tools::builtin::file_modification::edit_file(args) })
+        Arc::new(|args, config| {
+            Box::pin(
+                async move { crate::tools::builtin::file_modification::edit_file(args, config) },
+            )
         }),
     );
 
@@ -275,9 +284,9 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             },
             "required": ["path", "content"]
         }),
-        Arc::new(|args| {
+        Arc::new(|args, config| {
             Box::pin(async move {
-                crate::tools::builtin::file_modification::create_or_overwrite_file(args)
+                crate::tools::builtin::file_modification::create_or_overwrite_file(args, config)
             })
         }),
     );
@@ -295,8 +304,8 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             },
             "required": ["url"]
         }),
-        Arc::new(|args| {
-            Box::pin(async move { crate::tools::builtin::web::read_url_content(args) })
+        Arc::new(|args, config| {
+            Box::pin(async move { crate::tools::builtin::web::read_url_content(args, config) })
         }),
     );
 
@@ -314,8 +323,8 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
                 },
                 "required": ["query"]
             }),
-            Arc::new(|args| {
-                Box::pin(async move { crate::tools::builtin::web::brave_search(args) })
+            Arc::new(|args, config| {
+                Box::pin(async move { crate::tools::builtin::web::brave_search(args, config) })
             }),
         );
     }
@@ -332,8 +341,10 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             },
             "required": ["command", "args"]
         }),
-        Arc::new(|args| {
-            Box::pin(async move { crate::tools::builtin::shell::execute_command(args).await })
+        Arc::new(|args, config| {
+            Box::pin(
+                async move { crate::tools::builtin::shell::execute_command(args, config).await },
+            )
         }),
     );
 }

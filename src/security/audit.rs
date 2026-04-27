@@ -40,11 +40,13 @@ pub fn log_audit(
     error: Option<&str>,
     context: Option<&serde_json::Value>,
 ) {
+    let config = CONFIG_MANAGER.get_config();
     let _ = log_audit_and_return(
-        event_type, tool_name, args, output, exit_code, error, context,
+        event_type, tool_name, args, output, exit_code, error, context, &config, None,
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn log_audit_and_return(
     event_type: &str,
     tool_name: &str,
@@ -53,9 +55,11 @@ pub fn log_audit_and_return(
     exit_code: Option<i32>,
     error: Option<&str>,
     context: Option<&serde_json::Value>,
+    config: &crate::config::models::AppConfig,
+    log_path: Option<&Path>,
 ) -> Option<AuditEntry> {
-    let path = &*AUDIT_LOG_PATH;
-    let config = CONFIG_MANAGER.get_config();
+    let default_path = &*AUDIT_LOG_PATH;
+    let path = log_path.unwrap_or(default_path);
     let max_lines = config.general.max_audit_log_lines;
 
     if let Some(parent) = path.parent()

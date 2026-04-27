@@ -27,9 +27,12 @@ pub async fn verify_tool_call(
     tool_name: &str,
     tool_args: &Value,
     context: Option<SecurityContext>,
+    config: &crate::config::models::SecurityConfig,
 ) -> bool {
-    let (safe, _) =
-        verify_tool_call_full(user_query, tool_name, tool_args, context, None, None).await;
+    let (safe, _) = verify_tool_call_full(
+        user_query, tool_name, tool_args, context, config, None, None,
+    )
+    .await;
     safe
 }
 
@@ -39,12 +42,12 @@ pub async fn verify_tool_call_full(
     tool_name: &str,
     tool_args: &Value,
     context: Option<SecurityContext>,
+    config: &crate::config::models::SecurityConfig,
     provider: Option<String>,
     model: Option<String>,
 ) -> (bool, String) {
-    let config = crate::config::CONFIG_MANAGER.get_config();
-    let p = provider.unwrap_or(config.security.dual_llm_provider.clone());
-    let m = model.unwrap_or(config.security.dual_llm_model.clone());
+    let p = provider.unwrap_or(config.dual_llm_provider.clone());
+    let m = model.unwrap_or(config.dual_llm_model.clone());
 
     let client = match crate::llm::registry::CLIENT_REGISTRY
         .lock()
@@ -60,7 +63,7 @@ pub async fn verify_tool_call_full(
         }
     };
 
-    let ctx = context.unwrap_or_else(|| SecurityContext::gather(&config.security.security_level));
+    let ctx = context.unwrap_or_else(|| SecurityContext::gather(&config.security_level));
 
     let mut verifier = DualLLMVerifier::new(client);
     match verifier

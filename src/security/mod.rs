@@ -18,12 +18,13 @@ pub mod static_analyzer;
 pub fn validate_tool_call(
     name: &str,
     args: &serde_json::Map<String, serde_json::Value>,
+    config: &crate::config::models::SecurityConfig,
 ) -> Result<(), String> {
     // 1. Path Guardrails (Simplified)
     let path_args = ["path", "directory", "file", "src", "dest", "filename"];
     for arg_name in path_args {
         if let Some(p_val) = args.get(arg_name).and_then(|v| v.as_str())
-            && let Err(e) = crate::security::path_validator::validate_path(p_val)
+            && let Err(e) = crate::security::path_validator::validate_path(p_val, config)
         {
             return Err(format!("Security Blocked (Path Guardrails): {}", e));
         }

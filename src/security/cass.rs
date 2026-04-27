@@ -1,4 +1,4 @@
-use crate::config::CONFIG_MANAGER;
+use crate::config::models::SecurityConfig;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,9 +21,8 @@ pub struct SecurityPosture {
 pub struct CASSOrchestrator;
 
 impl CASSOrchestrator {
-    pub fn evaluate_risk(&self, tool_name: &str) -> RiskLevel {
-        let config = CONFIG_MANAGER.get_config();
-        let dual_llm_enabled = config.security.dual_llm_verification.unwrap_or(false);
+    pub fn evaluate_risk(&self, tool_name: &str, config: &SecurityConfig) -> RiskLevel {
+        let dual_llm_enabled = config.dual_llm_verification.unwrap_or(false);
 
         if tool_name == "execute_command" {
             if !dual_llm_enabled {
@@ -32,29 +31,22 @@ impl CASSOrchestrator {
                 return RiskLevel::High;
             }
         }
-        if config
-            .security
-            .high_risk_tools
-            .iter()
-            .any(|t| t == tool_name)
-        {
+        if config.high_risk_tools.iter().any(|t| t == tool_name) {
             RiskLevel::High
-        } else if config
-            .security
-            .medium_risk_tools
-            .iter()
-            .any(|t| t == tool_name)
-        {
+        } else if config.medium_risk_tools.iter().any(|t| t == tool_name) {
             RiskLevel::Medium
         } else {
             RiskLevel::Low
         }
     }
 
-    pub fn get_security_requirements(&self, tool_name: &str) -> SecurityPosture {
-        let risk_level = self.evaluate_risk(tool_name);
-        let config = CONFIG_MANAGER.get_config();
-        let dual_llm_enabled = config.security.dual_llm_verification.unwrap_or(false);
+    pub fn get_security_requirements(
+        &self,
+        tool_name: &str,
+        config: &SecurityConfig,
+    ) -> SecurityPosture {
+        let risk_level = self.evaluate_risk(tool_name, config);
+        let dual_llm_enabled = config.dual_llm_verification.unwrap_or(false);
 
         match risk_level {
             RiskLevel::Critical => SecurityPosture {

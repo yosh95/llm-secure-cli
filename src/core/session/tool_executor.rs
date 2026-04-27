@@ -28,8 +28,12 @@ impl ChatSession {
 
         // Local built-in tools: asynchronous execution
         let fut = {
+            let config = crate::config::CONFIG_MANAGER.get_config();
             let registry = crate::tools::registry::REGISTRY.lock().unwrap();
-            registry.tools.get(name).map(|tool| (tool.func)(args))
+            registry
+                .tools
+                .get(name)
+                .map(|tool| (tool.func)(args, config))
         };
 
         if let Some(fut) = fut {

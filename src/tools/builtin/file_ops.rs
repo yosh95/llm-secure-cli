@@ -1,9 +1,10 @@
+use crate::config::models::AppConfig;
 use chrono::DateTime;
 use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::consts::{MAX_OUTPUT_CHARS, MAX_OUTPUT_LINES};
 
@@ -92,7 +93,10 @@ fn glob_match(pattern: &str, name: &str) -> bool {
     current_name.ends_with(last_part)
 }
 
-pub fn list_files_in_directory(args: HashMap<String, Value>) -> anyhow::Result<Value> {
+pub fn list_files_in_directory(
+    args: HashMap<String, Value>,
+    config: AppConfig,
+) -> anyhow::Result<Value> {
     let directory = args
         .get("directory")
         .and_then(|v| v.as_str())
@@ -116,7 +120,11 @@ pub fn list_files_in_directory(args: HashMap<String, Value>) -> anyhow::Result<V
         })
         .unwrap_or_default();
 
-    let base_path = PathBuf::from(directory);
+    let base_path =
+        match crate::security::path_validator::validate_path(directory, &config.security) {
+            Ok(p) => p,
+            Err(e) => return Err(anyhow::anyhow!("Security Error: {}", e)),
+        };
     if !base_path.exists() {
         return Ok(json!(format!(
             "Error: Directory '{}' does not exist.",
@@ -248,7 +256,7 @@ pub fn list_files_in_directory(args: HashMap<String, Value>) -> anyhow::Result<V
     }
 }
 
-pub fn read_file_content(args: HashMap<String, Value>) -> anyhow::Result<Value> {
+pub fn read_file_content(args: HashMap<String, Value>, config: AppConfig) -> anyhow::Result<Value> {
     let path_str = args
         .get("path")
         .and_then(|v| v.as_str())
@@ -263,7 +271,10 @@ pub fn read_file_content(args: HashMap<String, Value>) -> anyhow::Result<Value> 
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let path = PathBuf::from(path_str);
+    let path = match crate::security::path_validator::validate_path(path_str, &config.security) {
+        Ok(p) => p,
+        Err(e) => return Err(anyhow::anyhow!("Security Error: {}", e)),
+    };
     if !path.is_file() {
         return Ok(json!(format!("Error: '{}' is not a file.", path_str)));
     }
@@ -325,7 +336,7 @@ pub fn read_file_content(args: HashMap<String, Value>) -> anyhow::Result<Value> 
     }
 }
 
-pub fn grep_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
+pub fn grep_files(args: HashMap<String, Value>, config: AppConfig) -> anyhow::Result<Value> {
     let directory = args
         .get("directory")
         .and_then(|v| v.as_str())
@@ -336,7 +347,11 @@ pub fn grep_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         .ok_or_else(|| anyhow::anyhow!("Missing 'query' argument"))?;
     let file_pattern = args.get("file_pattern").and_then(|v| v.as_str());
 
-    let base_path = PathBuf::from(directory);
+    let base_path =
+        match crate::security::path_validator::validate_path(directory, &config.security) {
+            Ok(p) => p,
+            Err(e) => return Err(anyhow::anyhow!("Security Error: {}", e)),
+        };
     if !base_path.exists() {
         return Ok(json!(format!(
             "Error: Directory '{}' does not exist.",
@@ -475,7 +490,7 @@ pub fn grep_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
     }
 }
 
-pub fn search_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
+pub fn search_files(args: HashMap<String, Value>, config: AppConfig) -> anyhow::Result<Value> {
     let directory = args
         .get("directory")
         .and_then(|v| v.as_str())
@@ -494,7 +509,11 @@ pub fn search_files(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         })
         .unwrap_or_default();
 
-    let base_path = PathBuf::from(directory);
+    let base_path =
+        match crate::security::path_validator::validate_path(directory, &config.security) {
+            Ok(p) => p,
+            Err(e) => return Err(anyhow::anyhow!("Security Error: {}", e)),
+        };
     if !base_path.exists() {
         return Ok(json!(format!(
             "Error: Directory '{}' does not exist.",

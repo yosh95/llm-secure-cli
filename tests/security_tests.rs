@@ -1,8 +1,11 @@
-use llm_secure_cli::config::CONFIG_MANAGER;
+use llm_secure_cli::config::models::SecurityConfig;
 use llm_secure_cli::security::path_validator::validate_path;
 use std::env;
 use std::fs;
+use std::sync::Mutex;
 use tempfile::tempdir;
+
+static TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_path_validation() {
@@ -10,15 +13,11 @@ fn test_path_validation() {
     let original_dir = env::current_dir().unwrap();
     env::set_current_dir(dir.path()).unwrap();
 
-    // Use set_config instead of writing to disk and reloading
-    {
-        let mut config = CONFIG_MANAGER.get_config();
-        config.security.allowed_paths = vec![".".to_string()];
-        CONFIG_MANAGER.set_config(config);
-    }
+    let mut config = SecurityConfig::default();
+    config.allowed_paths = vec![".".to_string()];
 
     // 1. Allowed path (current directory)
-    let res = validate_path("test.txt");
+    let res = validate_path("test.txt", &config);
     assert!(
         res.is_ok(),
         "Should allow test.txt in CWD, got {:?}",
@@ -26,17 +25,17 @@ fn test_path_validation() {
     );
 
     // 2. Blocked by traversal
-    let res = validate_path("../outside.txt");
+    let res = validate_path("../outside.txt", &config);
     assert!(res.is_err());
     assert!(res.unwrap_err().0.contains("traversal"));
 
     // 3. Blocked by being outside allowed roots (absolute)
-    let res = validate_path("/etc/passwd");
+    let res = validate_path("/etc/passwd", &config);
     assert!(res.is_err());
     assert!(res.unwrap_err().0.contains("outside allowed directories"));
 
     // 4. Normalization
-    let res = validate_path("  'sub/dir/'  ");
+    let res = validate_path("  'sub/dir/'  ", &config);
     assert!(res.is_ok());
     let path_str = res.unwrap().to_str().unwrap().replace("\\", "/");
     assert!(path_str.contains("sub/dir"));
@@ -74,28 +73,17 @@ fn test_audit_entry_serialization() {
 
 #[test]
 fn test_audit_hash_chaining() {
-    use llm_secure_cli::consts::AUDIT_LOG_PATH;
-    use llm_secure_cli::security::audit::log_audit;
+    let _lock = TEST_LOCK.lock().unwrap();
+    use llm_secure_cli::config::models::AppConfig;
+    use llm_secure_cli::security::audit::log_audit_and_return;
 
-    let path = &*AUDIT_LOG_PATH;
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("audit_test.jsonl");
+    let config = AppConfig::default();
 
-    // Backup existing log if any
-    let backup = if path.exists() {
-        let content = fs::read_to_string(path).unwrap();
-        fs::remove_file(path).unwrap();
-        Some(content)
-    } else {
-        None
-    };
-
-    // Ensure directory exists
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-
-    // Call log_audit twice.
+    // Call log_audit_and_return twice.
     // The second call should pick up the hash of the first call as its prev_hash.
-    log_audit(
+    log_audit_and_return(
         "tool_call",
         "test_tool",
         serde_json::json!({}),
@@ -103,8 +91,10 @@ fn test_audit_hash_chaining() {
         Some(0),
         None,
         None,
+        &config,
+        Some(&path),
     );
-    log_audit(
+    log_audit_and_return(
         "tool_call",
         "test_tool",
         serde_json::json!({}),
@@ -112,10 +102,12 @@ fn test_audit_hash_chaining() {
         Some(0),
         None,
         None,
+        &config,
+        Some(&path),
     );
 
     // Read the log file
-    let content = fs::read_to_string(path).expect("Failed to read audit log");
+    let content = fs::read_to_string(&path).expect("Failed to read audit log");
     let lines: Vec<&str> = content.lines().collect();
 
     if lines.len() >= 2 {
@@ -139,11 +131,5 @@ fn test_audit_hash_chaining() {
             "Should have at least 2 audit entries, found {}",
             lines.len()
         );
-    }
-
-    // Cleanup and restore
-    fs::remove_file(path).unwrap();
-    if let Some(c) = backup {
-        fs::write(path, c).unwrap();
     }
 }

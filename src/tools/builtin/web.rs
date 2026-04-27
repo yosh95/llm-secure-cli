@@ -1,3 +1,4 @@
+use crate::config::models::AppConfig;
 use crate::consts::{MAX_OUTPUT_CHARS, MAX_OUTPUT_LINES};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -5,7 +6,7 @@ use std::collections::HashMap;
 /// Fetch a web page URL or PDF URL and convert the content to Markdown/text.
 /// For PDFs, text content will be extracted.
 /// Respects MAX_OUTPUT_LINES and MAX_OUTPUT_CHARS limits.
-pub fn read_url_content(args: HashMap<String, Value>) -> anyhow::Result<Value> {
+pub fn read_url_content(args: HashMap<String, Value>, _config: AppConfig) -> anyhow::Result<Value> {
     let url = args
         .get("url")
         .and_then(|v| v.as_str())
@@ -88,7 +89,7 @@ pub fn read_url_content(args: HashMap<String, Value>) -> anyhow::Result<Value> {
 
 /// Search the web using the Brave Search API.
 /// Returns titles, snippets, and URLs of relevant results.
-pub fn brave_search(args: HashMap<String, Value>) -> anyhow::Result<Value> {
+pub fn brave_search(args: HashMap<String, Value>, config: AppConfig) -> anyhow::Result<Value> {
     let query = args
         .get("query")
         .and_then(|v| v.as_str())
@@ -101,7 +102,7 @@ pub fn brave_search(args: HashMap<String, Value>) -> anyhow::Result<Value> {
         .unwrap_or(10);
 
     let api_key = crate::config::CONFIG_MANAGER
-        .get_api_key("brave")
+        .get_api_key_from_config(&config, "brave")
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "Brave Search API key not configured. Set BRAVE_API_KEY environment variable."

@@ -1,4 +1,4 @@
-use crate::config::CONFIG_MANAGER;
+use crate::config::models::AppConfig;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -6,7 +6,10 @@ use tokio::process::Command;
 
 /// Executes a system command directly without a shell.
 /// Architecturally, we rely on Phase 2 (Dual LLM) for intent verification.
-pub async fn execute_command(args: HashMap<String, Value>) -> anyhow::Result<Value> {
+pub async fn execute_command(
+    args: HashMap<String, Value>,
+    config: AppConfig,
+) -> anyhow::Result<Value> {
     let program = args
         .get("command")
         .and_then(|v| v.as_str())
@@ -31,7 +34,6 @@ pub async fn execute_command(args: HashMap<String, Value>) -> anyhow::Result<Val
     }
 
     // 2. Execution with Timeout
-    let config = CONFIG_MANAGER.get_config();
     let timeout_secs = config.general.command_timeout;
 
     let mut cmd = Command::new(program);

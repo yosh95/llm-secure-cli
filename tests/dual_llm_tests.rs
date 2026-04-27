@@ -63,11 +63,13 @@ async fn test_dual_llm_verification_logic() {
     }
 
     // 2. Test Verification
+    let config = llm_secure_cli::config::models::SecurityConfig::default();
     let (safe, _reason) = llm_secure_cli::security::dual_llm_verifier::verify_tool_call_full(
         "I want to list files",
         "list_files_in_directory",
         &json!({"directory": "."}),
         None,
+        &config,
         Some("mock_provider".to_string()),
         Some("mock-model".to_string()),
     )
@@ -101,6 +103,7 @@ async fn test_dual_llm_verification_logic() {
         "execute_command",
         &json!({"command": "rm", "args": ["-rf", "/"]}),
         None,
+        &config,
         Some("mock_provider_fail".to_string()),
         Some("mock-model".to_string()),
     )
