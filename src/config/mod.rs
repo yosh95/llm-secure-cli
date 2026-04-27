@@ -123,45 +123,13 @@ impl ConfigManager {
         // API-key lookup so that the Authorization header is sent correctly.
         if provider == "ollama" {
             let config = self.get_config();
-            if let Some(p_cfg) = config.providers.get("ollama") {
-                let base_url = p_cfg.api_url.as_deref().unwrap_or("");
-                let is_local = base_url.is_empty()
-                    || base_url.contains("localhost")
-                    || base_url.contains("127.0.0.1");
-                if is_local {
-                    return Some("local_bypass".to_string());
-                }
-                // Cloud endpoint: fall through to env-var / config key lookup below.
-            } else {
-                // No ollama config at all → assume local
+            if Self::is_local_ollama(&config) {
                 return Some("local_bypass".to_string());
             }
         }
 
-        let env_vars = match provider {
-            "google" => vec!["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-            "openai" => vec!["OPENAI_API_KEY"],
-            "anthropic" => vec!["ANTHROPIC_API_KEY"],
-            "ollama" => vec!["OLLAMA_API_KEY"],
-            "brave" => vec!["BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY"],
-            _ => vec![],
-        };
-
-        // 1. Check internal cache (from .env)
-        {
-            let cache = self.env_cache.lock().unwrap();
-            for var in &env_vars {
-                if let Some(val) = cache.get(*var) {
-                    return Some(val.clone());
-                }
-            }
-        }
-
-        // 2. Check system environment
-        for var in env_vars {
-            if let Ok(val) = env::var(var) {
-                return Some(val);
-            }
+        if let Some((val, _)) = self.lookup_env_api_key(provider) {
+            return Some(val);
         }
 
         // Fallback to config
@@ -169,37 +137,42 @@ impl ConfigManager {
         self.get_api_key_from_config(&config, provider)
     }
 
-    pub fn get_api_key_from_config(&self, config: &AppConfig, provider: &str) -> Option<String> {
-        // Special case for Ollama:
-        if provider == "ollama" {
-            if let Some(p_cfg) = config.providers.get("ollama") {
-                let base_url = p_cfg.api_url.as_deref().unwrap_or("");
-                let is_local = base_url.is_empty()
-                    || base_url.contains("localhost")
-                    || base_url.contains("127.0.0.1");
-                if is_local {
-                    return Some("local_bypass".to_string());
-                }
-            } else {
-                return Some("local_bypass".to_string());
-            }
-        }
-
-        let env_vars = match provider {
+    /// Resolve API key environment variable names for a given provider.
+    fn api_key_env_vars(provider: &str) -> Vec<&'static str> {
+        match provider {
             "google" => vec!["GEMINI_API_KEY", "GOOGLE_API_KEY"],
             "openai" => vec!["OPENAI_API_KEY"],
             "anthropic" => vec!["ANTHROPIC_API_KEY"],
             "ollama" => vec!["OLLAMA_API_KEY"],
             "brave" => vec!["BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY"],
             _ => vec![],
-        };
+        }
+    }
 
-        // 1. Check internal cache (from .env)
+    /// Check whether an Ollama endpoint is local (no API key required).
+    fn is_local_ollama(config: &AppConfig) -> bool {
+        match config.providers.get("ollama") {
+            Some(p_cfg) => {
+                let base_url = p_cfg.api_url.as_deref().unwrap_or("");
+                base_url.is_empty()
+                    || base_url.contains("localhost")
+                    || base_url.contains("127.0.0.1")
+            }
+            None => true, // No config → assume local
+        }
+    }
+
+    /// Look up an API key from the internal .env cache and system environment.
+    /// Returns the key and the source variable name if found.
+    fn lookup_env_api_key(&self, provider: &str) -> Option<(String, &'static str)> {
+        let env_vars = Self::api_key_env_vars(provider);
+
+        // 1. Check internal cache (from .env files)
         {
             let cache = self.env_cache.lock().unwrap();
             for var in &env_vars {
                 if let Some(val) = cache.get(*var) {
-                    return Some(val.clone());
+                    return Some((val.clone(), var));
                 }
             }
         }
@@ -207,16 +180,22 @@ impl ConfigManager {
         // 2. Check system environment
         for var in env_vars {
             if let Ok(val) = env::var(var) {
-                return Some(val);
+                return Some((val, var));
             }
         }
 
-        if let Some(p_cfg) = config.providers.get(provider)
-            && let Some(key) = &p_cfg.api_key
-        {
-            return Some(key.clone());
-        }
         None
+    }
+
+    /// Read an API key **only** from the config file (no env lookup).
+    /// This is the single source of truth for config-file-based keys.
+    pub fn get_api_key_from_config(&self, config: &AppConfig, provider: &str) -> Option<String> {
+        // Special case for Ollama: local endpoints need no key
+        if provider == "ollama" && Self::is_local_ollama(config) {
+            return Some("local_bypass".to_string());
+        }
+
+        config.providers.get(provider)?.api_key.clone()
     }
 
     pub fn get_active_providers(&self) -> Vec<String> {

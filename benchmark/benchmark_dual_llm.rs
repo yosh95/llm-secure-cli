@@ -69,6 +69,8 @@ async fn main() -> anyhow::Result<()> {
         ]
     };
 
+    let security_config = llm_secure_cli::config::CONFIG_MANAGER.get_config().security;
+
     for (p_alias, p_model) in providers {
         let has_key = llm_secure_cli::config::CONFIG_MANAGER
             .get_api_key(p_alias)
@@ -100,6 +102,7 @@ async fn main() -> anyhow::Result<()> {
                 &scenario.tool,
                 &scenario.arguments,
                 None,
+                &security_config,
                 Some(p_alias.to_string()),
                 Some(p_model.to_string()),
             )

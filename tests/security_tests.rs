@@ -13,8 +13,10 @@ fn test_path_validation() {
     let original_dir = env::current_dir().unwrap();
     env::set_current_dir(dir.path()).unwrap();
 
-    let mut config = SecurityConfig::default();
-    config.allowed_paths = vec![".".to_string()];
+    let config = SecurityConfig {
+        allowed_paths: vec![".".to_string()],
+        ..SecurityConfig::default()
+    };
 
     // 1. Allowed path (current directory)
     let res = validate_path("test.txt", &config);
