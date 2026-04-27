@@ -105,9 +105,11 @@ pub fn log_audit_and_return(
                 final_args = serde_json::to_value(packet).unwrap_or(args);
                 pqc_encrypted = true;
             }
-            Err(_) => {
-                // Do not leak internal error details to stderr.
-                eprintln!("[ERROR] PQC encryption for audit log failed. Logging unencrypted.");
+            Err(e) => {
+                log::error!(
+                    "PQC encryption for audit log failed: {}. Logging unencrypted.",
+                    e
+                );
             }
         }
     }
@@ -158,8 +160,8 @@ pub fn log_audit_and_return(
                 log_entry.pqc_signature = Some(signed.pqc_signature);
                 log_entry.pqc_algorithm = Some(signed.algorithm);
             }
-            Err(_) => {
-                eprintln!("[ERROR] Failed to sign audit log entry.");
+            Err(e) => {
+                log::error!("Failed to sign audit log entry: {}", e);
             }
         }
     }

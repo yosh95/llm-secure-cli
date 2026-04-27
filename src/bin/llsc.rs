@@ -142,7 +142,7 @@ async fn main() {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Warning: Integrity verification error: {}", e);
+                    log::warn!("Integrity verification error: {}", e);
                 }
             }
         }
@@ -242,7 +242,7 @@ async fn main() {
 
     if args.mcp_server {
         if let Err(e) = llm_secure_cli::cli::commands::mcp_server::run_mcp_server().await {
-            eprintln!("Error: {}", e);
+            ui::report_error(&format!("MCP Server Error: {}", e));
             std::process::exit(1);
         }
         return;

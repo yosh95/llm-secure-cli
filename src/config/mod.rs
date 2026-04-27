@@ -12,6 +12,7 @@ use std::sync::Mutex;
 
 pub struct ConfigManager {
     app_config: Mutex<Option<AppConfig>>,
+    env_cache: Mutex<HashMap<String, String>>,
     env_loaded: Mutex<bool>,
 }
 
@@ -19,7 +20,8 @@ impl ConfigManager {
     fn new() -> Self {
         Self {
             app_config: Mutex::new(None),
-            env_loaded: Mutex::new(false),
+            env_cache: Mutex::new(HashMap::new()),
+            env_loaded: Mutex::new(bool::default()),
         }
     }
 
@@ -29,6 +31,7 @@ impl ConfigManager {
             return;
         }
 
+        let mut cache = self.env_cache.lock().unwrap();
         let dotenv_paths = [
             Path::new(".env").to_path_buf(),
             LLM_CLI_BASE_DIR.join(".env"),
@@ -44,19 +47,13 @@ impl ConfigManager {
                         continue;
                     }
                     if let Some((key, val)) = line.split_once('=') {
-                        let key = key.trim();
-                        let val = val.trim().trim_matches(|c| c == '\'' || c == '"');
-                        if !key.is_empty() && env::var(key).is_err() {
-                            // Safety: `env_loaded` is a Mutex that is held for the
-                            // entire duration of this function. The flag is set to
-                            // `true` before the lock is released, so this block is
-                            // guaranteed to execute at most once across all threads.
-                            // No other thread can call `set_var` concurrently through
-                            // this path, satisfying the single-writer requirement.
-                            #[allow(unused_unsafe)]
-                            unsafe {
-                                env::set_var(key, val)
-                            };
+                        let key = key.trim().to_string();
+                        let val = val
+                            .trim()
+                            .trim_matches(|c| c == '\'' || c == '"')
+                            .to_string();
+                        if !key.is_empty() {
+                            cache.insert(key, val);
                         }
                     }
                 }
@@ -67,6 +64,7 @@ impl ConfigManager {
 
     pub fn get_config(&self) -> AppConfig {
         self.load_env_files();
+        // ... (rest of the logic remains the same)
         let mut app_config_lock = self.app_config.lock().unwrap();
         if let Some(config) = &*app_config_lock {
             return config.clone();
@@ -149,6 +147,17 @@ impl ConfigManager {
             _ => vec![],
         };
 
+        // 1. Check internal cache (from .env)
+        {
+            let cache = self.env_cache.lock().unwrap();
+            for var in &env_vars {
+                if let Some(val) = cache.get(*var) {
+                    return Some(val.clone());
+                }
+            }
+        }
+
+        // 2. Check system environment
         for var in env_vars {
             if let Ok(val) = env::var(var) {
                 return Some(val);
