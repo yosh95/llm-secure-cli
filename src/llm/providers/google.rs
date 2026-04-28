@@ -122,7 +122,11 @@ impl GeminiClient {
                         }
 
                         if let Some(id) = &cp.inline_data {
-                            let mut id_part = json!({"inlineData": id});
+                            let inline_data = json!({
+                                "mimeType": id.get("mimeType").and_then(|v| v.as_str()).unwrap_or(""),
+                                "data": id.get("data").and_then(|v| v.as_str()).unwrap_or(""),
+                            });
+                            let mut id_part = json!({"inlineData": inline_data});
                             if let Some(sig) = &thought_sig {
                                 id_part["thoughtSignature"] = json!(sig);
                             }
