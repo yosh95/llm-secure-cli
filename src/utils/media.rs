@@ -1,24 +1,17 @@
 use crate::llm::models::DataSource;
+use crate::utils::http::CLIENT;
 use base64::{Engine as _, engine::general_purpose};
 use chrono;
 use dirs;
 use mime_guess;
 use std::fs;
-use std::io::Read;
 use std::path::Path;
 
 pub async fn fetch_url_content(
     url_str: &str,
     _pdf_as_base64: bool,
 ) -> anyhow::Result<(String, String)> {
-    let url = url_str.to_string();
-
-    let res_result = tokio::task::spawn_blocking(move || ureq::get(&url).call()).await?;
-
-    let res = match res_result {
-        Ok(r) => r,
-        Err(e) => return Err(anyhow::anyhow!("Failed to fetch URL: {}", e)),
-    };
+    let res = CLIENT.get(url_str).send().await?;
 
     let content_type = res
         .headers()
@@ -31,20 +24,18 @@ pub async fn fetch_url_content(
         .to_string();
 
     if content_type == "application/pdf" {
-        let mut bytes = Vec::new();
-        res.into_body().into_reader().read_to_end(&mut bytes)?;
+        let bytes = res.bytes().await?;
         let b64 = general_purpose::STANDARD.encode(bytes);
         Ok((b64, content_type))
     } else if content_type.contains("html") {
-        let html = res.into_body().read_to_string()?;
+        let html = res.text().await?;
         let text = html_to_text(&html);
         Ok((text, "text/plain".to_string()))
     } else if content_type.starts_with("text/") || content_type.contains("json") {
-        let text = res.into_body().read_to_string()?;
+        let text = res.text().await?;
         Ok((text, "text/plain".to_string()))
     } else {
-        let mut bytes = Vec::new();
-        res.into_body().into_reader().read_to_end(&mut bytes)?;
+        let bytes = res.bytes().await?;
         let b64 = general_purpose::STANDARD.encode(bytes);
         Ok((b64, content_type))
     }

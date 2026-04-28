@@ -5,7 +5,7 @@ use once_cell::sync::Lazy;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
-static AGENT: Lazy<ureq::Agent> = Lazy::new(base::create_ureq_agent);
+static CLIENT: Lazy<reqwest::Client> = Lazy::new(base::create_http_client);
 
 pub struct ClaudeClient {
     pub base: BaseLlmClientData,
@@ -255,35 +255,24 @@ impl LlmClient for ClaudeClient {
         let mut backoff = std::time::Duration::from_secs(2);
 
         let res = loop {
-            let api_key = self.base.api_key.clone();
-            let api_url = self.api_url.clone();
-            let payload_clone = payload.clone();
-
-            let res_result = tokio::task::spawn_blocking(move || {
-                let mut req = AGENT
-                    .post(&api_url)
-                    .header("anthropic-version", "2023-06-01");
-                if let Some(key) = api_key {
-                    req = req.header("x-api-key", key);
-                }
-                req.send_json(payload_clone)
-            })
-            .await?;
+            let mut req = CLIENT
+                .post(&self.api_url)
+                .header("anthropic-version", "2023-06-01");
+            if let Some(key) = &self.base.api_key {
+                req = req.header("x-api-key", key);
+            }
+            let res_result = req.json(&payload).send().await;
 
             match res_result {
                 Ok(r) => break r,
                 Err(e) => {
-                    let err_msg = e.to_string();
-                    let should_retry = err_msg.contains("429")
-                        || err_msg.contains("500")
-                        || err_msg.contains("502")
-                        || err_msg.contains("503")
-                        || err_msg.contains("504");
+                    let status_code = e.status().map(|s| s.as_u16()).unwrap_or(0);
+                    let should_retry = status_code == 429 || status_code >= 500;
 
                     if should_retry && retries < max_retries {
                         log::warn!(
                             "Anthropic API error ({}) hit. Retrying in {:?}...",
-                            err_msg,
+                            e,
                             backoff
                         );
                         tokio::time::sleep(backoff).await;
@@ -297,7 +286,7 @@ impl LlmClient for ClaudeClient {
         };
 
         let status = res.status();
-        let res_json: Value = res.into_body().read_json().unwrap_or_default();
+        let res_json: Value = res.json().await.unwrap_or_default();
         log::debug!(
             "Anthropic Response ({}): {}",
             status,
@@ -451,35 +440,24 @@ impl LlmClient for ClaudeClient {
         let mut backoff = std::time::Duration::from_secs(2);
 
         let res = loop {
-            let api_key = self.base.api_key.clone();
-            let api_url = self.api_url.clone();
-            let payload_clone = payload.clone();
-
-            let res_result = tokio::task::spawn_blocking(move || {
-                let mut req = AGENT
-                    .post(&api_url)
-                    .header("anthropic-version", "2023-06-01");
-                if let Some(key) = api_key {
-                    req = req.header("x-api-key", key);
-                }
-                req.send_json(payload_clone)
-            })
-            .await?;
+            let mut req = CLIENT
+                .post(&self.api_url)
+                .header("anthropic-version", "2023-06-01");
+            if let Some(key) = &self.base.api_key {
+                req = req.header("x-api-key", key);
+            }
+            let res_result = req.json(&payload).send().await;
 
             match res_result {
                 Ok(r) => break r,
                 Err(e) => {
-                    let err_msg = e.to_string();
-                    let should_retry = err_msg.contains("429")
-                        || err_msg.contains("500")
-                        || err_msg.contains("502")
-                        || err_msg.contains("503")
-                        || err_msg.contains("504");
+                    let status_code = e.status().map(|s| s.as_u16()).unwrap_or(0);
+                    let should_retry = status_code == 429 || status_code >= 500;
 
                     if should_retry && retries < max_retries {
                         log::warn!(
                             "Anthropic API error ({}) in verifier. Retrying in {:?}...",
-                            err_msg,
+                            e,
                             backoff
                         );
                         tokio::time::sleep(backoff).await;
@@ -493,11 +471,11 @@ impl LlmClient for ClaudeClient {
         };
 
         if !res.status().is_success() {
-            let res_json: serde_json::Value = res.into_body().read_json().unwrap_or_default();
+            let res_json: serde_json::Value = res.json().await.unwrap_or_default();
             return Err(anyhow::anyhow!("Anthropic verifier error: {}", res_json));
         }
 
-        let res_json: serde_json::Value = res.into_body().read_json()?;
+        let res_json: serde_json::Value = res.json().await?;
         let input = res_json["content"]
             .as_array()
             .and_then(|content| {

@@ -5,7 +5,7 @@ use once_cell::sync::Lazy;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
-static AGENT: Lazy<ureq::Agent> = Lazy::new(base::create_ureq_agent);
+static CLIENT: Lazy<reqwest::Client> = Lazy::new(base::create_http_client);
 
 pub struct OpenAiClient {
     pub base: BaseLlmClientData,
@@ -325,33 +325,22 @@ impl OpenAiClient {
         let mut backoff = std::time::Duration::from_secs(2);
 
         let res = loop {
-            let api_key = self.base.api_key.clone();
-            let api_url = self.api_url.clone();
-            let payload_clone = payload.clone();
-
-            let res_result = tokio::task::spawn_blocking(move || {
-                let mut req = AGENT.post(&api_url);
-                if let Some(key) = api_key {
-                    req = req.header("Authorization", format!("Bearer {}", key));
-                }
-                req.send_json(payload_clone)
-            })
-            .await?;
+            let mut req = CLIENT.post(&self.api_url);
+            if let Some(key) = &self.base.api_key {
+                req = req.header("Authorization", format!("Bearer {}", key));
+            }
+            let res_result = req.json(&payload).send().await;
 
             match res_result {
                 Ok(r) => break r,
                 Err(e) => {
-                    let err_msg = e.to_string();
-                    let should_retry = err_msg.contains("429")
-                        || err_msg.contains("500")
-                        || err_msg.contains("502")
-                        || err_msg.contains("503")
-                        || err_msg.contains("504");
+                    let status_code = e.status().map(|s| s.as_u16()).unwrap_or(0);
+                    let should_retry = status_code == 429 || status_code >= 500;
 
                     if should_retry && retries < max_retries {
                         log::warn!(
                             "OpenAI Responses API error ({}) in {}. Retrying in {:?}...",
-                            err_msg,
+                            e,
                             context,
                             backoff
                         );
@@ -370,7 +359,7 @@ impl OpenAiClient {
         };
 
         let status = res.status();
-        let res_json: Value = res.into_body().read_json().unwrap_or_default();
+        let res_json: Value = res.json().await.unwrap_or_default();
         log::debug!(
             "OpenAI Responses Response ({}): {}",
             status,

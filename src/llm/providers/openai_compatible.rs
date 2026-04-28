@@ -4,6 +4,10 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
+use once_cell::sync::Lazy;
+
+static CLIENT: Lazy<reqwest::Client> = Lazy::new(crate::llm::base::create_http_client);
+
 /// Generic OpenAI-compatible API client.
 /// Supports any provider that follows the OpenAI Chat Completions API format.
 pub struct OpenAiCompatibleClient {
@@ -282,12 +286,15 @@ impl LlmClient for OpenAiCompatibleClient {
             body["tool_choice"] = json!("auto");
         }
 
-        let req = ureq::post(&self.api_url)
+        let res = CLIENT
+            .post(&self.api_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
-            .send_json(&body)?;
+            .json(&body)
+            .send()
+            .await?;
 
-        let resp: Value = req.into_body().read_json()?;
+        let resp: Value = res.json().await?;
 
         // Extract response
         let choice = resp["choices"][0].clone();
@@ -377,12 +384,15 @@ impl LlmClient for OpenAiCompatibleClient {
         }
 
         // Force structured output via tool_choice=none + response_format if available
-        let req = ureq::post(&self.api_url)
+        let res = CLIENT
+            .post(&self.api_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
-            .send_json(&body)?;
+            .json(&body)
+            .send()
+            .await?;
 
-        let resp: Value = req.into_body().read_json()?;
+        let resp: Value = res.json().await?;
         let content = resp["choices"][0]["message"]["content"]
             .as_str()
             .unwrap_or("{}");

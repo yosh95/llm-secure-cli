@@ -5,7 +5,7 @@ use once_cell::sync::Lazy;
 use serde_json::json;
 use std::collections::HashMap;
 
-static AGENT: Lazy<ureq::Agent> = Lazy::new(base::create_ureq_agent);
+static CLIENT: Lazy<reqwest::Client> = Lazy::new(base::create_http_client);
 
 pub struct GeminiClient {
     pub base: BaseLlmClientData,
@@ -252,21 +252,19 @@ impl LlmClient for GeminiClient {
         let res = loop {
             let url = self.get_api_url();
             let key = self.base.api_key.as_deref().unwrap_or("").to_string();
-            let payload_clone = payload.clone();
 
-            let res_result = tokio::task::spawn_blocking(move || {
-                AGENT
-                    .post(&url)
-                    .header("x-goog-api-key", key)
-                    .send_json(payload_clone)
-            })
-            .await?;
+            let res_result = CLIENT
+                .post(&url)
+                .header("x-goog-api-key", key)
+                .json(&payload)
+                .send()
+                .await;
 
             match res_result {
                 Ok(r) => break r,
                 Err(e) => {
-                    let err_msg = e.to_string();
-                    if err_msg.contains("429") && retries < max_retries {
+                    let status_code = e.status().map(|s| s.as_u16()).unwrap_or(0);
+                    if status_code == 429 && retries < max_retries {
                         log::warn!(
                             "Gemini API rate limit (429) hit. Retrying in {:?}...",
                             backoff
@@ -282,7 +280,7 @@ impl LlmClient for GeminiClient {
         };
 
         let status = res.status();
-        let res_json: serde_json::Value = res.into_body().read_json().unwrap_or_default();
+        let res_json: serde_json::Value = res.json().await.unwrap_or_default();
         log::debug!(
             "Gemini Response ({}): {}",
             status,
@@ -456,21 +454,19 @@ impl LlmClient for GeminiClient {
         let res = loop {
             let url = self.get_api_url();
             let key = self.base.api_key.as_deref().unwrap_or("").to_string();
-            let payload_clone = payload.clone();
 
-            let res_result = tokio::task::spawn_blocking(move || {
-                AGENT
-                    .post(&url)
-                    .header("x-goog-api-key", key)
-                    .send_json(payload_clone)
-            })
-            .await?;
+            let res_result = CLIENT
+                .post(&url)
+                .header("x-goog-api-key", key)
+                .json(&payload)
+                .send()
+                .await;
 
             match res_result {
                 Ok(r) => break r,
                 Err(e) => {
-                    let err_msg = e.to_string();
-                    if err_msg.contains("429") && retries < max_retries {
+                    let status_code = e.status().map(|s| s.as_u16()).unwrap_or(0);
+                    if status_code == 429 && retries < max_retries {
                         log::warn!(
                             "Gemini API rate limit (429) hit in verifier. Retrying in {:?}...",
                             backoff
@@ -486,11 +482,11 @@ impl LlmClient for GeminiClient {
         };
 
         if !res.status().is_success() {
-            let res_json: serde_json::Value = res.into_body().read_json().unwrap_or_default();
+            let res_json: serde_json::Value = res.json().await.unwrap_or_default();
             return Err(anyhow::anyhow!("Gemini verifier error: {}", res_json));
         }
 
-        let res_json: serde_json::Value = res.into_body().read_json()?;
+        let res_json: serde_json::Value = res.json().await?;
         let args = res_json["candidates"][0]["content"]["parts"]
             .as_array()
             .and_then(|parts| {

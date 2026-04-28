@@ -305,7 +305,9 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
             "required": ["url"]
         }),
         Arc::new(|args, config| {
-            Box::pin(async move { crate::tools::builtin::web::read_url_content(args, config) })
+            Box::pin(
+                async move { crate::tools::builtin::web::read_url_content(args, config).await },
+            )
         }),
     );
 
@@ -324,7 +326,9 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
                 "required": ["query"]
             }),
             Arc::new(|args, config| {
-                Box::pin(async move { crate::tools::builtin::web::brave_search(args, config) })
+                Box::pin(
+                    async move { crate::tools::builtin::web::brave_search(args, config).await },
+                )
             }),
         );
     }

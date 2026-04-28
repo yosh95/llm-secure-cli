@@ -6,7 +6,7 @@ use once_cell::sync::Lazy;
 use serde_json::json;
 use std::collections::HashMap;
 
-static AGENT: Lazy<ureq::Agent> = Lazy::new(|| ureq::Agent::config_builder().build().into());
+static CLIENT: Lazy<reqwest::Client> = Lazy::new(crate::llm::base::create_http_client);
 
 pub struct OllamaClient {
     pub base: BaseLlmClientData,
@@ -187,34 +187,24 @@ impl OllamaClient {
     }
 
     /// Send a request to the Ollama-compatible OpenAI endpoint and return the raw JSON response.
-    fn post_request(&self, payload: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    async fn post_request(&self, payload: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let api_key = self.base.api_key.clone();
         let api_url = self.api_url.clone();
         let is_cloud = self.is_cloud_endpoint();
 
-        let res_result = tokio::task::block_in_place(|| {
-            let rt = tokio::runtime::Handle::current();
-            rt.block_on(async {
-                tokio::task::spawn_blocking(move || {
-                    let mut req = AGENT.post(&api_url);
-                    if let Some(key) = api_key {
-                        // For cloud endpoints, always send the Authorization header.
-                        // For local endpoints, skip the dummy "ollama"/"local_bypass" keys.
-                        let skip = !is_cloud && (key == "ollama" || key == "local_bypass");
-                        if !skip {
-                            req = req.header("Authorization", format!("Bearer {}", key));
-                        }
-                    }
-                    req.send_json(payload)
-                })
-                .await
-            })
-        });
-
-        let res = res_result??;
+        let mut req = CLIENT.post(&api_url);
+        if let Some(key) = api_key {
+            // For cloud endpoints, always send the Authorization header.
+            // For local endpoints, skip the dummy "ollama"/"local_bypass" keys.
+            let skip = !is_cloud && (key == "ollama" || key == "local_bypass");
+            if !skip {
+                req = req.header("Authorization", format!("Bearer {}", key));
+            }
+        }
+        let res = req.json(&payload).send().await?;
 
         let status = res.status();
-        let res_json: serde_json::Value = res.into_body().read_json().unwrap_or_default();
+        let res_json: serde_json::Value = res.json().await.unwrap_or_default();
 
         log::debug!(
             "Ollama Response ({}): {}",
@@ -271,7 +261,7 @@ impl LlmClient for OllamaClient {
             serde_json::to_string_pretty(&payload).unwrap_or_default()
         );
 
-        let res_json = self.post_request(payload)?;
+        let res_json = self.post_request(payload).await?;
 
         let choices = res_json.get("choices").and_then(|v| v.as_array());
         let Some(choice) = choices.and_then(|c| c.first()) else {
@@ -363,7 +353,7 @@ impl LlmClient for OllamaClient {
             "stream": false
         });
 
-        let res_json = self.post_request(payload)?;
+        let res_json = self.post_request(payload).await?;
 
         // Try to extract tool calls from Ollama response (OpenAI compatible format)
         let tool_call = res_json["choices"][0]["message"]["tool_calls"][0]["function"]
