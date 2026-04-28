@@ -397,6 +397,34 @@ impl LlmClient for GeminiClient {
                 {
                     full_text.push_str(&format!("[No content. Finish reason: {}]", reason));
                 }
+
+                // Extract grounding metadata for citations
+                if let Some(metadata) = candidate.get("groundingMetadata") {
+                    let mut citations = Vec::new();
+                    if let Some(chunks) = metadata.get("groundingChunks").and_then(|v| v.as_array())
+                    {
+                        for chunk in chunks {
+                            if let Some(web) = chunk.get("web") {
+                                let title = web
+                                    .get("title")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("Source");
+                                let uri = web.get("uri").and_then(|v| v.as_str()).unwrap_or("");
+                                let clean_uri: String =
+                                    uri.chars().filter(|c| !c.is_whitespace()).collect();
+                                if !clean_uri.is_empty() {
+                                    citations.push(format!("- [{}]({})", title, clean_uri));
+                                }
+                            }
+                        }
+                    }
+
+                    if !citations.is_empty() {
+                        let citations_text = format!("\n\n**Sources:**\n{}", citations.join("\n"));
+                        full_text.push_str(&citations_text);
+                        msg_parts.push(MessagePart::Text(citations_text));
+                    }
+                }
             } else if let Some(feedback) = res_json["promptFeedback"]["blockReason"].as_str() {
                 return Err(anyhow::anyhow!("Gemini blocked the prompt: {}", feedback));
             }

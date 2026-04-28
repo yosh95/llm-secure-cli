@@ -301,10 +301,28 @@ impl LlmClient for OpenAiCompatibleClient {
         let message = &choice["message"];
         let _finish_reason = choice["finish_reason"].as_str().unwrap_or("");
 
-        let text = message
+        let mut text = message
             .get("content")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
+
+        // Extract citations (Perplexity-style)
+        if let Some(citations) = resp.get("citations").and_then(|v| v.as_array()) {
+            let mut citation_links = Vec::new();
+            for (i, citation) in citations.iter().enumerate() {
+                if let Some(url) = citation.as_str() {
+                    citation_links.push(format!("{}. [Source {}]({})", i + 1, i + 1, url));
+                }
+            }
+            if !citation_links.is_empty() {
+                let citations_text = format!("\n\n**Sources:**\n{}", citation_links.join("\n"));
+                if let Some(ref mut t) = text {
+                    t.push_str(&citations_text);
+                } else {
+                    text = Some(citations_text);
+                }
+            }
+        }
 
         // Extract tool calls
         if let Some(tool_calls) = message.get("tool_calls").and_then(|v| v.as_array()) {

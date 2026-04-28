@@ -1,8 +1,7 @@
 use colored::*;
 use comfy_table::Table;
 use pulldown_cmark::{Alignment, Event, Options as CmarkOptions, Parser, Tag, TagEnd};
-use std::fmt::Write;
-use textwrap::{Options as WrapOptions, fill};
+use textwrap::{Options as WrapOptions, WordSplitter, fill};
 
 pub struct MarkdownRenderer {
     width: usize,
@@ -31,8 +30,11 @@ impl MarkdownRenderer {
         let mut in_table_head = false;
         let mut current_paragraph = String::new();
         let mut current_heading_level = None;
+        let mut link_stack = Vec::new();
 
-        let wrap_options = WrapOptions::new(self.width.saturating_sub(4)).break_words(false);
+        let wrap_options = WrapOptions::new(self.width.saturating_sub(4))
+            .break_words(false)
+            .word_splitter(WordSplitter::NoHyphenation);
 
         for event in parser {
             match event {
@@ -117,6 +119,12 @@ impl MarkdownRenderer {
                         }
                         output.push('\n');
                         in_code_block = true;
+                    }
+                    Tag::Link { dest_url, .. } => {
+                        let clean_url: String =
+                            dest_url.chars().filter(|c| !c.is_whitespace()).collect();
+                        link_stack.push(clean_url.clone());
+                        current_paragraph.push_str(&format!("\x1b]8;;{}\x1b\\", clean_url));
                     }
                     _ => {}
                 },
@@ -215,6 +223,9 @@ impl MarkdownRenderer {
                             }
                             output.push_str("```\n");
                         }
+                        TagEnd::Link if link_stack.pop().is_some() => {
+                            current_paragraph.push_str("\x1b]8;;\x1b\\");
+                        }
                         _ => {}
                     }
                 }
@@ -223,15 +234,28 @@ impl MarkdownRenderer {
                         current_row.push(text.to_string());
                     } else if in_code_block {
                         output.push_str(&text);
+                    } else if !link_stack.is_empty() {
+                        // Replace spaces with NBSP in links to prevent wrapping within the link
+                        // Links are displayed in blue to indicate they are clickable
+                        current_paragraph
+                            .push_str(&text.replace(' ', "\u{00A0}").blue().to_string());
                     } else {
                         current_paragraph.push_str(&text);
                     }
                 }
                 Event::Code(text) => {
-                    if in_table {
-                        current_row.push(format!("`{}`", text));
+                    let formatted = if !link_stack.is_empty() {
+                        format!("`{}`", text.replace(' ', "\u{00A0}"))
+                            .blue()
+                            .to_string()
                     } else {
-                        let _ = write!(current_paragraph, "`{}`", text);
+                        format!("`{}`", text)
+                    };
+
+                    if in_table {
+                        current_row.push(formatted);
+                    } else {
+                        current_paragraph.push_str(&formatted);
                     }
                 }
                 Event::SoftBreak if !in_table => {

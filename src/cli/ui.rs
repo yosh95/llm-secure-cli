@@ -2,7 +2,6 @@ use crate::cli::markdown::render_markdown;
 use colored::*;
 use console::Term;
 use std::io::{self, Read, Write};
-use textwrap::wrap;
 
 pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
     let term = Term::stdout();
@@ -278,8 +277,12 @@ pub fn print_tool_result(result: &str) {
                     .get("description")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                println!("    {} {}", "•".bright_black(), title.bold().cyan());
-                println!("      {}", url.dimmed().underline());
+                println!(
+                    "    {} \x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
+                    "•".bright_black(),
+                    url,
+                    title.bold().blue()
+                );
                 if !snippet.is_empty() {
                     for line in snippet.lines() {
                         println!("      {}", line.dimmed());
@@ -360,8 +363,12 @@ pub fn print_panel(
 
     // Content with wrapping
     let inner_width = width - 4;
+    let options = textwrap::Options::new(inner_width)
+        .break_words(false)
+        .word_splitter(textwrap::WordSplitter::NoHyphenation);
+
     for line in content.lines() {
-        let wrapped = wrap(line, inner_width);
+        let wrapped = textwrap::wrap(line, &options);
         for w_line in wrapped {
             println!("    {}", w_line);
         }

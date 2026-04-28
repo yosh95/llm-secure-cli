@@ -315,9 +315,38 @@ impl LlmClient for ClaudeClient {
                 match block_type {
                     "text" => {
                         if let Some(text) = block["text"].as_str() {
-                            full_text.push_str(text);
+                            let mut block_text = text.to_string();
+
+                            // Extract citations if present
+                            if let Some(citations) =
+                                block.get("citations").and_then(|v| v.as_array())
+                            {
+                                let mut citations_list = Vec::new();
+                                for (i, citation) in citations.iter().enumerate() {
+                                    let title = citation
+                                        .get("title")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("Source");
+                                    let url =
+                                        citation.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                                    if !url.is_empty() {
+                                        citations_list.push(format!(
+                                            "[{}] [{}]({})",
+                                            i + 1,
+                                            title,
+                                            url
+                                        ));
+                                    }
+                                }
+                                if !citations_list.is_empty() {
+                                    block_text.push_str("\n\n**Sources:**\n");
+                                    block_text.push_str(&citations_list.join("\n"));
+                                }
+                            }
+
+                            full_text.push_str(&block_text);
                             model_parts.push(MessagePart::Part(ContentPart {
-                                text: Some(text.to_string()),
+                                text: Some(block_text),
                                 inline_data: None,
                                 function_call: None,
                                 function_response: None,

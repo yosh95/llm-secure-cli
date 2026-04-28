@@ -276,6 +276,17 @@ impl OpenAiClient {
         let mut tools = Vec::new();
 
         if self.base.state.tools_enabled {
+            // Include native web_search tool if brave_search is not registered
+            let registry = crate::tools::registry::REGISTRY.lock().unwrap();
+            let has_brave = registry.tools.contains_key("brave_search");
+            drop(registry);
+
+            if !has_brave {
+                tools.push(json!({
+                    "type": "web_search"
+                }));
+            }
+
             tools.extend(tool_schemas.into_iter().map(|s| {
                 json!({
                     "type": "function",
@@ -396,8 +407,29 @@ impl OpenAiClient {
             if matches!(part_type, "output_text" | "text" | "input_text")
                 && let Some(t) = part.get("text").and_then(|v| v.as_str())
             {
-                full_text.push_str(t);
-                model_parts.push(MessagePart::Text(t.to_string()));
+                let mut block_text = t.to_string();
+
+                // Extract citations if present (OpenAI Responses API format)
+                if let Some(citations) = part.get("citations").and_then(|v| v.as_array()) {
+                    let mut citations_list = Vec::new();
+                    for (i, citation) in citations.iter().enumerate() {
+                        let title = citation
+                            .get("title")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Source");
+                        let url = citation.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                        if !url.is_empty() {
+                            citations_list.push(format!("[{}] [{}]({})", i + 1, title, url));
+                        }
+                    }
+                    if !citations_list.is_empty() {
+                        block_text.push_str("\n\n**Sources:**\n");
+                        block_text.push_str(&citations_list.join("\n"));
+                    }
+                }
+
+                full_text.push_str(&block_text);
+                model_parts.push(MessagePart::Text(block_text));
             }
         }
     }
