@@ -153,6 +153,12 @@ impl ChatSession {
                         None,
                     );
 
+                    // Persist history after each entry so it survives
+                    // SIGKILL / OOM kills on Android where the process
+                    // may be terminated before the deferred save_history
+                    // on normal exit can run.
+                    let _ = rl.save_history(&*HISTORY_LOG_PATH);
+
                     let mut data = std::mem::take(&mut self.pending_data);
                     data.push(DataSource {
                         content: serde_json::Value::String(final_content),

@@ -1,12 +1,27 @@
-use dirs::home_dir;
 use once_cell::sync::Lazy;
 use std::path::PathBuf;
 
-pub static LLM_CLI_BASE_DIR: Lazy<PathBuf> = Lazy::new(|| {
-    home_dir()
-        .expect("Could not find home directory")
-        .join(".llm_secure_cli")
-});
+fn resolve_base_dir() -> PathBuf {
+    // On Android, dirs::home_dir() returns None when $HOME is unset
+    // (its fallback is intentionally disabled for "android" target_os).
+    // Termux and other Android terminals *do* set $HOME, but to be safe
+    // we fall back to the HOME env var directly before panicking.
+    if let Some(home) = dirs::home_dir() {
+        return home.join(".llm_secure_cli");
+    }
+    // $HOME may be available even when dirs::home_dir() returns None
+    // (e.g. on Android Termux where getpwuid_r is unsupported).
+    if let Some(home) = std::env::var_os("HOME")
+        && !home.is_empty() {
+            return PathBuf::from(home).join(".llm_secure_cli");
+        }
+    panic!(
+        "Could not find home directory. \
+         Please set the $HOME environment variable."
+    );
+}
+
+pub static LLM_CLI_BASE_DIR: Lazy<PathBuf> = Lazy::new(resolve_base_dir);
 
 pub static CONFIG_DIR: Lazy<PathBuf> = Lazy::new(|| LLM_CLI_BASE_DIR.clone());
 pub static LOG_DIR: Lazy<PathBuf> = Lazy::new(|| LLM_CLI_BASE_DIR.join("logs"));
