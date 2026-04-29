@@ -1,4 +1,3 @@
-use crate::config::CONFIG_MANAGER;
 use crate::consts::AUDIT_LOG_PATH;
 use crate::security::pqc::ResponseSigner;
 use chrono::Utc;
@@ -31,36 +30,25 @@ pub struct AuditEntry {
     pub pqc_algorithm: Option<String>,
 }
 
-pub fn log_audit(
-    event_type: &str,
-    tool_name: &str,
-    args: serde_json::Value,
-    output: Option<&str>,
-    exit_code: Option<i32>,
-    error: Option<&str>,
-    context: Option<&serde_json::Value>,
-) {
-    let config = CONFIG_MANAGER.get_config();
-    let _ = log_audit_and_return(
-        event_type, tool_name, args, output, exit_code, error, context, &config, None,
-    );
+pub struct AuditParams<'a> {
+    pub event_type: &'a str,
+    pub tool_name: &'a str,
+    pub args: serde_json::Value,
+    pub output: Option<&'a str>,
+    pub exit_code: Option<i32>,
+    pub error: Option<&'a str>,
+    pub context: Option<&'a serde_json::Value>,
+    pub config: &'a crate::config::models::AppConfig,
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn log_audit_and_return(
-    event_type: &str,
-    tool_name: &str,
-    args: serde_json::Value,
-    output: Option<&str>,
-    exit_code: Option<i32>,
-    error: Option<&str>,
-    context: Option<&serde_json::Value>,
-    config: &crate::config::models::AppConfig,
-    log_path: Option<&Path>,
-) -> Option<AuditEntry> {
+pub fn log_audit(params: AuditParams) {
+    let _ = log_audit_and_return(params, None);
+}
+
+pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Option<AuditEntry> {
     let default_path = &*AUDIT_LOG_PATH;
     let path = log_path.unwrap_or(default_path);
-    let max_lines = config.general.max_audit_log_lines;
+    let max_lines = params.config.general.max_audit_log_lines;
 
     if let Some(parent) = path.parent()
         && !parent.exists()
@@ -70,7 +58,10 @@ pub fn log_audit_and_return(
 
     let timestamp = Utc::now().to_rfc3339();
     let empty_map = serde_json::Map::new();
-    let ctx = context.and_then(|c| c.as_object()).unwrap_or(&empty_map);
+    let ctx = params
+        .context
+        .and_then(|c| c.as_object())
+        .unwrap_or(&empty_map);
 
     let trace_id = ctx
         .get("trace_id")
@@ -97,15 +88,15 @@ pub fn log_audit_and_return(
 
     // Hybrid Encryption for high-risk data
     let mut pqc_encrypted = false;
-    let mut final_args = args.clone();
+    let mut final_args = params.args.clone();
 
-    if config.security.security_level == "high"
+    if params.config.security.security_level == "high"
         && let Ok(pk) = crate::security::identity::IdentityManager::get_kem_public_key()
     {
-        let arg_bytes = serde_json::to_vec(&args).unwrap_or_default();
+        let arg_bytes = serde_json::to_vec(&params.args).unwrap_or_default();
         match crate::security::pqc::SecureStorage::encrypt(&arg_bytes, &pk) {
             Ok(packet) => {
-                final_args = serde_json::to_value(packet).unwrap_or(args);
+                final_args = serde_json::to_value(packet).unwrap_or(params.args);
                 pqc_encrypted = true;
             }
             Err(e) => {
@@ -120,16 +111,16 @@ pub fn log_audit_and_return(
         subject,
         audience,
         model,
-        event_type: event_type.to_string(),
-        tool: tool_name.to_string(),
+        event_type: params.event_type.to_string(),
+        tool: params.tool_name.to_string(),
         args: final_args,
         pqc_confidential: pqc_encrypted,
-        output: output.map(|s| s.to_string()),
-        status: match error {
+        output: params.output.map(|s| s.to_string()),
+        status: match params.error {
             None => "SUCCESS".to_string(),
             Some(e) => format!("FAILED: {}", e),
         },
-        exit_code,
+        exit_code: params.exit_code,
         prev_hash,
         hash: String::new(),
         pqc_signature: None,

@@ -1,3 +1,4 @@
+use crate::core::context::AppContext;
 use rustyline::Context;
 use rustyline::Helper;
 use rustyline::completion::{Completer, FilenameCompleter, Pair};
@@ -11,10 +12,11 @@ pub struct ChatCompleter {
     file_completer: FilenameCompleter,
     commands: Vec<&'static str>,
     pub current_provider: Arc<Mutex<String>>,
+    pub ctx: Arc<AppContext>,
 }
 
 impl ChatCompleter {
-    pub fn new(current_provider: Arc<Mutex<String>>) -> Self {
+    pub fn new(current_provider: Arc<Mutex<String>>, ctx: Arc<AppContext>) -> Self {
         Self {
             file_completer: FilenameCompleter::new(),
             commands: vec![
@@ -44,6 +46,7 @@ impl ChatCompleter {
                 "/cp",
             ],
             current_provider,
+            ctx,
         }
     }
 }
@@ -82,7 +85,7 @@ impl Completer for ChatCompleter {
                         return self.file_completer.complete(line, pos, ctx);
                     }
                     "/provider" | "/p" => {
-                        let providers = crate::config::CONFIG_MANAGER.get_active_providers();
+                        let providers = self.ctx.config_manager.get_active_providers();
                         let mut matches = Vec::new();
                         for p in providers {
                             if p.starts_with(arg_prefix) {
@@ -96,14 +99,14 @@ impl Completer for ChatCompleter {
                     }
                     "/model" | "/m" => {
                         let provider = self.current_provider.lock().unwrap().clone();
-                        let config = crate::config::CONFIG_MANAGER.get_config();
+                        let config = self.ctx.config_manager.get_config();
                         let mut matches = Vec::new();
 
                         if let Some(p_cfg) = config.providers.get(&provider) {
                             for alias in p_cfg.models.keys() {
                                 if alias.starts_with(arg_prefix) {
-                                    let model_config = crate::config::CONFIG_MANAGER
-                                        .get_model_config(&provider, alias);
+                                    let model_config =
+                                        self.ctx.config_manager.get_model_config(&provider, alias);
                                     let actual_model = model_config
                                         .get("model")
                                         .and_then(|v| v.as_str())
@@ -124,8 +127,8 @@ impl Completer for ChatCompleter {
                             for (p_name, p_cfg) in &config.providers {
                                 for alias in p_cfg.models.keys() {
                                     if alias.starts_with(arg_prefix) {
-                                        let model_config = crate::config::CONFIG_MANAGER
-                                            .get_model_config(p_name, alias);
+                                        let model_config =
+                                            self.ctx.config_manager.get_model_config(p_name, alias);
                                         let actual_model = model_config
                                             .get("model")
                                             .and_then(|v| v.as_str())

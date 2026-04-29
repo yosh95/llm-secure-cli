@@ -1,4 +1,4 @@
-use crate::config::CONFIG_MANAGER;
+use crate::config::ConfigManager;
 use crate::llm::base::{BaseLlmClientData, LlmClient, ProviderSpec};
 use crate::llm::models::{ClientState, ContentPart, DataSource, Message, MessagePart, Role};
 use async_trait::async_trait;
@@ -6,7 +6,11 @@ use once_cell::sync::Lazy;
 use serde_json::json;
 use std::collections::HashMap;
 
-static CLIENT: Lazy<reqwest::Client> = Lazy::new(crate::llm::base::create_http_client);
+static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    reqwest::Client::builder()
+        .build()
+        .expect("Failed to create reqwest client")
+});
 
 pub struct OllamaClient {
     pub base: BaseLlmClientData,
@@ -14,13 +18,13 @@ pub struct OllamaClient {
 }
 
 impl OllamaClient {
-    pub fn new(model: &str, stdout: bool, raw: bool) -> Self {
+    pub fn new(config_manager: &ConfigManager, model: &str, stdout: bool, raw: bool) -> Self {
         let spec = ProviderSpec {
             api_key_name: "api_key".to_string(),
             config_section: "ollama".to_string(),
             pdf_as_base64: false,
         };
-        let mut base = BaseLlmClientData::new(model, spec, stdout, raw);
+        let mut base = BaseLlmClientData::new(config_manager, model, spec, stdout, raw);
 
         // Ollama might not need an API key, but BaseLlmClientData tries to get one.
         // If it's None, we might still want to proceed.
@@ -28,7 +32,7 @@ impl OllamaClient {
             base.api_key = Some("ollama".to_string());
         }
 
-        let config = CONFIG_MANAGER.get_config();
+        let config = config_manager.get_config();
         let api_url = config
             .providers
             .get("ollama")
@@ -235,14 +239,12 @@ impl OllamaClient {
         messages
     }
 
-    /// Build an OpenAI-compatible tools array from the global tool registry.
-    fn build_tools(&self) -> Vec<serde_json::Value> {
+    /// Build an OpenAI-compatible tools array from the passed schemas.
+    fn build_tools(&self, tool_schemas: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
         if !self.base.state.tools_enabled {
             return Vec::new();
         }
-        let registry = crate::tools::registry::REGISTRY.lock().unwrap();
-        registry
-            .get_tool_schemas()
+        tool_schemas
             .into_iter()
             .map(|s| {
                 json!({
@@ -317,9 +319,10 @@ impl LlmClient for OllamaClient {
     async fn send(
         &mut self,
         data: Vec<DataSource>,
+        tool_schemas: Vec<serde_json::Value>,
     ) -> anyhow::Result<(Option<String>, Option<String>)> {
         let messages = self.build_messages(&data);
-        let tools = self.build_tools();
+        let tools = self.build_tools(tool_schemas);
 
         let mut payload = json!({
             "model": self.base.state.model,

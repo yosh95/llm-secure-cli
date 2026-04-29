@@ -1,10 +1,11 @@
 use colored::Colorize;
-use llm_secure_cli::config::CONFIG_MANAGER;
+use llm_secure_cli::core::context::AppContext;
 use llm_secure_cli::security::dual_llm_verifier::verify_tool_call;
 use llm_secure_cli::security::identity::IdentityManager;
 use llm_secure_cli::security::pqc::{MldsaVariant, MlkemVariant, PqcProvider};
 use llm_secure_cli::security::static_analyzer::StaticAnalyzer;
 use serde_json::json;
+use std::sync::Arc;
 use std::time::Instant;
 
 fn section(title: &str) {
@@ -36,26 +37,46 @@ where
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let ctx = Arc::new(AppContext::new());
+
     // Register clients
     {
-        let mut registry = llm_secure_cli::llm::registry::CLIENT_REGISTRY
-            .lock()
-            .unwrap();
-        registry.register("openai", |model, stdout, raw| {
-            Box::new(llm_secure_cli::llm::providers::openai::OpenAiClient::new(
-                model, stdout, raw,
-            ))
-        });
-        registry.register("anthropic", |model, stdout, raw| {
-            Box::new(
-                llm_secure_cli::llm::providers::anthropic::ClaudeClient::new(model, stdout, raw),
-            )
-        });
-        registry.register("google", |model, stdout, raw| {
-            Box::new(llm_secure_cli::llm::providers::google::GeminiClient::new(
-                model, stdout, raw,
-            ))
-        });
+        let mut registry = ctx.client_registry.lock().unwrap();
+        registry.register(
+            "openai",
+            Arc::new(|model, stdout, raw, config_manager| {
+                Box::new(llm_secure_cli::llm::providers::openai::OpenAiClient::new(
+                    config_manager,
+                    model,
+                    stdout,
+                    raw,
+                ))
+            }),
+        );
+        registry.register(
+            "anthropic",
+            Arc::new(|model, stdout, raw, config_manager| {
+                Box::new(
+                    llm_secure_cli::llm::providers::anthropic::ClaudeClient::new(
+                        config_manager,
+                        model,
+                        stdout,
+                        raw,
+                    ),
+                )
+            }),
+        );
+        registry.register(
+            "google",
+            Arc::new(|model, stdout, raw, config_manager| {
+                Box::new(llm_secure_cli::llm::providers::google::GeminiClient::new(
+                    config_manager,
+                    model,
+                    stdout,
+                    raw,
+                ))
+            }),
+        );
     }
 
     header("Unified Security Framework — Comprehensive Benchmark (Rust)");
@@ -84,7 +105,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     section("Phase 2: Behavioral & Identity Assurance (Behavior)");
     IdentityManager::ensure_keys(false)?;
     let (gen_mean, gen_std) = timeit(
-        || IdentityManager::generate_token(None, None, Some("ls"), Some(&json!({}))).unwrap(),
+        || {
+            IdentityManager::generate_token(
+                &ctx.config_manager.get_config(),
+                None,
+                None,
+                Some("ls"),
+                Some(&json!({})),
+            )
+            .unwrap()
+        },
         100,
     );
     println!(
@@ -165,21 +195,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Use set_config to update provider and model for verification
         {
-            let mut config = CONFIG_MANAGER.get_config();
+            let mut config = ctx.config_manager.get_config();
             config.security.dual_llm_provider = provider.to_string();
             config.security.dual_llm_model = model.to_string();
-            CONFIG_MANAGER.set_config(config);
+            ctx.config_manager.set_config(config);
         }
 
-        let has_key = CONFIG_MANAGER.get_api_key(provider).is_some();
+        let has_key = ctx.config_manager.get_api_key(provider).is_some();
         if has_key {
             // Warm up
-            let _ = verify_tool_call(prompt, tool, &args, None).await;
+            let _ = verify_tool_call(
+                ctx.clone(),
+                prompt,
+                tool,
+                &args,
+                None,
+                &ctx.config_manager.get_config().security,
+            )
+            .await;
 
             let mut samples = Vec::new();
             for _ in 0..3 {
                 let start = Instant::now();
-                let _ = verify_tool_call(prompt, tool, &args, None).await;
+                let _ = verify_tool_call(
+                    ctx.clone(),
+                    prompt,
+                    tool,
+                    &args,
+                    None,
+                    &ctx.config_manager.get_config().security,
+                )
+                .await;
                 samples.push(start.elapsed().as_secs_f64() * 1000.0);
             }
             let mean = samples.iter().sum::<f64>() / samples.len() as f64;

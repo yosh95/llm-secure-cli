@@ -111,6 +111,7 @@ async fn main() {
     }
 
     // --- Initialization ---
+    let ctx = std::sync::Arc::new(llm_secure_cli::core::context::AppContext::new());
     llm_secure_cli::security::permissions::setup_permissions();
 
     if !llm_secure_cli::consts::CONFIG_FILE_PATH.exists() {
@@ -139,7 +140,7 @@ async fn main() {
 
         // 2. System Integrity Check
         let verifier = IntegrityVerifier::new();
-        let config = llm_secure_cli::config::CONFIG_MANAGER.get_config();
+        let config = ctx.config_manager.get_config();
         let security_level = std::env::var("LLM_CLI_SECURITY_LEVEL")
             .unwrap_or_else(|_| config.security.security_level.clone());
 
@@ -205,36 +206,66 @@ async fn main() {
         }
     }
 
+    // Register built-in tools
+    {
+        let mut registry = ctx.tool_registry.lock().unwrap();
+        llm_secure_cli::tools::registry::register_builtin_tools(&mut registry, &ctx.config_manager);
+    }
+
     // Initialize remote MCP tools if configured
-    let _ = llm_secure_cli::tools::initialize_remote_tools().await;
+    let _ = llm_secure_cli::tools::registry::initialize_remote_tools(
+        ctx.tool_registry.clone(),
+        &ctx.config_manager,
+        &ctx.mcp_manager,
+    )
+    .await;
 
     // Register clients
     {
-        let mut registry = llm_secure_cli::llm::registry::CLIENT_REGISTRY
-            .lock()
-            .unwrap();
-        registry.register("openai", |model, stdout, raw| {
-            Box::new(OpenAiClient::new(model, stdout, raw))
-        });
-        registry.register("anthropic", |model, stdout, raw| {
-            Box::new(ClaudeClient::new(model, stdout, raw))
-        });
-        registry.register("ollama", |model, stdout, raw| {
-            Box::new(OllamaClient::new(model, stdout, raw))
-        });
-        registry.register("google", |model, stdout, raw| {
-            Box::new(GeminiClient::new(model, stdout, raw))
-        });
+        let mut registry = ctx.client_registry.lock().unwrap();
+        registry.register(
+            "openai",
+            std::sync::Arc::new(|model, stdout, raw, config_manager| {
+                Box::new(OpenAiClient::new(config_manager, model, stdout, raw))
+            }),
+        );
+        registry.register(
+            "anthropic",
+            std::sync::Arc::new(|model, stdout, raw, config_manager| {
+                Box::new(ClaudeClient::new(config_manager, model, stdout, raw))
+            }),
+        );
+        registry.register(
+            "ollama",
+            std::sync::Arc::new(|model, stdout, raw, config_manager| {
+                Box::new(OllamaClient::new(config_manager, model, stdout, raw))
+            }),
+        );
+        registry.register(
+            "google",
+            std::sync::Arc::new(|model, stdout, raw, config_manager| {
+                Box::new(GeminiClient::new(config_manager, model, stdout, raw))
+            }),
+        );
         // Aliases
-        registry.register("gpt", |model, stdout, raw| {
-            Box::new(OpenAiClient::new(model, stdout, raw))
-        });
-        registry.register("claude", |model, stdout, raw| {
-            Box::new(ClaudeClient::new(model, stdout, raw))
-        });
-        registry.register("gemini", |model, stdout, raw| {
-            Box::new(GeminiClient::new(model, stdout, raw))
-        });
+        registry.register(
+            "gpt",
+            std::sync::Arc::new(|model, stdout, raw, config_manager| {
+                Box::new(OpenAiClient::new(config_manager, model, stdout, raw))
+            }),
+        );
+        registry.register(
+            "claude",
+            std::sync::Arc::new(|model, stdout, raw, config_manager| {
+                Box::new(ClaudeClient::new(config_manager, model, stdout, raw))
+            }),
+        );
+        registry.register(
+            "gemini",
+            std::sync::Arc::new(|model, stdout, raw, config_manager| {
+                Box::new(GeminiClient::new(config_manager, model, stdout, raw))
+            }),
+        );
     }
 
     // Handle subcommands
@@ -246,16 +277,22 @@ async fn main() {
                 verbose,
             } => {
                 if let Some(p) = provider {
-                    llm_secure_cli::cli::commands::models::list_models(&p, models, verbose).await;
+                    llm_secure_cli::cli::commands::models::list_models(
+                        &ctx.config_manager,
+                        &p,
+                        models,
+                        verbose,
+                    )
+                    .await;
                 } else {
-                    let config_manager = &llm_secure_cli::config::CONFIG_MANAGER;
-                    let active_providers = config_manager.get_active_providers();
+                    let active_providers = ctx.config_manager.get_active_providers();
                     if active_providers.is_empty() {
                         println!("No active providers found. Please set API keys.");
                     } else {
                         for p in active_providers {
                             println!("\n--- Models for {} ---", p);
                             llm_secure_cli::cli::commands::models::list_models(
+                                &ctx.config_manager,
                                 &p,
                                 models.clone(),
                                 verbose,
@@ -298,8 +335,8 @@ async fn main() {
     }
 
     if args.mcp_server {
-        let config = llm_secure_cli::config::CONFIG_MANAGER.get_config();
-        if let Err(e) = llm_secure_cli::cli::commands::mcp_server::run_mcp_server(config).await {
+        if let Err(e) = llm_secure_cli::cli::commands::mcp_server::run_mcp_server(ctx.clone()).await
+        {
             ui::report_error(&format!("MCP Server Error: {}", e));
             std::process::exit(1);
         }
@@ -307,9 +344,8 @@ async fn main() {
     }
 
     // Standard chat
-    let config_manager = &llm_secure_cli::config::CONFIG_MANAGER;
-    let config = config_manager.get_config();
-    let active_providers = config_manager.get_active_providers();
+    let config = ctx.config_manager.get_config();
+    let active_providers = ctx.config_manager.get_active_providers();
 
     let mut provider = args
         .provider
@@ -350,10 +386,8 @@ async fn main() {
     }
 
     let client = {
-        let registry = llm_secure_cli::llm::registry::CLIENT_REGISTRY
-            .lock()
-            .unwrap();
-        registry.create_client(&provider, &model, stdout, args.raw)
+        let registry = ctx.client_registry.lock().unwrap();
+        registry.create_client(&provider, &model, stdout, args.raw, &ctx.config_manager)
     };
 
     if let Some(mut client) = client {
@@ -367,7 +401,7 @@ async fn main() {
         }
 
         let pdf_as_base64 = client.should_send_pdf_as_base64();
-        let mut session = ChatSession::new(client, config.clone());
+        let mut session = ChatSession::new(client, ctx.clone());
 
         let mut all_sources = args.sources;
         if !is_atty {

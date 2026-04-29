@@ -1,15 +1,14 @@
 use crate::llm::base::LlmClient;
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
+use std::sync::Arc;
 
-pub type ClientFactory = fn(model: &str, stdout: bool, raw: bool) -> Box<dyn LlmClient>;
+pub type ClientFactory = Arc<
+    dyn Fn(&str, bool, bool, &crate::config::ConfigManager) -> Box<dyn LlmClient> + Send + Sync,
+>;
 
 pub struct ClientRegistry {
     factories: HashMap<String, ClientFactory>,
 }
-
-pub static CLIENT_REGISTRY: LazyLock<Mutex<ClientRegistry>> =
-    LazyLock::new(|| Mutex::new(ClientRegistry::new()));
 
 impl Default for ClientRegistry {
     fn default() -> Self {
@@ -34,10 +33,10 @@ impl ClientRegistry {
         model: &str,
         stdout: bool,
         raw: bool,
+        config_manager: &crate::config::ConfigManager,
     ) -> Option<Box<dyn LlmClient>> {
         // Special handling for custom OpenAI-compatible endpoints
         if name == "custom" || name == "local" {
-            let config_manager = &crate::config::CONFIG_MANAGER;
             let config = config_manager.get_config();
             if let Some(custom) = config.providers.get("custom")
                 && let Some(ref api_url) = custom.api_url
@@ -46,13 +45,20 @@ impl ClientRegistry {
             {
                 return Some(Box::new(
                     crate::llm::providers::openai_compatible::OpenAiCompatibleClient::new(
-                        api_url, &api_key, model, stdout, raw,
+                        config_manager,
+                        api_url,
+                        &api_key,
+                        model,
+                        stdout,
+                        raw,
                     ),
                 ));
             }
             return None;
         }
-        self.factories.get(name).map(|f| f(model, stdout, raw))
+        self.factories
+            .get(name)
+            .map(|f| f(model, stdout, raw, config_manager))
     }
 
     pub fn list_aliases(&self) -> Vec<String> {

@@ -1,11 +1,16 @@
-use crate::llm::base::{self, BaseLlmClientData, LlmClient, ProviderSpec};
+use crate::config::ConfigManager;
+use crate::llm::base::{BaseLlmClientData, LlmClient, ProviderSpec};
 use crate::llm::models::{ClientState, ContentPart, DataSource, Message, MessagePart, Role};
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
-static CLIENT: Lazy<reqwest::Client> = Lazy::new(base::create_http_client);
+static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    reqwest::Client::builder()
+        .build()
+        .expect("Failed to create reqwest client")
+});
 
 pub struct ClaudeClient {
     pub base: BaseLlmClientData,
@@ -13,13 +18,13 @@ pub struct ClaudeClient {
 }
 
 impl ClaudeClient {
-    pub fn new(model: &str, stdout: bool, raw: bool) -> Self {
+    pub fn new(config_manager: &ConfigManager, model: &str, stdout: bool, raw: bool) -> Self {
         let spec = ProviderSpec {
             api_key_name: "api_key".to_string(),
             config_section: "anthropic".to_string(),
             pdf_as_base64: true,
         };
-        let base = BaseLlmClientData::new(model, spec, stdout, raw);
+        let base = BaseLlmClientData::new(config_manager, model, spec, stdout, raw);
         Self {
             base,
             api_url: "https://api.anthropic.com/v1/messages".to_string(),
@@ -210,14 +215,9 @@ impl LlmClient for ClaudeClient {
     async fn send(
         &mut self,
         data: Vec<DataSource>,
+        tool_schemas: Vec<Value>,
     ) -> anyhow::Result<(Option<String>, Option<String>)> {
         let messages = self.build_messages(&data);
-
-        // Build tool schemas (Anthropic format)
-        let tool_schemas = crate::tools::registry::REGISTRY
-            .lock()
-            .unwrap()
-            .get_tool_schemas_anthropic();
 
         let mut payload = json!({
             "model": self.base.state.model,
@@ -236,23 +236,38 @@ impl LlmClient for ClaudeClient {
 
         // Tools
         if self.base.state.tools_enabled {
-            // Include native web_search tool if brave_search is not registered
-            let registry = crate::tools::registry::REGISTRY.lock().unwrap();
-            let has_brave = registry.tools.contains_key("brave_search");
-            drop(registry);
+            // Build tool schemas (Anthropic format)
+            let mut anthropic_tools: Vec<Value> = tool_schemas
+                .into_iter()
+                .map(|mut s| {
+                    if let Some(obj) = s.as_object_mut()
+                        && let Some(p) = obj.remove("parameters")
+                    {
+                        obj.insert("input_schema".to_string(), p);
+                    }
+                    s
+                })
+                .collect();
 
-            let mut tools = tool_schemas;
+            // Include native web_search tool if brave_search is not registered
+            let has_brave = anthropic_tools.iter().any(|s| {
+                s.get("name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s == "brave_search")
+                    .unwrap_or(false)
+            });
+
             if !has_brave {
                 // Prepend Anthropic native web search
                 let mut all_tools = vec![json!({
                     "type": "web_search_20260209",
                     "name": "web_search"
                 })];
-                all_tools.extend(tools);
-                tools = all_tools;
+                all_tools.extend(anthropic_tools);
+                anthropic_tools = all_tools;
             }
-            if !tools.is_empty() {
-                payload["tools"] = json!(tools);
+            if !anthropic_tools.is_empty() {
+                payload["tools"] = json!(anthropic_tools);
             }
         }
 

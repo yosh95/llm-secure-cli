@@ -1,13 +1,18 @@
-use crate::config::CONFIG_MANAGER;
+use crate::config::ConfigManager;
 use crate::consts::CHAT_LOG_PATH;
 use crate::llm::models::Role;
 use chrono::Utc;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 
-pub fn log_chat(role: &Role, content: &str, model_name: Option<&str>) {
+pub fn log_chat(
+    config_manager: &ConfigManager,
+    role: &Role,
+    content: &str,
+    model_name: Option<&str>,
+) {
     let path = &*CHAT_LOG_PATH;
-    let config = CONFIG_MANAGER.get_config();
+    let config = config_manager.get_config();
     let max_lines = config.general.max_chat_log_lines;
 
     // Ensure directory exists
@@ -41,12 +46,12 @@ pub fn log_chat(role: &Role, content: &str, model_name: Option<&str>) {
         // Rough estimate of line count
         let estimated_lines = metadata.len() / 200;
         if estimated_lines > (max_lines as u64 * 11 / 10) {
-            trim_chat_log(path, max_lines);
+            trim_chat_log(config_manager, path, max_lines);
         }
     }
 }
 
-fn trim_chat_log(path: &std::path::Path, max_lines: usize) {
+fn trim_chat_log(config_manager: &ConfigManager, path: &std::path::Path, max_lines: usize) {
     if !path.exists() {
         return;
     }
@@ -61,7 +66,7 @@ fn trim_chat_log(path: &std::path::Path, max_lines: usize) {
         return;
     }
 
-    let config = CONFIG_MANAGER.get_config();
+    let config = config_manager.get_config();
     let max_archives = config.general.max_chat_archives;
 
     if max_archives > 0 {

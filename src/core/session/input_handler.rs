@@ -28,7 +28,12 @@ impl ChatSession {
                 }) = data.first()
             {
                 self.intent = s.clone();
-                crate::utils::chat_logger::log_chat(&crate::llm::models::Role::User, s, None);
+                crate::utils::chat_logger::log_chat(
+                    &self.ctx.config_manager,
+                    &crate::llm::models::Role::User,
+                    s,
+                    None,
+                );
             }
 
             match self.process_and_print(data).await {
@@ -62,7 +67,10 @@ impl ChatSession {
 
         let mut rl = Editor::<ChatCompleter, FileHistory>::with_config(config)
             .expect("Failed to create editor");
-        rl.set_helper(Some(ChatCompleter::new(current_provider.clone())));
+        rl.set_helper(Some(ChatCompleter::new(
+            current_provider.clone(),
+            self.ctx.clone(),
+        )));
 
         rl.bind_sequence(KeyEvent(KeyCode::Up, Modifiers::NONE), Cmd::PreviousHistory);
         rl.bind_sequence(KeyEvent(KeyCode::Down, Modifiers::NONE), Cmd::NextHistory);
@@ -107,7 +115,10 @@ impl ChatSession {
                                 let _ = rl.save_history(&*HISTORY_LOG_PATH);
                                 // Force drop to save session anchor before exit
                                 drop(rl);
-                                let temp_self = std::mem::replace(self, ChatSession::new_empty());
+                                let temp_self = std::mem::replace(
+                                    self,
+                                    ChatSession::new_empty(self.ctx.clone()),
+                                );
                                 drop(temp_self);
                                 std::process::exit(0);
                             }
@@ -136,6 +147,7 @@ impl ChatSession {
                     }
 
                     crate::utils::chat_logger::log_chat(
+                        &self.ctx.config_manager,
                         &crate::llm::models::Role::User,
                         &final_content,
                         None,
@@ -172,7 +184,8 @@ impl ChatSession {
                     let _ = rl.save_history(&*HISTORY_LOG_PATH);
                     drop(rl);
                     // Ensure the session anchor is created by dropping self
-                    let temp_self = std::mem::replace(self, ChatSession::new_empty());
+                    let temp_self =
+                        std::mem::replace(self, ChatSession::new_empty(self.ctx.clone()));
                     drop(temp_self);
                     std::process::exit(0);
                 }

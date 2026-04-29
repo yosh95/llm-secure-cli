@@ -1,4 +1,5 @@
-use crate::llm::base::{self, BaseLlmClientData, LlmClient, ProviderSpec};
+use crate::config::ConfigManager;
+use crate::llm::base::{BaseLlmClientData, LlmClient, ProviderSpec};
 use crate::llm::models::{ClientState, ContentPart, DataSource, Message, MessagePart, Role};
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -6,7 +7,13 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
-static CLIENT: Lazy<reqwest::Client> = Lazy::new(base::create_http_client);
+// Note: This static CLIENT is initialized without config-based timeout for now.
+// For full DI, it should be passed from AppContext.
+static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    reqwest::Client::builder()
+        .build()
+        .expect("Failed to create reqwest client")
+});
 
 pub struct OpenAiClient {
     pub base: BaseLlmClientData,
@@ -17,14 +24,14 @@ pub struct OpenAiClient {
 }
 
 impl OpenAiClient {
-    pub fn new(model: &str, stdout: bool, raw: bool) -> Self {
+    pub fn new(config_manager: &ConfigManager, model: &str, stdout: bool, raw: bool) -> Self {
         let spec = ProviderSpec {
             api_key_name: "api_key".to_string(),
             config_section: "openai".to_string(),
             pdf_as_base64: true,
         };
-        let model_config = crate::config::CONFIG_MANAGER.get_model_config("openai", model);
-        let base = BaseLlmClientData::new(model, spec, stdout, raw);
+        let model_config = config_manager.get_model_config("openai", model);
+        let base = BaseLlmClientData::new(config_manager, model, spec, stdout, raw);
         let model_lc = base.state.model.to_lowercase();
         let image_generation_enabled = model_config
             .get("image_generation")
@@ -292,9 +299,12 @@ impl OpenAiClient {
 
         if self.base.state.tools_enabled {
             // Include native web_search tool if brave_search is not registered
-            let registry = crate::tools::registry::REGISTRY.lock().unwrap();
-            let has_brave = registry.tools.contains_key("brave_search");
-            drop(registry);
+            let has_brave = tool_schemas.iter().any(|s| {
+                s.get("name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s == "brave_search")
+                    .unwrap_or(false)
+            });
 
             if !has_brave {
                 tools.push(json!({
@@ -637,11 +647,8 @@ impl LlmClient for OpenAiClient {
     async fn send(
         &mut self,
         data: Vec<DataSource>,
+        tool_schemas: Vec<Value>,
     ) -> anyhow::Result<(Option<String>, Option<String>)> {
-        let tool_schemas = crate::tools::registry::REGISTRY
-            .lock()
-            .unwrap()
-            .get_tool_schemas();
         let payload = self.build_payload(&data, tool_schemas);
         let res_json = self.post_responses(payload, "chat").await?;
 

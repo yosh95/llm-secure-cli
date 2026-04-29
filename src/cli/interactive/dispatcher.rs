@@ -146,7 +146,7 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
 
 pub fn handle_info(session: &ChatSession) {
     let state = session.client.get_state();
-    let config = crate::config::CONFIG_MANAGER.get_config();
+    let config = session.ctx.config_manager.get_config();
 
     ui::print_rule(Some("Session Info"), Some("cyan"));
     ui::print_key_value("Session ID", &session.trace_id);
@@ -262,7 +262,7 @@ pub fn handle_tools(session: &mut ChatSession, args: &str) {
                 "DISABLED"
             };
             println!("Tools Status: {}", status);
-            let registry = crate::tools::registry::REGISTRY.lock().unwrap();
+            let registry = session.ctx.tool_registry.lock().unwrap();
             println!("Available Tools:");
             for name in registry.tools.keys() {
                 println!(" - {}", name);
@@ -284,7 +284,7 @@ pub fn handle_model_cmd(session: &mut ChatSession, args: &str) {
     };
 
     if args.is_empty() {
-        let config = crate::config::CONFIG_MANAGER.get_config();
+        let config = session.ctx.config_manager.get_config();
         if let Some(p_cfg) = config.providers.get(&provider) {
             ui::print_rule(
                 Some(&format!("Available Models for {}", provider)),
@@ -293,7 +293,10 @@ pub fn handle_model_cmd(session: &mut ChatSession, args: &str) {
             let mut keys: Vec<_> = p_cfg.models.keys().collect();
             keys.sort();
             for alias in keys {
-                let model_config = crate::config::CONFIG_MANAGER.get_model_config(&provider, alias);
+                let model_config = session
+                    .ctx
+                    .config_manager
+                    .get_model_config(&provider, alias);
                 let actual_model = model_config
                     .get("model")
                     .and_then(|v| v.as_str())
@@ -319,8 +322,12 @@ pub fn handle_model_cmd(session: &mut ChatSession, args: &str) {
             ));
         }
     } else {
-        let registry = crate::llm::registry::CLIENT_REGISTRY.lock().unwrap();
-        match registry.create_client(&provider, args, stdout, raw) {
+        let client = {
+            let registry = session.ctx.client_registry.lock().unwrap();
+            registry.create_client(&provider, args, stdout, raw, &session.ctx.config_manager)
+        };
+
+        match client {
             Some(new_client) => {
                 session.switch_client(new_client);
                 ui::report_success(&format!(
@@ -338,7 +345,7 @@ pub fn handle_model_cmd(session: &mut ChatSession, args: &str) {
 
 pub fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
     if args.is_empty() {
-        let active_providers = crate::config::CONFIG_MANAGER.get_active_providers();
+        let active_providers = session.ctx.config_manager.get_active_providers();
         let current_provider = session.client.get_state().provider.clone();
         ui::print_rule(Some("Active Providers"), Some("magenta"));
         for p in active_providers {
@@ -355,8 +362,12 @@ pub fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
             (state.stdout, !state.render_markdown)
         };
 
-        let registry = crate::llm::registry::CLIENT_REGISTRY.lock().unwrap();
-        match registry.create_client(args, "default", stdout, raw) {
+        let client = {
+            let registry = session.ctx.client_registry.lock().unwrap();
+            registry.create_client(args, "default", stdout, raw, &session.ctx.config_manager)
+        };
+
+        match client {
             Some(new_client) => {
                 session.switch_client(new_client);
                 ui::report_success(&format!("Switched to provider: {}", args));

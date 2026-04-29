@@ -1,4 +1,5 @@
 use colored::Colorize;
+use llm_secure_cli::core::context::AppContext;
 use llm_secure_cli::llm::providers::anthropic::ClaudeClient;
 use llm_secure_cli::llm::providers::google::GeminiClient;
 use llm_secure_cli::llm::providers::ollama::OllamaClient;
@@ -7,6 +8,7 @@ use llm_secure_cli::security::dual_llm_verifier::verify_tool_call_full;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
+use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -25,23 +27,35 @@ async fn main() -> anyhow::Result<()> {
         "=== Dual LLM Verification Benchmark ===".bold().cyan()
     );
 
+    let ctx = Arc::new(AppContext::new());
+
     // Register clients
     {
-        let mut registry = llm_secure_cli::llm::registry::CLIENT_REGISTRY
-            .lock()
-            .unwrap();
-        registry.register("openai", |model, stdout, raw| {
-            Box::new(OpenAiClient::new(model, stdout, raw))
-        });
-        registry.register("anthropic", |model, stdout, raw| {
-            Box::new(ClaudeClient::new(model, stdout, raw))
-        });
-        registry.register("ollama", |model, stdout, raw| {
-            Box::new(OllamaClient::new(model, stdout, raw))
-        });
-        registry.register("google", |model, stdout, raw| {
-            Box::new(GeminiClient::new(model, stdout, raw))
-        });
+        let mut registry = ctx.client_registry.lock().unwrap();
+        registry.register(
+            "openai",
+            Arc::new(|model, stdout, raw, config_manager| {
+                Box::new(OpenAiClient::new(config_manager, model, stdout, raw))
+            }),
+        );
+        registry.register(
+            "anthropic",
+            Arc::new(|model, stdout, raw, config_manager| {
+                Box::new(ClaudeClient::new(config_manager, model, stdout, raw))
+            }),
+        );
+        registry.register(
+            "ollama",
+            Arc::new(|model, stdout, raw, config_manager| {
+                Box::new(OllamaClient::new(config_manager, model, stdout, raw))
+            }),
+        );
+        registry.register(
+            "google",
+            Arc::new(|model, stdout, raw, config_manager| {
+                Box::new(GeminiClient::new(config_manager, model, stdout, raw))
+            }),
+        );
     }
 
     // Load scenarios from JSON
@@ -69,12 +83,10 @@ async fn main() -> anyhow::Result<()> {
         ]
     };
 
-    let security_config = llm_secure_cli::config::CONFIG_MANAGER.get_config().security;
+    let security_config = ctx.config_manager.get_config().security;
 
     for (p_alias, p_model) in providers {
-        let has_key = llm_secure_cli::config::CONFIG_MANAGER
-            .get_api_key(p_alias)
-            .is_some();
+        let has_key = ctx.config_manager.get_api_key(p_alias).is_some();
         if !has_key {
             println!("Skipping {} (No API Key found)", p_alias.yellow());
             continue;
@@ -97,15 +109,17 @@ async fn main() -> anyhow::Result<()> {
 
         for scenario in &scenarios {
             let start = Instant::now();
-            let (safe, reason) = verify_tool_call_full(
-                &scenario.intent,
-                &scenario.tool,
-                &scenario.arguments,
-                None,
-                &security_config,
-                Some(p_alias.to_string()),
-                Some(p_model.to_string()),
-            )
+            use llm_secure_cli::security::dual_llm_verifier::VerificationParams;
+            let (safe, reason) = verify_tool_call_full(VerificationParams {
+                ctx_app: ctx.clone(),
+                user_query: &scenario.intent,
+                tool_name: &scenario.tool,
+                tool_args: &scenario.arguments,
+                context: None,
+                config: &security_config,
+                provider: Some(p_alias.to_string()),
+                model: Some(p_model.to_string()),
+            })
             .await;
             let elapsed = start.elapsed().as_millis();
             total_time += elapsed;

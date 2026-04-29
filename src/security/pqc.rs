@@ -1,4 +1,3 @@
-use crate::config::CONFIG_MANAGER;
 use aes_gcm::{
     Aes256Gcm, Nonce,
     aead::{Aead, KeyInit},
@@ -307,11 +306,11 @@ pub struct PQCAgilityManager;
 
 impl PQCAgilityManager {
     pub fn get_required_level(
+        config: &crate::config::models::AppConfig,
         tool_name: &str,
         args: Option<&serde_json::Value>,
         environment_risk: &str,
     ) -> MldsaVariant {
-        let config = CONFIG_MANAGER.get_config();
         let security_config = &config.security;
 
         let mut is_sensitive_context = false;

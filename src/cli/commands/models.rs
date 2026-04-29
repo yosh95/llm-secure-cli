@@ -1,11 +1,16 @@
 use crate::cli::ui;
-use crate::config::CONFIG_MANAGER;
+use crate::config::ConfigManager;
 use crate::utils::http::CLIENT;
 use serde_json::Value;
 
-pub async fn list_models(provider_name: &str, models: Vec<String>, verbose: bool) {
+pub async fn list_models(
+    config_manager: &ConfigManager,
+    provider_name: &str,
+    models: Vec<String>,
+    verbose: bool,
+) {
     let provider = provider_name.to_lowercase();
-    let api_key = CONFIG_MANAGER.get_api_key(&provider);
+    let api_key = config_manager.get_api_key(&provider);
     if api_key.is_none() && provider != "ollama" {
         ui::report_error(&format!("{} API Key not found.", provider));
         return;
@@ -38,7 +43,7 @@ pub async fn list_models(provider_name: &str, models: Vec<String>, verbose: bool
             )
         }
         "ollama" => {
-            let config = CONFIG_MANAGER.get_config();
+            let config = config_manager.get_config();
             let mut base_url = "http://localhost:11434".to_string();
             if let Some(p_cfg) = config.providers.get("ollama")
                 && let Some(api_url) = &p_cfg.api_url

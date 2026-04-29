@@ -11,6 +11,7 @@ impl ChatSession {
     pub async fn process_and_print(&mut self, data: Vec<DataSource>) -> anyhow::Result<()> {
         let mut current_data = data;
         let user_id = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
+        let config = self.ctx.config_manager.get_config();
 
         loop {
             let pb = ProgressBar::new_spinner();
@@ -22,7 +23,8 @@ impl ChatSession {
             pb.set_message(format!("Thinking... ({})", self.client.get_state().model));
             pb.enable_steady_tick(std::time::Duration::from_millis(100));
 
-            let (response, thought) = self.client.send(current_data).await?;
+            let tool_schemas = self.ctx.tool_registry.lock().unwrap().get_tool_schemas();
+            let (response, thought) = self.client.send(current_data, tool_schemas).await?;
             pb.finish_and_clear();
 
             current_data = Vec::new();
@@ -40,6 +42,7 @@ impl ChatSession {
             {
                 ui::print_block(&text, Some(&self.client.get_display_name()), Some("cyan"));
                 crate::utils::chat_logger::log_chat(
+                    &self.ctx.config_manager,
                     &crate::llm::models::Role::Assistant,
                     &text,
                     Some(&self.client.get_state().model),
@@ -58,7 +61,6 @@ impl ChatSession {
                         let b64_data = id.get("data").and_then(|v| v.as_str()).unwrap_or("");
                         let mime_type = id.get("mimeType").and_then(|v| v.as_str()).unwrap_or("");
                         if !b64_data.is_empty() {
-                            let config = crate::config::CONFIG_MANAGER.get_config();
                             match crate::utils::media::save_image(
                                 b64_data,
                                 mime_type,
@@ -99,7 +101,7 @@ impl ChatSession {
 
                         // --- [PHASE 1] Lightweight Fast Checks ---
                         if let Err(e) =
-                            crate::security::validate_tool_call(name, &args, &self.config.security)
+                            crate::security::validate_tool_call(name, &args, &config.security)
                         {
                             ui::report_error(&e);
                             final_result = Some(serde_json::Value::String(e));
@@ -111,7 +113,7 @@ impl ChatSession {
                             None;
 
                         if final_result.is_none()
-                            && self.config.security.dual_llm_verification.unwrap_or(false)
+                            && config.security.dual_llm_verification.unwrap_or(false)
                         {
                             // Build intent context for verification
                             let user_history: Vec<String> = self
@@ -158,16 +160,20 @@ impl ChatSession {
 
                             let name_clone = name.to_string();
                             let args_clone = serde_json::json!(args);
-                            let config_clone = self.config.security.clone();
+                            let config_clone = config.security.clone();
+                            let ctx_clone = self.ctx.clone();
                             verifier_handle = Some(tokio::spawn(async move {
                                 crate::security::dual_llm_verifier::verify_tool_call_full(
-                                    &intent_context,
-                                    &name_clone,
-                                    &args_clone,
-                                    None,
-                                    &config_clone,
-                                    None,
-                                    None,
+                                    crate::security::dual_llm_verifier::VerificationParams {
+                                        ctx_app: ctx_clone,
+                                        user_query: &intent_context,
+                                        tool_name: &name_clone,
+                                        tool_args: &args_clone,
+                                        context: None,
+                                        config: &config_clone,
+                                        provider: None,
+                                        model: None,
+                                    },
                                 )
                                 .await
                             }));
@@ -175,9 +181,8 @@ impl ChatSession {
 
                         // Risk evaluation & auto-approval
                         let risk_level = crate::security::cass::CASS_ORCHESTRATOR
-                            .evaluate_risk(name, &self.config.security);
-                        let auto_approval = self
-                            .config
+                            .evaluate_risk(name, &config.security);
+                        let auto_approval = config
                             .security
                             .auto_approval_level
                             .as_deref()
@@ -286,14 +291,16 @@ impl ChatSession {
                                 Ok(v) => {
                                     if let Some(entry) =
                                         crate::security::audit::log_audit_and_return(
-                                            "tool_call",
-                                            name,
-                                            serde_json::json!(args),
-                                            v.as_str(),
-                                            Some(0),
-                                            None,
-                                            Some(&audit_ctx),
-                                            &self.config,
+                                            crate::security::audit::AuditParams {
+                                                event_type: "tool_call",
+                                                tool_name: name,
+                                                args: serde_json::json!(args),
+                                                output: v.as_str(),
+                                                exit_code: Some(0),
+                                                error: None,
+                                                context: Some(&audit_ctx),
+                                                config: &config,
+                                            },
                                             None,
                                         )
                                     {
@@ -304,14 +311,16 @@ impl ChatSession {
                                 Err(e) => {
                                     if let Some(entry) =
                                         crate::security::audit::log_audit_and_return(
-                                            "tool_call",
-                                            name,
-                                            serde_json::json!(args),
-                                            None,
-                                            Some(1),
-                                            Some(&e.to_string()),
-                                            Some(&audit_ctx),
-                                            &self.config,
+                                            crate::security::audit::AuditParams {
+                                                event_type: "tool_call",
+                                                tool_name: name,
+                                                args: serde_json::json!(args),
+                                                output: None,
+                                                exit_code: Some(1),
+                                                error: Some(&e.to_string()),
+                                                context: Some(&audit_ctx),
+                                                config: &config,
+                                            },
                                             None,
                                         )
                                     {

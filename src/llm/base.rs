@@ -1,4 +1,4 @@
-use crate::config::CONFIG_MANAGER;
+use crate::config::ConfigManager;
 use crate::llm::models::{ClientState, DataSource, Message};
 use async_trait::async_trait;
 
@@ -17,6 +17,7 @@ pub trait LlmClient: Send + Sync {
     async fn send(
         &mut self,
         data: Vec<DataSource>,
+        tool_schemas: Vec<serde_json::Value>,
     ) -> anyhow::Result<(Option<String>, Option<String>)>;
 
     /// Send a request specifically for verification purposes, forcing a structured tool call response.
@@ -91,10 +92,16 @@ pub struct BaseLlmClientData {
 }
 
 impl BaseLlmClientData {
-    pub fn new(initial_model_alias: &str, spec: ProviderSpec, stdout: bool, raw: bool) -> Self {
+    pub fn new(
+        config_manager: &ConfigManager,
+        initial_model_alias: &str,
+        spec: ProviderSpec,
+        stdout: bool,
+        raw: bool,
+    ) -> Self {
         let config_section = spec.config_section.clone();
-        let api_key = CONFIG_MANAGER.get_api_key(&config_section);
-        let model_config = CONFIG_MANAGER.get_model_config(&config_section, initial_model_alias);
+        let api_key = config_manager.get_api_key(&config_section);
+        let model_config = config_manager.get_model_config(&config_section, initial_model_alias);
 
         let model_name = model_config
             .get("model")
@@ -104,7 +111,7 @@ impl BaseLlmClientData {
 
         // Load system prompt from config if available
         let system_prompt = {
-            let config = CONFIG_MANAGER.get_config();
+            let config = config_manager.get_config();
             let provider_cfg = config.providers.get(&config_section);
             provider_cfg
                 .and_then(|p| p.system_prompt.clone())
@@ -143,8 +150,8 @@ impl BaseLlmClientData {
 }
 
 /// Creates a reqwest client with timeout settings from the global config.
-pub fn create_http_client() -> reqwest::Client {
-    let config = CONFIG_MANAGER.get_config();
+pub fn create_http_client(config_manager: &ConfigManager) -> reqwest::Client {
+    let config = config_manager.get_config();
     let timeout_secs = config.general.request_timeout;
 
     reqwest::Client::builder()

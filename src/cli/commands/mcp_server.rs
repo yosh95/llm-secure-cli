@@ -1,17 +1,20 @@
 use crate::cli::ui;
-use crate::config::models::AppConfig;
 use crate::tools::mcp::client::FastMcp;
 use anyhow::Result;
 use std::collections::HashMap;
 
-pub async fn run_mcp_server(config: AppConfig) -> Result<()> {
+use crate::core::context::AppContext;
+use std::sync::Arc;
+
+pub async fn run_mcp_server(ctx: Arc<AppContext>) -> Result<()> {
+    let config = ctx.config_manager.get_config();
     ui::report_success("Starting LLM-SECURE-CLI MCP Server (stdio mode)...");
 
     let mut mcp = FastMcp::new("llm-secure-cli-server");
 
     // Register all tools from the registry
     {
-        let registry = crate::tools::registry::REGISTRY.lock().unwrap();
+        let registry = ctx.tool_registry.lock().unwrap();
         for (name, tool) in &registry.tools {
             if !tool.is_local {
                 continue; // Don't re-export remote tools
@@ -43,28 +46,30 @@ pub async fn run_mcp_server(config: AppConfig) -> Result<()> {
                         &json_map,
                         &config.security,
                     ) {
-                        crate::security::audit::log_audit(
-                            "mcp_blocked",
-                            &tool_name_for_closure,
-                            args.clone(),
-                            None,
-                            Some(1),
-                            Some(&e),
-                            None,
-                        );
+                        crate::security::audit::log_audit(crate::security::audit::AuditParams {
+                            event_type: "mcp_blocked",
+                            tool_name: &tool_name_for_closure,
+                            args: args.clone(),
+                            output: None,
+                            exit_code: Some(1),
+                            error: Some(&e),
+                            context: None,
+                            config: &config,
+                        });
                         return Err(anyhow::anyhow!(e));
                     }
 
                     // Audit: Log the execution
-                    crate::security::audit::log_audit(
-                        "mcp_execution",
-                        &tool_name_for_closure,
-                        args.clone(),
-                        None,
-                        Some(0),
-                        None,
-                        None,
-                    );
+                    crate::security::audit::log_audit(crate::security::audit::AuditParams {
+                        event_type: "mcp_execution",
+                        tool_name: &tool_name_for_closure,
+                        args: args.clone(),
+                        output: None,
+                        exit_code: Some(0),
+                        error: None,
+                        context: None,
+                        config: &config,
+                    });
 
                     (tool_func)(args_map, config).await
                 }

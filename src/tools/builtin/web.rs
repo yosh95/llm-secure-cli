@@ -86,6 +86,7 @@ pub async fn read_url_content(
 pub async fn brave_search(
     args: HashMap<String, Value>,
     _config: AppConfig,
+    api_key: &str,
 ) -> anyhow::Result<Value> {
     let query = args
         .get("query")
@@ -98,15 +99,7 @@ pub async fn brave_search(
         .map(|v| v.min(20) as usize)
         .unwrap_or(10);
 
-    let api_key = crate::config::CONFIG_MANAGER
-        .get_api_key("brave")
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Brave Search API key not configured. Set BRAVE_API_KEY environment variable."
-            )
-        })?;
-
-    let results = call_brave_api(query, count, &api_key).await?;
+    let results = call_brave_api(query, count, api_key).await?;
 
     Ok(json!({
         "query": query,

@@ -1,8 +1,6 @@
 use crate::cli::ui;
-use crate::config::CONFIG_MANAGER;
 use crate::tools::mcp::client::{ClientSession, StdioServerParameters};
 use anyhow::{Result, anyhow};
-use once_cell::sync::Lazy;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -12,8 +10,6 @@ pub struct McpManager {
     sessions: Arc<Mutex<HashMap<String, ClientSession>>>,
     cached_tools: Arc<Mutex<Vec<Value>>>,
 }
-
-pub static MCP_MANAGER: Lazy<McpManager> = Lazy::new(McpManager::new);
 
 impl McpManager {
     pub fn new() -> Self {
@@ -31,13 +27,16 @@ impl Default for McpManager {
 }
 
 impl McpManager {
-    pub async fn initialize_servers(&self) -> Result<Vec<Value>> {
+    pub async fn initialize_servers(
+        &self,
+        config_manager: &crate::config::ConfigManager,
+    ) -> Result<Vec<Value>> {
         let mut cached_tools = self.cached_tools.lock().await;
         if !cached_tools.is_empty() {
             return Ok(cached_tools.clone());
         }
 
-        let config = CONFIG_MANAGER.get_config();
+        let config = config_manager.get_config();
         let mut sessions = self.sessions.lock().await;
         let mut all_tools = Vec::new();
 

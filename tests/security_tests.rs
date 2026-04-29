@@ -85,26 +85,31 @@ fn test_audit_hash_chaining() {
 
     // Call log_audit_and_return twice.
     // The second call should pick up the hash of the first call as its prev_hash.
+    use llm_secure_cli::security::audit::AuditParams;
     log_audit_and_return(
-        "tool_call",
-        "test_tool",
-        serde_json::json!({}),
-        None,
-        Some(0),
-        None,
-        None,
-        &config,
+        AuditParams {
+            event_type: "tool_call",
+            tool_name: "test_tool",
+            args: serde_json::json!({}),
+            output: None,
+            exit_code: Some(0),
+            error: None,
+            context: None,
+            config: &config,
+        },
         Some(&path),
     );
     log_audit_and_return(
-        "tool_call",
-        "test_tool",
-        serde_json::json!({}),
-        None,
-        Some(0),
-        None,
-        None,
-        &config,
+        AuditParams {
+            event_type: "tool_call",
+            tool_name: "test_tool",
+            args: serde_json::json!({}),
+            output: None,
+            exit_code: Some(0),
+            error: None,
+            context: None,
+            config: &config,
+        },
         Some(&path),
     );
 

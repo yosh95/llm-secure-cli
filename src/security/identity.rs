@@ -157,6 +157,7 @@ impl IdentityManager {
     }
 
     pub fn generate_token(
+        config: &crate::config::models::AppConfig,
         user_id: Option<&str>,
         audience: Option<&str>,
         tool_name: Option<&str>,
@@ -185,7 +186,7 @@ impl IdentityManager {
         }
 
         let variant = if let Some(tool) = tool_name {
-            let v = PQCAgilityManager::get_required_level(tool, args, "standard");
+            let v = PQCAgilityManager::get_required_level(config, tool, args, "standard");
             log::debug!(
                 "IdentityManager: Agility scaling for tool '{}': {:?}",
                 tool,

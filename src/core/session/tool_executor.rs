@@ -15,7 +15,7 @@ impl ChatSession {
             if parts.len() == 2 {
                 let server_name = parts[0];
                 let tool_name = parts[1];
-                let mcp = &crate::tools::mcp::manager::MCP_MANAGER;
+                let mcp = &self.ctx.mcp_manager;
                 match mcp
                     .call_tool(server_name, tool_name, serde_json::json!(args))
                     .await
@@ -28,8 +28,8 @@ impl ChatSession {
 
         // Local built-in tools: asynchronous execution
         let fut = {
-            let config = crate::config::CONFIG_MANAGER.get_config();
-            let registry = crate::tools::registry::REGISTRY.lock().unwrap();
+            let config = self.ctx.config_manager.get_config();
+            let registry = self.ctx.tool_registry.lock().unwrap();
             registry
                 .tools
                 .get(name)

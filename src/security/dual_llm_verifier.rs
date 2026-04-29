@@ -20,40 +20,56 @@ pub enum VerificationResult {
     Error(String),
 }
 
+pub struct VerificationParams<'a> {
+    pub ctx_app: std::sync::Arc<crate::core::context::AppContext>,
+    pub user_query: &'a str,
+    pub tool_name: &'a str,
+    pub tool_args: &'a Value,
+    pub context: Option<SecurityContext>,
+    pub config: &'a crate::config::models::SecurityConfig,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+}
+
 /// Validates a tool call using a secondary LLM.
 /// Returns true if safe, false if blocked or error.
 pub async fn verify_tool_call(
+    ctx_app: std::sync::Arc<crate::core::context::AppContext>,
     user_query: &str,
     tool_name: &str,
     tool_args: &Value,
     context: Option<SecurityContext>,
     config: &crate::config::models::SecurityConfig,
 ) -> bool {
-    let (safe, _) = verify_tool_call_full(
-        user_query, tool_name, tool_args, context, config, None, None,
-    )
+    let (safe, _) = verify_tool_call_full(VerificationParams {
+        ctx_app,
+        user_query,
+        tool_name,
+        tool_args,
+        context,
+        config,
+        provider: None,
+        model: None,
+    })
     .await;
     safe
 }
 
 /// Validates a tool call using a secondary LLM and returns full details.
-pub async fn verify_tool_call_full(
-    user_query: &str,
-    tool_name: &str,
-    tool_args: &Value,
-    context: Option<SecurityContext>,
-    config: &crate::config::models::SecurityConfig,
-    provider: Option<String>,
-    model: Option<String>,
-) -> (bool, String) {
-    let p = provider.unwrap_or(config.dual_llm_provider.clone());
-    let m = model.unwrap_or(config.dual_llm_model.clone());
+pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> (bool, String) {
+    let p = params
+        .provider
+        .unwrap_or_else(|| params.config.dual_llm_provider.clone());
+    let m = params
+        .model
+        .unwrap_or_else(|| params.config.dual_llm_model.clone());
 
-    let client = match crate::llm::registry::CLIENT_REGISTRY
-        .lock()
-        .unwrap()
-        .create_client(&p, &m, false, true)
-    {
+    let client = {
+        let registry = params.ctx_app.client_registry.lock().unwrap();
+        registry.create_client(&p, &m, false, true, &params.ctx_app.config_manager)
+    };
+
+    let client = match client {
         Some(c) => c,
         None => {
             return (
@@ -63,11 +79,13 @@ pub async fn verify_tool_call_full(
         }
     };
 
-    let ctx = context.unwrap_or_else(|| SecurityContext::gather(&config.security_level));
+    let ctx = params
+        .context
+        .unwrap_or_else(|| SecurityContext::gather(&params.config.security_level));
 
     let mut verifier = DualLLMVerifier::new(client);
     match verifier
-        .verify(user_query, tool_name, tool_args, &ctx)
+        .verify(params.user_query, params.tool_name, params.tool_args, &ctx)
         .await
     {
         VerificationResult::Allowed => (true, "Allowed".to_string()),

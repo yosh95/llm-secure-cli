@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, Mutex};
 
 pub type ToolFuture = Pin<Box<dyn Future<Output = anyhow::Result<Value>> + Send>>;
 pub type ToolFunc = Arc<dyn Fn(HashMap<String, Value>, AppConfig) -> ToolFuture + Send + Sync>;
@@ -21,12 +21,20 @@ pub struct ToolRegistry {
 }
 
 impl ToolRegistry {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             tools: HashMap::new(),
         }
     }
+}
 
+impl Default for ToolRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ToolRegistry {
     pub fn register(
         &mut self,
         name: &str,
@@ -135,20 +143,17 @@ impl ToolRegistry {
     }
 }
 
-pub static REGISTRY: LazyLock<Mutex<ToolRegistry>> = LazyLock::new(|| {
-    let mut r = ToolRegistry::new();
-    register_builtin_tools(&mut r);
-    Mutex::new(r)
-});
+pub async fn initialize_remote_tools(
+    registry: Arc<Mutex<ToolRegistry>>,
+    config_manager: &crate::config::ConfigManager,
+    mcp_manager: &crate::tools::mcp::manager::McpManager,
+) -> anyhow::Result<()> {
+    let tools = mcp_manager.initialize_servers(config_manager).await?;
 
-pub async fn initialize_remote_tools() -> anyhow::Result<()> {
-    let mcp_manager = &crate::tools::mcp::manager::MCP_MANAGER;
-    let tools = mcp_manager.initialize_servers().await?;
-
-    let config = crate::config::CONFIG_MANAGER.get_config();
+    let config = config_manager.get_config();
     let allowed_tools = config.security.allowed_tools;
 
-    let mut registry = REGISTRY.lock().unwrap();
+    let mut registry = registry.lock().unwrap();
     for tool in tools {
         if let Some(ref allowed) = allowed_tools {
             let name = tool["name"].as_str().unwrap_or("");
@@ -162,8 +167,8 @@ pub async fn initialize_remote_tools() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn register_builtin_tools(r: &mut ToolRegistry) {
-    let config = crate::config::CONFIG_MANAGER.get_config();
+pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::config::ConfigManager) {
+    let config = config_manager.get_config();
     let allowed_tools = config.security.allowed_tools;
 
     let maybe_register =
@@ -314,8 +319,7 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
         }),
     );
 
-    let brave_key = crate::config::CONFIG_MANAGER.get_api_key("brave");
-    if brave_key.is_some() {
+    if let Some(brave_key) = config_manager.get_api_key("brave") {
         maybe_register(
             r,
             "brave_search",
@@ -328,10 +332,11 @@ fn register_builtin_tools(r: &mut ToolRegistry) {
                 },
                 "required": ["query"]
             }),
-            Arc::new(|args, config| {
-                Box::pin(
-                    async move { crate::tools::builtin::web::brave_search(args, config).await },
-                )
+            Arc::new(move |args, config| {
+                let key = brave_key.clone();
+                Box::pin(async move {
+                    crate::tools::builtin::web::brave_search(args, config, &key).await
+                })
             }),
         );
     }

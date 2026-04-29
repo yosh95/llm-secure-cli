@@ -1,3 +1,4 @@
+use crate::config::ConfigManager;
 use crate::llm::base::{BaseLlmClientData, LlmClient, ProviderSpec};
 use crate::llm::models::{ClientState, ContentPart, DataSource, Message, MessagePart, Role};
 use async_trait::async_trait;
@@ -6,7 +7,11 @@ use std::collections::HashMap;
 
 use once_cell::sync::Lazy;
 
-static CLIENT: Lazy<reqwest::Client> = Lazy::new(crate::llm::base::create_http_client);
+static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    reqwest::Client::builder()
+        .build()
+        .expect("Failed to create reqwest client")
+});
 
 /// Generic OpenAI-compatible API client.
 /// Supports any provider that follows the OpenAI Chat Completions API format.
@@ -19,13 +24,20 @@ pub struct OpenAiCompatibleClient {
 }
 
 impl OpenAiCompatibleClient {
-    pub fn new(base_url: &str, api_key: &str, model: &str, stdout: bool, raw: bool) -> Self {
+    pub fn new(
+        config_manager: &ConfigManager,
+        base_url: &str,
+        api_key: &str,
+        model: &str,
+        stdout: bool,
+        raw: bool,
+    ) -> Self {
         let spec = ProviderSpec {
             api_key_name: "api_key".to_string(),
             config_section: "custom".to_string(),
             pdf_as_base64: false,
         };
-        let base = BaseLlmClientData::new(model, spec, stdout, raw);
+        let base = BaseLlmClientData::new(config_manager, model, spec, stdout, raw);
         Self {
             base,
             api_url: format!("{}/chat/completions", base_url.trim_end_matches('/')),
@@ -233,27 +245,21 @@ impl OpenAiCompatibleClient {
         messages
     }
 
-    fn build_tool_schemas(&self) -> Option<Vec<Value>> {
-        if !self.supports_tools {
+    fn build_tool_schemas(&self, tool_schemas: Vec<Value>) -> Option<Vec<Value>> {
+        if !self.supports_tools || tool_schemas.is_empty() {
             return None;
         }
-        let registry = crate::tools::registry::REGISTRY.lock().unwrap();
-        let schemas = registry.get_tool_schemas();
-        if schemas.is_empty() {
-            None
-        } else {
-            Some(
-                schemas
-                    .into_iter()
-                    .map(|s| {
-                        json!({
-                            "type": "function",
-                            "function": s
-                        })
+        Some(
+            tool_schemas
+                .into_iter()
+                .map(|s| {
+                    json!({
+                        "type": "function",
+                        "function": s
                     })
-                    .collect(),
-            )
-        }
+                })
+                .collect(),
+        )
     }
 }
 
@@ -275,6 +281,7 @@ impl LlmClient for OpenAiCompatibleClient {
     async fn send(
         &mut self,
         data: Vec<DataSource>,
+        tool_schemas: Vec<Value>,
     ) -> anyhow::Result<(Option<String>, Option<String>)> {
         let messages = self.build_messages(&data);
 
@@ -295,7 +302,7 @@ impl LlmClient for OpenAiCompatibleClient {
 
         // Add tools if enabled
         if self.base.state.tools_enabled
-            && let Some(tools) = self.build_tool_schemas()
+            && let Some(tools) = self.build_tool_schemas(tool_schemas)
         {
             body["tools"] = json!(tools);
             body["tool_choice"] = json!("auto");

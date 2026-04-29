@@ -3,7 +3,6 @@ pub mod models;
 
 use crate::config::models::AppConfig;
 use crate::consts::{CONFIG_FILE_PATH, LLM_CLI_BASE_DIR};
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -17,14 +16,22 @@ pub struct ConfigManager {
 }
 
 impl ConfigManager {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             app_config: Mutex::new(None),
             env_cache: Mutex::new(HashMap::new()),
             env_loaded: Mutex::new(bool::default()),
         }
     }
+}
 
+impl Default for ConfigManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ConfigManager {
     fn load_env_files(&self) {
         let mut env_loaded = self.env_loaded.lock().unwrap();
         if *env_loaded {
@@ -279,5 +286,3 @@ fn merge_json(base: &mut serde_json::Value, over: serde_json::Value) {
         }
     }
 }
-
-pub static CONFIG_MANAGER: Lazy<ConfigManager> = Lazy::new(ConfigManager::new);

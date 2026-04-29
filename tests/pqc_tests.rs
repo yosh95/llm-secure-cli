@@ -162,33 +162,37 @@ fn test_merkle_session_verification_logic() {
 
 #[test]
 fn test_pqc_agility_manager() {
-    use llm_secure_cli::config::CONFIG_MANAGER;
+    use llm_secure_cli::config::ConfigManager;
     use llm_secure_cli::security::pqc::MldsaVariant;
     use llm_secure_cli::security::pqc::PQCAgilityManager;
 
+    let config_manager = ConfigManager::new();
+
     // Use set_config instead of writing to disk and reloading
     {
-        let mut config = CONFIG_MANAGER.get_config();
+        let mut config = config_manager.get_config();
         config.security.high_risk_tools = vec!["execute_command".to_string()];
         config.security.scaling_patterns = vec!["/etc/shadow".to_string()];
-        CONFIG_MANAGER.set_config(config);
+        config_manager.set_config(config);
     }
 
+    let config = config_manager.get_config();
+
     // Normal tool, low risk
-    let level = PQCAgilityManager::get_required_level("ls", None, "low");
+    let level = PQCAgilityManager::get_required_level(&config, "ls", None, "low");
     assert_eq!(level, MldsaVariant::Mldsa44);
 
     // High risk tool
-    let level = PQCAgilityManager::get_required_level("execute_command", None, "low");
+    let level = PQCAgilityManager::get_required_level(&config, "execute_command", None, "low");
     assert_eq!(level, MldsaVariant::Mldsa87);
 
     // High environment risk
-    let level = PQCAgilityManager::get_required_level("ls", None, "high");
+    let level = PQCAgilityManager::get_required_level(&config, "ls", None, "high");
     assert_eq!(level, MldsaVariant::Mldsa87);
 
     // Sensitive context (contains scaling patterns)
     let args = serde_json::json!({"path": "/etc/shadow"});
-    let level = PQCAgilityManager::get_required_level("read_file", Some(&args), "low");
+    let level = PQCAgilityManager::get_required_level(&config, "read_file", Some(&args), "low");
     assert_eq!(level, MldsaVariant::Mldsa87);
 }
 

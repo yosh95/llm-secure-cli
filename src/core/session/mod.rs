@@ -1,4 +1,3 @@
-use crate::config::models::AppConfig;
 use crate::llm::base::LlmClient;
 use crate::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
 use crate::security::audit::AuditEntry;
@@ -7,13 +6,16 @@ use serde_json;
 use std::collections::HashMap;
 use uuid;
 
+use crate::core::context::AppContext;
+use std::sync::Arc;
+
 pub mod input_handler;
 pub mod processor;
 pub mod tool_executor;
 
 pub struct ChatSession {
     pub client: Box<dyn LlmClient>,
-    pub config: AppConfig,
+    pub ctx: Arc<AppContext>,
     pub intent: String,
     pub pending_data: Vec<DataSource>,
     pub trace_id: String,
@@ -35,29 +37,33 @@ impl Drop for ChatSession {
 }
 
 impl ChatSession {
-    pub fn new(client: Box<dyn LlmClient>, config: AppConfig) -> Self {
+    pub fn new(client: Box<dyn LlmClient>, ctx: Arc<AppContext>) -> Self {
         let trace_id = format!("sess-{}", &uuid::Uuid::new_v4().to_string()[..8]);
         let user_id = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
 
+        let config = ctx.config_manager.get_config();
+        let context_val = serde_json::json!({
+            "trace_id": trace_id,
+            "model": client.get_state().model,
+            "user_id": user_id
+        });
         let entry = crate::security::audit::log_audit_and_return(
-            "session_start",
-            "session",
-            serde_json::json!({}),
-            None,
-            None,
-            None,
-            Some(&serde_json::json!({
-                "trace_id": trace_id,
-                "model": client.get_state().model,
-                "user_id": user_id
-            })),
-            &config,
+            crate::security::audit::AuditParams {
+                event_type: "session_start",
+                tool_name: "session",
+                args: serde_json::json!({}),
+                output: None,
+                exit_code: None,
+                error: None,
+                context: Some(&context_val),
+                config: &config,
+            },
             None,
         );
 
         Self {
             client,
-            config,
+            ctx,
             intent: String::new(),
             pending_data: Vec::new(),
             trace_id,
@@ -66,7 +72,7 @@ impl ChatSession {
     }
 
     /// Create a dummy empty session (internal use only for swapping)
-    pub fn new_empty() -> Self {
+    pub fn new_empty(ctx: Arc<AppContext>) -> Self {
         // This is a minimal client that does nothing.
         // It exists solely so that `std::mem::replace` has a valid placeholder
         // to swap in while the real session is being dropped. None of its
@@ -91,6 +97,7 @@ impl ChatSession {
             async fn send(
                 &mut self,
                 _: Vec<crate::llm::models::DataSource>,
+                _: Vec<serde_json::Value>,
             ) -> anyhow::Result<(Option<String>, Option<String>)> {
                 Ok((None, None))
             }
@@ -118,7 +125,7 @@ impl ChatSession {
                     previous_interaction_id: None,
                 },
             }),
-            config: AppConfig::default(),
+            ctx,
             intent: String::new(),
             pending_data: Vec::new(),
             trace_id: "dummy".to_string(),
