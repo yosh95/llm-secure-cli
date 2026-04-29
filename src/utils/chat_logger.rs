@@ -5,7 +5,7 @@ use chrono::Utc;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 
-pub fn log_chat(role: &Role, content: &str) {
+pub fn log_chat(role: &Role, content: &str, model_name: Option<&str>) {
     let path = &*CHAT_LOG_PATH;
     let config = CONFIG_MANAGER.get_config();
     let max_lines = config.general.max_chat_log_lines;
@@ -20,7 +20,7 @@ pub fn log_chat(role: &Role, content: &str) {
     let timestamp = Utc::now().to_rfc3339();
     let role_str = match role {
         Role::User => "USER",
-        Role::Assistant | Role::Model => "ASSISTANT",
+        Role::Assistant | Role::Model => model_name.unwrap_or("ASSISTANT"),
         Role::System => "SYSTEM",
         Role::Tool => "TOOL",
     };

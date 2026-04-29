@@ -125,16 +125,17 @@ async fn main() {
         use llm_secure_cli::security::integrity::IntegrityVerifier;
 
         // 1. Ensure Identity Keys
-        if !IdentityManager::has_keys() && is_atty
+        if !IdentityManager::has_keys()
+            && is_atty
             && ui::ask_confirm("Identity keys not found. Generate new PQC keypair for this agent?")
                 .unwrap_or(false)
-            {
-                if let Err(e) = IdentityManager::ensure_keys(true) {
-                    ui::report_error(&format!("Failed to generate keys: {}", e));
-                } else {
-                    ui::report_success("Identity keys generated.");
-                }
+        {
+            if let Err(e) = IdentityManager::ensure_keys(true) {
+                ui::report_error(&format!("Failed to generate keys: {}", e));
+            } else {
+                ui::report_success("Identity keys generated.");
             }
+        }
 
         // 2. System Integrity Check
         let verifier = IntegrityVerifier::new();
