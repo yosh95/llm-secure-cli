@@ -39,7 +39,10 @@ mod tests {
     }
 
     #[test]
-    fn build_input_omits_standalone_thought_parts_from_history() {
+    fn build_input_preserves_thought_parts_in_history() {
+        // Gemini 3 requires thought signatures to round-trip with function_call
+        // parts. We preserve standalone `thought` parts in the re-submitted history
+        // so any signature attached to them is not lost.
         let mut fc = HashMap::new();
         fc.insert("name".to_string(), json!("execute_command"));
         fc.insert("id".to_string(), json!("call-1"));
@@ -62,7 +65,7 @@ mod tests {
                         function_call: None,
                         function_response: None,
                         thought: Some(String::new()),
-                        thought_signature: None,
+                        thought_signature: Some("sig-thought".to_string()),
                         is_diagnostic: false,
                     }),
                     MessagePart::Part(ContentPart {
@@ -86,13 +89,18 @@ mod tests {
         }]);
 
         let serialized = serde_json::to_string(&input).unwrap();
-        assert!(!serialized.contains("\"type\":\"thought\""));
+        // thought parts ARE preserved (with signature) so Gemini 3 validation passes.
+        assert!(serialized.contains("\"type\":\"thought\""));
+        assert!(serialized.contains("\"signature\":\"sig-thought\""));
         assert!(serialized.contains("\"type\":\"function_call\""));
         assert!(serialized.contains("\"type\":\"text\""));
     }
-
     #[test]
     fn build_input_carries_thought_signature_to_next_concrete_part() {
+        // `thought` parts carry the signature internally (as `signature`).
+        // We NO LONGER attach `thought_signature` to subsequent non-thought
+        // parts (function_call, text, etc.) because the Interactions API
+        // rejects the unknown parameter on anything other than `thought`.
         let mut fc = HashMap::new();
         fc.insert("name".to_string(), json!("execute_command"));
         fc.insert("id".to_string(), json!("call-1"));
@@ -125,9 +133,155 @@ mod tests {
         let input = client.build_input(&[]);
         let model_content = input[0]["content"].as_array().unwrap();
 
-        assert_eq!(model_content.len(), 1);
-        assert_eq!(model_content[0]["type"], "function_call");
-        assert_eq!(model_content[0]["thought_signature"], "sig-1");
+        // Thought part is emitted with `signature`.
+        assert_eq!(model_content.len(), 2);
+        assert_eq!(model_content[0]["type"], "thought");
+        assert_eq!(model_content[0]["signature"], "sig-1");
+
+        // function_call must NOT carry the signature (API rejects it there).
+        assert_eq!(model_content[1]["type"], "function_call");
+        assert!(model_content[1].get("thought_signature").is_none());
+    }
+
+    #[test]
+    fn build_input_keeps_tool_result_and_user_text_in_separate_turns() {
+        let mut fr = HashMap::new();
+        fr.insert("name".to_string(), json!("execute_command"));
+        fr.insert("id".to_string(), json!("call-1"));
+        fr.insert(
+            "response".to_string(),
+            json!({"exit_code": 0, "stdout": "ok", "stderr": ""}),
+        );
+
+        let client = test_client(vec![
+            Message {
+                role: Role::Tool,
+                parts: vec![MessagePart::Part(ContentPart {
+                    text: None,
+                    inline_data: None,
+                    function_call: None,
+                    function_response: Some(fr),
+                    thought: None,
+                    thought_signature: None,
+                    is_diagnostic: false,
+                })],
+            },
+            Message {
+                role: Role::User,
+                parts: vec![MessagePart::Text("git commit".to_string())],
+            },
+        ]);
+
+        let input = client.build_input(&[]);
+        let turns = input.as_array().unwrap();
+
+        assert_eq!(turns.len(), 2);
+        assert_eq!(turns[0]["role"], "user");
+        assert_eq!(turns[0]["content"][0]["type"], "function_result");
+        assert_eq!(turns[1]["role"], "user");
+        assert_eq!(turns[1]["content"][0]["type"], "text");
+    }
+
+    #[test]
+    fn build_input_function_result_uses_array_format() {
+        // Interactions API requires `result` to be an array of FunctionResultSubcontent
+        // (e.g. [{type:"text", text:"..."}]), NOT a bare JSON object.
+        let mut fr = HashMap::new();
+        fr.insert("name".to_string(), json!("execute_command"));
+        fr.insert("id".to_string(), json!("call-42"));
+        fr.insert(
+            "response".to_string(),
+            json!({"exit_code": 0, "stdout": "On branch main\n", "stderr": ""}),
+        );
+
+        let client = test_client(vec![Message {
+            role: Role::Tool,
+            parts: vec![MessagePart::Part(ContentPart {
+                text: None,
+                inline_data: None,
+                function_call: None,
+                function_response: Some(fr),
+                thought: None,
+                thought_signature: None,
+                is_diagnostic: false,
+            })],
+        }]);
+
+        let input = client.build_input(&[]);
+        let turns = input.as_array().unwrap();
+        let fr_content = &turns[0]["content"][0];
+
+        assert_eq!(fr_content["type"], "function_result");
+        assert_eq!(fr_content["call_id"], "call-42");
+
+        // `result` must be an array, not an object
+        let result = &fr_content["result"];
+        assert!(
+            result.is_array(),
+            "result must be an array, got: {}",
+            result
+        );
+
+        let result_arr = result.as_array().unwrap();
+        assert_eq!(result_arr.len(), 1);
+        assert_eq!(result_arr[0]["type"], "text");
+        // The object was serialised into the text field
+        let text = result_arr[0]["text"].as_str().unwrap();
+        assert!(
+            text.contains("exit_code"),
+            "serialised JSON should contain field names"
+        );
+    }
+
+    #[test]
+    fn build_input_thought_without_sig_is_preserved_with_text() {
+        // Thought parts with no signature are still preserved in history, but
+        // emitted with their text and no `signature` field. (Gemini 3 only
+        // strictly requires signatures on function_call parts of the *current*
+        // turn, but preserving thought-text is harmless and matches the
+        // documented behaviour of re-appending `interaction.outputs` verbatim.)
+        let mut fc = HashMap::new();
+        fc.insert("name".to_string(), json!("execute_command"));
+        fc.insert("id".to_string(), json!("call-2"));
+        fc.insert("arguments".to_string(), json!({"command": "ls"}));
+
+        let client = test_client(vec![Message {
+            role: Role::Model,
+            parts: vec![
+                // thought with no signature
+                MessagePart::Part(ContentPart {
+                    text: None,
+                    inline_data: None,
+                    function_call: None,
+                    function_response: None,
+                    thought: Some("internal reasoning".to_string()),
+                    thought_signature: None,
+                    is_diagnostic: false,
+                }),
+                MessagePart::Part(ContentPart {
+                    text: None,
+                    inline_data: None,
+                    function_call: Some(fc),
+                    function_response: None,
+                    thought: None,
+                    thought_signature: None,
+                    is_diagnostic: false,
+                }),
+            ],
+        }]);
+
+        let input = client.build_input(&[]);
+        let serialized = serde_json::to_string(&input).unwrap();
+
+        // thought type IS now present in the serialised history (with the text)
+        assert!(serialized.contains("\"type\":\"thought\""));
+        assert!(serialized.contains("\"text\":\"internal reasoning\""));
+        // function_call must still be present
+        assert!(serialized.contains("\"type\":\"function_call\""));
+        // No signature field on the thought (it had none)
+        let model_content = input[0]["content"].as_array().unwrap();
+        assert_eq!(model_content[0]["type"], "thought");
+        assert!(model_content[0].get("signature").is_none());
     }
 }
 
@@ -158,10 +312,11 @@ impl GeminiClient {
         // Otherwise, send the full conversation history as input turns.
         let mut turns = Vec::new();
 
-        // Group conversation messages into user/model turns
-        let mut current_role: Option<String> = None;
-        let mut current_parts: Vec<serde_json::Value> = Vec::new();
-
+        // Preserve message boundaries. Although `Role::Tool` is represented as a
+        // `user` turn in the Interactions API, it must remain a separate turn from
+        // a normal user message. Merging adjacent `user` turns can produce content
+        // like `[function_result, text]` in a single turn, which the Interactions
+        // API rejects with `invalid_request` for tool-call histories.
         for m in &self.base.state.conversation {
             let role_str = match m.role {
                 Role::User | Role::Tool => "user",
@@ -170,33 +325,12 @@ impl GeminiClient {
             };
 
             let parts = self.convert_message_parts_to_interactions(&m.parts);
-
-            if current_role.as_deref() == Some(role_str) {
-                // Same role — merge parts into the same turn
-                current_parts.extend(parts);
-            } else {
-                // Flush previous turn
-                if !current_parts.is_empty()
-                    && let Some(role) = current_role.take()
-                {
-                    turns.push(json!({
-                        "role": role,
-                        "content": std::mem::take(&mut current_parts)
-                    }));
-                }
-                current_role = Some(role_str.to_string());
-                current_parts = parts;
+            if !parts.is_empty() {
+                turns.push(json!({
+                    "role": role_str,
+                    "content": parts
+                }));
             }
-        }
-
-        // Flush last turn
-        if !current_parts.is_empty()
-            && let Some(role) = current_role
-        {
-            turns.push(json!({
-                "role": role,
-                "content": current_parts
-            }));
         }
 
         // Append new user data as a separate turn
@@ -217,79 +351,82 @@ impl GeminiClient {
         parts: &[MessagePart],
     ) -> Vec<serde_json::Value> {
         let mut result = Vec::new();
-        let mut prev_thought_sig: Option<String> = None;
 
         for part in parts {
             match part {
                 MessagePart::Text(t) => {
                     result.push(json!({"type": "text", "text": t}));
-                    prev_thought_sig = None;
                 }
                 MessagePart::Part(cp) => {
-                    let thought_sig = cp.thought_signature.clone();
-
-                    // Interactions API responses can include internal thought metadata/signatures,
-                    // but stateless history input must not contain a standalone `thought` content
-                    // object. Preserve any signature by attaching it to the next concrete content
-                    // part (text/function_call/image), and otherwise omit the internal thought.
+                    // Gemini 3 models REQUIRE `thought_signature` to round-trip on
+                    // function_call parts in the current turn — otherwise the API
+                    // returns 400 ("Function call is missing a thought_signature").
+                    //
+                    // Interactions API returns dedicated `thought` parts (often
+                    // empty-text, signature-only). The official client-side history
+                    // example simply re-appends `interaction.outputs` verbatim, so we
+                    // emit a `thought` content object for these parts and preserve
+                    // the signature on it.
                     if cp.thought.is_some() {
-                        if thought_sig.is_some() {
-                            prev_thought_sig = thought_sig.clone();
+                        let thought_text = cp.thought.clone().unwrap_or_default();
+                        let mut t_obj = json!({"type": "thought"});
+                        if !thought_text.is_empty() {
+                            t_obj["text"] = json!(thought_text);
                         }
+                        if let Some(sig) = cp.thought_signature.clone() {
+                            // Interactions API uses the short field name `signature`
+                            // on dedicated thought parts.
+                            t_obj["signature"] = json!(sig);
+                        }
+                        result.push(t_obj);
+                        continue;
                     }
 
                     if let Some(t) = &cp.text
                         && !t.is_empty()
                     {
-                        let mut text_obj = json!({"type": "text", "text": t});
-                        let effective_sig = thought_sig.clone().or(prev_thought_sig.clone());
-                        if let Some(sig) = effective_sig {
-                            text_obj["thought_signature"] = json!(sig);
-                        }
-                        result.push(text_obj);
-                        prev_thought_sig = None;
+                        result.push(json!({"type": "text", "text": t}));
                     }
 
                     if let Some(fc) = &cp.function_call {
                         let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("");
                         let args = fc.get("arguments").cloned().unwrap_or(json!({}));
                         let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                        let mut fc_obj = json!({
+                        result.push(json!({
                             "type": "function_call",
                             "name": name,
                             "arguments": args,
                             "id": id
-                        });
-                        let effective_sig = thought_sig.clone().or(prev_thought_sig.clone());
-                        if let Some(sig) = effective_sig {
-                            fc_obj["thought_signature"] = json!(sig);
-                        }
-                        result.push(fc_obj);
-                        prev_thought_sig = None;
+                        }));
                     }
 
                     if let Some(fr) = &cp.function_response {
                         let name = fr.get("name").and_then(|v| v.as_str()).unwrap_or("");
                         let id = fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
                         let response = fr.get("response").cloned().unwrap_or(json!({}));
-                        let wrapped_response = if response.is_object() {
-                            response
+                        // Interactions API requires `result` to be an array of
+                        // FunctionResultSubcontent objects (e.g. [{type:"text", text:"..."}])
+                        // or a plain string — not a bare JSON object.
+                        let result_array = if response.is_string() {
+                            // Already a string — wrap as a single text subcontent.
+                            json!([{"type": "text", "text": response.as_str().unwrap_or("")}])
                         } else {
-                            json!({ "result": response })
+                            // Serialise the object to a JSON string and wrap it.
+                            let text = serde_json::to_string(&response).unwrap_or_default();
+                            json!([{"type": "text", "text": text}])
                         };
                         result.push(json!({
                             "type": "function_result",
                             "name": name,
                             "call_id": id,
-                            "result": wrapped_response
+                            "result": result_array
                         }));
-                        prev_thought_sig = None;
                     }
 
                     if let Some(id) = &cp.inline_data {
                         let mime_type = id.get("mimeType").and_then(|v| v.as_str()).unwrap_or("");
                         let data = id.get("data").and_then(|v| v.as_str()).unwrap_or("");
-                        let mut inline_obj = json!({
+                        result.push(json!({
                             "type": "image",
                             "source": {
                                 "inlineData": {
@@ -297,13 +434,7 @@ impl GeminiClient {
                                     "data": data
                                 }
                             }
-                        });
-                        let effective_sig = thought_sig.clone().or(prev_thought_sig.clone());
-                        if let Some(sig) = effective_sig {
-                            inline_obj["thought_signature"] = json!(sig);
-                        }
-                        result.push(inline_obj);
-                        prev_thought_sig = None;
+                        }));
                     }
                 }
             }
@@ -391,7 +522,16 @@ impl GeminiClient {
         if let Some(outputs) = outputs {
             for output in outputs {
                 let output_type = output["type"].as_str().unwrap_or("");
-                let thought_sig = output["thought_signature"].as_str().map(|s| s.to_string());
+                // Interactions API may use either `thought_signature` (long form, on
+                // text/function_call parts) or `signature` (short form, on dedicated
+                // `thought` parts and on tool call parts like `url_context_call`).
+                // Read whichever is present so we can faithfully echo it back in the
+                // next request — Gemini 3 requires the signature to round-trip on
+                // function_call parts or it returns 400.
+                let thought_sig = output["thought_signature"]
+                    .as_str()
+                    .or_else(|| output["signature"].as_str())
+                    .map(|s| s.to_string());
 
                 match output_type {
                     "text" => {
