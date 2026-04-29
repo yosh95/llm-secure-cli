@@ -283,6 +283,45 @@ mod tests {
         assert_eq!(model_content[0]["type"], "thought");
         assert!(model_content[0].get("signature").is_none());
     }
+
+    #[test]
+    fn build_input_multimodal_data_uses_correct_structure() {
+        let client = test_client(vec![]);
+        let data = vec![
+            DataSource {
+                content: json!("base64pdf"),
+                content_type: "application/pdf".to_string(),
+                is_file_or_url: true,
+                metadata: HashMap::new(),
+            },
+            DataSource {
+                content: json!("base64img"),
+                content_type: "image/png".to_string(),
+                is_file_or_url: true,
+                metadata: HashMap::new(),
+            },
+        ];
+
+        let input = client.build_input(&data);
+        let turns = input.as_array().unwrap();
+        let contents = turns[0]["content"].as_array().unwrap();
+
+        assert_eq!(contents.len(), 2);
+
+        // PDF part
+        assert_eq!(contents[0]["type"], "document");
+        assert_eq!(contents[0]["mime_type"], "application/pdf");
+        assert_eq!(contents[0]["data"], "base64pdf");
+        assert!(contents[0].get("inline_data").is_none());
+        assert!(contents[0].get("source").is_none());
+
+        // Image part
+        assert_eq!(contents[1]["type"], "image");
+        assert_eq!(contents[1]["mime_type"], "image/png");
+        assert_eq!(contents[1]["data"], "base64img");
+        assert!(contents[1].get("inline_data").is_none());
+        assert!(contents[1].get("source").is_none());
+    }
 }
 
 impl GeminiClient {
@@ -426,14 +465,19 @@ impl GeminiClient {
                     if let Some(id) = &cp.inline_data {
                         let mime_type = id.get("mimeType").and_then(|v| v.as_str()).unwrap_or("");
                         let data = id.get("data").and_then(|v| v.as_str()).unwrap_or("");
+                        let part_type = if mime_type == "application/pdf" {
+                            "document"
+                        } else if mime_type.starts_with("audio/") {
+                            "audio"
+                        } else if mime_type.starts_with("video/") {
+                            "video"
+                        } else {
+                            "image"
+                        };
                         result.push(json!({
-                            "type": "image",
-                            "source": {
-                                "inlineData": {
-                                    "mimeType": mime_type,
-                                    "data": data
-                                }
-                            }
+                            "type": part_type,
+                            "mime_type": mime_type,
+                            "data": data
                         }));
                     }
                 }
@@ -454,15 +498,24 @@ impl GeminiClient {
                         "text": d.content.as_str().unwrap_or("")
                     }));
                 }
-                ct if ct.starts_with("image/") || ct.starts_with("application/") => {
+                ct if ct.starts_with("image/")
+                    || ct.starts_with("audio/")
+                    || ct.starts_with("video/")
+                    || ct.starts_with("application/") =>
+                {
+                    let part_type = if ct.starts_with("application/") {
+                        "document"
+                    } else if ct.starts_with("audio/") {
+                        "audio"
+                    } else if ct.starts_with("video/") {
+                        "video"
+                    } else {
+                        "image"
+                    };
                     parts.push(json!({
-                        "type": "image",
-                        "source": {
-                            "inlineData": {
-                                "mimeType": ct,
-                                "data": d.content.as_str().unwrap_or("")
-                            }
-                        }
+                        "type": part_type,
+                        "mime_type": ct,
+                        "data": d.content.as_str().unwrap_or("")
                     }));
                 }
                 _ => {
