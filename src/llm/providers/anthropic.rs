@@ -150,31 +150,40 @@ impl ClaudeClient {
 
         // Append the new user input data
         let mut new_content = Vec::new();
-        for d in data {
-            if d.content_type == "text/plain" {
-                new_content.push(json!({
+        let last_idx = data.len().saturating_sub(1);
+        for (i, d) in data.iter().enumerate() {
+            let is_last = i == last_idx;
+            let mut block = if d.content_type == "text/plain" {
+                json!({
                     "type": "text",
                     "text": d.content.as_str().unwrap_or("")
-                }));
+                })
             } else if d.content_type.starts_with("image/") {
-                new_content.push(json!({
+                json!({
                     "type": "image",
                     "source": {
                         "type": "base64",
                         "media_type": d.content_type,
                         "data": d.content.as_str().unwrap_or("")
                     }
-                }));
+                })
             } else if d.content_type == "application/pdf" {
-                new_content.push(json!({
+                json!({
                     "type": "document",
                     "source": {
                         "type": "base64",
                         "media_type": d.content_type,
                         "data": d.content.as_str().unwrap_or("")
                     }
-                }));
-            }
+                })
+            } else {
+                continue;
+            };
+            if is_last
+                && let Some(obj) = block.as_object_mut() {
+                    obj.insert("cache_control".to_string(), json!({ "type": "ephemeral" }));
+                }
+            new_content.push(block);
         }
         if !new_content.is_empty() {
             messages.push(json!({ "role": "user", "content": new_content }));
