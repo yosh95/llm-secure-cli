@@ -407,53 +407,25 @@ fn format_size_brief(bytes: u64) -> String {
 }
 
 pub fn ask_confirm(prompt: &str) -> Option<bool> {
-    use rustyline::DefaultEditor;
-    use rustyline::error::ReadlineError;
+    use dialoguer::{Select, theme::ColorfulTheme};
 
-    // Use rustyline instead of Term::read_char() to avoid entering raw mode
-    // where ECHO is disabled. If the process is interrupted (Ctrl+C) while
-    // Term::read_char() holds the terminal in raw mode, the terminal echo
-    // does not get restored, requiring a manual `reset`.
-    // rustyline properly manages terminal state and always restores it on
-    // drop, even when interrupted.
-    let mut rl = DefaultEditor::new().ok()?;
-    let display_prompt = format!("{} (y/N): ", prompt);
+    // Use dialoguer::Select so the user can pick Yes/No with cursor keys
+    // and Enter instead of typing y/n. interact_opt() returns None when
+    // the user presses Esc or 'q', which maps to our None (aborted).
+    let items = ["Yes", "No"];
 
-    loop {
-        match rl.readline(&display_prompt) {
-            Ok(line) => {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    println!("{}", "no".red());
-                    return Some(false);
-                }
-                let ch = trimmed.chars().next().unwrap();
-                match ch {
-                    'y' | 'Y' | 'ｙ' | 'Ｙ' => {
-                        println!("{}", "yes".bright_green());
-                        return Some(true);
-                    }
-                    'n' | 'N' | 'ｎ' | 'Ｎ' => {
-                        println!("{}", "no".red());
-                        return Some(false);
-                    }
-                    _ => {
-                        // Invalid input, ask again
-                        continue;
-                    }
-                }
-            }
-            Err(ReadlineError::Interrupted) => {
-                println!("^C");
-                return None;
-            }
-            Err(ReadlineError::Eof) => {
-                return None;
-            }
-            Err(_) => {
-                return None;
-            }
-        }
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt(prompt)
+        .default(0) // Default to "Yes" (index 0)
+        .items(items)
+        .interact_opt();
+
+    match selection {
+        Ok(Some(0)) => Some(true),  // "Yes" selected
+        Ok(Some(1)) => Some(false), // "No" selected
+        Ok(Some(_)) => Some(false), // Any other index → treat as "No"
+        Ok(None) => None,           // Esc / q pressed → aborted
+        Err(_) => None,             // I/O error or Ctrl+C
     }
 }
 
