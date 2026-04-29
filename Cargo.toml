@@ -20,10 +20,10 @@ path = "benchmark/benchmark_dual_llm.rs"
 harness = false
 
 [target.'cfg(target_os = "android")'.dependencies]
-reqwest = { version = "0.13", default-features = false, features = ["json", "native-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "native-tls", "gzip"] }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "gzip"] }
 
 [dependencies]
 clap = { version = "4.5", default-features = false, features = ["derive", "help", "usage", "error-context", "suggestions", "color", "std"] }

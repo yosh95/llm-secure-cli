@@ -5,6 +5,7 @@ use std::collections::HashMap;
 pub static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
+        .gzip(true)
         .build()
         .expect("Failed to create reqwest client")
 });

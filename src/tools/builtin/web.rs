@@ -82,7 +82,10 @@ pub async fn read_url_content(
     }))
 }
 
-/// Search the web using the Brave Search API.
+/// Search the web using the Brave LLM Context API.
+///
+/// This uses Brave's LLM-optimized endpoint that returns pre-extracted content
+/// (text, tables, code) ready for LLM consumption — no scraping needed.
 pub async fn brave_search(
     args: HashMap<String, Value>,
     _config: AppConfig,
@@ -93,19 +96,67 @@ pub async fn brave_search(
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("'query' is required"))?;
 
+    // Maximum number of search results to consider for context extraction (1–50)
     let count = args
         .get("count")
         .and_then(|v| v.as_u64())
-        .map(|v| v.min(20) as usize)
-        .unwrap_or(10);
+        .map(|v| v.min(50))
+        .unwrap_or(20);
 
-    let results = call_brave_api(query, count, api_key).await?;
+    // Approximate maximum tokens in the returned context (1024–32768)
+    let max_tokens = args
+        .get("maximum_number_of_tokens")
+        .and_then(|v| v.as_u64())
+        .map(|v| v.clamp(1024, 32768))
+        .unwrap_or(8192);
 
-    Ok(json!({
-        "query": query,
-        "count": results.len(),
-        "results": results
-    }))
+    // Maximum URLs in the response (1–50)
+    let max_urls = args
+        .get("maximum_number_of_urls")
+        .and_then(|v| v.as_u64())
+        .map(|v| v.clamp(1, 50))
+        .unwrap_or(20);
+
+    // Relevance threshold: "strict", "balanced", "lenient", or "disabled"
+    let context_threshold_mode = args
+        .get("context_threshold_mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("balanced");
+
+    // Freshness filter: "pd" (24h), "pw" (7d), "pm" (31d), "py" (365d), or date range
+    let freshness = args.get("freshness").and_then(|v| v.as_str()).unwrap_or("");
+
+    // Country code (2-char)
+    let country = args.get("country").and_then(|v| v.as_str()).unwrap_or("");
+
+    // Search language preference.
+    // Brave API uses "jp" for Japanese, not the more common "ja".
+    // Automatically map "ja" → "jp" so callers don't hit a 422 error.
+    let search_lang = match args
+        .get("search_lang")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+    {
+        "ja" => "jp",
+        other => other,
+    };
+
+    let result = call_brave_llm_context(
+        BraveLlmContextParams {
+            query,
+            count,
+            max_tokens,
+            max_urls,
+            context_threshold_mode,
+            freshness,
+            country,
+            search_lang,
+        },
+        api_key,
+    )
+    .await?;
+
+    Ok(result)
 }
 
 async fn fetch_url(url: &str) -> anyhow::Result<String> {
@@ -151,39 +202,138 @@ fn html_to_text(html: &str) -> String {
     html2text::from_read(cleaned.as_bytes(), 100).unwrap()
 }
 
-async fn call_brave_api(query: &str, count: usize, api_key: &str) -> anyhow::Result<Vec<Value>> {
-    let url = format!(
-        "https://api.search.brave.com/res/v1/web/search?q={}&count={}",
-        urlencoding::encode(query),
-        count
+/// Parameters for the Brave LLM Context API.
+struct BraveLlmContextParams<'a> {
+    query: &'a str,
+    count: u64,
+    max_tokens: u64,
+    max_urls: u64,
+    context_threshold_mode: &'a str,
+    freshness: &'a str,
+    country: &'a str,
+    search_lang: &'a str,
+}
+
+/// Call the Brave LLM Context API (`/res/v1/llm/context`).
+///
+/// Returns pre-extracted web content optimised for LLM consumption, including
+/// grounded snippets from relevant pages along with source metadata.
+async fn call_brave_llm_context(
+    params: BraveLlmContextParams<'_>,
+    api_key: &str,
+) -> anyhow::Result<Value> {
+    let mut body = serde_json::Map::new();
+    body.insert("q".to_string(), json!(params.query));
+    body.insert("count".to_string(), json!(params.count));
+    body.insert(
+        "maximum_number_of_tokens".to_string(),
+        json!(params.max_tokens),
     );
+    body.insert("maximum_number_of_urls".to_string(), json!(params.max_urls));
+
+    if !params.context_threshold_mode.is_empty() {
+        body.insert(
+            "context_threshold_mode".to_string(),
+            json!(params.context_threshold_mode),
+        );
+    }
+    if !params.freshness.is_empty() {
+        body.insert("freshness".to_string(), json!(params.freshness));
+    }
+    if !params.country.is_empty() {
+        body.insert("country".to_string(), json!(params.country));
+    }
+    if !params.search_lang.is_empty() {
+        body.insert("search_lang".to_string(), json!(params.search_lang));
+    }
+
+    let url = "https://api.search.brave.com/res/v1/llm/context";
 
     let res = CLIENT
-        .get(&url)
+        .post(url)
         .header("Accept", "application/json")
         .header("X-Subscription-Token", api_key)
+        .header("Content-Type", "application/json")
+        .json(&body)
         .send()
         .await?;
 
-    let data: serde_json::Value = res.json().await?;
+    let status = res.status();
+    if !status.is_success() {
+        // Try to parse the error response as JSON first (for structured API errors),
+        // then fall back to raw text if that fails.
+        let error_body = match res.json::<Value>().await {
+            Ok(v) => v.to_string(),
+            Err(_) => {
+                // If JSON parsing fails, try reading as text
+                // This won't happen normally since we removed the manual Accept-Encoding header,
+                // but serves as a safety net.
+                "Unable to read error response body".to_string()
+            }
+        };
+        return Err(anyhow::anyhow!(
+            "Brave LLM Context API error ({}): {}",
+            status,
+            error_body
+        ));
+    }
 
-    let mut results = Vec::new();
-    if let Some(web) = data
-        .get("web")
-        .and_then(|w| w.get("results"))
-        .and_then(|r| r.as_array())
+    let data: Value = res.json().await?;
+
+    // Build a compact, LLM-friendly output
+    let mut grounding_entries = Vec::new();
+
+    // Process generic grounding data
+    if let Some(generic) = data
+        .get("grounding")
+        .and_then(|g| g.get("generic"))
+        .and_then(|g| g.as_array())
     {
-        for item in web.iter().take(count) {
-            results.push(json!({
-                "title": item.get("title").and_then(|v| v.as_str()).unwrap_or(""),
-                "url": item.get("url").and_then(|v| v.as_str()).unwrap_or(""),
-                "description": item.get("description").and_then(|v| v.as_str()).unwrap_or(""),
-                "age": item.get("age").and_then(|v| v.as_str()).unwrap_or(""),
+        for entry in generic {
+            let e_url = entry.get("url").and_then(|v| v.as_str()).unwrap_or("");
+            let e_title = entry.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let snippets = entry
+                .get("snippets")
+                .and_then(|s| s.as_array())
+                .cloned()
+                .unwrap_or_default();
+
+            grounding_entries.push(json!({
+                "url": e_url,
+                "title": e_title,
+                "snippets": snippets,
             }));
         }
     }
 
-    Ok(results)
+    // Process POI data (if present, from local recall)
+    let poi = data.get("grounding").and_then(|g| g.get("poi"));
+
+    // Process map data (if present, from local recall)
+    let map_results = data
+        .get("grounding")
+        .and_then(|g| g.get("map"))
+        .and_then(|m| m.as_array())
+        .cloned();
+
+    // Extract source metadata
+    let sources = data.get("sources").cloned().unwrap_or(json!({}));
+
+    let mut result = json!({
+        "query": params.query,
+        "count": grounding_entries.len(),
+        "results": grounding_entries,
+        "sources": sources,
+    });
+
+    if let Some(poi_val) = poi {
+        result["poi"] = poi_val.clone();
+    }
+    if let Some(map_val) = map_results {
+        result["map"] = Value::Array(map_val);
+    }
+
+    Ok(result)
 }
 
 fn validate_url_ssrf(url: &str) -> anyhow::Result<()> {
