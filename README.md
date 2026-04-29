@@ -202,6 +202,16 @@ By default, `llsc` and its related tools suppress all informational logs and onl
   [google.models]
   image = { model = "gemini-3.1-flash-image-preview", tools = false }
   ```
+- **OpenAI Prompt Cache Controls**: OpenAI Responses requests send a stable `prompt_cache_key` by default. You can disable it or request extended retention for supported models/accounts:
+  ```toml
+  [openai]
+  prompt_cache = true
+  # prompt_cache_retention = "24h"
+
+  [openai.models]
+  mini = { model = "gpt-5.4-mini", prompt_cache = true, prompt_cache_retention = "24h" }
+  legacy = { model = "gpt-4.1", prompt_cache = false }
+  ```
 - **Disabling Tools Manually**: Use `/tools off` to prevent errors when using a model that doesn't support function calling.
 
 ## Security Management
@@ -441,6 +451,16 @@ AIがファイル操作、Web検索、Python実行などのツールを自律的
   ```toml
   [google.models]
   image = { model = "gemini-3.1-flash-image-preview", tools = false }
+  ```
+- **OpenAI Prompt Cache の制御**: OpenAI Responses へのリクエストでは、デフォルトで安定した `prompt_cache_key` を送信します。必要に応じて無効化したり、対応モデル/アカウントで extended retention を要求できます。
+  ```toml
+  [openai]
+  prompt_cache = true
+  # prompt_cache_retention = "24h"
+
+  [openai.models]
+  mini = { model = "gpt-5.4-mini", prompt_cache = true, prompt_cache_retention = "24h" }
+  legacy = { model = "gpt-4.1", prompt_cache = false }
   ```
 - **ツール機能の手動無効化**: `/tools off` コマンドでツール送信を一時的に無効化できます。
 

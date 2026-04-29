@@ -3,6 +3,7 @@ use crate::llm::models::{ClientState, ContentPart, DataSource, Message, MessageP
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
 static CLIENT: Lazy<reqwest::Client> = Lazy::new(base::create_http_client);
@@ -11,6 +12,8 @@ pub struct OpenAiClient {
     pub base: BaseLlmClientData,
     pub api_url: String,
     image_generation_enabled: bool,
+    prompt_cache_enabled: bool,
+    prompt_cache_retention: Option<String>,
 }
 
 impl OpenAiClient {
@@ -32,11 +35,23 @@ impl OpenAiClient {
                     || model_lc.contains("dall-e")
                     || model_lc.contains("image")
             });
+        let prompt_cache_enabled = model_config
+            .get("prompt_cache")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let prompt_cache_retention = model_config
+            .get("prompt_cache_retention")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && *s != "default" && *s != "in_memory")
+            .map(ToOwned::to_owned);
 
         Self {
             base,
             api_url: "https://api.openai.com/v1/responses".to_string(),
             image_generation_enabled,
+            prompt_cache_enabled,
+            prompt_cache_retention,
         }
     }
 
@@ -306,22 +321,67 @@ impl OpenAiClient {
         tools
     }
 
+    fn prompt_cache_key_for(&self, instructions: Option<&str>, tools: &[Value]) -> String {
+        // Keep this key stable for requests that share the same static prompt/tool prefix.
+        // Do not include user input or conversation text; those change every turn and would
+        // reduce server-side prompt cache reuse.
+        let mut hasher = Sha256::new();
+        hasher.update(b"llsc-openai-responses-v1\0");
+        hasher.update(self.base.state.model.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(if self.base.state.tools_enabled {
+            b"tools:on".as_slice()
+        } else {
+            b"tools:off".as_slice()
+        });
+        hasher.update(b"\0");
+        hasher.update(if self.image_generation_enabled {
+            b"image:on".as_slice()
+        } else {
+            b"image:off".as_slice()
+        });
+        hasher.update(b"\0");
+        if let Some(instructions) = instructions {
+            hasher.update(instructions.as_bytes());
+        }
+        hasher.update(b"\0");
+        let tools_json = serde_json::to_string(tools).unwrap_or_default();
+        hasher.update(tools_json.as_bytes());
+
+        let digest = hex::encode(hasher.finalize());
+        format!("llsc-openai-{}", &digest[..32])
+    }
+
+    fn apply_prompt_cache(&self, payload: &mut Value, instructions: Option<&str>, tools: &[Value]) {
+        if !self.prompt_cache_enabled {
+            return;
+        }
+
+        payload["prompt_cache_key"] = json!(self.prompt_cache_key_for(instructions, tools));
+
+        if let Some(retention) = &self.prompt_cache_retention {
+            payload["prompt_cache_retention"] = json!(retention);
+        }
+    }
+
     fn build_payload(&self, data: &[DataSource], tool_schemas: Vec<Value>) -> Value {
+        let instructions = self.base.state.get_effective_system_prompt();
+        let tools = self.build_responses_tools(tool_schemas);
         let mut payload = json!({
             "model": self.base.state.model,
             "input": self.build_responses_input(data),
             "store": false
         });
 
-        if let Some(instructions) = self.base.state.get_effective_system_prompt() {
+        if let Some(instructions) = &instructions {
             payload["instructions"] = json!(instructions);
         }
 
-        let tools = self.build_responses_tools(tool_schemas);
         if !tools.is_empty() {
             payload["tools"] = json!(tools);
         }
 
+        self.apply_prompt_cache(&mut payload, instructions.as_deref(), &tools);
         payload
     }
 
@@ -376,6 +436,29 @@ impl OpenAiClient {
             status,
             serde_json::to_string_pretty(&res_json).unwrap_or_default()
         );
+
+        if let Some(usage) = res_json.get("usage") {
+            let input_tokens = usage
+                .get("input_tokens")
+                .or_else(|| usage.get("prompt_tokens"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let cached_tokens = usage
+                .get("input_tokens_details")
+                .or_else(|| usage.get("prompt_tokens_details"))
+                .and_then(|v| v.get("cached_tokens"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            if input_tokens > 0 {
+                log::debug!(
+                    "OpenAI Prompt Cache usage in {}: cached_tokens={} / input_tokens={} ({:.1}%)",
+                    context,
+                    cached_tokens,
+                    input_tokens,
+                    (cached_tokens as f64 * 100.0) / input_tokens as f64
+                );
+            }
+        }
 
         if !status.is_success() {
             if let Some(err) = res_json.get("error") {
@@ -587,15 +670,18 @@ impl LlmClient for OpenAiClient {
         tool_schema: Value,
     ) -> anyhow::Result<Value> {
         let tool_name = tool_schema["name"].as_str().unwrap_or("verify").to_string();
+        let verifier_tool = json!({
+            "type": "function",
+            "name": tool_schema.get("name").and_then(|v| v.as_str()).unwrap_or("verify"),
+            "description": tool_schema.get("description").and_then(|v| v.as_str()).unwrap_or(""),
+            "parameters": tool_schema.get("parameters").cloned().unwrap_or_else(|| json!({"type":"object","properties":{}}))
+        });
+        let verifier_tools = vec![verifier_tool];
+        let instructions = self.base.state.get_effective_system_prompt();
         let mut payload = json!({
             "model": self.base.state.model,
             "input": self.build_responses_input(&data),
-            "tools": [{
-                "type": "function",
-                "name": tool_schema.get("name").and_then(|v| v.as_str()).unwrap_or("verify"),
-                "description": tool_schema.get("description").and_then(|v| v.as_str()).unwrap_or(""),
-                "parameters": tool_schema.get("parameters").cloned().unwrap_or_else(|| json!({"type":"object","properties":{}}))
-            }],
+            "tools": verifier_tools,
             "tool_choice": {
                 "type": "function",
                 "name": tool_name
@@ -603,9 +689,15 @@ impl LlmClient for OpenAiClient {
             "store": false
         });
 
-        if let Some(instructions) = self.base.state.get_effective_system_prompt() {
+        if let Some(instructions) = &instructions {
             payload["instructions"] = json!(instructions);
         }
+
+        self.apply_prompt_cache(
+            &mut payload,
+            instructions.as_deref(),
+            verifier_tools.as_slice(),
+        );
 
         let res_json = self.post_responses(payload, "verifier").await?;
         let output = res_json

@@ -2,7 +2,7 @@
 # General Settings
 # =============================================================================
 [general]
-unified_default_provider = "openai"
+unified_default_provider = "ollama"
 pdf_as_base64 = true
 request_timeout = 1800
 command_timeout = 300
@@ -75,8 +75,8 @@ low_risk_tools = [
 # Validates tool calls using a secondary LLM with a hardcoded Security Constitution.
 # This replaces complex, fragile, and OS-dependent static analysis rules.
 dual_llm_verification = true
-dual_llm_provider = "openai"
-dual_llm_model = "mini"
+dual_llm_provider = "google"
+dual_llm_model = "lite"
 dual_llm_confidence_threshold = 0.7
 
 # =============================================================================
@@ -96,6 +96,12 @@ gemma = "gemma-4-31b-it"
 # OpenAI
 # =============================================================================
 [openai]
+# OpenAI Prompt Caching is enabled by default. Set prompt_cache=false per provider
+# or per model to omit prompt_cache_key. Use prompt_cache_retention="24h" only with
+# models/accounts that support extended prompt-cache retention; otherwise leave it
+# unset for the default in-memory retention.
+prompt_cache = true
+# prompt_cache_retention = "24h"
 [openai.models]
 default = "gpt-5.5"
 nano = "gpt-5.4-nano"

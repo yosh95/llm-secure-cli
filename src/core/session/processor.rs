@@ -347,6 +347,11 @@ impl ChatSession {
                     role: Role::Tool,
                     parts: tool_results,
                 });
+                // After adding tool results to history, we need to send the full
+                // conversation context rather than chaining with previous_interaction_id,
+                // since the new data vector is empty and the server needs to see the
+                // tool results in the conversation turns.
+                self.client.get_state_mut().previous_interaction_id = None;
             }
         }
         Ok(())

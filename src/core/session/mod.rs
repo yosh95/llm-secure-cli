@@ -112,6 +112,7 @@ impl ChatSession {
                     stdout: false,
                     render_markdown: false,
                     live_debug: false,
+                    previous_interaction_id: None,
                 },
             }),
             config: AppConfig::default(),

@@ -83,6 +83,11 @@ pub struct ClientState {
     pub stdout: bool,
     pub render_markdown: bool,
     pub live_debug: bool,
+    /// Server-side interaction ID from the Interactions API.
+    /// When set, subsequent requests use `previous_interaction_id`
+    /// instead of sending the full conversation history, enabling
+    /// automatic server-side caching.
+    pub previous_interaction_id: Option<String>,
 }
 
 impl ClientState {
@@ -98,7 +103,7 @@ impl ClientState {
         );
 
         match &self.system_prompt {
-            Some(sp) if !sp.is_empty() => Some(format!("{}\n\n{}", directive, sp)),
+            Some(sp) if !sp.is_empty() => Some(format!("{}\n\n{}", sp, directive)),
             _ => Some(directive),
         }
     }

@@ -129,6 +129,7 @@ impl BaseLlmClientData {
             stdout,
             render_markdown: !raw,
             live_debug: false,
+            previous_interaction_id: None,
         };
 
         Self {

@@ -93,8 +93,11 @@ impl ToolRegistry {
     }
 
     pub fn get_tool_schemas(&self) -> Vec<Value> {
-        self.tools
-            .values()
+        let mut tools: Vec<_> = self.tools.values().collect();
+        tools.sort_by(|a, b| a.name.cmp(&b.name));
+
+        tools
+            .into_iter()
             .map(|t| {
                 json!({
                     "name": t.name,

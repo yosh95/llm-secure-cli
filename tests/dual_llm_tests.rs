@@ -57,6 +57,7 @@ async fn test_dual_llm_verification_logic() {
                     stdout,
                     render_markdown: !raw,
                     live_debug: false,
+                    previous_interaction_id: None,
                 },
             })
         });
@@ -93,6 +94,7 @@ async fn test_dual_llm_verification_logic() {
                     stdout,
                     render_markdown: !raw,
                     live_debug: false,
+                    previous_interaction_id: None,
                 },
             })
         });
