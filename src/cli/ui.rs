@@ -1,7 +1,7 @@
 use crate::cli::markdown::render_markdown;
 use colored::*;
 use console::Term;
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 
 pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
     let term = Term::stdout();
@@ -407,27 +407,51 @@ fn format_size_brief(bytes: u64) -> String {
 }
 
 pub fn ask_confirm(prompt: &str) -> Option<bool> {
-    let term = Term::stdout();
-    print!("{} (y/N): ", prompt);
-    let _ = io::stdout().flush();
+    use rustyline::DefaultEditor;
+    use rustyline::error::ReadlineError;
+
+    // Use rustyline instead of Term::read_char() to avoid entering raw mode
+    // where ECHO is disabled. If the process is interrupted (Ctrl+C) while
+    // Term::read_char() holds the terminal in raw mode, the terminal echo
+    // does not get restored, requiring a manual `reset`.
+    // rustyline properly manages terminal state and always restores it on
+    // drop, even when interrupted.
+    let mut rl = DefaultEditor::new().ok()?;
+    let display_prompt = format!("{} (y/N): ", prompt);
 
     loop {
-        if let Ok(key) = term.read_char() {
-            match key {
-                'y' | 'Y' | 'ｙ' | 'Ｙ' => {
-                    println!("{}", "yes".bright_green());
-                    return Some(true);
-                }
-                'n' | 'N' | 'ｎ' | 'Ｎ' | '\r' | '\n' => {
+        match rl.readline(&display_prompt) {
+            Ok(line) => {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
                     println!("{}", "no".red());
                     return Some(false);
                 }
-                '\u{3}' => {
-                    // Ctrl+C
-                    println!("^C");
-                    return None;
+                let ch = trimmed.chars().next().unwrap();
+                match ch {
+                    'y' | 'Y' | 'ｙ' | 'Ｙ' => {
+                        println!("{}", "yes".bright_green());
+                        return Some(true);
+                    }
+                    'n' | 'N' | 'ｎ' | 'Ｎ' => {
+                        println!("{}", "no".red());
+                        return Some(false);
+                    }
+                    _ => {
+                        // Invalid input, ask again
+                        continue;
+                    }
                 }
-                _ => {}
+            }
+            Err(ReadlineError::Interrupted) => {
+                println!("^C");
+                return None;
+            }
+            Err(ReadlineError::Eof) => {
+                return None;
+            }
+            Err(_) => {
+                return None;
             }
         }
     }

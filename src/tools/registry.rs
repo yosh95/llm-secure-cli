@@ -351,12 +351,17 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
     maybe_register(
         r,
         "execute_command",
-        "Execute a system command without a shell.",
+        "Execute a system command directly without invoking a shell. \
+         This means shell features such as pipes (|), redirections (> >> 2>&1), \
+         command chaining (&& || ;), subshells ($()), and environment variable expansions \
+         are NOT available. Each argument must be passed as a separate item in the 'args' array. \
+         For example, to run 'grep -r pattern src/', set command='grep' and args=['-r', 'pattern', 'src/']. \
+         Do NOT put pipes or redirects in the args — they will be treated as literal strings, not shell operators.",
         json!({
             "type": "object",
             "properties": {
-                "command": {"type": "string"},
-                "args": {"type": "array", "items": { "type": "string" }}
+                "command": {"type": "string", "description": "The program to execute (e.g. 'grep', 'find', 'python3'). Must be a single executable name or path, NOT a shell command string with pipes or redirects."},
+                "args": {"type": "array", "items": { "type": "string" }, "description": "Arguments to pass to the command, one per element. Do NOT include shell operators (|, >, >>, 2>&1, &&, ||, ; etc.) — they have no effect and will be passed as literal arguments."}
             },
             "required": ["command", "args"]
         }),
