@@ -97,6 +97,8 @@ enum IdentityCommands {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
+    use std::io::{IsTerminal, stdin};
+    let is_atty = stdin().is_terminal();
 
     // Initialize logger with 'debug' level by default so we can toggle it at runtime.
     // The actual output is controlled by log::set_max_level.
@@ -115,27 +117,52 @@ async fn main() {
         llm_secure_cli::config::init::init_config();
     }
 
-    // Run System Integrity Check
+    // --- Interactive Setup & Integrity Check ---
     let is_identity_cmd = matches!(args.command, Some(Commands::Identity { .. }));
 
     if !is_identity_cmd {
-        let verifier = llm_secure_cli::security::integrity::IntegrityVerifier::new();
+        use llm_secure_cli::security::identity::IdentityManager;
+        use llm_secure_cli::security::integrity::IntegrityVerifier;
+
+        // 1. Ensure Identity Keys
+        if !IdentityManager::has_keys() && is_atty
+            && ui::ask_confirm("Identity keys not found. Generate new PQC keypair for this agent?")
+                .unwrap_or(false)
+            {
+                if let Err(e) = IdentityManager::ensure_keys(true) {
+                    ui::report_error(&format!("Failed to generate keys: {}", e));
+                } else {
+                    ui::report_success("Identity keys generated.");
+                }
+            }
+
+        // 2. System Integrity Check
+        let verifier = IntegrityVerifier::new();
         let config = llm_secure_cli::config::CONFIG_MANAGER.get_config();
         let security_level = std::env::var("LLM_CLI_SECURITY_LEVEL")
             .unwrap_or_else(|_| config.security.security_level.clone());
 
         if !verifier.manifest_path.exists() {
-            if security_level == "high" {
-                ui::report_error("SECURITY FAILURE: Integrity manifest not found.");
-                eprintln!("In 'high' security mode, a signed manifest is required for startup.");
-                eprintln!(
-                    "Please run 'llsc identity manifest' to authorize the current system state."
-                );
-                std::process::exit(1);
+            let msg = if security_level == "high" {
+                "SECURITY FAILURE: Integrity manifest not found. In 'high' security mode, a signed manifest is required."
             } else {
-                ui::report_warning(
-                    "Integrity manifest missing. Running without system verification.",
-                );
+                "Integrity manifest not found. This protects your binary and config from unauthorized changes."
+            };
+
+            ui::report_warning(msg);
+            if is_atty
+                && ui::ask_confirm("Generate and sign integrity manifest now?").unwrap_or(false)
+            {
+                if let Err(e) = verifier.rebuild_manifest() {
+                    ui::report_error(&format!("Failed to build manifest: {}", e));
+                    if security_level == "high" {
+                        process::exit(1);
+                    }
+                } else {
+                    ui::report_success("Integrity manifest generated.");
+                }
+            } else if security_level == "high" {
+                process::exit(1);
             }
         } else {
             match verifier.verify() {
@@ -143,15 +170,31 @@ async fn main() {
                     // Integrity OK
                 }
                 Ok(false) => {
-                    if security_level == "high" {
-                        ui::report_error("CRITICAL: SYSTEM INTEGRITY FAILURE");
-                        eprintln!("Unauthorized modifications detected in binary or config.");
-                        eprintln!("Run 'llsc identity manifest' if this was intentional.");
-                        std::process::exit(1);
-                    } else {
-                        ui::report_warning(
-                            "Integrity Failure: System does not match manifest, but security_level is 'standard'.",
+                    ui::report_warning("CRITICAL: SYSTEM INTEGRITY MISMATCH");
+                    eprintln!(
+                        "The binary or configuration has changed since the last manifest update."
+                    );
+                    eprintln!("(This occurs after 'cargo install' or manual configuration edits)");
+
+                    if is_atty
+                        && ui::ask_confirm(
+                            "Would you like to re-authorize (re-sign) the current system state?",
+                        )
+                        .unwrap_or(false)
+                    {
+                        if let Err(e) = verifier.rebuild_manifest() {
+                            ui::report_error(&format!("Failed to rebuild manifest: {}", e));
+                            if security_level == "high" {
+                                process::exit(1);
+                            }
+                        } else {
+                            ui::report_success("Integrity manifest updated.");
+                        }
+                    } else if security_level == "high" {
+                        ui::report_error(
+                            "Execution aborted due to integrity failure in 'high' security mode.",
                         );
+                        process::exit(1);
                     }
                 }
                 Err(e) => {
@@ -297,8 +340,6 @@ async fn main() {
 
     let model = args.model.unwrap_or_else(|| "default".to_string());
 
-    use std::io::{IsTerminal, stdin};
-    let is_atty = stdin().is_terminal();
     let stdout = args.stdout || !is_atty;
 
     if args.raw && !stdout {

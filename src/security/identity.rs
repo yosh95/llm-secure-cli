@@ -92,6 +92,12 @@ impl IdentityManager {
         Ok(())
     }
 
+    pub fn has_keys() -> bool {
+        let ed_priv_path = KEY_DIR.join(Self::PRIVATE_KEY_PATH);
+        let (pqc_priv_path, _) = Self::get_pqc_paths(MldsaVariant::Mldsa65);
+        ed_priv_path.exists() && pqc_priv_path.exists()
+    }
+
     fn write_private_file(path: &Path, content: &[u8]) -> Result<()> {
         let mut options = fs::OpenOptions::new();
         options.write(true).create(true).truncate(true);

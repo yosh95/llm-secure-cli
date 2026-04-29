@@ -2,7 +2,7 @@
 # General Settings
 # =============================================================================
 [general]
-unified_default_provider = "ollama"
+unified_default_provider = "google"
 pdf_as_base64 = true
 request_timeout = 1800
 command_timeout = 300
@@ -75,8 +75,8 @@ low_risk_tools = [
 # Validates tool calls using a secondary LLM with a hardcoded Security Constitution.
 # This replaces complex, fragile, and OS-dependent static analysis rules.
 dual_llm_verification = true
-dual_llm_provider = "ollama"
-dual_llm_model = "kimi"
+dual_llm_provider = "google"
+dual_llm_model = "lite"
 dual_llm_confidence_threshold = 0.7
 
 # =============================================================================

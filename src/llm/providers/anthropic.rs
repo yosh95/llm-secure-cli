@@ -179,10 +179,9 @@ impl ClaudeClient {
             } else {
                 continue;
             };
-            if is_last
-                && let Some(obj) = block.as_object_mut() {
-                    obj.insert("cache_control".to_string(), json!({ "type": "ephemeral" }));
-                }
+            if is_last && let Some(obj) = block.as_object_mut() {
+                obj.insert("cache_control".to_string(), json!({ "type": "ephemeral" }));
+            }
             new_content.push(block);
         }
         if !new_content.is_empty() {

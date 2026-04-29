@@ -27,6 +27,7 @@ impl MarkdownRenderer {
         let mut table_rows = Vec::new();
         let mut table_alignments = Vec::new();
         let mut current_row = Vec::new();
+        let mut current_cell = String::new();
         let mut in_table_head = false;
         let mut current_paragraph = String::new();
         let mut current_heading_level = None;
@@ -104,7 +105,9 @@ impl MarkdownRenderer {
                     Tag::TableRow => {
                         current_row.clear();
                     }
-                    Tag::TableCell => {}
+                    Tag::TableCell => {
+                        current_cell.clear();
+                    }
                     Tag::CodeBlock(kind) => {
                         self.flush_paragraph(
                             &mut output,
@@ -124,7 +127,12 @@ impl MarkdownRenderer {
                         let clean_url: String =
                             dest_url.chars().filter(|c| !c.is_whitespace()).collect();
                         link_stack.push(clean_url.clone());
-                        current_paragraph.push_str(&format!("\x1b]8;;{}\x1b\\", clean_url));
+                        let link_start = format!("\x1b]8;;{}\x1b\\", clean_url);
+                        if in_table {
+                            current_cell.push_str(&link_start);
+                        } else {
+                            current_paragraph.push_str(&link_start);
+                        }
                     }
                     _ => {}
                 },
@@ -216,6 +224,9 @@ impl MarkdownRenderer {
                         TagEnd::TableRow if !in_table_head => {
                             table_rows.push(std::mem::take(&mut current_row));
                         }
+                        TagEnd::TableCell => {
+                            current_row.push(std::mem::take(&mut current_cell));
+                        }
                         TagEnd::CodeBlock => {
                             in_code_block = false;
                             if !output.ends_with('\n') {
@@ -224,23 +235,31 @@ impl MarkdownRenderer {
                             output.push_str("```\n");
                         }
                         TagEnd::Link if link_stack.pop().is_some() => {
-                            current_paragraph.push_str("\x1b]8;;\x1b\\");
+                            let link_end = "\x1b]8;;\x1b\\";
+                            if in_table {
+                                current_cell.push_str(link_end);
+                            } else {
+                                current_paragraph.push_str(link_end);
+                            }
                         }
                         _ => {}
                     }
                 }
                 Event::Text(text) => {
-                    if in_table {
-                        current_row.push(text.to_string());
-                    } else if in_code_block {
+                    if in_code_block {
                         output.push_str(&text);
-                    } else if !link_stack.is_empty() {
-                        // Replace spaces with NBSP in links to prevent wrapping within the link
-                        // Links are displayed in blue to indicate they are clickable
-                        current_paragraph
-                            .push_str(&text.replace(' ', "\u{00A0}").blue().to_string());
                     } else {
-                        current_paragraph.push_str(&text);
+                        let formatted = if !link_stack.is_empty() {
+                            text.replace(' ', "\u{00A0}").blue().to_string()
+                        } else {
+                            text.to_string()
+                        };
+
+                        if in_table {
+                            current_cell.push_str(&formatted);
+                        } else {
+                            current_paragraph.push_str(&formatted);
+                        }
                     }
                 }
                 Event::Code(text) => {
@@ -253,16 +272,33 @@ impl MarkdownRenderer {
                     };
 
                     if in_table {
-                        current_row.push(formatted);
+                        current_cell.push_str(&formatted);
                     } else {
                         current_paragraph.push_str(&formatted);
                     }
                 }
-                Event::SoftBreak if !in_table => {
-                    current_paragraph.push(' ');
+                Event::Html(text) | Event::InlineHtml(text)
+                    if text.to_lowercase().contains("<br") =>
+                {
+                    if in_table {
+                        current_cell.push('\n');
+                    } else {
+                        current_paragraph.push('\n');
+                    }
                 }
-                Event::HardBreak if !in_table => {
-                    current_paragraph.push('\n');
+                Event::SoftBreak => {
+                    if in_table {
+                        current_cell.push(' ');
+                    } else {
+                        current_paragraph.push(' ');
+                    }
+                }
+                Event::HardBreak => {
+                    if in_table {
+                        current_cell.push('\n');
+                    } else {
+                        current_paragraph.push('\n');
+                    }
                 }
                 Event::Rule => {
                     self.flush_paragraph(
@@ -345,5 +381,40 @@ mod tests {
         assert!(rendered.contains("Sources:"));
         assert!(rendered.contains("• [1]"));
         assert!(rendered.contains("\n• [2]"));
+    }
+
+    #[test]
+    fn table_with_br_renders_correctly() {
+        let markdown = "| Column |\n|---|\n| Line 1<br>Line 2 |";
+        let rendered = render_markdown(markdown, 120);
+        assert!(rendered.contains("Line 1"));
+        assert!(rendered.contains("Line 2"));
+        assert!(!rendered.contains("<br>"));
+    }
+
+    #[test]
+    fn table_with_mixed_content_renders_correctly() {
+        let markdown = "| Column 1 | Column 2 |\n|---|---|\n| Text and `code` | More text |";
+        let rendered = render_markdown(markdown, 120);
+
+        // Check if the content is in the same row and not split into multiple columns
+        assert!(rendered.contains("Text and `code`"));
+        assert!(rendered.contains("More text"));
+
+        // Count the number of vertical separators in a row with content.
+        // A 2-column table with UTF8_FULL should have 3 separators per line
+        let content_line = rendered
+            .lines()
+            .find(|l| l.contains("Text and `code`"))
+            .unwrap();
+        let separators = ['│', '┆', '┃', '╽', '╿', '❘', '｜', '|'];
+        let pipe_count = content_line
+            .chars()
+            .filter(|c| separators.contains(c))
+            .count();
+        assert_eq!(
+            pipe_count, 3,
+            "Should have exactly 3 separators for a 2-column table"
+        );
     }
 }
