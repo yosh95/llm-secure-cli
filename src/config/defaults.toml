@@ -129,17 +129,11 @@ opus = "claude-opus-4-7"
 api_url = "https://ollama.com/v1/chat/completions"
 [ollama.models]
 default = "kimi-k2.6"
-deepseek = "deepseek-v4-pro"
-deepseek-flash = "deepseek-v4-flash"
-devstral = "devstral-2:123b"
 gemini = "gemini-3-flash-preview"
 gemma = "gemma4:31b"
 glm = "glm-5.1"
 gpt-oss = "gpt-oss:120b"
 kimi = "kimi-k2.6"
-minimax = "minimax-m2.7"
-ministral = "mistral-large-3:675b"
-qwen = "qwen3.5:397b"
 
 # =============================================================================
 # Templates (Reusable Prompts)
