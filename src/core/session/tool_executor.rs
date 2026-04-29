@@ -29,7 +29,7 @@ impl ChatSession {
         // Local built-in tools: asynchronous execution
         let fut = {
             let config = self.ctx.config_manager.get_config();
-            let registry = self.ctx.tool_registry.lock().unwrap();
+            let registry = self.ctx.tool_registry.lock().await;
             registry
                 .tools
                 .get(name)

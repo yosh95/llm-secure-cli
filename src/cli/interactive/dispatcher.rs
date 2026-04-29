@@ -122,15 +122,15 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             CommandResult::Handled
         }
         "tools" => {
-            handle_tools(session, args);
+            handle_tools(session, args).await;
             CommandResult::Handled
         }
         "model" | "models" | "m" => {
-            handle_model_cmd(session, args);
+            handle_model_cmd(session, args).await;
             CommandResult::Handled
         }
         "provider" | "p" => {
-            handle_provider_cmd(session, args);
+            handle_provider_cmd(session, args).await;
             CommandResult::Handled
         }
         "checkpoint" | "cp" => {
@@ -244,7 +244,7 @@ pub async fn handle_attach(session: &mut ChatSession, source: &str) {
     }
 }
 
-pub fn handle_tools(session: &mut ChatSession, args: &str) {
+pub async fn handle_tools(session: &mut ChatSession, args: &str) {
     let state = session.client.get_state_mut();
     match args.to_lowercase().as_str() {
         "on" => {
@@ -262,7 +262,7 @@ pub fn handle_tools(session: &mut ChatSession, args: &str) {
                 "DISABLED"
             };
             println!("Tools Status: {}", status);
-            let registry = session.ctx.tool_registry.lock().unwrap();
+            let registry = session.ctx.tool_registry.lock().await;
             println!("Available Tools:");
             for name in registry.tools.keys() {
                 println!(" - {}", name);
@@ -272,7 +272,7 @@ pub fn handle_tools(session: &mut ChatSession, args: &str) {
     }
 }
 
-pub fn handle_model_cmd(session: &mut ChatSession, args: &str) {
+pub async fn handle_model_cmd(session: &mut ChatSession, args: &str) {
     let (provider, current_model, stdout, raw) = {
         let state = session.client.get_state();
         (
@@ -323,7 +323,7 @@ pub fn handle_model_cmd(session: &mut ChatSession, args: &str) {
         }
     } else {
         let client = {
-            let registry = session.ctx.client_registry.lock().unwrap();
+            let registry = session.ctx.client_registry.lock().await;
             registry.create_client(&provider, args, stdout, raw, &session.ctx.config_manager)
         };
 
@@ -343,7 +343,7 @@ pub fn handle_model_cmd(session: &mut ChatSession, args: &str) {
     }
 }
 
-pub fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
+pub async fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
     if args.is_empty() {
         let active_providers = session.ctx.config_manager.get_active_providers();
         let current_provider = session.client.get_state().provider.clone();
@@ -363,7 +363,7 @@ pub fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
         };
 
         let client = {
-            let registry = session.ctx.client_registry.lock().unwrap();
+            let registry = session.ctx.client_registry.lock().await;
             registry.create_client(args, "default", stdout, raw, &session.ctx.config_manager)
         };
 

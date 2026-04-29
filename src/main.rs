@@ -128,8 +128,11 @@ async fn main() {
         // 1. Ensure Identity Keys
         if !IdentityManager::has_keys()
             && is_atty
-            && ui::ask_confirm("Identity keys not found. Generate new PQC keypair for this agent?")
-                .unwrap_or(false)
+            && ui::ask_confirm_async(
+                "Identity keys not found. Generate new PQC keypair for this agent?",
+            )
+            .await
+            .unwrap_or(false)
         {
             if let Err(e) = IdentityManager::ensure_keys(true) {
                 ui::report_error(&format!("Failed to generate keys: {}", e));
@@ -153,7 +156,9 @@ async fn main() {
 
             ui::report_warning(msg);
             if is_atty
-                && ui::ask_confirm("Generate and sign integrity manifest now?").unwrap_or(false)
+                && ui::ask_confirm_async("Generate and sign integrity manifest now?")
+                    .await
+                    .unwrap_or(false)
             {
                 if let Err(e) = verifier.rebuild_manifest() {
                     ui::report_error(&format!("Failed to build manifest: {}", e));
@@ -179,9 +184,10 @@ async fn main() {
                     eprintln!("(This occurs after 'cargo install' or manual configuration edits)");
 
                     if is_atty
-                        && ui::ask_confirm(
+                        && ui::ask_confirm_async(
                             "Would you like to re-authorize (re-sign) the current system state?",
                         )
+                        .await
                         .unwrap_or(false)
                     {
                         if let Err(e) = verifier.rebuild_manifest() {
@@ -208,7 +214,7 @@ async fn main() {
 
     // Register built-in tools
     {
-        let mut registry = ctx.tool_registry.lock().unwrap();
+        let mut registry = ctx.tool_registry.lock().await;
         llm_secure_cli::tools::registry::register_builtin_tools(&mut registry, &ctx.config_manager);
     }
 
@@ -222,7 +228,7 @@ async fn main() {
 
     // Register clients
     {
-        let mut registry = ctx.client_registry.lock().unwrap();
+        let mut registry = ctx.client_registry.lock().await;
         registry.register(
             "openai",
             std::sync::Arc::new(|model, stdout, raw, config_manager| {
@@ -386,7 +392,7 @@ async fn main() {
     }
 
     let client = {
-        let registry = ctx.client_registry.lock().unwrap();
+        let registry = ctx.client_registry.lock().await;
         registry.create_client(&provider, &model, stdout, args.raw, &ctx.config_manager)
     };
 

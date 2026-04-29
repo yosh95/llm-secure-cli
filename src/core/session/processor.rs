@@ -23,7 +23,7 @@ impl ChatSession {
             pb.set_message(format!("Thinking... ({})", self.client.get_state().model));
             pb.enable_steady_tick(std::time::Duration::from_millis(100));
 
-            let tool_schemas = self.ctx.tool_registry.lock().unwrap().get_tool_schemas();
+            let tool_schemas = self.ctx.tool_registry.lock().await.get_tool_schemas();
             let (response, thought) = self.client.send(current_data, tool_schemas).await?;
             pb.finish_and_clear();
 
@@ -200,11 +200,10 @@ impl ChatSession {
                         }
 
                         if !approved {
-                            match ui::ask_confirm(&format!("Execute {}", name)) {
+                            match ui::ask_confirm_async(&format!("Execute {}", name)).await {
                                 Some(val) => approved = val,
                                 None => {
-                                    // User hit Ctrl+C: abort the background verifier task
-                                    // before returning so it does not keep running.
+                                    // User hit Ctrl+C or aborted
                                     if let Some(handle) = verifier_handle.take() {
                                         handle.abort();
                                     }

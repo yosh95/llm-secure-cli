@@ -3,7 +3,8 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub type ToolFuture = Pin<Box<dyn Future<Output = anyhow::Result<Value>> + Send>>;
 pub type ToolFunc = Arc<dyn Fn(HashMap<String, Value>, AppConfig) -> ToolFuture + Send + Sync>;
@@ -153,7 +154,7 @@ pub async fn initialize_remote_tools(
     let config = config_manager.get_config();
     let allowed_tools = config.security.allowed_tools;
 
-    let mut registry = registry.lock().unwrap();
+    let mut registry = registry.lock().await;
     for tool in tools {
         if let Some(ref allowed) = allowed_tools {
             let name = tool["name"].as_str().unwrap_or("");

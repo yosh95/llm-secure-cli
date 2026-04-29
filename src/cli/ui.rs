@@ -433,6 +433,19 @@ pub fn ask_confirm(prompt: &str) -> Option<bool> {
     }
 }
 
+pub async fn ask_confirm_async(prompt: &str) -> Option<bool> {
+    let p = prompt.to_string();
+    let confirm_future = tokio::task::spawn_blocking(move || ask_confirm(&p));
+
+    tokio::select! {
+        res = confirm_future => res.unwrap_or(None),
+        _ = tokio::signal::ctrl_c() => {
+            println!("\n^C");
+            None
+        }
+    }
+}
+
 pub fn get_user_input(prompt: &str) -> Option<String> {
     use rustyline::DefaultEditor;
     use rustyline::error::ReadlineError;

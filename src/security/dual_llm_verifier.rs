@@ -65,7 +65,7 @@ pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> (bool, Str
         .unwrap_or_else(|| params.config.dual_llm_model.clone());
 
     let client = {
-        let registry = params.ctx_app.client_registry.lock().unwrap();
+        let registry = params.ctx_app.client_registry.lock().await;
         registry.create_client(&p, &m, false, true, &params.ctx_app.config_manager)
     };
 

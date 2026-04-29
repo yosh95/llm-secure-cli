@@ -91,7 +91,7 @@ async fn test_processor_tool_execution_flow() {
 
     // 2. Register Mock Client in Registry for Verifier
     {
-        let mut registry = ctx.client_registry.lock().unwrap();
+        let mut registry = ctx.client_registry.lock().await;
         registry.register(
             "mock",
             Arc::new(|_model, stdout, raw, _config_manager| {

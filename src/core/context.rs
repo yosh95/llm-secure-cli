@@ -2,7 +2,8 @@ use crate::config::ConfigManager;
 use crate::llm::registry::ClientRegistry;
 use crate::tools::mcp::manager::McpManager;
 use crate::tools::registry::ToolRegistry;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub struct AppContext {
     pub config_manager: ConfigManager,

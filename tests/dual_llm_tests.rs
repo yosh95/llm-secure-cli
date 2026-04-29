@@ -50,7 +50,7 @@ async fn test_dual_llm_verification_logic() {
 
     // 1. Register Mock Client (Success case)
     {
-        let mut registry = ctx.client_registry.lock().unwrap();
+        let mut registry = ctx.client_registry.lock().await;
         registry.register(
             "mock_provider",
             Arc::new(|_model, stdout, raw, _config_manager| {
@@ -93,7 +93,7 @@ async fn test_dual_llm_verification_logic() {
 
     // 3. Test Failure Case
     {
-        let mut registry = ctx.client_registry.lock().unwrap();
+        let mut registry = ctx.client_registry.lock().await;
         registry.register(
             "mock_provider_fail",
             Arc::new(|_model, stdout, raw, _config_manager| {

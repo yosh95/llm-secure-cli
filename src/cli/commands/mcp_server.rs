@@ -14,7 +14,7 @@ pub async fn run_mcp_server(ctx: Arc<AppContext>) -> Result<()> {
 
     // Register all tools from the registry
     {
-        let registry = ctx.tool_registry.lock().unwrap();
+        let registry = ctx.tool_registry.lock().await;
         for (name, tool) in &registry.tools {
             if !tool.is_local {
                 continue; // Don't re-export remote tools

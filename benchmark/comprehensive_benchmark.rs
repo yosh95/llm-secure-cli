@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Register clients
     {
-        let mut registry = ctx.client_registry.lock().unwrap();
+        let mut registry = ctx.client_registry.lock().await;
         registry.register(
             "openai",
             Arc::new(|model, stdout, raw, config_manager| {
