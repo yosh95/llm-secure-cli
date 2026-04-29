@@ -2,7 +2,7 @@
 # General Settings
 # =============================================================================
 [general]
-unified_default_provider = "google"
+unified_default_provider = "openai"
 pdf_as_base64 = true
 request_timeout = 1800
 command_timeout = 300
@@ -75,8 +75,8 @@ low_risk_tools = [
 # Validates tool calls using a secondary LLM with a hardcoded Security Constitution.
 # This replaces complex, fragile, and OS-dependent static analysis rules.
 dual_llm_verification = true
-dual_llm_provider = "google"
-dual_llm_model = "lite"
+dual_llm_provider = "openai"
+dual_llm_model = "mini"
 dual_llm_confidence_threshold = 0.7
 
 # =============================================================================
@@ -97,7 +97,7 @@ gemma = "gemma-4-31b-it"
 # =============================================================================
 [openai]
 [openai.models]
-default = "gpt-5.4-mini"
+default = "gpt-5.5"
 nano = "gpt-5.4-nano"
 mini = "gpt-5.4-mini"
 standard = "gpt-5.5"
@@ -110,7 +110,7 @@ image = { model = "gpt-5.5", tools = false, image_generation = true }
 [anthropic]
 max_tokens = 8192
 [anthropic.models]
-default = "claude-sonnet-4-6"
+default = "claude-opus-4-7"
 haiku = "claude-haiku-4-5-20251001"
 sonnet = "claude-sonnet-4-6"
 opus = "claude-opus-4-7"
@@ -122,12 +122,18 @@ opus = "claude-opus-4-7"
 # api_url = "http://localhost:11434/v1/chat/completions"
 api_url = "https://ollama.com/v1/chat/completions"
 [ollama.models]
-default = "kimi-k2.6:cloud"
-deepseek = "deepseek-v4-flash:cloud"
-kimi = "kimi-k2.6:cloud"
-gemma = "gemma4:31b-cloud"
-glm = "glm-5.1:cloud"
-qwen = "qwen3.5:2b"
+default = "kimi-k2.6"
+deepseek = "deepseek-v4-pro"
+deepseek-flash = "deepseek-v4-flash"
+devstral = "devstral-2:123b"
+gemini = "gemini-3-flash-preview"
+gemma = "gemma4:31b"
+glm = "glm-5.1"
+gpt-oss = "gpt-oss:120b"
+kimi = "kimi-k2.6"
+minimax = "minimax-m2.7"
+ministral = "mistral-large-3:675b"
+qwen = "qwen3.5:397b"
 
 # =============================================================================
 # Templates (Reusable Prompts)

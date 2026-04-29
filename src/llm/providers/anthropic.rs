@@ -307,6 +307,7 @@ impl LlmClient for ClaudeClient {
 
         let mut full_text = String::new();
         let mut thought_text = String::new();
+        let mut source_links: Vec<(String, String)> = Vec::new();
         let mut model_parts: Vec<MessagePart> = Vec::new();
 
         if let Some(content_blocks) = res_json["content"].as_array() {
@@ -315,14 +316,13 @@ impl LlmClient for ClaudeClient {
                 match block_type {
                     "text" => {
                         if let Some(text) = block["text"].as_str() {
-                            let mut block_text = text.to_string();
+                            let block_text = text.to_string();
 
                             // Extract citations if present
                             if let Some(citations) =
                                 block.get("citations").and_then(|v| v.as_array())
                             {
-                                let mut citations_list = Vec::new();
-                                for (i, citation) in citations.iter().enumerate() {
+                                for citation in citations {
                                     let title = citation
                                         .get("title")
                                         .and_then(|v| v.as_str())
@@ -330,17 +330,8 @@ impl LlmClient for ClaudeClient {
                                     let url =
                                         citation.get("url").and_then(|v| v.as_str()).unwrap_or("");
                                     if !url.is_empty() {
-                                        citations_list.push(format!(
-                                            "[{}] [{}]({})",
-                                            i + 1,
-                                            title,
-                                            url
-                                        ));
+                                        source_links.push((title.to_string(), url.to_string()));
                                     }
-                                }
-                                if !citations_list.is_empty() {
-                                    block_text.push_str("\n\n**Sources:**\n");
-                                    block_text.push_str(&citations_list.join("\n"));
                                 }
                             }
 
@@ -392,6 +383,26 @@ impl LlmClient for ClaudeClient {
                         }));
                     }
                     "server_tool_use" | "web_search_tool_result" => {
+                        if block_type == "web_search_tool_result"
+                            && let Some(results) = block.get("content").and_then(|v| v.as_array())
+                        {
+                            for result in results {
+                                let result_type =
+                                    result.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                                if result_type == "web_search_result" {
+                                    let title = result
+                                        .get("title")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("Source");
+                                    let url =
+                                        result.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                                    if !url.is_empty() {
+                                        source_links.push((title.to_string(), url.to_string()));
+                                    }
+                                }
+                            }
+                        }
+
                         // Diagnostic: record but don't surface as primary text
                         let diag_text = format!("[{}]", block_type);
                         model_parts.push(MessagePart::Part(ContentPart {
@@ -406,6 +417,35 @@ impl LlmClient for ClaudeClient {
                     }
                     _ => {}
                 }
+            }
+        }
+
+        if !source_links.is_empty() {
+            let mut seen_urls = std::collections::HashSet::new();
+            let mut citations_list = Vec::new();
+            for (title, url) in source_links {
+                if seen_urls.insert(url.clone()) {
+                    citations_list.push(format!(
+                        "- [{}] [{}]({})",
+                        citations_list.len() + 1,
+                        title,
+                        url
+                    ));
+                }
+            }
+
+            if !citations_list.is_empty() {
+                let citations_text = format!("\n\n**Sources:**\n{}", citations_list.join("\n"));
+                full_text.push_str(&citations_text);
+                model_parts.push(MessagePart::Part(ContentPart {
+                    text: Some(citations_text),
+                    inline_data: None,
+                    function_call: None,
+                    function_response: None,
+                    thought: None,
+                    thought_signature: None,
+                    is_diagnostic: false,
+                }));
             }
         }
 

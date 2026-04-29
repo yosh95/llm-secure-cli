@@ -332,3 +332,18 @@ pub fn render_markdown(content: &str, width: usize) -> String {
     let renderer = MarkdownRenderer::new(width);
     renderer.render(content)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::render_markdown;
+
+    #[test]
+    fn sources_list_items_render_on_separate_lines() {
+        let markdown = "**Sources:**\n- [1] [First Source](https://example.com/1)\n- [2] [Second Source](https://example.com/2)";
+        let rendered = render_markdown(markdown, 120);
+
+        assert!(rendered.contains("Sources:"));
+        assert!(rendered.contains("• [1]"));
+        assert!(rendered.contains("\n• [2]"));
+    }
+}
