@@ -85,6 +85,9 @@ impl ChatSession {
             fn get_config_section(&self) -> &str {
                 "dummy"
             }
+            fn should_send_pdf_as_base64(&self) -> bool {
+                false
+            }
             async fn send(
                 &mut self,
                 _: Vec<crate::llm::models::DataSource>,

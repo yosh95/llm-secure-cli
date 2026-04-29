@@ -43,6 +43,8 @@ pub trait LlmClient: Send + Sync {
         format!("LLM ({})", self.get_state().model)
     }
 
+    fn should_send_pdf_as_base64(&self) -> bool;
+
     fn update_history(&mut self, data: &[DataSource], model_msg: Message) {
         let mut user_parts = Vec::new();
         for d in data {

@@ -203,6 +203,9 @@ impl LlmClient for ClaudeClient {
     fn get_config_section(&self) -> &str {
         &self.base.config_section
     }
+    fn should_send_pdf_as_base64(&self) -> bool {
+        true
+    }
 
     async fn send(
         &mut self,

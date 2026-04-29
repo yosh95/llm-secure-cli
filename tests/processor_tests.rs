@@ -27,6 +27,9 @@ impl LlmClient for MockProcessorClient {
     fn get_config_section(&self) -> &str {
         "mock"
     }
+    fn should_send_pdf_as_base64(&self) -> bool {
+        false
+    }
     async fn send(
         &mut self,
         _data: Vec<DataSource>,

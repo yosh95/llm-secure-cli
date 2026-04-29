@@ -9,7 +9,7 @@ use std::path::Path;
 
 pub async fn fetch_url_content(
     url_str: &str,
-    _pdf_as_base64: bool,
+    pdf_as_base64: bool,
 ) -> anyhow::Result<(String, String)> {
     let res = CLIENT.get(url_str).send().await?;
 
@@ -25,8 +25,13 @@ pub async fn fetch_url_content(
 
     if content_type == "application/pdf" {
         let bytes = res.bytes().await?;
-        let b64 = general_purpose::STANDARD.encode(bytes);
-        Ok((b64, content_type))
+        if pdf_as_base64 {
+            let b64 = general_purpose::STANDARD.encode(bytes);
+            Ok((b64, content_type))
+        } else {
+            let text = pdf_extract::extract_text_from_mem(&bytes)?;
+            Ok((text, "text/plain".to_string()))
+        }
     } else if content_type.contains("html") {
         let html = res.text().await?;
         let text = html_to_text(&html);
@@ -52,7 +57,7 @@ pub fn html_to_text(html: &str) -> String {
     html2text::from_read(cleaned.as_bytes(), 100).unwrap()
 }
 
-pub fn process_file(path: &Path, _pdf_as_base64: bool) -> anyhow::Result<DataSource> {
+pub fn process_file(path: &Path, pdf_as_base64: bool) -> anyhow::Result<DataSource> {
     let mut metadata = std::collections::HashMap::new();
     if let Some(filename) = path.file_name().and_then(|s| s.to_str()) {
         metadata.insert("filename".to_string(), serde_json::json!(filename));
@@ -63,6 +68,16 @@ pub fn process_file(path: &Path, _pdf_as_base64: bool) -> anyhow::Result<DataSou
     let mime_type = mime_guess::from_path(path)
         .first_raw()
         .unwrap_or("application/octet-stream");
+
+    if mime_type == "application/pdf" && !pdf_as_base64 {
+        let text = pdf_extract::extract_text_from_mem(&bytes)?;
+        return Ok(DataSource {
+            content: serde_json::Value::String(text),
+            content_type: "text/plain".to_string(),
+            is_file_or_url: true,
+            metadata,
+        });
+    }
 
     // Check if it's likely text
     if let Ok(text) = String::from_utf8(bytes.clone()) {
@@ -111,11 +126,11 @@ pub async fn process_single_source(source: &str, pdf_as_base64: bool) -> Option<
     None
 }
 
-pub async fn process_sources(sources: Vec<String>) -> Vec<DataSource> {
+pub async fn process_sources(sources: Vec<String>, pdf_as_base64: bool) -> Vec<DataSource> {
     let mut results = Vec::new();
     for s in sources {
         if s.starts_with("http://") || s.starts_with("https://") {
-            if let Ok((content, content_type)) = fetch_url_content(&s, true).await {
+            if let Ok((content, content_type)) = fetch_url_content(&s, pdf_as_base64).await {
                 results.push(DataSource {
                     content: serde_json::Value::String(content),
                     content_type,
@@ -126,7 +141,7 @@ pub async fn process_sources(sources: Vec<String>) -> Vec<DataSource> {
         } else {
             let path = Path::new(&s);
             if path.exists() {
-                if let Ok(ds) = process_file(path, true) {
+                if let Ok(ds) = process_file(path, pdf_as_base64) {
                     results.push(ds);
                 }
             } else {

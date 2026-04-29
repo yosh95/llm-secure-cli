@@ -731,6 +731,10 @@ impl LlmClient for GeminiClient {
         format!("GEMINI ({})", self.base.state.model)
     }
 
+    fn should_send_pdf_as_base64(&self) -> bool {
+        true
+    }
+
     async fn send(
         &mut self,
         data: Vec<DataSource>,

@@ -366,6 +366,7 @@ async fn main() {
             }
         }
 
+        let pdf_as_base64 = client.should_send_pdf_as_base64();
         let mut session = ChatSession::new(client, config.clone());
 
         let mut all_sources = args.sources;
@@ -383,7 +384,7 @@ async fn main() {
         let sources = if all_sources.is_empty() {
             None
         } else {
-            Some(llm_secure_cli::utils::media::process_sources(all_sources).await)
+            Some(llm_secure_cli::utils::media::process_sources(all_sources, pdf_as_base64).await)
         };
         session.run(sources, None).await;
     } else {

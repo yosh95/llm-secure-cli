@@ -234,7 +234,8 @@ pub async fn handle_attach(session: &mut ChatSession, source: &str) {
         return;
     }
 
-    let data = crate::utils::media::process_single_source(source, true).await;
+    let pdf_as_base64 = session.client.should_send_pdf_as_base64();
+    let data = crate::utils::media::process_single_source(source, pdf_as_base64).await;
     if let Some(d) = data {
         ui::report_success(&format!("Attached {}: {}", d.content_type, source));
         session.pending_data.push(d);

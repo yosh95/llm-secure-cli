@@ -44,6 +44,10 @@ impl OllamaClient {
         !self.api_url.contains("localhost") && !self.api_url.contains("127.0.0.1")
     }
 
+    fn data_url(mime_type: &str, b64_data: &str) -> String {
+        format!("data:{};base64,{}", mime_type, b64_data)
+    }
+
     fn build_messages(&self, data: &[DataSource]) -> Vec<serde_json::Value> {
         let mut messages = Vec::new();
 
@@ -90,75 +94,142 @@ impl OllamaClient {
                         Role::Tool => unreachable!(),
                     };
 
-                    // Check if this assistant message contains tool_calls
-                    let tool_calls: Vec<serde_json::Value> = m
-                        .parts
-                        .iter()
-                        .filter_map(|p| {
-                            if let MessagePart::Part(cp) = p
-                                && let Some(fc) = &cp.function_call
-                            {
-                                let call_id = fc
-                                    .get("id")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                let name = fc
-                                    .get("name")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                let arguments = fc
-                                    .get("arguments")
-                                    .map(|v| {
-                                        v.as_str()
-                                            .map(|s| s.to_string())
-                                            .unwrap_or_else(|| v.to_string())
-                                    })
-                                    .unwrap_or_else(|| "{}".to_string());
-                                Some(json!({
-                                    "id": call_id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": name,
-                                        "arguments": arguments
-                                    }
-                                }))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
+                    let mut content_parts = Vec::new();
+                    let mut tool_calls = Vec::new();
 
-                    let text = m.get_text(false);
+                    for part in &m.parts {
+                        match part {
+                            MessagePart::Text(t) => {
+                                if !t.is_empty() {
+                                    content_parts.push(json!({"type": "text", "text": t}));
+                                }
+                            }
+                            MessagePart::Part(cp) => {
+                                if let Some(t) = &cp.text
+                                    && !t.is_empty()
+                                    && !cp.is_diagnostic
+                                {
+                                    content_parts.push(json!({"type": "text", "text": t}));
+                                }
+
+                                if let Some(inline) = &cp.inline_data {
+                                    let mime = inline
+                                        .get("mimeType")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("");
+                                    let b64 =
+                                        inline.get("data").and_then(|v| v.as_str()).unwrap_or("");
+                                    if !mime.is_empty()
+                                        && !b64.is_empty()
+                                        && (mime.starts_with("image/") || mime == "application/pdf")
+                                    {
+                                        content_parts.push(json!({
+                                            "type": "image_url",
+                                            "image_url": {
+                                                "url": Self::data_url(mime, b64)
+                                            }
+                                        }));
+                                    }
+                                }
+
+                                if let Some(fc) = &cp.function_call {
+                                    let call_id = fc
+                                        .get("id")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let name = fc
+                                        .get("name")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let arguments = fc
+                                        .get("arguments")
+                                        .map(|v| {
+                                            v.as_str()
+                                                .map(|s| s.to_string())
+                                                .unwrap_or_else(|| v.to_string())
+                                        })
+                                        .unwrap_or_else(|| "{}".to_string());
+                                    tool_calls.push(json!({
+                                        "id": call_id,
+                                        "type": "function",
+                                        "function": {
+                                            "name": name,
+                                            "arguments": arguments
+                                        }
+                                    }));
+                                }
+                            }
+                        }
+                    }
 
                     if !tool_calls.is_empty() {
-                        // Assistant message with tool calls
                         let mut msg = json!({
                             "role": "assistant",
                             "tool_calls": tool_calls
                         });
-                        if !text.is_empty() {
-                            msg["content"] = json!(text);
+                        if !content_parts.is_empty() {
+                            // If we have text along with tool calls
+                            let text: String = content_parts
+                                .iter()
+                                .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            if !text.is_empty() {
+                                msg["content"] = json!(text);
+                            }
                         }
                         messages.push(msg);
-                    } else if !text.is_empty() {
+                    } else if !content_parts.is_empty() {
+                        // For vision-enabled models on Ollama/OpenAI-compatible endpoints,
+                        // we can send an array of parts.
+                        let content =
+                            if content_parts.len() == 1 && content_parts[0]["type"] == "text" {
+                                content_parts[0]["text"].clone()
+                            } else {
+                                json!(content_parts)
+                            };
+
                         messages.push(json!({
                             "role": role,
-                            "content": text
+                            "content": content
                         }));
                     }
                 }
             }
         }
 
+        // Add new data from data source
+        let mut new_parts = Vec::new();
         for d in data {
             if d.content_type == "text/plain" {
-                messages.push(json!({
-                    "role": "user",
-                    "content": d.content.as_str().unwrap_or("")
+                new_parts.push(json!({
+                    "type": "text",
+                    "text": d.content.as_str().unwrap_or("")
+                }));
+            } else if (d.content_type.starts_with("image/") || d.content_type == "application/pdf")
+                && let Some(b64) = d.content.as_str()
+            {
+                new_parts.push(json!({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": Self::data_url(&d.content_type, b64)
+                    }
                 }));
             }
+        }
+
+        if !new_parts.is_empty() {
+            let content = if new_parts.len() == 1 && new_parts[0]["type"] == "text" {
+                new_parts[0]["text"].clone()
+            } else {
+                json!(new_parts)
+            };
+            messages.push(json!({
+                "role": "user",
+                "content": content
+            }));
         }
 
         messages
@@ -238,6 +309,9 @@ impl LlmClient for OllamaClient {
     }
     fn get_config_section(&self) -> &str {
         &self.base.config_section
+    }
+    fn should_send_pdf_as_base64(&self) -> bool {
+        false
     }
 
     async fn send(

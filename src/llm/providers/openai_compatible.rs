@@ -23,7 +23,7 @@ impl OpenAiCompatibleClient {
         let spec = ProviderSpec {
             api_key_name: "api_key".to_string(),
             config_section: "custom".to_string(),
-            pdf_as_base64: true,
+            pdf_as_base64: false,
         };
         let base = BaseLlmClientData::new(model, spec, stdout, raw);
         Self {
@@ -138,15 +138,20 @@ impl OpenAiCompatibleClient {
                     .filter_map(|p| p.get("tool_call").cloned())
                     .collect();
 
-                // For vision models, use array content; for non-vision, collapse to string
-                let content = if self.supports_vision && content_parts.len() > 1 {
+                // For vision models, use array content if there are images or multiple parts.
+                // For simple text, we can use a string.
+                let has_images = content_parts
+                    .iter()
+                    .any(|p| p.get("type").and_then(|v| v.as_str()) == Some("image_url"));
+                let content = if self.supports_vision && (has_images || content_parts.len() > 1) {
                     Value::Array(content_parts)
                 } else {
-                    content_parts
-                        .into_iter()
-                        .filter_map(|p| p.get("text").cloned())
+                    let text = content_parts
+                        .iter()
+                        .filter_map(|p| p.get("text").and_then(|v| v.as_str()))
                         .collect::<Vec<_>>()
-                        .into()
+                        .join("\n");
+                    Value::String(text)
                 };
                 let mut msg = json!({"role": role, "content": content});
                 let role_clone = msg
@@ -209,7 +214,10 @@ impl OpenAiCompatibleClient {
         }
 
         if !new_parts.is_empty() {
-            let content = if self.supports_vision && new_parts.len() > 1 {
+            let has_images = new_parts
+                .iter()
+                .any(|p| p.get("type").and_then(|v| v.as_str()) == Some("image_url"));
+            let content = if self.supports_vision && (has_images || new_parts.len() > 1) {
                 Value::Array(new_parts)
             } else {
                 new_parts
@@ -260,6 +268,9 @@ impl LlmClient for OpenAiCompatibleClient {
     fn get_config_section(&self) -> &str {
         &self.base.config_section
     }
+    fn should_send_pdf_as_base64(&self) -> bool {
+        false
+    }
 
     async fn send(
         &mut self,
@@ -273,9 +284,13 @@ impl LlmClient for OpenAiCompatibleClient {
             "max_tokens": 8192,
         });
 
-        // Add system prompt
+        // Add system prompt correctly
         if let Some(sp) = &self.base.state.system_prompt {
-            body["messages"] = json!([json!({"role": "system", "content": sp}), messages]);
+            let mut final_messages = vec![json!({"role": "system", "content": sp})];
+            if let Some(msgs_arr) = body["messages"].as_array() {
+                final_messages.extend(msgs_arr.clone());
+            }
+            body["messages"] = json!(final_messages);
         }
 
         // Add tools if enabled
