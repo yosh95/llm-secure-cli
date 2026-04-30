@@ -333,9 +333,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
                     "maximum_number_of_tokens": {"type": "integer", "default": 8192, "minimum": 1024, "maximum": 32768, "description": "Approximate maximum tokens in the returned context. Use lower values (2048) for simple factual queries, higher (16384) for complex research."},
                     "maximum_number_of_urls": {"type": "integer", "default": 20, "minimum": 1, "maximum": 50, "description": "Maximum number of URLs in the response."},
                     "context_threshold_mode": {"type": "string", "default": "balanced", "enum": ["strict", "balanced", "lenient", "disabled"], "description": "Relevance threshold for including content. 'strict' = fewer but more relevant, 'lenient' = more results possibly less relevant, 'disabled' = no filtering."},
-                    "freshness": {"type": "string", "default": "", "description": "Filter results by freshness: 'pd' (24h), 'pw' (7d), 'pm' (31d), 'py' (365d), or date range 'YYYY-MM-DDtoYYYY-MM-DD'."},
-                    "country": {"type": "string", "default": "", "description": "2-letter country code for search results (e.g. 'us', 'jp')."},
-                    "search_lang": {"type": "string", "default": "", "enum": ["ar", "eu", "bn", "bg", "ca", "zh-hans", "zh-hant", "hr", "cs", "da", "nl", "en", "en-gb", "et", "fi", "fr", "gl", "de", "el", "gu", "he", "hi", "hu", "is", "it", "jp", "kn", "ko", "lv", "lt", "ms", "ml", "mr", "nb", "pl", "pt-br", "pt-pt", "pa", "ro", "ru", "sr", "sk", "sl", "es", "sv", "ta", "te", "th", "tr", "uk", "vi", ""], "description": "Language preference for results. Use 'jp' for Japanese (not 'ja'), 'en' for English, 'zh-hans' for Simplified Chinese, 'zh-hant' for Traditional Chinese, 'pt-br' for Brazilian Portuguese, 'pt-pt' for European Portuguese, 'en-gb' for British English."}
+                    "freshness": {"type": "string", "default": "", "description": "Filter results by freshness: 'pd' (24h), 'pw' (7d), 'pm' (31d), 'py' (365d), or date range 'YYYY-MM-DDtoYYYY-MM-DD'."}
                 },
                 "required": ["query"]
             }),

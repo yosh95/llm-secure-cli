@@ -126,21 +126,6 @@ pub async fn brave_search(
     // Freshness filter: "pd" (24h), "pw" (7d), "pm" (31d), "py" (365d), or date range
     let freshness = args.get("freshness").and_then(|v| v.as_str()).unwrap_or("");
 
-    // Country code (2-char)
-    let country = args.get("country").and_then(|v| v.as_str()).unwrap_or("");
-
-    // Search language preference.
-    // Brave API uses "jp" for Japanese, not the more common "ja".
-    // Automatically map "ja" → "jp" so callers don't hit a 422 error.
-    let search_lang = match args
-        .get("search_lang")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-    {
-        "ja" => "jp",
-        other => other,
-    };
-
     let result = call_brave_llm_context(
         BraveLlmContextParams {
             query,
@@ -149,8 +134,6 @@ pub async fn brave_search(
             max_urls,
             context_threshold_mode,
             freshness,
-            country,
-            search_lang,
         },
         api_key,
     )
@@ -210,8 +193,6 @@ struct BraveLlmContextParams<'a> {
     max_urls: u64,
     context_threshold_mode: &'a str,
     freshness: &'a str,
-    country: &'a str,
-    search_lang: &'a str,
 }
 
 /// Call the Brave LLM Context API (`/res/v1/llm/context`).
@@ -239,12 +220,6 @@ async fn call_brave_llm_context(
     }
     if !params.freshness.is_empty() {
         body.insert("freshness".to_string(), json!(params.freshness));
-    }
-    if !params.country.is_empty() {
-        body.insert("country".to_string(), json!(params.country));
-    }
-    if !params.search_lang.is_empty() {
-        body.insert("search_lang".to_string(), json!(params.search_lang));
     }
 
     let url = "https://api.search.brave.com/res/v1/llm/context";
