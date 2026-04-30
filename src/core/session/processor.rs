@@ -2,9 +2,9 @@ use crate::cli::ui;
 use crate::core::session::ChatSession;
 use crate::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
 use crate::security::cass::RiskLevel;
-use indicatif::{ProgressBar, ProgressStyle};
 use serde_json;
 use std::collections::HashMap;
+use std::io::Write;
 use tokio;
 
 impl ChatSession {
@@ -14,18 +14,12 @@ impl ChatSession {
         let config = self.ctx.config_manager.get_config();
 
         loop {
-            let pb = ProgressBar::new_spinner();
-            pb.set_style(
-                ProgressStyle::default_spinner()
-                    .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
-                    .template("{spinner:.cyan} {msg}")?,
-            );
-            pb.set_message(format!("Thinking... ({})", self.client.get_state().model));
-            pb.enable_steady_tick(std::time::Duration::from_millis(100));
+            print!("Thinking ({}) ... ", self.client.get_state().model);
+            std::io::stdout().flush().ok();
 
             let tool_schemas = self.ctx.tool_registry.lock().await.get_tool_schemas();
             let (response, thought) = self.client.send(current_data, tool_schemas).await?;
-            pb.finish_and_clear();
+            println!("done");
 
             current_data = Vec::new();
 
@@ -247,18 +241,13 @@ impl ChatSession {
                         if final_result.is_none()
                             && let Some(handle) = verifier_handle
                         {
-                            let pb_v = ProgressBar::new_spinner();
-                            pb_v.set_style(
-                                ProgressStyle::default_spinner()
-                                    .template("{spinner:.yellow} {msg}")?,
-                            );
-                            pb_v.set_message("Finalizing intent verification...");
-                            pb_v.enable_steady_tick(std::time::Duration::from_millis(100));
+                            print!("Finalizing intent verification... ");
+                            std::io::stdout().flush().ok();
 
                             let (safe, reason) = handle.await.unwrap_or_else(|_| {
                                 (false, "Verification task panicked".to_string())
                             });
-                            pb_v.finish_and_clear();
+                            println!("done");
 
                             if !safe {
                                 ui::report_error(&format!(
