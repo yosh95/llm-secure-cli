@@ -60,7 +60,6 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
     let width = (width as usize).min(140);
     let color = "yellow";
 
-    println!();
     println!("{}", "─".repeat(width).color(color));
     println!(
         "{} {}{}",
@@ -417,21 +416,9 @@ fn format_size_brief(bytes: u64) -> String {
 /// - Supports "y", "yes", "n", "no" (case-insensitive), Enter = Yes (default)
 /// - Returns None on EOF or I/O error (treated as abort/cancel)
 pub fn ask_confirm(prompt: &str) -> Option<bool> {
-    // Simple stdin-based confirmation that does NOT use raw mode
     let y_n = format!("{} [Y/n] ", prompt);
-    print!("{}", y_n.bold());
-    if let Err(e) = std::io::stdout().flush() {
-        log::warn!("Failed to flush stdout in ask_confirm: {}", e);
-        return None;
-    }
-
-    let mut input = String::new();
-    match std::io::stdin().read_line(&mut input) {
-        Ok(0) => {
-            // EOF — no more input (e.g. piped input exhausted or terminal closed)
-            None
-        }
-        Ok(_) => {
+    match get_user_input(&y_n) {
+        Some(input) => {
             let trimmed = input.trim().to_lowercase();
             if trimmed.is_empty() || trimmed == "y" || trimmed == "yes" {
                 Some(true)
@@ -442,24 +429,15 @@ pub fn ask_confirm(prompt: &str) -> Option<bool> {
                 Some(false)
             }
         }
-        Err(_) => None, // I/O error (includes broken pipe, etc.)
+        None => None, // Interrupted or EOF
     }
 }
 
 pub async fn ask_confirm_async(prompt: &str) -> Option<bool> {
     let p = prompt.to_string();
-    let confirm_future = tokio::task::spawn_blocking(move || ask_confirm(&p));
-
-    confirm_future.await.unwrap_or(None)
-    // NOTE: We intentionally do NOT use tokio::signal::ctrl_c() here.
-    // The main input loop in input_handler.rs already handles Ctrl+C,
-    // and having a second ctrl_c() listener causes a race where one
-    // listener consumes the signal and the other never receives it.
-    // Additionally, dialoguer::Select (previously used here) put the
-    // terminal into raw mode inside spawn_blocking, which caused the
-    // terminal to become unresponsive when Ctrl+C was sent during the
-    // selection — the raw mode prevented SIGINT from being delivered,
-    // and on cancellation the terminal was left in a broken state.
+    tokio::task::spawn_blocking(move || ask_confirm(&p))
+        .await
+        .unwrap_or(None)
 }
 
 pub fn get_user_input(prompt: &str) -> Option<String> {

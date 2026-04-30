@@ -18,7 +18,15 @@ impl ChatSession {
             std::io::stdout().flush().ok();
 
             let tool_schemas = self.ctx.tool_registry.lock().await.get_tool_schemas();
-            let (response, thought) = self.client.send(current_data, tool_schemas).await?;
+            let send_future = self.client.send(current_data, tool_schemas);
+            let (response, thought) = tokio::select! {
+                res = send_future => res?,
+                _ = tokio::signal::ctrl_c() => {
+                    println!("\n^C - Interrupted.");
+                    self.handle_interruption();
+                    return Ok(());
+                }
+            };
             println!("done");
 
             current_data = Vec::new();
@@ -244,9 +252,15 @@ impl ChatSession {
                             print!("Finalizing intent verification... ");
                             std::io::stdout().flush().ok();
 
-                            let (safe, reason) = handle.await.unwrap_or_else(|_| {
-                                (false, "Verification task panicked".to_string())
-                            });
+                            let res = tokio::select! {
+                                res = handle => res.unwrap_or((false, "Verification task panicked".to_string())),
+                                _ = tokio::signal::ctrl_c() => {
+                                    println!("\n^C - Interrupted.");
+                                    self.handle_interruption();
+                                    return Ok(());
+                                }
+                            };
+                            let (safe, reason) = res;
                             println!("done");
 
                             if !safe {
@@ -267,9 +281,14 @@ impl ChatSession {
                         let result_value = if let Some(res) = final_result {
                             res
                         } else {
-                            let result = self
-                                .execute_tool(name, args.clone().into_iter().collect())
-                                .await;
+                            let result = tokio::select! {
+                                res = self.execute_tool(name, args.clone().into_iter().collect()) => res,
+                                _ = tokio::signal::ctrl_c() => {
+                                    println!("\n^C - Interrupted.");
+                                    self.handle_interruption();
+                                    return Ok(());
+                                }
+                            };
                             let audit_ctx = serde_json::json!({
                                 "trace_id": self.trace_id,
                                 "model": self.client.get_state().model,

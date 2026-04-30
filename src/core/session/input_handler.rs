@@ -9,7 +9,6 @@ use rustyline::history::FileHistory;
 use rustyline::{Cmd, Editor, KeyCode, KeyEvent, Modifiers};
 use serde_json;
 use std::sync::{Arc, Mutex};
-use tokio;
 
 impl ChatSession {
     pub async fn run(
@@ -167,18 +166,8 @@ impl ChatSession {
                         metadata: std::collections::HashMap::new(),
                     });
 
-                    let mut process_future = Box::pin(self.process_and_print(data));
-                    match tokio::select! {
-                        res = &mut process_future => res,
-                        _ = tokio::signal::ctrl_c() => {
-                            drop(process_future);
-                            println!("\n^C - Interrupted. Returning to prompt...");
-                            self.handle_interruption();
-                            Ok(())
-                        }
-                    } {
-                        Ok(_) => {}
-                        Err(e) => ui::report_error(&format!("Error: {}", e)),
+                    if let Err(e) = self.process_and_print(data).await {
+                        ui::report_error(&format!("Error: {}", e));
                     }
                 }
                 Err(ReadlineError::Interrupted) => {
