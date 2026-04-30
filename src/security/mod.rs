@@ -33,10 +33,23 @@ pub fn validate_tool_call(
     // 2. Fast-fail Syntactic Check
     if name == "execute_command" {
         let program = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
-        if crate::security::static_analyzer::StaticAnalyzer::is_obviously_malicious(program) {
-            return Err(
-                "Security Blocked (Static Analysis): Malicious characters detected.".to_string(),
-            );
+        let cmd_args: Vec<String> = args
+            .get("args")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let (safe, violations) =
+            crate::security::static_analyzer::StaticAnalyzer::check(program, &cmd_args);
+        if !safe {
+            return Err(format!(
+                "Security Blocked (Static Analysis): {}",
+                violations.join(", ")
+            ));
         }
     }
 

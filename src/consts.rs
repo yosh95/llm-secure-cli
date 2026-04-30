@@ -12,9 +12,10 @@ fn resolve_base_dir() -> PathBuf {
     // $HOME may be available even when dirs::home_dir() returns None
     // (e.g. on Android Termux where getpwuid_r is unsupported).
     if let Some(home) = std::env::var_os("HOME")
-        && !home.is_empty() {
-            return PathBuf::from(home).join(".llm_secure_cli");
-        }
+        && !home.is_empty()
+    {
+        return PathBuf::from(home).join(".llm_secure_cli");
+    }
     panic!(
         "Could not find home directory. \
          Please set the $HOME environment variable."

@@ -352,16 +352,21 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
         r,
         "execute_command",
         "Execute a system command directly without invoking a shell. \
-         This means shell features such as pipes (|), redirections (> >> 2>&1), \
-         command chaining (&& || ;), subshells ($()), and environment variable expansions \
-         are NOT available. Each argument must be passed as a separate item in the 'args' array. \
-         For example, to run 'grep -r pattern src/', set command='grep' and args=['-r', 'pattern', 'src/']. \
-         Do NOT put pipes or redirects in the args — they will be treated as literal strings, not shell operators.",
+         IMPORTANT CONSTRAINTS: This uses exec() directly — shell features are NOT available: \
+         no pipes (|), no redirections (> >> 2>&1), no command chaining (&& || ;), \
+         no subshells ($()), no glob expansion (* ?), no environment variable expansion ($VAR). \
+         Each argument must be a separate item in 'args'. \
+         PREFER BUILT-IN TOOLS for common operations: \
+         use 'grep_files' instead of grep, 'search_files' instead of find, \
+         'read_file_content' instead of cat, 'list_files_in_directory' instead of ls. \
+         Use this tool ONLY for commands that have no built-in equivalent (e.g. git, cargo, python3, npm). \
+         EXAMPLE — Correct: command='git', args=['log','--oneline','-10'] \
+         EXAMPLE — Wrong: command='sh', args=['-c','git log | head'] (shell features not supported)",
         json!({
             "type": "object",
             "properties": {
-                "command": {"type": "string", "description": "The program to execute (e.g. 'grep', 'find', 'python3'). Must be a single executable name or path, NOT a shell command string with pipes or redirects."},
-                "args": {"type": "array", "items": { "type": "string" }, "description": "Arguments to pass to the command, one per element. Do NOT include shell operators (|, >, >>, 2>&1, &&, ||, ; etc.) — they have no effect and will be passed as literal arguments."}
+                "command": {"type": "string", "description": "A single executable name (e.g. 'git', 'cargo', 'python3'). NOT a shell command string. If you need pipes or redirections, use built-in tools instead."},
+                "args": {"type": "array", "items": { "type": "string" }, "description": "Arguments to pass to the command, one per element. Shell operators (|, >, >>, 2>&1, &&, ||, ;, $()) are NOT interpreted — they will be passed as literal strings. For regex OR in grep, use extended regex (-E) with 'pattern1|pattern2' as a single arg, or better yet use the 'grep_files' tool."}
             },
             "required": ["command", "args"]
         }),

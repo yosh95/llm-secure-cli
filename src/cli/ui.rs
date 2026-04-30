@@ -406,26 +406,43 @@ fn format_size_brief(bytes: u64) -> String {
     }
 }
 
+/// Ask the user a Yes/No confirmation question.
+///
+/// This function uses a simple stdin/stdout approach instead of dialoguer::Select
+/// to avoid terminal raw-mode issues when running under SSH/tmux.
+///
+/// Key differences from dialoguer::Select:
+/// - Does NOT put the terminal into raw mode
+/// - Reads a simple line from stdin (works correctly in SSH/tmux)
+/// - Supports "y", "yes", "n", "no" (case-insensitive), Enter = Yes (default)
+/// - Returns None on EOF or I/O error (treated as abort/cancel)
 pub fn ask_confirm(prompt: &str) -> Option<bool> {
-    use dialoguer::{Select, theme::ColorfulTheme};
+    // Simple stdin-based confirmation that does NOT use raw mode
+    let y_n = format!("{} [Y/n] ", prompt);
+    print!("{}", y_n.bold());
+    if let Err(e) = std::io::stdout().flush() {
+        log::warn!("Failed to flush stdout in ask_confirm: {}", e);
+        return None;
+    }
 
-    // Use dialoguer::Select so the user can pick Yes/No with cursor keys
-    // and Enter instead of typing y/n. interact_opt() returns None when
-    // the user presses Esc or 'q', which maps to our None (aborted).
-    let items = ["Yes", "No"];
-
-    let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt(prompt)
-        .default(0) // Default to "Yes" (index 0)
-        .items(items)
-        .interact_opt();
-
-    match selection {
-        Ok(Some(0)) => Some(true),  // "Yes" selected
-        Ok(Some(1)) => Some(false), // "No" selected
-        Ok(Some(_)) => Some(false), // Any other index → treat as "No"
-        Ok(None) => None,           // Esc / q pressed → aborted
-        Err(_) => None,             // I/O error or Ctrl+C
+    let mut input = String::new();
+    match std::io::stdin().read_line(&mut input) {
+        Ok(0) => {
+            // EOF — no more input (e.g. piped input exhausted or terminal closed)
+            None
+        }
+        Ok(_) => {
+            let trimmed = input.trim().to_lowercase();
+            if trimmed.is_empty() || trimmed == "y" || trimmed == "yes" {
+                Some(true)
+            } else if trimmed == "n" || trimmed == "no" {
+                Some(false)
+            } else {
+                // Unrecognized input: default to No for safety
+                Some(false)
+            }
+        }
+        Err(_) => None, // I/O error (includes broken pipe, etc.)
     }
 }
 
@@ -433,13 +450,16 @@ pub async fn ask_confirm_async(prompt: &str) -> Option<bool> {
     let p = prompt.to_string();
     let confirm_future = tokio::task::spawn_blocking(move || ask_confirm(&p));
 
-    tokio::select! {
-        res = confirm_future => res.unwrap_or(None),
-        _ = tokio::signal::ctrl_c() => {
-            println!("\n^C");
-            None
-        }
-    }
+    confirm_future.await.unwrap_or(None)
+    // NOTE: We intentionally do NOT use tokio::signal::ctrl_c() here.
+    // The main input loop in input_handler.rs already handles Ctrl+C,
+    // and having a second ctrl_c() listener causes a race where one
+    // listener consumes the signal and the other never receives it.
+    // Additionally, dialoguer::Select (previously used here) put the
+    // terminal into raw mode inside spawn_blocking, which caused the
+    // terminal to become unresponsive when Ctrl+C was sent during the
+    // selection — the raw mode prevented SIGINT from being delivered,
+    // and on cancellation the terminal was left in a broken state.
 }
 
 pub fn get_user_input(prompt: &str) -> Option<String> {

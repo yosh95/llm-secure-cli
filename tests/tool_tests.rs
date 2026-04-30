@@ -168,6 +168,38 @@ async fn test_shell_security_block() {
 }
 
 #[test]
+fn test_static_analyzer_blocks_shell_invocation() {
+    use llm_secure_cli::security::static_analyzer::StaticAnalyzer;
+
+    // sh -c should be blocked
+    let (safe, violations) =
+        StaticAnalyzer::check("sh", &["-c".to_string(), "ls | head".to_string()]);
+    assert!(!safe);
+    assert!(violations.iter().any(|v| v.contains("Shell invocation")));
+
+    // bash -c should be blocked
+    let (safe, _) = StaticAnalyzer::check("bash", &["-c".to_string(), "rm -rf /".to_string()]);
+    assert!(!safe);
+
+    // zsh -c should be blocked
+    let (safe, _) = StaticAnalyzer::check("zsh", &["-c".to_string(), "echo hello".to_string()]);
+    assert!(!safe);
+
+    // sh without -c should be allowed (interactive shell is different from -c injection)
+    let (safe, _) = StaticAnalyzer::check("sh", &[]);
+    assert!(safe);
+
+    // Normal commands should be allowed
+    let (safe, _) = StaticAnalyzer::check("git", &["log".to_string(), "--oneline".to_string()]);
+    assert!(safe);
+
+    // Null byte in args should be blocked
+    let (safe, violations) = StaticAnalyzer::check("echo", &["hello\0world".to_string()]);
+    assert!(!safe);
+    assert!(violations.iter().any(|v| v.contains("control characters")));
+}
+
+#[test]
 fn test_file_modification_tools() {
     let dir = tempdir().unwrap();
     let file_path = dir.path().join("test.txt");
