@@ -2,7 +2,7 @@
 # General Settings
 # =============================================================================
 [general]
-unified_default_provider = "ollama"
+unified_default_provider = "google"
 pdf_as_base64 = true
 request_timeout = 1800
 command_timeout = 300
@@ -126,14 +126,8 @@ opus = "claude-opus-4-7"
 # =============================================================================
 [ollama]
 # api_url = "http://localhost:11434/v1/chat/completions"
-api_url = "https://ollama.com/v1/chat/completions"
 [ollama.models]
-default = "glm-5.1"
-gemini = "gemini-3-flash-preview"
-gemma = "gemma4:31b"
-glm = "glm-5.1"
-gpt-oss = "gpt-oss:120b"
-kimi = "kimi-k2.6"
+# default = "gemma4-e2b"
 
 # =============================================================================
 # Templates (Reusable Prompts)
