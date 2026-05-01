@@ -50,15 +50,11 @@ impl LlmClient for MockProcessorClient {
         } else if let Some(t) = &text {
             self.state.conversation.push(Message {
                 role: Role::Assistant,
-                parts: vec![MessagePart::Part(ContentPart {
+                parts: vec![MessagePart::Part(Box::new(ContentPart {
                     text: Some(t.clone()),
-                    inline_data: None,
-                    function_call: None,
-                    function_response: None,
-                    thought: None,
-                    thought_signature: None,
                     is_diagnostic: false,
-                })],
+                    ..Default::default()
+                }))],
             });
         }
 
@@ -121,15 +117,11 @@ async fn test_processor_tool_execution_flow() {
     fc_map.insert("arguments".to_string(), json!({"directory": "."}));
     fc_map.insert("id".to_string(), json!("call_123"));
 
-    let tool_call_part = MessagePart::Part(ContentPart {
-        text: None,
-        inline_data: None,
+    let tool_call_part = MessagePart::Part(Box::new(ContentPart {
         function_call: Some(fc_map),
-        function_response: None,
-        thought: None,
-        thought_signature: None,
         is_diagnostic: false,
-    });
+        ..Default::default()
+    }));
 
     let mock_client = MockProcessorClient {
         state: ClientState {

@@ -382,15 +382,11 @@ impl LlmClient for OllamaClient {
                 fc_map.insert("name".to_string(), json!(name));
                 fc_map.insert("arguments".to_string(), args_val);
 
-                model_parts.push(MessagePart::Part(ContentPart {
-                    text: None,
-                    inline_data: None,
+                model_parts.push(MessagePart::Part(Box::new(ContentPart {
                     function_call: Some(fc_map),
-                    function_response: None,
-                    thought: None,
-                    thought_signature: None,
                     is_diagnostic: false,
-                }));
+                    ..Default::default()
+                })));
             }
         }
 

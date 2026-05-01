@@ -180,15 +180,11 @@ impl ChatSession {
                             serde_json::json!("Error: Interrupted by user."),
                         );
 
-                        tool_results.push(MessagePart::Part(ContentPart {
-                            text: None,
-                            inline_data: None,
-                            function_call: None,
+                        tool_results.push(MessagePart::Part(Box::new(ContentPart {
                             function_response: Some(fr),
-                            thought: None,
-                            thought_signature: None,
                             is_diagnostic: false,
-                        }));
+                            ..Default::default()
+                        })));
                     }
                 }
                 state.conversation.push(Message {

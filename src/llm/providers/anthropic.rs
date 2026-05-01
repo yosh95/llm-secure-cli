@@ -34,44 +34,29 @@ impl ClaudeClient {
     /// Build Anthropic Messages API message array from conversation history + new data.
     fn build_messages(&self, data: &[DataSource]) -> Vec<Value> {
         let mut messages = Vec::new();
+        let conversation = &self.base.state.conversation;
+        let mut i = 0;
 
-        for m in &self.base.state.conversation {
-            // Tool results are sent as a user message with tool_result blocks
+        while i < conversation.len() {
+            let m = &conversation[i];
+
+            // Tool results are emitted only as the immediate user message after
+            // the assistant message containing the matching tool_use blocks.
+            // A standalone/stale Role::Tool message would violate Anthropic's
+            // strict ordering rules, so skip it here.
             if m.role == Role::Tool {
-                let mut tool_content = Vec::new();
-                for part in &m.parts {
-                    if let MessagePart::Part(cp) = part
-                        && let Some(fr) = &cp.function_response
-                    {
-                        let tool_use_id = fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                        let response = fr.get("response").cloned().unwrap_or(json!(""));
-                        let response_str = if let Some(s) = response.as_str() {
-                            s.to_string()
-                        } else {
-                            response.to_string()
-                        };
-                        tool_content.push(json!({
-                            "type": "tool_result",
-                            "tool_use_id": tool_use_id,
-                            "content": response_str
-                        }));
-                    }
-                }
-                if !tool_content.is_empty() {
-                    messages.push(json!({
-                        "role": "user",
-                        "content": tool_content
-                    }));
-                }
+                i += 1;
                 continue;
             }
 
             let role = match m.role {
                 Role::Assistant | Role::Model => "assistant",
-                _ => "user",
+                Role::System | Role::User => "user",
+                Role::Tool => unreachable!(),
             };
 
             let mut content = Vec::new();
+            let mut tool_use_ids = Vec::new();
             for part in &m.parts {
                 match part {
                     MessagePart::Text(t) => {
@@ -133,16 +118,21 @@ impl ClaudeClient {
                         }
 
                         // Tool use block (assistant → tool call)
-                        if let Some(fc) = &cp.function_call {
+                        if role == "assistant"
+                            && let Some(fc) = &cp.function_call
+                        {
                             let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
                             let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("");
                             let input = fc.get("arguments").cloned().unwrap_or_else(|| json!({}));
-                            content.push(json!({
-                                "type": "tool_use",
-                                "id": id,
-                                "name": name,
-                                "input": input
-                            }));
+                            if !id.is_empty() && !name.is_empty() {
+                                tool_use_ids.push(id.to_string());
+                                content.push(json!({
+                                    "type": "tool_use",
+                                    "id": id,
+                                    "name": name,
+                                    "input": input
+                                }));
+                            }
                         }
                     }
                 }
@@ -151,6 +141,69 @@ impl ClaudeClient {
             if !content.is_empty() {
                 messages.push(json!({ "role": role, "content": content }));
             }
+
+            if !tool_use_ids.is_empty() {
+                let mut tool_content = Vec::new();
+                let mut seen_results = std::collections::HashSet::new();
+
+                if let Some(next_msg) = conversation.get(i + 1)
+                    && next_msg.role == Role::Tool
+                {
+                    for part in &next_msg.parts {
+                        if let MessagePart::Part(cp) = part
+                            && let Some(fr) = &cp.function_response
+                        {
+                            let tool_use_id = fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                            if tool_use_ids.iter().any(|id| id == tool_use_id) {
+                                let response = fr.get("response").cloned().unwrap_or(json!(""));
+                                let response_str = if let Some(s) = response.as_str() {
+                                    s.to_string()
+                                } else {
+                                    response.to_string()
+                                };
+                                seen_results.insert(tool_use_id.to_string());
+                                tool_content.push(json!({
+                                    "type": "tool_result",
+                                    "tool_use_id": tool_use_id,
+                                    "content": response_str
+                                }));
+                            }
+                        }
+                    }
+                }
+
+                // Anthropic rejects any assistant tool_use that is not answered
+                // in the very next user message. Keep history valid even after
+                // interruptions, failed migrations, or partially saved sessions.
+                for tool_use_id in &tool_use_ids {
+                    if !seen_results.contains(tool_use_id) {
+                        tool_content.push(json!({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use_id,
+                            "content": "Error: tool result was missing from local conversation history.",
+                            "is_error": true
+                        }));
+                    }
+                }
+
+                if !tool_content.is_empty() {
+                    messages.push(json!({
+                        "role": "user",
+                        "content": tool_content
+                    }));
+                }
+
+                if conversation
+                    .get(i + 1)
+                    .map(|msg| msg.role == Role::Tool)
+                    .unwrap_or(false)
+                {
+                    i += 2;
+                    continue;
+                }
+            }
+
+            i += 1;
         }
 
         // Append the new user input data
@@ -362,30 +415,23 @@ impl LlmClient for ClaudeClient {
                             }
 
                             full_text.push_str(&block_text);
-                            model_parts.push(MessagePart::Part(ContentPart {
+                            model_parts.push(MessagePart::Part(Box::new(ContentPart {
                                 text: Some(block_text),
-                                inline_data: None,
-                                function_call: None,
-                                function_response: None,
-                                thought: None,
-                                thought_signature: None,
                                 is_diagnostic: false,
-                            }));
+                                ..Default::default()
+                            })));
                         }
                     }
                     "thinking" => {
                         if let Some(thought) = block["thinking"].as_str() {
                             thought_text.push_str(thought);
                             let sig = block["signature"].as_str().map(|s| s.to_string());
-                            model_parts.push(MessagePart::Part(ContentPart {
-                                text: None,
-                                inline_data: None,
-                                function_call: None,
-                                function_response: None,
+                            model_parts.push(MessagePart::Part(Box::new(ContentPart {
                                 thought: Some(thought.to_string()),
                                 thought_signature: sig,
                                 is_diagnostic: false,
-                            }));
+                                ..Default::default()
+                            })));
                         }
                     }
                     "tool_use" => {
@@ -398,15 +444,11 @@ impl LlmClient for ClaudeClient {
                         fc.insert("name".to_string(), json!(name));
                         fc.insert("arguments".to_string(), input);
 
-                        model_parts.push(MessagePart::Part(ContentPart {
-                            text: None,
-                            inline_data: None,
+                        model_parts.push(MessagePart::Part(Box::new(ContentPart {
                             function_call: Some(fc),
-                            function_response: None,
-                            thought: None,
-                            thought_signature: None,
                             is_diagnostic: false,
-                        }));
+                            ..Default::default()
+                        })));
                     }
                     "server_tool_use" | "web_search_tool_result" => {
                         if block_type == "web_search_tool_result"
@@ -431,15 +473,11 @@ impl LlmClient for ClaudeClient {
 
                         // Diagnostic: record but don't surface as primary text
                         let diag_text = format!("[{}]", block_type);
-                        model_parts.push(MessagePart::Part(ContentPart {
+                        model_parts.push(MessagePart::Part(Box::new(ContentPart {
                             text: Some(diag_text),
-                            inline_data: None,
-                            function_call: None,
-                            function_response: None,
-                            thought: None,
-                            thought_signature: None,
                             is_diagnostic: true,
-                        }));
+                            ..Default::default()
+                        })));
                     }
                     _ => {}
                 }
@@ -463,15 +501,11 @@ impl LlmClient for ClaudeClient {
             if !citations_list.is_empty() {
                 let citations_text = format!("\n\n**Sources:**\n{}", citations_list.join("\n"));
                 full_text.push_str(&citations_text);
-                model_parts.push(MessagePart::Part(ContentPart {
+                model_parts.push(MessagePart::Part(Box::new(ContentPart {
                     text: Some(citations_text),
-                    inline_data: None,
-                    function_call: None,
-                    function_response: None,
-                    thought: None,
-                    thought_signature: None,
                     is_diagnostic: false,
-                }));
+                    ..Default::default()
+                })));
             }
         }
 

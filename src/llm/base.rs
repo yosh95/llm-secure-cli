@@ -60,17 +60,13 @@ pub trait LlmClient: Send + Sync {
                 if let Some(filename) = d.metadata.get("filename") {
                     inline.insert("filename".to_string(), filename.clone());
                 }
-                user_parts.push(crate::llm::models::MessagePart::Part(
+                user_parts.push(crate::llm::models::MessagePart::Part(Box::new(
                     crate::llm::models::ContentPart {
-                        text: None,
                         inline_data: Some(inline),
-                        function_call: None,
-                        function_response: None,
-                        thought: None,
-                        thought_signature: None,
                         is_diagnostic: false,
+                        ..Default::default()
                     },
-                ));
+                )));
             }
         }
         if !user_parts.is_empty() {

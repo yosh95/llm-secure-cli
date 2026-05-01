@@ -347,15 +347,11 @@ impl ChatSession {
                         fr.insert("name".to_string(), serde_json::json!(name));
                         fr.insert("response".to_string(), result_value);
 
-                        tool_results.push(MessagePart::Part(ContentPart {
-                            text: None,
-                            inline_data: None,
-                            function_call: None,
+                        tool_results.push(MessagePart::Part(Box::new(ContentPart {
                             function_response: Some(fr),
-                            thought: None,
-                            thought_signature: None,
                             is_diagnostic: false,
-                        }));
+                            ..Default::default()
+                        })));
                     }
                 }
             }

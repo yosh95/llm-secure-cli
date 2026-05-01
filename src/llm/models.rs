@@ -12,12 +12,14 @@ pub enum Role {
     Tool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct ContentPart {
     pub text: Option<String>,
     pub inline_data: Option<HashMap<String, serde_json::Value>>,
     pub function_call: Option<HashMap<String, serde_json::Value>>,
     pub function_response: Option<HashMap<String, serde_json::Value>>,
+    pub tool_call: Option<HashMap<String, serde_json::Value>>,
+    pub tool_response: Option<HashMap<String, serde_json::Value>>,
     pub thought: Option<String>,
     pub thought_signature: Option<String>,
     #[serde(default)]
@@ -28,7 +30,7 @@ pub struct ContentPart {
 #[serde(untagged)]
 pub enum MessagePart {
     Text(String),
-    Part(ContentPart),
+    Part(Box<ContentPart>),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

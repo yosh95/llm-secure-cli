@@ -372,15 +372,11 @@ impl LlmClient for OpenAiCompatibleClient {
                     fc.insert("name".to_string(), json!(name));
                     fc.insert("arguments".to_string(), args);
 
-                    parts.push(MessagePart::Part(ContentPart {
-                        text: None,
-                        inline_data: None,
+                    parts.push(MessagePart::Part(Box::new(ContentPart {
                         function_call: Some(fc),
-                        function_response: None,
-                        thought: None,
-                        thought_signature: None,
                         is_diagnostic: false,
-                    }));
+                        ..Default::default()
+                    })));
                 }
             }
 

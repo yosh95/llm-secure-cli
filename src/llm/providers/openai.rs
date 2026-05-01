@@ -579,15 +579,11 @@ impl OpenAiClient {
                         function_call.insert("arguments".to_string(), json!(args));
                         function_call.insert("id".to_string(), json!(call_id));
 
-                        model_parts.push(MessagePart::Part(ContentPart {
-                            text: None,
-                            inline_data: None,
+                        model_parts.push(MessagePart::Part(Box::new(ContentPart {
                             function_call: Some(function_call),
-                            function_response: None,
-                            thought: None,
-                            thought_signature: None,
                             is_diagnostic: false,
-                        }));
+                            ..Default::default()
+                        })));
                     }
                     "image_generation_call" => {
                         if let Some(b64) = item.get("result").and_then(|v| v.as_str()) {
@@ -607,15 +603,11 @@ impl OpenAiClient {
                             inline_data.insert("mimeType".to_string(), json!(mime_type));
                             inline_data.insert("data".to_string(), json!(b64));
 
-                            model_parts.push(MessagePart::Part(ContentPart {
-                                text: None,
+                            model_parts.push(MessagePart::Part(Box::new(ContentPart {
                                 inline_data: Some(inline_data),
-                                function_call: None,
-                                function_response: None,
-                                thought: None,
-                                thought_signature: None,
                                 is_diagnostic: false,
-                            }));
+                                ..Default::default()
+                            })));
                         }
                     }
                     _ => {}

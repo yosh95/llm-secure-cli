@@ -51,15 +51,12 @@ pub fn create_error_response(ctx: &ToolExecutionContext) -> MessagePart {
         serde_json::json!({"result": formatted_err}),
     );
 
-    MessagePart::Part(ContentPart {
-        text: None,
-        inline_data: None,
-        function_call: None,
+    MessagePart::Part(Box::new(ContentPart {
         function_response: Some(fr),
-        thought: None,
         thought_signature: ctx.thought_signature.clone(),
         is_diagnostic: false,
-    })
+        ..Default::default()
+    }))
 }
 
 pub fn print_tool_output(res_str: &str) {
