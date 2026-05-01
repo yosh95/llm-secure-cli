@@ -98,6 +98,7 @@ impl GeminiClient {
                             }
                         });
                         if let Some(sig) = &cp.thought_signature {
+                            function_call_part["thought_signature"] = json!(sig);
                             function_call_part["thoughtSignature"] = json!(sig);
                         }
                         result.push(function_call_part);
@@ -119,7 +120,12 @@ impl GeminiClient {
                     }
 
                     if let Some(tc) = &cp.tool_call {
-                        result.push(json!({ "tool_call": tc }));
+                        let mut tc_obj = json!({ "tool_call": tc });
+                        if let Some(sig) = &cp.thought_signature {
+                            tc_obj["thought_signature"] = json!(sig);
+                            tc_obj["thoughtSignature"] = json!(sig);
+                        }
+                        result.push(tc_obj);
                     }
 
                     if let Some(tr) = &cp.tool_response {
@@ -234,6 +240,7 @@ impl GeminiClient {
         let mut full_text = String::new();
         let mut thought_text = String::new();
         let mut msg_parts = Vec::new();
+        let mut current_thought_signature = None;
 
         let candidates = res_json["candidates"].as_array();
         if let Some(candidates) = candidates
@@ -251,7 +258,7 @@ impl GeminiClient {
                             tool_call: None,
                             tool_response: None,
                             thought: None,
-                            thought_signature: None,
+                            thought_signature: current_thought_signature.clone(),
                             is_diagnostic: false,
                         })));
                     } else if let Some(fc) = part.get("functionCall") {
@@ -260,8 +267,12 @@ impl GeminiClient {
                         let thought_signature = part
                             .get("thoughtSignature")
                             .or_else(|| part.get("thought_signature"))
+                            .or_else(|| fc.get("thought_signature"))
+                            .or_else(|| fc.get("thoughtSignature"))
                             .and_then(|v| v.as_str())
-                            .map(|s| s.to_string());
+                            .map(|s| s.to_string())
+                            .or_else(|| current_thought_signature.clone());
+
                         let mut function_call_map = HashMap::new();
                         function_call_map.insert("name".to_string(), json!(name));
                         function_call_map.insert("arguments".to_string(), args);
@@ -292,7 +303,7 @@ impl GeminiClient {
                             tool_call: Some(tc_map),
                             tool_response: None,
                             thought: None,
-                            thought_signature: None,
+                            thought_signature: current_thought_signature.clone(),
                             is_diagnostic: false,
                         })));
                     } else if let Some(tr) = part.get("toolResponse") {
@@ -310,7 +321,7 @@ impl GeminiClient {
                             tool_call: None,
                             tool_response: Some(tr_map),
                             thought: None,
-                            thought_signature: None,
+                            thought_signature: current_thought_signature.clone(),
                             is_diagnostic: false,
                         })));
                     } else if let Some(thought) = part.get("thought")
@@ -319,8 +330,15 @@ impl GeminiClient {
                         thought_text.push_str(t);
                         let signature = part
                             .get("signature")
+                            .or_else(|| part.get("thought_signature"))
+                            .or_else(|| part.get("thoughtSignature"))
                             .and_then(|v| v.as_str())
                             .map(|s| s.to_string());
+
+                        if signature.is_some() {
+                            current_thought_signature = signature.clone();
+                        }
+
                         msg_parts.push(MessagePart::Part(Box::new(ContentPart {
                             text: None,
                             inline_data: None,

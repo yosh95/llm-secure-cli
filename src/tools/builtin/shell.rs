@@ -48,8 +48,8 @@ pub async fn execute_command(
 
     match tokio::time::timeout(Duration::from_secs(timeout_secs), child.wait_with_output()).await {
         Ok(Ok(output)) => Ok(json!({
-            "stdout": String::from_utf8_lossy(&output.stdout),
-            "stderr": String::from_utf8_lossy(&output.stderr),
+            "stdout": crate::tools::executor_utils::truncate_output(&String::from_utf8_lossy(&output.stdout)),
+            "stderr": crate::tools::executor_utils::truncate_output(&String::from_utf8_lossy(&output.stderr)),
             "exit_code": output.status.code().unwrap_or(-1)
         })),
         Ok(Err(e)) => Err(anyhow::anyhow!("Execution error: {}", e)),

@@ -156,9 +156,10 @@ fn finalize_edit(
 ) -> anyhow::Result<Value> {
     if dry_run {
         let diff = generate_diff(original, new_content);
+        let truncated_diff = crate::tools::executor_utils::truncate_output(&diff);
         return Ok(json!({
             "dry_run": true,
-            "diff": diff,
+            "diff": truncated_diff,
             "match_type": match_type,
             "message": format!("Dry run complete ({} match). No changes written.", match_type)
         }));
@@ -167,11 +168,12 @@ fn finalize_edit(
     fs::write(path, new_content).map_err(|e| anyhow::anyhow!("Cannot write file: {}", e))?;
 
     let diff = generate_diff(original, new_content);
+    let truncated_diff = crate::tools::executor_utils::truncate_output(&diff);
 
     Ok(json!({
         "success": true,
         "path": path_str,
-        "diff": diff,
+        "diff": truncated_diff,
         "match_type": match_type,
         "message": format!("File edited successfully ({} match).", match_type)
     }))
@@ -222,13 +224,14 @@ pub fn create_or_overwrite_file(
         // For new files, show a diff showing all lines added
         generate_diff("", content)
     };
+    let truncated_diff = crate::tools::executor_utils::truncate_output(&diff);
 
     Ok(json!({
         "success": true,
         "path": path_str,
         "bytes_written": content.len(),
         "created": !existed,
-        "diff": diff,
+        "diff": truncated_diff,
         "message": if existed {
             format!("File overwritten: {}", path_str)
         } else {

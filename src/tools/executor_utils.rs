@@ -29,6 +29,25 @@ pub fn truncate_output(res_str: &str) -> String {
     }
 }
 
+pub fn truncate_json_strings(v: &mut serde_json::Value) {
+    match v {
+        serde_json::Value::String(s) if s.len() > MAX_OUTPUT_CHARS => {
+            *s = truncate_output(s);
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                truncate_json_strings(item);
+            }
+        }
+        serde_json::Value::Object(obj) => {
+            for (_, value) in obj {
+                truncate_json_strings(value);
+            }
+        }
+        _ => {}
+    }
+}
+
 pub fn create_error_response(ctx: &ToolExecutionContext) -> MessagePart {
     let err = ctx.error_message.as_deref().unwrap_or("Unknown error");
     let mut formatted_err = err.to_string();

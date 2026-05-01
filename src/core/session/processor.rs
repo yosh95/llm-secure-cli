@@ -338,6 +338,9 @@ impl ChatSession {
                             }
                         };
 
+                        let mut result_value = result_value;
+                        crate::tools::executor_utils::truncate_json_strings(&mut result_value);
+
                         ui::print_tool_result(
                             result_value.as_str().unwrap_or(&result_value.to_string()),
                         );
