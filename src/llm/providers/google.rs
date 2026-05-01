@@ -106,6 +106,10 @@ impl GeminiClient {
                     if let Some(fr) = &cp.function_response {
                         let name = fr.get("name").and_then(|v| v.as_str()).unwrap_or("");
                         let response = fr.get("response").cloned().unwrap_or(json!({}));
+                        let response = match response {
+                            serde_json::Value::Object(_) => response,
+                            other => json!({ "result": other }),
+                        };
                         result.push(json!({
                             "functionResponse": {
                                 "name": name,

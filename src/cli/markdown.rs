@@ -127,10 +127,8 @@ impl MarkdownRenderer {
                         let clean_url: String =
                             dest_url.chars().filter(|c| !c.is_whitespace()).collect();
                         link_stack.push(clean_url.clone());
-                        let link_start = format!("\x1b]8;;{}\x1b\\", clean_url);
-                        if in_table {
-                            current_cell.push_str(&link_start);
-                        } else {
+                        if !in_table {
+                            let link_start = format!("\x1b]8;;{}\x1b\\", clean_url);
                             current_paragraph.push_str(&link_start);
                         }
                     }
@@ -234,12 +232,16 @@ impl MarkdownRenderer {
                             }
                             output.push_str("```\n");
                         }
-                        TagEnd::Link if link_stack.pop().is_some() => {
-                            let link_end = "\x1b]8;;\x1b\\";
-                            if in_table {
-                                current_cell.push_str(link_end);
-                            } else {
-                                current_paragraph.push_str(link_end);
+                        TagEnd::Link => {
+                            if let Some(url) = link_stack.pop() {
+                                if in_table {
+                                    if !current_cell.ends_with(&url) {
+                                        current_cell.push(' ');
+                                        current_cell.push_str(&url);
+                                    }
+                                } else {
+                                    current_paragraph.push_str("\x1b]8;;\x1b\\");
+                                }
                             }
                         }
                         _ => {}
@@ -249,7 +251,7 @@ impl MarkdownRenderer {
                     if in_code_block {
                         output.push_str(&text);
                     } else {
-                        let formatted = if !link_stack.is_empty() {
+                        let formatted = if !link_stack.is_empty() && !in_table {
                             text.replace(' ', "\u{00A0}").blue().to_string()
                         } else {
                             text.to_string()
@@ -263,7 +265,7 @@ impl MarkdownRenderer {
                     }
                 }
                 Event::Code(text) => {
-                    let formatted = if !link_stack.is_empty() {
+                    let formatted = if !link_stack.is_empty() && !in_table {
                         format!("`{}`", text.replace(' ', "\u{00A0}"))
                             .blue()
                             .to_string()
@@ -415,6 +417,20 @@ mod tests {
         assert_eq!(
             pipe_count, 3,
             "Should have exactly 3 separators for a 2-column table"
+        );
+    }
+
+    #[test]
+    fn table_links_render_as_plain_text_with_url() {
+        let markdown = "| Title | Other |\n|---|---|\n| [A very long link title](https://example.com/very/long/path) | next cell |";
+        let rendered = render_markdown(markdown, 50);
+
+        assert!(rendered.contains("A very long link title"));
+        assert!(rendered.contains("https://example.com/very/long/path"));
+        assert!(rendered.contains("next cell"));
+        assert!(
+            !rendered.contains("\x1b]8;;"),
+            "table links must not use OSC 8 hyperlinks"
         );
     }
 }
