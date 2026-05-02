@@ -103,7 +103,7 @@ impl ChatSession {
                         continue;
                     }
 
-                    let (content, should_continue) =
+                    let (content, should_break) =
                         match crate::cli::interactive::dispatcher::handle_command(
                             self,
                             &final_trimmed,
@@ -112,16 +112,14 @@ impl ChatSession {
                         {
                             crate::cli::interactive::dispatcher::CommandResult::Exit => {
                                 let _ = rl.save_history(&*HISTORY_LOG_PATH);
-                                // Force drop to save session anchor before exit
+                                // Drop rustyline editor and return to let
+                                // ChatSession Drop run naturally (saves Merkle anchor).
                                 drop(rl);
-                                let temp_self =
-                                    std::mem::replace(self, ChatSession::empty(self.ctx.clone()));
-                                drop(temp_self);
-                                std::process::exit(0);
+                                return;
                             }
                             crate::cli::interactive::dispatcher::CommandResult::Handled => {
                                 let _ = rl.add_history_entry(&final_trimmed);
-                                (None, true)
+                                (None, false)
                             }
                             crate::cli::interactive::dispatcher::CommandResult::NotACommand => {
                                 (Some(final_trimmed.clone()), false)
@@ -132,7 +130,7 @@ impl ChatSession {
                             }
                         };
 
-                    if should_continue {
+                    if should_break {
                         continue;
                     }
 
@@ -176,10 +174,9 @@ impl ChatSession {
                     println!("CTRL-D");
                     let _ = rl.save_history(&*HISTORY_LOG_PATH);
                     drop(rl);
-                    // Ensure the session anchor is created by dropping self
-                    let temp_self = std::mem::replace(self, ChatSession::empty(self.ctx.clone()));
-                    drop(temp_self);
-                    std::process::exit(0);
+                    // Return to let ChatSession Drop run naturally
+                    // (saves Merkle anchor and cleanup).
+                    return;
                 }
                 Err(err) => {
                     ui::report_error(&format!("Error: {:?}", err));

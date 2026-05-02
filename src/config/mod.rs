@@ -7,20 +7,18 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, OnceLock, RwLock};
 
 pub struct ConfigManager {
-    app_config: Mutex<Option<Arc<AppConfig>>>,
-    env_cache: Mutex<HashMap<String, String>>,
-    env_loaded: Mutex<bool>,
+    app_config: RwLock<Option<Arc<AppConfig>>>,
+    env_cache: OnceLock<HashMap<String, String>>,
 }
 
 impl ConfigManager {
     pub fn new() -> Self {
         Self {
-            app_config: Mutex::new(None),
-            env_cache: Mutex::new(HashMap::new()),
-            env_loaded: Mutex::new(bool::default()),
+            app_config: RwLock::new(None),
+            env_cache: OnceLock::new(),
         }
     }
 }
@@ -32,61 +30,57 @@ impl Default for ConfigManager {
 }
 
 impl ConfigManager {
-    fn load_env_files(&self) {
-        let mut env_loaded = self.env_loaded.lock().unwrap();
-        if *env_loaded {
-            return;
-        }
+    fn load_env_files(&self) -> &HashMap<String, String> {
+        self.env_cache.get_or_init(|| {
+            let mut cache = HashMap::new();
+            let dotenv_paths = [
+                Path::new(".env").to_path_buf(),
+                LLM_CLI_BASE_DIR.join(".env"),
+            ];
 
-        let mut cache = self.env_cache.lock().unwrap();
-        let dotenv_paths = [
-            Path::new(".env").to_path_buf(),
-            LLM_CLI_BASE_DIR.join(".env"),
-        ];
-
-        for path in dotenv_paths {
-            if path.exists()
-                && let Ok(content) = fs::read_to_string(path)
-            {
-                for line in content.lines() {
-                    let line = line.trim();
-                    if line.is_empty() || line.starts_with('#') {
-                        continue;
-                    }
-                    if let Some((key, val)) = line.split_once('=') {
-                        let key = key.trim().to_string();
-                        let val = val
-                            .trim()
-                            .trim_matches(|c| c == '\'' || c == '"')
-                            .to_string();
-                        if !key.is_empty() {
-                            cache.insert(key, val);
+            for path in dotenv_paths {
+                if path.exists()
+                    && let Ok(content) = fs::read_to_string(path)
+                {
+                    for line in content.lines() {
+                        let line = line.trim();
+                        if line.is_empty() || line.starts_with('#') {
+                            continue;
+                        }
+                        if let Some((key, val)) = line.split_once('=') {
+                            let key = key.trim().to_string();
+                            let val = val
+                                .trim()
+                                .trim_matches(|c| c == '\'' || c == '"')
+                                .to_string();
+                            if !key.is_empty() {
+                                cache.insert(key, val);
+                            }
                         }
                     }
                 }
             }
-        }
-        *env_loaded = true;
+            cache
+        })
     }
 
     pub fn get_config(&self) -> Arc<AppConfig> {
-        self.load_env_files();
+        {
+            let read = self.app_config.read().unwrap();
+            if let Some(config) = &*read {
+                return Arc::clone(config);
+            }
+        }
 
-        let mut app_config_lock = self.app_config.lock().unwrap();
-        if let Some(config) = &*app_config_lock {
+        let mut write = self.app_config.write().unwrap();
+        if let Some(config) = &*write {
             return Arc::clone(config);
         }
 
         // 1. Load defaults from embedded defaults.toml
         let defaults_toml = include_str!("defaults.toml");
-        let mut config_value: serde_json::Value =
-            toml::from_str(defaults_toml).unwrap_or_else(|e| {
-                eprintln!(
-                    "CRITICAL ERROR: Failed to parse embedded defaults.toml: {}",
-                    e
-                );
-                std::process::exit(1);
-            });
+        let mut config_value: serde_json::Value = toml::from_str(defaults_toml)
+            .expect("CRITICAL: Failed to parse embedded defaults.toml");
 
         // 2. Load user config from files and merge them
         let config_paths = [
@@ -108,30 +102,28 @@ impl ConfigManager {
         }
 
         // 3. Final deserialization into AppConfig
-        let final_config: AppConfig = serde_json::from_value(config_value).unwrap_or_else(|e| {
-            eprintln!(
-                "CRITICAL ERROR: Failed to deserialize merged configuration: {}",
-                e
-            );
-            eprintln!("Please check your ~/.llm_secure_cli/config.toml for schema errors.");
-            std::process::exit(1);
-        });
+        let final_config_struct: AppConfig =
+            serde_json::from_value(config_value).unwrap_or_else(|e| {
+                panic!(
+                    "CRITICAL: Failed to deserialize merged configuration: {}\n\
+                 Please check your ~/.llm_secure_cli/config.toml for schema errors.",
+                    e
+                );
+            });
 
-        let config_arc = Arc::new(final_config);
-        *app_config_lock = Some(Arc::clone(&config_arc));
-        config_arc
+        let final_config = Arc::new(final_config_struct);
+        *write = Some(Arc::clone(&final_config));
+        final_config
     }
 
     pub fn get_api_key(&self, provider: &str) -> Option<String> {
-        self.load_env_files();
-
         // 1. Try generic provider-based env var (e.g., OPENROUTER_API_KEY, OLLAMA_API_KEY)
         let generic_env_var = format!("{}_API_KEY", provider.to_uppercase());
         if let Ok(val) = env::var(&generic_env_var) {
             return Some(val);
         }
         {
-            let cache = self.env_cache.lock().unwrap();
+            let cache = self.load_env_files();
             if let Some(val) = cache.get(&generic_env_var) {
                 return Some(val.clone());
             }
@@ -235,8 +227,8 @@ impl ConfigManager {
     }
 
     pub fn set_config(&self, config: AppConfig) {
-        let mut app_config_lock = self.app_config.lock().unwrap();
-        *app_config_lock = Some(Arc::new(config));
+        let mut write = self.app_config.write().unwrap();
+        *write = Some(Arc::new(config));
     }
 }
 

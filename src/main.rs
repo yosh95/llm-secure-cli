@@ -226,9 +226,10 @@ async fn start_chat_session(
         client.get_state_mut().live_debug = args.debug;
 
         if let Some(session_path) = args.session
-            && let Err(e) = client.load_session(&session_path) {
-                ui::report_error(&format!("Failed to load session: {}", e));
-            }
+            && let Err(e) = client.load_session(&session_path)
+        {
+            ui::report_error(&format!("Failed to load session: {}", e));
+        }
 
         let pdf_as_base64 = client.should_send_pdf_as_base64();
         let mut session = ChatSession::new(client, ctx.clone());

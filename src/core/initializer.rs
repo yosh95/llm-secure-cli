@@ -1,7 +1,6 @@
 use crate::cli::ui;
 use crate::core::context::AppContext;
 use std::io::{IsTerminal, stdin};
-use std::process;
 use std::sync::Arc;
 
 pub async fn initialize_app() -> anyhow::Result<Arc<AppContext>> {
@@ -81,13 +80,18 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
             if let Err(e) = verifier.rebuild_manifest() {
                 ui::report_error(&format!("Failed to build manifest: {}", e));
                 if security_level == "high" {
-                    process::exit(1);
+                    return Err(anyhow::anyhow!(
+                        "Integrity manifest build failed in 'high' security mode: {}",
+                        e
+                    ));
                 }
             } else {
                 ui::report_success("Integrity manifest generated.");
             }
         } else if security_level == "high" {
-            process::exit(1);
+            return Err(anyhow::anyhow!(
+                "Execution aborted: integrity manifest not found in 'high' security mode."
+            ));
         }
     } else {
         match verifier.verify() {
@@ -111,7 +115,10 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
                     if let Err(e) = verifier.rebuild_manifest() {
                         ui::report_error(&format!("Failed to rebuild manifest: {}", e));
                         if security_level == "high" {
-                            process::exit(1);
+                            return Err(anyhow::anyhow!(
+                                "Integrity manifest rebuild failed in 'high' security mode: {}",
+                                e
+                            ));
                         }
                     } else {
                         ui::report_success("Integrity manifest updated.");
@@ -120,7 +127,9 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
                     ui::report_error(
                         "Execution aborted due to integrity failure in 'high' security mode.",
                     );
-                    process::exit(1);
+                    return Err(anyhow::anyhow!(
+                        "Execution aborted: integrity verification failed in 'high' security mode."
+                    ));
                 }
             }
             Err(e) => {

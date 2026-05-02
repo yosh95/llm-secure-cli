@@ -1,17 +1,9 @@
 use crate::config::ConfigManager;
-use crate::llm::base::{BaseLlmClientData, LlmClient, ProviderSpec};
+use crate::llm::base::{BaseLlmClientData, LlmClient, ProviderSpec, create_http_client};
 use crate::llm::models::{ClientState, ContentPart, DataSource, Message, MessagePart, Role};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-
-use once_cell::sync::Lazy;
-
-static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
-    reqwest::Client::builder()
-        .build()
-        .expect("Failed to create reqwest client")
-});
 
 /// Generic OpenAI-compatible API client.
 /// Supports any provider that follows the OpenAI Chat Completions API format.
@@ -19,6 +11,7 @@ pub struct OpenAiCompatibleClient {
     pub base: BaseLlmClientData,
     pub api_url: String,
     pub api_key: String,
+    pub http_client: reqwest::Client,
     pub supports_tools: bool,
     pub supports_vision: bool,
     pub image_generation_enabled: bool,
@@ -58,10 +51,13 @@ impl OpenAiCompatibleClient {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
+        let http_client = create_http_client(config_manager);
+
         Self {
             base,
             api_url,
             api_key: api_key.to_string(),
+            http_client,
             supports_tools,
             supports_vision: true,
             image_generation_enabled,
@@ -349,7 +345,8 @@ impl LlmClient for OpenAiCompatibleClient {
             body["modalities"] = json!(["text", "image"]);
         }
 
-        let res = CLIENT
+        let res = self
+            .http_client
             .post(&self.api_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
@@ -527,7 +524,8 @@ impl LlmClient for OpenAiCompatibleClient {
         let messages = self.build_messages(&data);
         let body =
             json!({ "model": self.base.state.model, "messages": messages, "max_tokens": 1024 });
-        let res = CLIENT
+        let res = self
+            .http_client
             .post(&self.api_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&body)

@@ -18,7 +18,8 @@ fn test_file_ops_list_and_search() {
     // Setup allowed paths for test
     let mut config_raw = AppConfig::default();
     let canon_path = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-    config_raw.security.allowed_paths = vec![".".to_string(), canon_path.to_string_lossy().to_string()];
+    config_raw.security.allowed_paths =
+        vec![".".to_string(), canon_path.to_string_lossy().to_string()];
     let config = Arc::new(config_raw);
 
     // Setup directory structure
@@ -116,7 +117,8 @@ fn test_read_file_content_options() {
     let mut config_raw = AppConfig::default();
     // Canonicalize the allowed path to match validator behavior
     let canon_path = std::fs::canonicalize(dir.path()).unwrap_or_else(|_| dir.path().to_path_buf());
-    config_raw.security.allowed_paths = vec![".".to_string(), canon_path.to_string_lossy().to_string()];
+    config_raw.security.allowed_paths =
+        vec![".".to_string(), canon_path.to_string_lossy().to_string()];
     let config = Arc::new(config_raw);
 
     fs::write(&file_path, "line1\nline2\nline3\nline4").unwrap();
@@ -171,7 +173,6 @@ async fn test_shell_security_block() {
     assert!(res.unwrap_err().contains("Security Blocked"));
 }
 
-
 #[test]
 fn test_static_analyzer_blocks_shell_invocation() {
     use llm_secure_cli::security::static_analyzer::StaticAnalyzer;
@@ -212,7 +213,8 @@ fn test_file_modification_tools() {
 
     let mut config_raw = AppConfig::default();
     let canon_path = std::fs::canonicalize(dir.path()).unwrap_or_else(|_| dir.path().to_path_buf());
-    config_raw.security.allowed_paths = vec![".".to_string(), canon_path.to_string_lossy().to_string()];
+    config_raw.security.allowed_paths =
+        vec![".".to_string(), canon_path.to_string_lossy().to_string()];
     let config = Arc::new(config_raw);
 
     // 1. Create file
