@@ -162,13 +162,16 @@ pub async fn process_sources(sources: Vec<String>, pdf_as_base64: bool) -> Vec<D
     results
 }
 
-pub fn save_image(b64_data: &str, mime_type: &str, save_path: &str) -> anyhow::Result<String> {
+pub fn save_media(b64_data: &str, mime_type: &str, save_path: &str) -> anyhow::Result<String> {
     let bytes = general_purpose::STANDARD.decode(b64_data)?;
     let extension = match mime_type {
         "image/png" => "png",
         "image/jpeg" | "image/jpg" => "jpg",
         "image/gif" => "gif",
         "image/webp" => "webp",
+        "video/mp4" => "mp4",
+        "video/webm" => "webm",
+        "video/mpeg" => "mpeg",
         _ => "bin",
     };
 

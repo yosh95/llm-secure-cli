@@ -85,6 +85,8 @@ pub struct CapabilityRule {
     pub supports_tools: bool,
     #[serde(default)]
     pub image_generation: bool,
+    #[serde(default)]
+    pub video_generation: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]

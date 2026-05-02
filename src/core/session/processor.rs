@@ -124,13 +124,13 @@ impl ChatSession {
                     let b64_data = id.get("data").and_then(|v| v.as_str()).unwrap_or("");
                     let mime_type = id.get("mimeType").and_then(|v| v.as_str()).unwrap_or("");
                     if !b64_data.is_empty() {
-                        match crate::utils::media::save_image(
+                        match crate::utils::media::save_media(
                             b64_data,
                             mime_type,
                             &config.general.image_save_path,
                         ) {
-                            Ok(path) => ui::report_success(&format!("Image saved to: {}", path)),
-                            Err(e) => ui::report_error(&format!("Failed to save image: {}", e)),
+                            Ok(path) => ui::report_success(&format!("Media saved to: {}", path)),
+                            Err(e) => ui::report_error(&format!("Failed to save media: {}", e)),
                         }
                     }
                 }

@@ -15,6 +15,7 @@ pub struct OpenAiCompatibleClient {
     pub supports_tools: bool,
     pub supports_vision: bool,
     pub image_generation_enabled: bool,
+    pub video_generation_enabled: bool,
 }
 
 impl OpenAiCompatibleClient {
@@ -44,6 +45,7 @@ impl OpenAiCompatibleClient {
 
         let mut supports_tools = true;
         let mut image_generation_enabled = false;
+        let mut video_generation_enabled = false;
 
         // Apply dynamic rules based on model ID
         let model_id_lower = model.to_lowercase();
@@ -53,6 +55,7 @@ impl OpenAiCompatibleClient {
             {
                 supports_tools = rule.supports_tools;
                 image_generation_enabled = rule.image_generation;
+                video_generation_enabled = rule.video_generation;
             }
         }
 
@@ -66,6 +69,7 @@ impl OpenAiCompatibleClient {
             supports_tools,
             supports_vision: true,
             image_generation_enabled,
+            video_generation_enabled,
         })
     }
 
@@ -173,8 +177,13 @@ impl OpenAiCompatibleClient {
                                             "format": mime.split('/').next_back().unwrap_or("mp3")
                                         }
                                     }));
+                                } else if mime.starts_with("video/") {
+                                    content_parts.push(json!({
+                                        "type": "video_url",
+                                        "video_url": { "url": Self::data_url(mime, data) }
+                                    }));
                                 } else {
-                                    // Fallback for video etc.
+                                    // Fallback for others
                                     content_parts.push(json!({
                                         "type": "image_url",
                                         "image_url": { "url": Self::data_url(mime, data) }
@@ -200,7 +209,7 @@ impl OpenAiCompatibleClient {
 
                 let has_media = content_only_parts.iter().any(|p| {
                     let t = p.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                    t == "image_url" || t == "input_audio"
+                    t == "image_url" || t == "input_audio" || t == "video_url"
                 });
 
                 let content = if content_only_parts.is_empty() {
@@ -233,14 +242,19 @@ impl OpenAiCompatibleClient {
                     new_parts
                         .push(json!({"type": "text", "text": d.content.as_str().unwrap_or("")}));
                 }
-                ct if ct == "application/pdf"
-                    || ct.starts_with("image/")
-                    || ct.starts_with("video/") =>
-                {
+                ct if ct == "application/pdf" || ct.starts_with("image/") => {
                     if let Some(b64) = d.content.as_str() {
                         new_parts.push(json!({
                             "type": "image_url",
                             "image_url": { "url": Self::data_url(ct, b64) }
+                        }));
+                    }
+                }
+                ct if ct.starts_with("video/") => {
+                    if let Some(b64) = d.content.as_str() {
+                        new_parts.push(json!({
+                            "type": "video_url",
+                            "video_url": { "url": Self::data_url(ct, b64) }
                         }));
                     }
                 }
@@ -273,7 +287,7 @@ impl OpenAiCompatibleClient {
         if !new_parts.is_empty() {
             let has_media = new_parts.iter().any(|p| {
                 let t = p.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                t == "image_url" || t == "input_audio"
+                t == "image_url" || t == "input_audio" || t == "video_url"
             });
             let content = if has_media || new_parts.len() > 1 {
                 Value::Array(new_parts)
@@ -341,13 +355,25 @@ impl LlmClient for OpenAiCompatibleClient {
         if self.supports_tools && self.image_generation_enabled {
             tools.push(json!({ "type": "image_generation" }));
         }
+        if self.supports_tools && self.video_generation_enabled {
+            tools.push(json!({ "type": "video_generation" }));
+        }
         if !tools.is_empty() {
             body["tools"] = json!(tools);
             body["tool_choice"] = json!("auto");
         }
 
-        if self.base.config_section == "openrouter" && self.image_generation_enabled {
-            body["modalities"] = json!(["text", "image"]);
+        if self.base.config_section == "openrouter"
+            && (self.image_generation_enabled || self.video_generation_enabled)
+        {
+            let mut modalities = vec!["text"];
+            if self.image_generation_enabled {
+                modalities.push("image");
+            }
+            if self.video_generation_enabled {
+                modalities.push("video");
+            }
+            body["modalities"] = json!(modalities);
         }
 
         let res = self
@@ -405,6 +431,30 @@ impl LlmClient for OpenAiCompatibleClient {
                             ..Default::default()
                         })));
                     }
+                    if let Some(video_url) = part
+                        .get("video_url")
+                        .and_then(|v| v.get("url"))
+                        .and_then(|v| v.as_str())
+                        && video_url.starts_with("data:")
+                        && let Some(comma_pos) = video_url.find(',')
+                    {
+                        let header = &video_url[..comma_pos];
+                        let b64_data = &video_url[comma_pos + 1..];
+                        let mime_type = header
+                            .trim_start_matches("data:")
+                            .split(';')
+                            .next()
+                            .unwrap_or("video/mp4");
+
+                        let mut inline_data = HashMap::new();
+                        inline_data.insert("mimeType".to_string(), json!(mime_type));
+                        inline_data.insert("data".to_string(), json!(b64_data));
+
+                        assistant_parts.push(MessagePart::Part(Box::new(ContentPart {
+                            inline_data: Some(inline_data),
+                            ..Default::default()
+                        })));
+                    }
                     if let Some(id) = part.get("inline_data") {
                         let mut inline_data = HashMap::new();
                         if let Some(m) = id
@@ -449,6 +499,37 @@ impl LlmClient for OpenAiCompatibleClient {
                         .split(';')
                         .next()
                         .unwrap_or("image/png");
+
+                    let mut inline_data = HashMap::new();
+                    inline_data.insert("mimeType".to_string(), json!(mime_type));
+                    inline_data.insert("data".to_string(), json!(b64_data));
+
+                    assistant_parts.push(MessagePart::Part(Box::new(ContentPart {
+                        inline_data: Some(inline_data),
+                        ..Default::default()
+                    })));
+                }
+            }
+        }
+
+        // Handle possible videos array
+        if let Some(videos) = message.get("videos").and_then(|v| v.as_array()) {
+            for video in videos {
+                if let Some(video_url) = video
+                    .get("video_url")
+                    .or(video.get("videoUrl"))
+                    .and_then(|v| v.get("url"))
+                    .and_then(|v| v.as_str())
+                    && video_url.starts_with("data:")
+                    && let Some(comma_pos) = video_url.find(',')
+                {
+                    let header = &video_url[..comma_pos];
+                    let b64_data = &video_url[comma_pos + 1..];
+                    let mime_type = header
+                        .trim_start_matches("data:")
+                        .split(';')
+                        .next()
+                        .unwrap_or("video/mp4");
 
                     let mut inline_data = HashMap::new();
                     inline_data.insert("mimeType".to_string(), json!(mime_type));

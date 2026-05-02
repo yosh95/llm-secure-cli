@@ -99,6 +99,11 @@ pattern = ".*(image).*"
 supports_tools = false
 image_generation = true
 
+[[rules]]
+pattern = ".*(video).*"
+supports_tools = false
+video_generation = true
+
 # =============================================================================
 # Templates (Reusable Prompts)
 # =============================================================================
