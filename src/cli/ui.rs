@@ -107,11 +107,10 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             // Print other arguments if any (except explanation which we want last)
             for (k, v) in obj {
                 if k != "path" && k != "search" && k != "replace" && k != "explanation" {
-                    let val_str = if v.is_string() {
-                        v.as_str().unwrap().to_string()
-                    } else {
-                        v.to_string()
-                    };
+                    let val_str = v
+                        .as_str()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| v.to_string());
                     println!("    {} {}: {}", "•".bright_black(), k.cyan(), val_str);
                 }
             }
@@ -129,21 +128,19 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             // Print all arguments except explanation
             for (k, v) in obj {
                 if k != "explanation" {
-                    let val_str = if v.is_string() {
-                        v.as_str().unwrap().to_string()
-                    } else {
-                        v.to_string()
-                    };
+                    let val_str = v
+                        .as_str()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| v.to_string());
                     println!("    {} {}: {}", "•".bright_black(), k.cyan(), val_str);
                 }
             }
             // Print explanation last
             if let Some(v) = obj.get("explanation") {
-                let val_str = if v.is_string() {
-                    v.as_str().unwrap().to_string()
-                } else {
-                    v.to_string()
-                };
+                let val_str = v
+                    .as_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| v.to_string());
                 println!(
                     "    {} {}: {}",
                     "•".bright_black(),
@@ -316,9 +313,9 @@ pub fn print_tool_result(result: &str) {
                 for line in pretty.lines() {
                     println!("    {}", line.dimmed());
                 }
-            } else if v.is_string() {
+            } else if let Some(s) = v.as_str() {
                 // If it's just a string, print it directly (it might have newlines)
-                for line in v.as_str().unwrap().lines() {
+                for line in s.lines() {
                     println!("    {}", line.dimmed());
                 }
             } else {
@@ -444,7 +441,13 @@ pub fn get_user_input(prompt: &str) -> Option<String> {
     use rustyline::DefaultEditor;
     use rustyline::error::ReadlineError;
 
-    let mut rl = DefaultEditor::new().expect("Failed to create editor");
+    let mut rl = match DefaultEditor::new() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to create editor: {:?}", e);
+            return None;
+        }
+    };
     match rl.readline(prompt) {
         Ok(line) => Some(line.trim().to_string()),
         Err(ReadlineError::Interrupted) => {

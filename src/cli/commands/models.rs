@@ -32,13 +32,23 @@ pub async fn list_models(
             ("https://openrouter.ai/api/v1/models".to_string(), h)
         }
         "ollama" => {
-            let config = config_manager.get_config();
+            let config = match config_manager.get_config() {
+                Ok(c) => c,
+                Err(e) => {
+                    ui::report_error(&format!("Failed to load config: {}", e));
+                    return;
+                }
+            };
             let mut base_url = "http://localhost:11434".to_string();
             if let Some(p_cfg) = config.providers.get("ollama")
                 && let Some(api_url) = &p_cfg.api_url
             {
                 if api_url.contains("/v1") {
-                    base_url = api_url.split("/v1").next().unwrap().to_string();
+                    base_url = api_url
+                        .split("/v1")
+                        .next()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| api_url.clone());
                 } else {
                     base_url = api_url.clone();
                 }
@@ -110,8 +120,9 @@ pub async fn list_models(
                 };
                 if let Some(id_str) = id
                     && models.contains(&id_str.to_string())
+                    && let Ok(pretty) = serde_json::to_string_pretty(m)
                 {
-                    println!("{}", serde_json::to_string_pretty(m).unwrap());
+                    println!("{}", pretty);
                 }
             }
         } else if verbose {
@@ -165,6 +176,10 @@ pub async fn list_models(
             }
         }
     } else {
-        println!("{}", serde_json::to_string_pretty(&result).unwrap());
+        if let Ok(pretty) = serde_json::to_string_pretty(&result) {
+            println!("{}", pretty);
+        } else {
+            println!("{:?}", result);
+        }
     }
 }

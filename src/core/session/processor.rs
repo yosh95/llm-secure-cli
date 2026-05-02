@@ -105,7 +105,13 @@ impl ChatSession {
 
     /// Processes images or other data types in the assistant's message.
     async fn handle_media_output(&self) {
-        let config = self.ctx.config_manager.get_config();
+        let config = match self.ctx.config_manager.get_config() {
+            Ok(c) => c,
+            Err(e) => {
+                ui::report_error(&format!("Failed to load config for media output: {}", e));
+                return;
+            }
+        };
         let last_msg = self.get_client().get_state().conversation.last();
 
         if let Some(msg) = last_msg
@@ -179,7 +185,7 @@ impl ChatSession {
         name: &str,
         args: &serde_json::Map<String, Value>,
     ) -> anyhow::Result<Value> {
-        let config = self.ctx.config_manager.get_config();
+        let config = self.ctx.config_manager.get_config()?;
 
         // 1. Phase 1: Static Checks (Path, Syntax)
         if let Err(e) = crate::security::validate_tool_call(name, args, &config.security) {
@@ -241,7 +247,10 @@ impl ChatSession {
         args: &serde_json::Map<String, Value>,
     ) -> tokio::task::JoinHandle<VerificationOutcome> {
         let ctx_clone = self.ctx.clone();
-        let config_clone = self.ctx.config_manager.get_config().security.clone();
+        let config_clone = match self.ctx.config_manager.get_config() {
+            Ok(c) => c.security.clone(),
+            Err(_) => crate::config::models::SecurityConfig::default(),
+        };
         let intent_context = self.get_intent_context();
         let name_clone = name.to_string();
         let args_clone = serde_json::json!(args);
@@ -288,7 +297,10 @@ impl ChatSession {
         args: &serde_json::Map<String, Value>,
         _risk_level: RiskLevel,
     ) -> Value {
-        let config = self.ctx.config_manager.get_config();
+        let config = match self.ctx.config_manager.get_config() {
+            Ok(c) => c,
+            Err(e) => return Value::String(format!("Error: Failed to load config: {}", e)),
+        };
         let user_id = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
 
         let result = tokio::select! {
@@ -352,7 +364,10 @@ impl ChatSession {
     }
 
     fn is_auto_approved(&self, _name: &str, risk: RiskLevel) -> bool {
-        let config = self.ctx.config_manager.get_config();
+        let config = match self.ctx.config_manager.get_config() {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
         let policy = config
             .security
             .auto_approval_level
@@ -373,7 +388,10 @@ impl ChatSession {
     }
 
     async fn handle_verifier_fallback(&self, name: &str, reason: &str) -> bool {
-        let config = self.ctx.config_manager.get_config();
+        let config = match self.ctx.config_manager.get_config() {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
         match config.security.verifier_fallback.as_str() {
             "block" => {
                 ui::report_error(&format!("Verifier unavailable — blocked: {}", reason));

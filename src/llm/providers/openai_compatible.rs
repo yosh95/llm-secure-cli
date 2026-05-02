@@ -26,14 +26,14 @@ impl OpenAiCompatibleClient {
         model: &str,
         stdout: bool,
         raw: bool,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
         let spec = ProviderSpec {
             api_key_name: "api_key".to_string(),
             config_section: provider_name.to_string(),
             pdf_as_base64: true,
         };
         let _model_config = config_manager.get_model_config(provider_name, model);
-        let config = config_manager.get_config();
+        let config = config_manager.get_config()?;
         let base = BaseLlmClientData::new(config_manager, model, spec, stdout, raw);
 
         let api_url = if api_url.ends_with("/chat/completions") {
@@ -56,9 +56,9 @@ impl OpenAiCompatibleClient {
             }
         }
 
-        let http_client = create_http_client(config_manager);
+        let http_client = create_http_client(config_manager)?;
 
-        Self {
+        Ok(Self {
             base,
             api_url,
             api_key: api_key.to_string(),
@@ -66,7 +66,7 @@ impl OpenAiCompatibleClient {
             supports_tools,
             supports_vision: true,
             image_generation_enabled,
-        }
+        })
     }
 
     fn data_url(mime_type: &str, b64_data: &str) -> String {

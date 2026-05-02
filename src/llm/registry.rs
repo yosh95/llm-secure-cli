@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub type ClientFactory = Arc<
-    dyn Fn(&str, bool, bool, &crate::config::ConfigManager) -> Box<dyn LlmClient> + Send + Sync,
+    dyn Fn(&str, bool, bool, &crate::config::ConfigManager) -> anyhow::Result<Box<dyn LlmClient>>
+        + Send
+        + Sync,
 >;
 
 pub struct ClientRegistry {
@@ -37,7 +39,13 @@ impl ClientRegistry {
     ) -> Option<Box<dyn LlmClient>> {
         self.factories
             .get(name)
-            .map(|f| f(model, stdout, raw, config_manager))
+            .and_then(|f| match f(model, stdout, raw, config_manager) {
+                Ok(client) => Some(client),
+                Err(e) => {
+                    eprintln!("Error creating client '{}': {}", name, e);
+                    None
+                }
+            })
     }
 
     pub fn list_aliases(&self) -> Vec<String> {

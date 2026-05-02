@@ -121,7 +121,13 @@ impl ClientSession {
                     Some((req, response_tx)) = request_rx.recv() => {
                         let id = req.get("id").and_then(|id| id.as_i64()).unwrap_or(0);
                         pending_requests.insert(id, response_tx);
-                        let mut line = serde_json::to_string(&req).unwrap();
+                        let mut line = match serde_json::to_string(&req) {
+                            Ok(l) => l,
+                            Err(e) => {
+                                log::error!("Failed to serialize MCP request: {}", e);
+                                continue;
+                            }
+                        };
                         line.push('\n');
                         if let Err(e) = writer.write_all(line.as_bytes()).await {
                             log::error!("Failed to write to MCP server: {}", e);

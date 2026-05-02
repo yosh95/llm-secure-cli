@@ -98,7 +98,11 @@ impl Completer for ChatCompleter {
                         return Ok((start, matches));
                     }
                     "/model" | "/m" => {
-                        let provider = self.current_provider.lock().unwrap().clone();
+                        let provider = if let Ok(guard) = self.current_provider.lock() {
+                            guard.clone()
+                        } else {
+                            String::new()
+                        };
                         let models_map = self.ctx.config_manager.get_cached_models_sync();
                         let mut matches = Vec::new();
 

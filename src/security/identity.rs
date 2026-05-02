@@ -37,7 +37,9 @@ impl IdentityManager {
     }
 
     pub fn ensure_keys(force: bool) -> Result<()> {
-        let mut ensured = KEYS_ENSURED.lock().unwrap();
+        let mut ensured = KEYS_ENSURED
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
         if *ensured && !force {
             return Ok(());
         }
@@ -87,7 +89,10 @@ impl IdentityManager {
 
         *ensured = true;
         if force {
-            KEY_CACHE.lock().unwrap().clear();
+            KEY_CACHE
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?
+                .clear();
         }
         Ok(())
     }
@@ -206,7 +211,7 @@ impl IdentityManager {
         let pqc_priv = Self::get_pqc_private_key(variant)?;
 
         let cose_token_bytes =
-            HybridSigner::create_hybrid_token(&payload, &classical_priv, &pqc_priv, variant);
+            HybridSigner::create_hybrid_token(&payload, &classical_priv, &pqc_priv, variant)?;
 
         Ok(general_purpose::URL_SAFE_NO_PAD.encode(cose_token_bytes))
     }

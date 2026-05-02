@@ -477,8 +477,8 @@ pub fn grep_files(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyho
         "truncated": results.len() >= MAX_SEARCH_RESULTS,
     });
 
-    if timed_out {
-        response.as_object_mut().unwrap().insert(
+    if timed_out && let Some(obj) = response.as_object_mut() {
+        obj.insert(
             "error".to_string(),
             json!(format!(
                 "Search timed out after {} seconds.",

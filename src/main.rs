@@ -209,8 +209,14 @@ async fn start_chat_session(
     is_atty: bool,
 ) {
     let cm = &ctx.config_manager;
-    let _config = cm.get_config();
-    let state = cm.get_state();
+    let _config = match cm.get_config() {
+        Ok(c) => c,
+        Err(e) => {
+            ui::report_error(&format!("Failed to load config: {}", e));
+            process::exit(1);
+        }
+    };
+    let state = cm.get_state().unwrap_or_default();
     let active_providers = cm.get_active_providers();
 
     let is_first_launch = args.provider.is_none() && state.last_used_provider.is_none();
@@ -264,7 +270,13 @@ async fn start_chat_session(
         }
 
         let pdf_as_base64 = client.should_send_pdf_as_base64();
-        let mut session = ChatSession::new(client, ctx.clone());
+        let mut session = match ChatSession::new(client, ctx.clone()) {
+            Ok(s) => s,
+            Err(e) => {
+                ui::report_error(&format!("Failed to initialize session: {}", e));
+                process::exit(1);
+            }
+        };
 
         let mut all_sources = args.sources;
         if !is_atty {

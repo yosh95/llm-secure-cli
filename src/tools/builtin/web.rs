@@ -172,18 +172,24 @@ async fn fetch_url(url: &str) -> anyhow::Result<String> {
     let body = res.text().await?;
 
     if content_type.contains("html") {
-        Ok(html_to_text(&body))
+        Ok(html_to_text(&body)?)
     } else {
         Ok(body)
     }
 }
 
-fn html_to_text(html: &str) -> String {
-    let re_script = regex::Regex::new(r"(?is)<script[^>]*>.*?</script>").unwrap();
-    let re_style = regex::Regex::new(r"(?is)<style[^>]*>.*?</style>").unwrap();
-    let cleaned = re_script.replace_all(html, "");
-    let cleaned = re_style.replace_all(&cleaned, "");
-    html2text::from_read(cleaned.as_bytes(), 100).unwrap()
+fn html_to_text(html: &str) -> anyhow::Result<String> {
+    use once_cell::sync::Lazy;
+    use regex::Regex;
+
+    static RE_SCRIPT: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(?is)<script[^>]*>.*?</script>").expect("Invalid script regex"));
+    static RE_STYLE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(?is)<style[^>]*>.*?</style>").expect("Invalid style regex"));
+
+    let cleaned = RE_SCRIPT.replace_all(html, "");
+    let cleaned = RE_STYLE.replace_all(&cleaned, "");
+    Ok(html2text::from_read(cleaned.as_bytes(), 100)?)
 }
 
 /// Parameters for the Brave LLM Context API.

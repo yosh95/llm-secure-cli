@@ -13,7 +13,14 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
-static ANCHOR_DIR: Lazy<PathBuf> = Lazy::new(|| AUDIT_LOG_PATH.parent().unwrap().join("anchors"));
+static ANCHOR_DIR: Lazy<PathBuf> = Lazy::new(|| {
+    let mut p = AUDIT_LOG_PATH.to_path_buf();
+    if p.pop() {
+        p.join("anchors")
+    } else {
+        PathBuf::from("anchors")
+    }
+});
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SessionAnchor {
@@ -39,11 +46,18 @@ impl SessionAnchorManager {
 
         let mut log_files = Vec::new();
 
-        if let Ok(read_dir) = fs::read_dir(log_path.parent().unwrap()) {
+        if let Some(parent) = log_path.parent()
+            && let Ok(read_dir) = fs::read_dir(parent)
+        {
+            let log_file_name = log_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
+
             for entry in read_dir.flatten() {
                 let name = entry.file_name();
-                let name_str = name.to_str().unwrap();
-                if name_str.starts_with(log_path.file_name().unwrap().to_str().unwrap())
+                if let Some(name_str) = name.to_str()
+                    && name_str.starts_with(log_file_name)
                     && name_str.contains(".archive.")
                 {
                     log_files.push(entry.path());
@@ -105,12 +119,17 @@ impl SessionAnchorManager {
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs());
 
+        let last_entry_hash = leaf_hashes
+            .last()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("No entries to anchor"))?;
+
         let mut anchor = SessionAnchor {
             trace_id: trace_id.to_string(),
             merkle_root: root_hex.clone(),
             entry_count: entries.len(),
             first_entry_hash: leaf_hashes[0].clone(),
-            last_entry_hash: leaf_hashes.last().unwrap().clone(),
+            last_entry_hash,
             timestamp: entries.last().and_then(|e| e.get("timestamp").cloned()),
             anchored_at: mtime,
             pqc_signature: None,

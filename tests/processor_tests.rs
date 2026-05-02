@@ -77,12 +77,16 @@ impl LlmClient for MockProcessorClient {
 async fn test_processor_tool_execution_flow() {
     // 1. Setup Config for Auto-approval
     let ctx = AppContext::new();
-    let mut config = (*ctx.config_manager.get_config()).clone();
+    let mut config = (*ctx
+        .config_manager
+        .get_config()
+        .expect("Failed to get config"))
+    .clone();
     config.security.auto_approval_level = Some("low".to_string());
     config.security.low_risk_tools = vec!["list_files_in_directory".to_string()];
     config.security.dual_llm_verification = Some(true);
     config.security.dual_llm_provider = "mock".to_string();
-    ctx.config_manager.set_config(config);
+    let _ = ctx.config_manager.set_config(config);
     let ctx = Arc::new(ctx);
 
     // 2. Register Mock Client in Registry for Verifier
@@ -91,7 +95,7 @@ async fn test_processor_tool_execution_flow() {
         registry.register(
             "mock",
             Arc::new(|_model, stdout, raw, _config_manager| {
-                Box::new(MockProcessorClient {
+                Ok(Box::new(MockProcessorClient {
                     state: ClientState {
                         model: "mock-model".to_string(),
                         provider: "mock".to_string(),
@@ -105,7 +109,7 @@ async fn test_processor_tool_execution_flow() {
                     },
                     responses: vec![],
                     call_count: 0,
-                })
+                }))
             }),
         );
     }

@@ -82,10 +82,13 @@ pub fn run_verify_session(trace_id: &str) {
 pub fn list_anchors() {
     ui::report_success("Available Sessions (PQC-Anchored):");
 
-    let anchor_dir = crate::consts::AUDIT_LOG_PATH
-        .parent()
-        .unwrap()
-        .join("anchors");
+    let anchor_dir = match crate::consts::AUDIT_LOG_PATH.parent() {
+        Some(p) => p.join("anchors"),
+        None => {
+            println!("No audit log parent directory found.");
+            return;
+        }
+    };
     if !anchor_dir.exists() {
         println!("No session anchors found.");
         return;

@@ -153,12 +153,12 @@ impl BaseLlmClientData {
 }
 
 /// Creates a reqwest client with timeout settings from the global config.
-pub fn create_http_client(config_manager: &ConfigManager) -> reqwest::Client {
-    let config = config_manager.get_config();
+pub fn create_http_client(config_manager: &ConfigManager) -> anyhow::Result<reqwest::Client> {
+    let config = config_manager.get_config()?;
     let timeout_secs = config.general.request_timeout;
 
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(timeout_secs))
         .build()
-        .expect("Failed to create reqwest client")
+        .map_err(|e| anyhow::anyhow!("Failed to create reqwest client: {}", e))
 }

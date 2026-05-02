@@ -50,12 +50,13 @@ impl ToolRegistry {
                 obj.insert("properties".to_string(), json!({}));
             }
 
-            let props = obj.get_mut("properties").unwrap().as_object_mut().unwrap();
-            if !props.contains_key("explanation") {
+            if let Some(props) = obj.get_mut("properties").and_then(|v| v.as_object_mut())
+                && !props.contains_key("explanation")
+            {
                 props.insert("explanation".to_string(), json!({
-                    "type": "string",
-                    "description": "A detailed explanation of why this tool is needed and what it will do, providing context for the user to approve the action."
-                }));
+                        "type": "string",
+                        "description": "A detailed explanation of why this tool is needed and what it will do, providing context for the user to approve the action."
+                    }));
             }
 
             if let Some(req) = obj.get_mut("required").and_then(|v| v.as_array_mut()) {
@@ -151,7 +152,7 @@ pub async fn initialize_remote_tools(
 ) -> anyhow::Result<()> {
     let tools = mcp_manager.initialize_servers(config_manager).await?;
 
-    let config = config_manager.get_config();
+    let config = config_manager.get_config()?;
     let allowed_tools = config.security.allowed_tools.clone();
 
     let mut registry = registry.lock().await;
@@ -169,8 +170,11 @@ pub async fn initialize_remote_tools(
 }
 
 pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::config::ConfigManager) {
-    let config = config_manager.get_config();
-    let allowed_tools = config.security.allowed_tools.clone();
+    let allowed_tools = if let Ok(config) = config_manager.get_config() {
+        config.security.allowed_tools.clone()
+    } else {
+        None
+    };
 
     let maybe_register =
         |r: &mut ToolRegistry, name: &str, description: &str, parameters: Value, func: ToolFunc| {

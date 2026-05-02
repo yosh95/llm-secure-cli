@@ -54,7 +54,7 @@ async fn test_dual_llm_verification_logic() {
         registry.register(
             "mock_provider",
             Arc::new(|_model, stdout, raw, _config_manager| {
-                Box::new(MockLlmClient {
+                Ok(Box::new(MockLlmClient {
                     response: "ALLOW: User intent is clear".to_string(),
                     state: ClientState {
                         model: "mock-model".to_string(),
@@ -67,7 +67,7 @@ async fn test_dual_llm_verification_logic() {
                         render_markdown: !raw,
                         live_debug: false,
                     },
-                })
+                }))
             }),
         );
     }
@@ -98,7 +98,7 @@ async fn test_dual_llm_verification_logic() {
         registry.register(
             "mock_provider_fail",
             Arc::new(|_model, stdout, raw, _config_manager| {
-                Box::new(MockLlmClient {
+                Ok(Box::new(MockLlmClient {
                     response: "BLOCK: Malicious command detected".to_string(),
                     state: ClientState {
                         model: "mock-model".to_string(),
@@ -111,7 +111,7 @@ async fn test_dual_llm_verification_logic() {
                         render_markdown: !raw,
                         live_debug: false,
                     },
-                })
+                }))
             }),
         );
     }

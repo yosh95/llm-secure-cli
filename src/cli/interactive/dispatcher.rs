@@ -150,7 +150,13 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
 
 pub fn handle_info(session: &ChatSession) {
     let state = session.get_client().get_state();
-    let config = session.ctx.config_manager.get_config();
+    let config = match session.ctx.config_manager.get_config() {
+        Ok(c) => c,
+        Err(e) => {
+            ui::report_error(&format!("Failed to load config: {}", e));
+            return;
+        }
+    };
 
     ui::print_rule(Some("Session Info"), Some("cyan"));
     ui::print_key_value("Session ID", &session.trace_id);
@@ -318,7 +324,7 @@ pub async fn handle_model_cmd(session: &mut ChatSession, args: &str) {
         match client {
             Some(new_client) => {
                 session.switch_client(new_client);
-                session.ctx.config_manager.update_state(&provider, args);
+                let _ = session.ctx.config_manager.update_state(&provider, args);
                 ui::report_success(&format!(
                     "Model switched to: {} ({})",
                     args,
@@ -360,7 +366,7 @@ pub async fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
             Some(new_client) => {
                 session.switch_client(new_client);
                 let new_model = session.get_client().get_state().model.clone();
-                session.ctx.config_manager.update_state(args, &new_model);
+                let _ = session.ctx.config_manager.update_state(args, &new_model);
                 ui::report_success(&format!("Switched to provider: {}", args));
             }
             _ => {

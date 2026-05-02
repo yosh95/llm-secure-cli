@@ -170,13 +170,13 @@ fn test_pqc_agility_manager() {
 
     // Use set_config instead of writing to disk and reloading
     {
-        let mut config = (*config_manager.get_config()).clone();
+        let mut config = (*config_manager.get_config().expect("Failed to get config")).clone();
         config.security.high_risk_tools = vec!["execute_command".to_string()];
         config.security.scaling_patterns = vec!["/etc/shadow".to_string()];
-        config_manager.set_config(config);
+        let _ = config_manager.set_config(config);
     }
 
-    let config = config_manager.get_config();
+    let config = config_manager.get_config().expect("Failed to get config");
 
     // Normal tool, low risk
     let level = PQCAgilityManager::get_required_level(&config, "ls", None, "low");
@@ -214,7 +214,8 @@ fn test_hybrid_cose_signer() {
 
     let payload = serde_json::json!({"msg": "Hybrid security token", "exp": 1776824283});
 
-    let token = HybridSigner::create_hybrid_token(&payload, &classical_priv, &pqc_priv, variant);
+    let token = HybridSigner::create_hybrid_token(&payload, &classical_priv, &pqc_priv, variant)
+        .expect("Failed to create token");
     assert!(!token.is_empty());
 
     let verified_payload =

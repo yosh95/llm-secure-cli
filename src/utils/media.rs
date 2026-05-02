@@ -34,7 +34,7 @@ pub async fn fetch_url_content(
         }
     } else if content_type.contains("html") {
         let html = res.text().await?;
-        let text = html_to_text(&html);
+        let text = html_to_text(&html)?;
         Ok((text, "text/plain".to_string()))
     } else if content_type.starts_with("text/") || content_type.contains("json") {
         let text = res.text().await?;
@@ -47,14 +47,18 @@ pub async fn fetch_url_content(
 }
 
 /// Convert HTML to readable plain text, stripping scripts/styles first.
-pub fn html_to_text(html: &str) -> String {
+pub fn html_to_text(html: &str) -> anyhow::Result<String> {
+    use once_cell::sync::Lazy;
     use regex::Regex;
-    // Strip <script> and <style> blocks
-    let re_script = Regex::new(r"(?is)<script[^>]*>.*?</script>").unwrap();
-    let re_style = Regex::new(r"(?is)<style[^>]*>.*?</style>").unwrap();
-    let cleaned = re_script.replace_all(html, "");
-    let cleaned = re_style.replace_all(&cleaned, "");
-    html2text::from_read(cleaned.as_bytes(), 100).unwrap()
+
+    static RE_SCRIPT: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(?is)<script[^>]*>.*?</script>").expect("Invalid script regex"));
+    static RE_STYLE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(?is)<style[^>]*>.*?</style>").expect("Invalid style regex"));
+
+    let cleaned = RE_SCRIPT.replace_all(html, "");
+    let cleaned = RE_STYLE.replace_all(&cleaned, "");
+    Ok(html2text::from_read(cleaned.as_bytes(), 100)?)
 }
 
 pub fn process_file(path: &Path, pdf_as_base64: bool) -> anyhow::Result<DataSource> {
@@ -175,8 +179,9 @@ pub fn save_image(b64_data: &str, mime_type: &str, save_path: &str) -> anyhow::R
     // Expand ~ if present
     if path.starts_with("~")
         && let Some(home) = dirs::home_dir()
+        && let Ok(stripped) = path.strip_prefix("~")
     {
-        path = home.join(path.strip_prefix("~").unwrap());
+        path = home.join(stripped);
     }
 
     fs::create_dir_all(&path)?;

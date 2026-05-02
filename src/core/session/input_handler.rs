@@ -64,8 +64,13 @@ impl ChatSession {
             .bracketed_paste(true)
             .build();
 
-        let mut rl = Editor::<ChatCompleter, FileHistory>::with_config(config)
-            .expect("Failed to create editor");
+        let mut rl = match Editor::<ChatCompleter, FileHistory>::with_config(config) {
+            Ok(e) => e,
+            Err(e) => {
+                ui::report_error(&format!("Failed to create editor: {}", e));
+                return;
+            }
+        };
         rl.set_helper(Some(ChatCompleter::new(
             current_provider.clone(),
             self.ctx.clone(),
@@ -86,7 +91,13 @@ impl ChatSession {
 
         loop {
             {
-                let mut cp = current_provider.lock().unwrap();
+                let mut cp = match current_provider.lock() {
+                    Ok(guard) => guard,
+                    Err(e) => {
+                        ui::report_error(&format!("Lock poisoned: {}", e));
+                        break;
+                    }
+                };
                 *cp = self.get_client().get_state().provider.clone();
             }
 

@@ -27,7 +27,7 @@ impl Drop for ChatSession {
         let entries_val = self
             .audit_entries
             .iter()
-            .map(|e| serde_json::to_value(e).unwrap())
+            .filter_map(|e| serde_json::to_value(e).ok())
             .collect::<Vec<_>>();
 
         if !entries_val.is_empty() {
@@ -37,11 +37,11 @@ impl Drop for ChatSession {
 }
 
 impl ChatSession {
-    pub fn new(client: Box<dyn LlmClient>, ctx: Arc<AppContext>) -> Self {
+    pub fn new(client: Box<dyn LlmClient>, ctx: Arc<AppContext>) -> anyhow::Result<Self> {
         let trace_id = format!("sess-{}", &uuid::Uuid::new_v4().to_string()[..8]);
         let user_id = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
 
-        let config = ctx.config_manager.get_config();
+        let config = ctx.config_manager.get_config()?;
         let context_val = serde_json::json!({
             "trace_id": trace_id,
             "model": client.get_state().model,
@@ -61,14 +61,14 @@ impl ChatSession {
             None,
         );
 
-        Self {
+        Ok(Self {
             client: Some(client),
             ctx,
             intent: String::new(),
             pending_data: Vec::new(),
             trace_id,
             audit_entries: entry.into_iter().collect(),
-        }
+        })
     }
 
     /// Create an empty placeholder session

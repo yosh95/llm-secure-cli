@@ -1,5 +1,6 @@
 use crate::cli::ui;
 use crate::core::context::AppContext;
+use crate::llm::base::LlmClient;
 use std::io::{IsTerminal, stdin};
 use std::sync::Arc;
 
@@ -60,7 +61,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
 
     // 2. System Integrity Check
     let verifier = IntegrityVerifier::new();
-    let config = ctx.config_manager.get_config();
+    let config = ctx.config_manager.get_config()?;
     let security_level = std::env::var("LLM_CLI_SECURITY_LEVEL")
         .unwrap_or_else(|_| config.security.security_level.clone());
 
@@ -156,19 +157,23 @@ async fn register_clients(ctx: &Arc<AppContext>) {
                 let api_key = config_manager
                     .get_api_key(&closure_p_name)
                     .unwrap_or_else(|| "".to_string());
-                let config = config_manager.get_config();
-                let api_url = config
-                    .providers
-                    .get(&closure_p_name)
-                    .and_then(|p| p.api_url.clone())
-                    .unwrap_or_else(|| match closure_p_name.as_str() {
-                        "openai" => "https://api.openai.com/v1".to_string(),
-                        "ollama" => "http://localhost:11434/v1".to_string(),
-                        "openrouter" => "https://openrouter.ai/api/v1".to_string(),
-                        _ => "".to_string(),
-                    });
 
-                Box::new(OpenAiCompatibleClient::new(
+                let api_url = if let Ok(config) = config_manager.get_config() {
+                    config
+                        .providers
+                        .get(&closure_p_name)
+                        .and_then(|p| p.api_url.clone())
+                        .unwrap_or_else(|| match closure_p_name.as_str() {
+                            "openai" => "https://api.openai.com/v1".to_string(),
+                            "ollama" => "http://localhost:11434/v1".to_string(),
+                            "openrouter" => "https://openrouter.ai/api/v1".to_string(),
+                            _ => "".to_string(),
+                        })
+                } else {
+                    "".to_string()
+                };
+
+                let client = OpenAiCompatibleClient::new(
                     config_manager,
                     &closure_p_name,
                     &api_url,
@@ -176,7 +181,8 @@ async fn register_clients(ctx: &Arc<AppContext>) {
                     model,
                     stdout,
                     raw,
-                ))
+                )?;
+                Ok(Box::new(client) as Box<dyn LlmClient>)
             }),
         );
     }

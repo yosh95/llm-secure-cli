@@ -24,17 +24,23 @@ impl ConfigManager {
         }
     }
 
-    pub fn get_state(&self) -> AppState {
+    pub fn get_state(&self) -> anyhow::Result<AppState> {
         {
-            let read = self.app_state.read().unwrap();
+            let read = self
+                .app_state
+                .read()
+                .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
             if let Some(state) = &*read {
-                return state.clone();
+                return Ok(state.clone());
             }
         }
 
-        let mut write = self.app_state.write().unwrap();
+        let mut write = self
+            .app_state
+            .write()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
         if let Some(state) = &*write {
-            return state.clone();
+            return Ok(state.clone());
         }
 
         let state = if STATE_FILE_PATH.exists() {
@@ -45,20 +51,24 @@ impl ConfigManager {
         };
 
         *write = Some(state.clone());
-        state
+        Ok(state)
     }
 
-    pub fn update_state(&self, provider: &str, model: &str) {
-        let mut state = self.get_state();
+    pub fn update_state(&self, provider: &str, model: &str) -> anyhow::Result<()> {
+        let mut state = self.get_state()?;
         state.last_used_provider = Some(provider.to_string());
         state.last_used_model = Some(model.to_string());
 
-        let mut write = self.app_state.write().unwrap();
+        let mut write = self
+            .app_state
+            .write()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
         *write = Some(state.clone());
 
         if let Ok(content) = toml::to_string(&state) {
             let _ = fs::write(&*STATE_FILE_PATH, content);
         }
+        Ok(())
     }
 
     pub async fn get_cached_models(&self) -> HashMap<String, Vec<String>> {
@@ -97,7 +107,7 @@ impl ConfigManager {
 
     async fn fetch_models_from_provider(&self, provider: &str) -> anyhow::Result<Vec<String>> {
         let api_key = self.get_api_key(provider);
-        let config = self.get_config();
+        let config = self.get_config()?;
 
         let mut url = String::new();
         if let Some(p_cfg) = config.providers.get(provider)
@@ -193,23 +203,29 @@ impl ConfigManager {
         })
     }
 
-    pub fn get_config(&self) -> Arc<AppConfig> {
+    pub fn get_config(&self) -> anyhow::Result<Arc<AppConfig>> {
         {
-            let read = self.app_config.read().unwrap();
+            let read = self
+                .app_config
+                .read()
+                .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
             if let Some(config) = &*read {
-                return Arc::clone(config);
+                return Ok(Arc::clone(config));
             }
         }
 
-        let mut write = self.app_config.write().unwrap();
+        let mut write = self
+            .app_config
+            .write()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
         if let Some(config) = &*write {
-            return Arc::clone(config);
+            return Ok(Arc::clone(config));
         }
 
         // 1. Load defaults from embedded defaults.toml
         let defaults_toml = include_str!("defaults.toml");
         let mut config_value: serde_json::Value = toml::from_str(defaults_toml)
-            .expect("CRITICAL: Failed to parse embedded defaults.toml");
+            .map_err(|e| anyhow::anyhow!("Failed to parse defaults: {}", e))?;
 
         // 2. Load user config from files and merge them
         let config_paths = [
@@ -232,17 +248,13 @@ impl ConfigManager {
 
         // 3. Final deserialization into AppConfig
         let final_config_struct: AppConfig =
-            serde_json::from_value(config_value).unwrap_or_else(|e| {
-                panic!(
-                    "CRITICAL: Failed to deserialize merged configuration: {}\n\
-                 Please check your ~/.llm_secure_cli/config.toml for schema errors.",
-                    e
-                );
-            });
+            serde_json::from_value(config_value).map_err(|e| {
+                anyhow::anyhow!("CRITICAL: Failed to deserialize merged configuration: {}\nPlease check your ~/.llm_secure_cli/config.toml for schema errors.", e)
+            })?;
 
         let final_config = Arc::new(final_config_struct);
         *write = Some(Arc::clone(&final_config));
-        final_config
+        Ok(final_config)
     }
 
     pub fn get_api_key(&self, provider: &str) -> Option<String> {
@@ -260,19 +272,22 @@ impl ConfigManager {
 
         // Special case for Ollama:
         // Return "local_bypass" ONLY when the configured endpoint is actually local.
-        if provider == "ollama" {
-            let config = self.get_config();
-            if Self::is_local_ollama(&config) {
-                return Some("local_bypass".to_string());
-            }
+        if provider == "ollama"
+            && let Ok(config) = self.get_config()
+            && Self::is_local_ollama(&config)
+        {
+            return Some("local_bypass".to_string());
         }
 
         // 2. Fallback to config
-        let config = self.get_config();
-        config
-            .providers
-            .get(provider)
-            .and_then(|p| p.api_key.clone())
+        if let Ok(config) = self.get_config() {
+            config
+                .providers
+                .get(provider)
+                .and_then(|p| p.api_key.clone())
+        } else {
+            None
+        }
     }
 
     /// Check whether an Ollama endpoint is local (no API key required).
@@ -289,7 +304,10 @@ impl ConfigManager {
     }
 
     pub fn get_active_providers(&self) -> Vec<String> {
-        let config = self.get_config();
+        let config = match self.get_config() {
+            Ok(c) => c,
+            Err(_) => return Vec::new(),
+        };
         let mut active = Vec::new();
 
         // Check all providers defined in config
@@ -307,8 +325,11 @@ impl ConfigManager {
         provider: &str,
         model: &str,
     ) -> HashMap<String, serde_json::Value> {
-        let config = self.get_config();
         let mut result: HashMap<String, serde_json::Value> = HashMap::new();
+        let config = match self.get_config() {
+            Ok(c) => c,
+            Err(_) => return result,
+        };
 
         if let Some(p_cfg) = config.providers.get(provider)
             && let Some(url) = &p_cfg.api_url
@@ -338,9 +359,13 @@ impl ConfigManager {
         result
     }
 
-    pub fn set_config(&self, config: AppConfig) {
-        let mut write = self.app_config.write().unwrap();
+    pub fn set_config(&self, config: AppConfig) -> anyhow::Result<()> {
+        let mut write = self
+            .app_config
+            .write()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
         *write = Some(Arc::new(config));
+        Ok(())
     }
 }
 

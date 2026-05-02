@@ -58,8 +58,10 @@ pub fn decrypt_log_file(input_path: PathBuf, output_path: Option<PathBuf>) {
     if let Some(out) = output_path {
         let mut out_str = String::new();
         for entry in &decrypted_entries {
-            out_str.push_str(&serde_json::to_string(entry).unwrap());
-            out_str.push('\n');
+            if let Ok(s) = serde_json::to_string(entry) {
+                out_str.push_str(&s);
+                out_str.push('\n');
+            }
         }
         if let Err(e) = fs::write(&out, out_str) {
             ui::report_error(&format!("Failed to write output: {}", e));
@@ -68,7 +70,9 @@ pub fn decrypt_log_file(input_path: PathBuf, output_path: Option<PathBuf>) {
         }
     } else {
         for entry in &decrypted_entries {
-            println!("{}", serde_json::to_string_pretty(entry).unwrap());
+            if let Ok(pretty) = serde_json::to_string_pretty(entry) {
+                println!("{}", pretty);
+            }
         }
     }
 }

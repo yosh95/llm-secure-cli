@@ -36,7 +36,7 @@ impl McpManager {
             return Ok(cached_tools.clone());
         }
 
-        let config = config_manager.get_config();
+        let config = config_manager.get_config()?;
         let mut sessions = self.sessions.lock().await;
         let mut all_tools = Vec::new();
 

@@ -19,23 +19,24 @@ impl HybridSigner {
         classical_private_key_pem: &str,
         pqc_private_key: &[u8],
         variant: MldsaVariant,
-    ) -> Vec<u8> {
+    ) -> anyhow::Result<Vec<u8>> {
         log::debug!(
             "HybridSigner: Creating hybrid COSE token (PQC variant: {:?})",
             variant
         );
-        let payload_bytes = serde_json::to_vec(payload).unwrap();
-        let body_protected = Self::encode_header_map(HashMap::new());
+        let payload_bytes = serde_json::to_vec(payload)?;
+        let body_protected = Self::encode_header_map(HashMap::new())?;
 
         // --- Signer 0: Ed25519 (Classical) ---
         log::debug!("HybridSigner: Generating EdDSA signature");
         let mut ed_header = HashMap::new();
         ed_header.insert(COSE_HEADER_ALG, Value::Integer(COSE_ALG_EDDSA.into()));
-        let ed_sign_protected = Self::encode_header_map(ed_header);
+        let ed_sign_protected = Self::encode_header_map(ed_header)?;
 
-        let ed_tbs = Self::build_sig_structure(&body_protected, &ed_sign_protected, &payload_bytes);
+        let ed_tbs =
+            Self::build_sig_structure(&body_protected, &ed_sign_protected, &payload_bytes)?;
         let signing_key = SigningKey::from_pkcs8_pem(classical_private_key_pem)
-            .expect("Failed to load Ed25519 private key");
+            .map_err(|e| anyhow::anyhow!("Failed to load Ed25519 private key: {}", e))?;
 
         let ed_sig = signing_key.sign(&ed_tbs);
 
@@ -49,7 +50,7 @@ impl HybridSigner {
         log::debug!("HybridSigner: Generating ML-DSA signature");
         let mut pqc_header = HashMap::new();
         pqc_header.insert(COSE_HEADER_ALG, Value::Integer(COSE_ALG_MLDSA.into()));
-        let pqc_sign_protected = Self::encode_header_map(pqc_header);
+        let pqc_sign_protected = Self::encode_header_map(pqc_header)?;
 
         let pqc_uhdr = vec![(
             Value::Integer(4.into()),
@@ -57,7 +58,7 @@ impl HybridSigner {
         )];
 
         let pqc_tbs =
-            Self::build_sig_structure(&body_protected, &pqc_sign_protected, &payload_bytes);
+            Self::build_sig_structure(&body_protected, &pqc_sign_protected, &payload_bytes)?;
         let pqc_sig =
             PqcProvider::sign_mldsa(&pqc_tbs, pqc_private_key, variant).unwrap_or_default();
 
@@ -80,12 +81,12 @@ impl HybridSigner {
             &Value::Tag(COSE_SIGN_TAG, Box::new(cose_sign_value)),
             &mut encoded,
         )
-        .unwrap();
+        .map_err(|e| anyhow::anyhow!("CBOR encoding failed: {}", e))?;
         log::debug!(
             "HybridSigner: Hybrid token created ({} bytes)",
             encoded.len()
         );
-        encoded
+        Ok(encoded)
     }
 
     pub fn verify_hybrid_token(
@@ -171,7 +172,8 @@ impl HybridSigner {
         }
 
         let classical_tbs =
-            Self::build_sig_structure(body_protected, classical_sign_protected, payload_bytes);
+            Self::build_sig_structure(body_protected, classical_sign_protected, payload_bytes)
+                .ok()?;
         let verifying_key = VerifyingKey::from_public_key_pem(classical_public_key_pem).ok()?;
         let classical_sig = Signature::from_slice(classical_sig_bytes).ok()?;
 
@@ -227,7 +229,8 @@ impl HybridSigner {
         let variant = MldsaVariant::from_str(&variant_str).unwrap_or(MldsaVariant::Mldsa65);
         let pqc_pub = pqc_public_key_provider(variant);
 
-        let pqc_tbs = Self::build_sig_structure(body_protected, pqc_sign_protected, payload_bytes);
+        let pqc_tbs =
+            Self::build_sig_structure(body_protected, pqc_sign_protected, payload_bytes).ok()?;
         if !PqcProvider::verify_mldsa(&pqc_tbs, pqc_sig, &pqc_pub, variant) {
             log::debug!("HybridSigner: ML-DSA verification failed (invalid signature)");
             return None;
@@ -241,22 +244,23 @@ impl HybridSigner {
         serde_json::from_slice(payload_bytes).ok()
     }
 
-    fn encode_header_map(map: HashMap<i64, Value>) -> Vec<u8> {
+    fn encode_header_map(map: HashMap<i64, Value>) -> anyhow::Result<Vec<u8>> {
         let mut v = Vec::new();
         let map_val = Value::Map(
             map.into_iter()
                 .map(|(k, v)| (Value::Integer(k.into()), v))
                 .collect(),
         );
-        ciborium::ser::into_writer(&map_val, &mut v).unwrap();
-        v
+        ciborium::ser::into_writer(&map_val, &mut v)
+            .map_err(|e| anyhow::anyhow!("CBOR encoding failed: {}", e))?;
+        Ok(v)
     }
 
     fn build_sig_structure(
         body_protected: &[u8],
         sign_protected: &[u8],
         payload: &[u8],
-    ) -> Vec<u8> {
+    ) -> anyhow::Result<Vec<u8>> {
         let structure = Value::Array(vec![
             Value::Text("Signature".to_string()),
             Value::Bytes(body_protected.to_vec()),
@@ -265,7 +269,8 @@ impl HybridSigner {
             Value::Bytes(payload.to_vec()),
         ]);
         let mut v = Vec::new();
-        ciborium::ser::into_writer(&structure, &mut v).unwrap();
-        v
+        ciborium::ser::into_writer(&structure, &mut v)
+            .map_err(|e| anyhow::anyhow!("CBOR encoding failed: {}", e))?;
+        Ok(v)
     }
 }

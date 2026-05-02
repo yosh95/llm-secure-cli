@@ -12,7 +12,10 @@ pub fn log_chat(
     model_name: Option<&str>,
 ) {
     let path = &*CHAT_LOG_PATH;
-    let config = config_manager.get_config();
+    let config = match config_manager.get_config() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
     let max_lines = config.general.max_chat_log_lines;
 
     // Ensure directory exists
@@ -66,7 +69,10 @@ fn trim_chat_log(config_manager: &ConfigManager, path: &std::path::Path, max_lin
         return;
     }
 
-    let config = config_manager.get_config();
+    let config = match config_manager.get_config() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
     let max_archives = config.general.max_chat_archives;
 
     if max_archives > 0 {
