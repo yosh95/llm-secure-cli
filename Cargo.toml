@@ -1,0 +1,71 @@
+[package]
+name = "llm-secure-cli"
+version = "0.2.0"
+edition = "2024"
+autobins = false
+rust-version = "1.95.0"
+
+[[bin]]
+name = "llsc"
+path = "src/main.rs"
+
+[[bench]]
+name = "benchmark_local"
+path = "benchmark/benchmark_local.rs"
+harness = false
+
+[[bench]]
+name = "benchmark_dual_llm"
+path = "benchmark/benchmark_dual_llm.rs"
+harness = false
+
+[target.'cfg(target_os = "android")'.dependencies]
+reqwest = { version = "0.13", default-features = false, features = ["json", "native-tls", "gzip"] }
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "gzip"] }
+
+[dependencies]
+clap = { version = "4.5", default-features = false, features = ["derive", "help", "usage", "error-context", "suggestions", "color", "std"] }
+tokio = { version = "1.43", features = ["rt-multi-thread", "macros", "sync", "process", "io-std", "io-util", "time", "signal"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "1.1"
+dirs = "6.0"
+colored = { version = "3.1.1", features = [] }
+console = "0.16"
+textwrap = { version = "0.16", features = ["unicode-width"] }
+pulldown-cmark = "0.13"
+comfy-table = "7.1"
+unicode-width = "0.2"
+
+anyhow = "1.0"
+async-trait = "0.1"
+log = "0.4"
+env_logger = "0.11"
+path-clean = "1.0"
+regex = { version = "1.11", default-features = false, features = ["std", "perf", "unicode-perl", "unicode-case"] }
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }
+tempfile = "3.12"
+base64 = "0.22"
+url = "2.5"
+sha2 = "0.11"
+hex = "0.4"
+once_cell = "1.20"
+rustyline = "18.0"
+mime_guess = "2.0"
+difflib = "0.4"
+html2text = "0.17"
+pdf-extract = "0.10"
+urlencoding = "2.1"
+saorsa-pqc = "0.5"
+aes-gcm = "0.10"
+ciborium = "0.2"
+ed25519-dalek = { version = "2.2", features = ["pkcs8", "rand_core"] }
+pkcs8 = { version = "0.10", features = ["pem"] }
+uuid = { version = "1.10", features = ["v4"] }
+hostname = "0.4"
+rand = "0.8"
+
+[dev-dependencies]
+tokio-test = "0.4"

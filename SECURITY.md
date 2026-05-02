@@ -1,0 +1,440 @@
+# Security Policy
+
+## Supported Versions
+
+| Version | Supported |
+|---------|-----------|
+| 0.2.x   | ✅ Active |
+| < 0.2   | ❌ EOL     |
+
+---
+
+## Architecture Overview: Triple-Lock Framework
+
+`llm-secure-cli` implements a **Triple-Lock** security framework across three
+dimensions — Space, Behavior, and Time — designed for autonomous LLM agents
+operating via the Model Context Protocol (MCP).  The central orchestration
+engine is **CASS (Context-Adaptive Security Scaling)**, which dynamically
+adjusts security posture based on each tool call's risk profile.
+
+```
+ Agent Tool Request
+        │
+        ▼
+  ┌─────────────┐
+  │    CASS     │  ← Context-Adaptive Security Scaling
+  └──┬──┬──┬───┘
+     │  │  │
+     ▼  ▼  ▼
+  T1  T2  T3
+Space Beh Time
+  │   │   │
+  └───┴───┘
+       │
+       ▼
+  Secure Tool Execution
+```
+
+---
+
+## Tier 1 — Structural Guardrails (Space)
+
+### AI-native Policy Engine (Semantic Guardrails & Dual LLM)
+
+Instead of fragile, platform-dependent regex patterns (e.g., `rm -rf /` or Windows-specific commands), `llm-secure-cli` uses an **AI-native Policy Engine** powered by a **Dual LLM Verifier**.
+- **Security Constitution**: A hardcoded, immutable system instruction that the auditor LLM must follow.
+- **Structured Verdicts**: The auditor provides a structured decision (ALLOW/BLOCK) using function calling, preventing parsing errors.
+- **CASS Orchestration**: The **Context-Adaptive Security Scaling** engine determines the risk level and required PQC strength before any tool is executed.
+- **Semantic Analysis**: The auditor understands the *impact* of a command in context, catching novel or obfuscated attacks that would bypass static analysis.
+
+### Physical Isolation (Docker / WSL2)
+
+`llm-secure-cli` is designed to be run within isolated environments.
+- **Docker-native Posture**: Running the agent inside a Docker container provides a physical boundary between the AI and the host system. This makes the security posture uniform across Windows, Linux, and macOS by standardizing on a Linux container environment.
+
+### Path Guardrails (Simplified)
+
+Paths are normalized to absolute form and validated against a basic whitelist (`allowed_paths`). Complex OS-specific blacklists are deprecated in favor of the Semantic Policy Engine, which recognizes sensitive paths like `C:\Windows` or `/etc` based on its inherent knowledge and the provided context.
+
+### Resource Limits
+
+In the modern architecture, hard resource enforcement (Memory, CPU) is offloaded to the **Isolation Layer** (e.g., Docker flags `--memory`, `--cpus`). Code-level `rlimit` is kept as a stub to maintain cross-platform compatibility without `libc` dependencies. Output length is still enforced by `src/tools/executor_utils.rs` to prevent Denial-of-Wallet attacks.
+
+### Environment Isolation (MCP)
+
+High-risk tool execution is delegated to remote MCP servers running inside
+VMs or Docker containers (Shared-Nothing architecture).  Even if a generated
+script bypasses static analysis, any malicious activity is contained within a
+disposable, restricted environment with no access to the host's filesystem or
+credentials.
+
+**Least-privilege MCP server configuration:**
+
+```toml
+[[mcp_servers]]
+name   = "my-server"
+command = "ssh"
+args   = ["user@host", "llsc", "--mcp-server"]
+zero_trust = true
+```
+
+**Note:** The MCP server configuration uses a `zero_trust` boolean flag rather than a `roles` field. When `zero_trust = true`, the server operates under a strict zero-trust policy requiring identity verification for all tool calls.
+
+**TCB note:** The server binary / container image and its launch configuration are part of the Trusted Computing Base. Pin Docker image digests and enforce SSH host-key verification.
+
+---
+
+## Tier 2 — Behavioral Zero-Trust (Behavior)
+
+### Workload Identity — Hybrid COSE Tokens (RFC 9052)
+
+Every MCP tool call is accompanied by a cryptographically signed identity
+token encoded as a **COSE_Sign** structure (CBOR tag 98, RFC 9052).
+
+**Native implementation:** The COSE layer is implemented directly using
+Rust-native crates (e.g., `ed25519-dalek`, `ciborium`, `saorsa-pqc`) — no external Python dependency. This makes custom algorithm identifiers (ML-DSA alg `−48`, IANA-pending per *draft-ietf-cose-dilithium*) fully auditable without registry injection.
+
+**Token structure:**
+
+```
+COSE_Sign [CBOR tag 98]
+├── body_protected   : cbor2.dumps({})
+├── unprotected      : {}
+├── payload          : cbor2.dumps(claims_dict)
+└── signatures
+    ├── [0] COSE_Signature   alg = -8  (Ed25519)
+    │       protected   : cbor2.dumps({1: -8})
+    │       unprotected : {}
+    │       signature   : Ed25519 over Sig_Structure
+    └── [1] COSE_Signature   alg = -48   (ML-DSA)
+            protected   : cbor2.dumps({1: -48})
+            unprotected : {4: b"ML-DSA-65"}   ← kid = variant name (agility)
+            signature   : ML-DSA variant over Sig_Structure
+```
+
+**Sig_Structure (RFC 9052 §4.4):**
+
+```python
+cbor2.dumps(["Signature", body_protected, sign_protected, b"", payload])
+```
+
+**Key files:**
+- `src/security/pqc_cose.rs` — Hybrid COSE token creation and verification
+- `src/security/identity.rs` — `IdentityManager` key generation, token creation, and key management
+
+**COSE algorithm constants:**
+
+```rust
+// Ed25519 (Classical signature)
+// EdDSA with Curve25519 — RFC 8032 / COSE alg -8
+
+// ML-DSA (Post-Quantum signature)
+// ML-DSA — IANA pending: draft-ietf-cose-dilithium
+// Algorithm identifier: -48 (provisional)
+
+// COSE header parameter
+// alg = 1 (RFC 9052 §3.1)
+// COSE_Sign tag = 98
+```
+
+### AI-native ABAC (Policy Constitution)
+
+`llm-secure-cli` utilizes an AI-native **Attribute-Based Access Control (ABAC)** model. Instead of maintaining thousand-line JSON/TOML rule-sets, the system gathers trusted context attributes and delegates the evaluation to a "Security Constitution".
+
+**Attributes Gathered for Evaluation:**
+- `os`: The operating system (e.g., "linux", "windows").
+- `user`: The current system user.
+- `current_dir`: The current working directory.
+- `security_level`: The configured security level ("high" or "standard").
+- `container_mode`: Whether Docker isolation is active.
+- `is_git_repo`: Whether the session is inside a Git repository.
+
+These attributes are bundled into a **Security Context** and verified by the Dual LLM against the **Security Constitution** (a hardcoded, non-overridable policy set in the code). This allows for dynamic, context-aware decisions like "Allow deletions only if running inside a container" without complex manual configuration or OS-dependent static rules.
+
+Implementation: `src/security/policy.rs` and `src/security/dual_llm_verifier.rs`.
+
+Risk-level classification in `defaults.toml`:
+
+```toml
+[security]
+high_risk_tools   = ["execute_command", "edit_file", "create_or_overwrite_file", "read_url_content", "brave_search"]
+medium_risk_tools = ["read_file_content", "grep_files"]
+# Low-risk tools → list_files_in_directory, search_files
+# Critical risk → execute_command when Dual LLM is disabled
+```
+
+Implementation: `src/security/cass.rs`.
+
+### Dual LLM Verification (Dynamic Intent Check)
+
+To prevent sophisticated Prompt Injection (especially indirect injection),
+`llm-secure-cli` implements a **Dual LLM Verification** pattern. When a high-risk tool
+is requested, the system intercepts the execution and consults a separate,
+lightweight "Verifier" model.
+
+The Verifier is provided only with the **User's Original Prompt** and the
+**Proposed Tool Call** (excluding potentially tainted intermediate reasoning
+or large external data). It must confirm that the action aligns with the
+user's intent.
+
+| Feature | Implementation |
+|---|---|
+| Trigger | High-risk and Critical-risk tools (e.g., `execute_command`, `edit_file`) |
+| Isolation | Verifier is stateless and has no tool access (function calling OFF, except verdict tool) |
+| Models | Configurable via `dual_llm_provider` and `dual_llm_model` in `defaults.toml` |
+| Verdict | Structured ALLOW/BLOCK with reason |
+| Fallback | When verifier is unavailable: `require_approval` (default) or `block` |
+
+Implementation: `src/security/dual_llm_verifier.rs`.
+Enable via `defaults.toml`: `dual_llm_verification = true`.
+
+### Verifier Fallback Policy
+
+When the Dual LLM Verifier is unavailable (network error, API failure, etc.), the system follows a configurable fallback policy via `verifier_fallback`:
+
+| Policy | Behavior |
+|---|---|
+| `require_approval` (default) | Force human approval for every tool call. This is the fail-safe choice. |
+| `block` | Block all tool calls when the verifier is down. Maximum safety, but may cause excessive disruption. |
+
+### Auto-Approval Levels
+
+The `auto_approval_level` setting controls which tool calls can bypass human approval based on their risk level:
+
+| Level | Auto-Approved Tools |
+|---|---|
+| `none` (default) | No tools are auto-approved; all require human confirmation. |
+| `low` | Only low-risk tools (e.g., `list_files_in_directory`, `search_files`). |
+| `medium` | Low and medium-risk tools. High-risk tools still require approval. |
+
+> **Note:** Any `BLOCK` verdict from the Dual LLM auditor will always force manual intervention, regardless of the auto-approval level.
+
+### Compatibility & Interoperability (Security Levels)
+
+To allow interoperability with standard MCP clients (e.g., Cursor, Claude Desktop) or third-party MCP servers that do not support PQC protocols, `llm-secure-cli` provides a configurable security level:
+
+| Level | Enforcement | Use Case |
+|---|---|---|
+| **high** (Default) | Strict PQC checks. High-risk actions without signatures are blocked. | Enterprise / High-Assurance environments. |
+| **standard** | Permissive checks. Warnings are logged but actions are permitted. | General use / Interoperability with third-party tools. |
+
+When `security_level` is set to `standard` (via `config.toml` or `LLM_CLI_SECURITY_LEVEL` env var), the system downgrades PQC enforcement from a "hard block" to a "logged warning," ensuring the agent can still function in mixed-trust environments while maintaining an audit trail of the unverified actions.
+
+### Bi-directional Verification (ResponseSigner)
+
+High-risk write tools embed an ML-DSA signature in their return value,
+binding the response to a unique `verification_id`.  The `tool_executor`
+layer verifies this signature before passing the result to the LLM —
+preventing Man-in-the-Middle manipulation of tool outputs.
+
+Implementation: `PQCProvider.sign()` / `ResponseSigner.sign_response()` in
+`src/security/pqc.rs`.
+
+### Out-of-Band Key Distribution
+
+Public keys and remote attestation manifests are distributed via an OOB
+trusted channel (e.g., MDM, Secure Enclave, or enterprise PKI). This design
+eliminates Trust-On-First-use (TOFU) in production deployments.
+
+A bootstrap mode is available for standalone development environments. 
+Simply run `llsc identity manifest` to generate the initial manifest.
+Once the manifest is generated, all subsequent runs will strictly enforce
+integrity against it.
+
+---
+
+## Distributed Zero-Trust (High-Assurance Mode)
+
+In a distributed environment (e.g., Client Agent and Remote MCP Server),
+the system shifts to a **Distributed Trust** model designed to eliminate
+shared secrets:
+
+1.  **Local Trust Store Model:** Keys are stored locally in `~/.llm_secure_cli/keys/`. Each entity maintains its own key pair with no sharing of private keys between entities.
+2.  **Impersonation Resistance:** The Agent ID is fixed to `user@hostname` (derived from `IdentityManager::get_local_identity()`). Removing the ability to override this ID prevents attackers with stolen keys from easily spoofing authorized identities on different hosts.
+3.  **Automatic Key Generation:** Keys are automatically generated on first run when `IdentityManager::ensure_keys()` is called. However, security is enforced at the **Verification Layer** — any identity not backed by the local key store will fail verification.
+4.  **Blast Radius Containment:** Because keys are not shared, the compromise of a remote MCP server does not expose the Agent's private identity key, preventing an attacker from impersonating the user in other contexts.
+5.  **Mutual Authentication:** Every request/response loop is protected by mutual ML-DSA signatures. The Agent verifies the tool output's `ResponseSigner` signature, while the Server verifies the `IdentityToken` using the Agent's public key.
+
+---
+
+## Tier 3 — Post-Quantum Resilience (Time)
+
+### PQC Primitives
+
+| Algorithm | NIST FIPS | Security Level | Key / Sig Sizes | Default use |
+|---|---|---|---|---|
+| ML-DSA-44 | FIPS 204 | Level 2 | pk=1 312 B, sk=2 528 B, sig=2 420 B | Low-risk tools |
+| ML-DSA-65 | FIPS 204 | Level 3 | pk=1 952 B, sk=4 032 B, sig=3 293 B | Standard identity |
+| ML-DSA-87 | FIPS 204 | Level 5 | pk=2 592 B, sk=4 896 B, sig=4 595 B | High-risk / Critical tools |
+| ML-KEM-512 | FIPS 203 | Level 1 | pk=800 B, sk=1 632 B, ct=768 B | — |
+| ML-KEM-768 | FIPS 203 | Level 3 | pk=1 184 B, sk=2 400 B, ct=1 088 B | Audit encryption |
+| ML-KEM-1024 | FIPS 203 | Level 5 | pk=1 568 B, sk=3 168 B, ct=1 568 B | — |
+
+Implementation: Rust-native `saorsa-pqc` crate (ML-DSA/ML-KEM) — FIPS-compliant reference implementations.
+
+### Classical Cryptography
+
+| Algorithm | Purpose | Implementation |
+|---|---|---|
+| Ed25519 | Identity tokens, manifest signing | `ed25519-dalek` crate |
+
+The hybrid token scheme uses **Ed25519** (classical) + **ML-DSA-65** (post-quantum) as the default signing pair, replacing the earlier RS256 designation.
+
+### PQC Agility (CASS)
+
+CASS selects the ML-DSA variant based on tool risk at runtime. This agility
+applies both to identity tokens and audit signatures. Three physically
+separate key pairs are provisioned on disk:
+
+| File | Location | Variant | NIST Level |
+|---|---|---|---|
+| `id_pqc_l2.key` / `id_pqc_l2.pub` | `~/.llm_secure_cli/keys/` | ML-DSA-44 | 2 |
+| `id_pqc_l3.key` / `id_pqc_l3.pub` | `~/.llm_secure_cli/keys/` | ML-DSA-65 | 3 |
+| `id_pqc_l5.key` / `id_pqc_l5.pub` | `~/.llm_secure_cli/keys/` | ML-DSA-87 | 5 |
+
+Implementation: `PQCAgilityManager.get_required_level()` in `src/security/pqc.rs`.
+
+Additionally, classical Ed25519 keys are stored as:
+- `id_ed25519` (private key, PEM format)
+- `id_ed25519.pub` (public key, PEM format)
+
+And ML-KEM keys:
+- `id_kem.key` (private key)
+- `id_kem.pub` (public key)
+
+### Remote Attestation
+
+On startup, the client generates a SHA-256 manifest of all critical security
+source files and configuration files (defined by glob patterns in
+`integrity.rs`), signed with an ML-DSA key. This manifest covers all Rust source files, configuration templates (`.toml`), and project metadata (e.g., `Cargo.toml`).
+ Remote servers verify this
+manifest to confirm the agent is running an authentic, unmodified stack.
+The system also detects unauthorized new files that match the critical
+patterns, preventing backdoor installation.
+
+Rebuild the manifest after any code update or configuration change:
+
+```bash
+llsc identity manifest
+```
+
+### Audit Chain Continuity
+
+- **Chained hashing** — each log entry includes a SHA-256 of the previous entry's hash, creating a tamper-evident chain.
+- **Snapshot anchors** — on log rotation, a signed anchor entry records `snapshot_prev_hash` and `snapshot_first_hash` to maintain verifiability across file boundaries.
+- **Merkle Tree anchoring** — a binary Merkle Root is computed over all entries on rotation and recorded in the security log.  This root can be submitted to an external immutable ledger (blockchain, transparency log) for public verification.
+- **ML-KEM hybrid encryption** — audit logs are optionally encrypted with ML-KEM-768 + AES-256-GCM to guarantee future quantum confidentiality. Decrypt with:
+
+  ```bash
+  llsc decrypt-log ~/.llm_secure_cli/logs/audit.jsonl -o decrypted.jsonl
+  ```
+
+**Audit log retention:** Back up `~/.llm_secure_cli/logs/audit.jsonl` and its rotated archives. Forward to a remote WORM store (SIEM) if available.
+
+---
+
+## Security Performance & Latency Benchmarks
+
+To maintain an agile user experience, `llm-secure-cli` optimizes for minimal operational overhead. The following measurements were captured on reference hardware (AMD Ryzen 5, WSL2).
+
+### 1. Cryptographic Latency (PQC)
+Measured using the Rust implementation on reference hardware.
+
+| Tier | Component | Algorithm | Avg Latency (ms) |
+|---|---|---|---|
+| Tier 1 | Pattern-based Static Analysis | — | < 0.01 |
+| Tier 2 | Identity Generation (Ed25519) | Ed25519 | < 0.1 |
+| Tier 2 | Identity Generation | ML-DSA-44 | 0.68 |
+| Tier 2 | Identity Generation | ML-DSA-87 | 1.26 |
+| Tier 3 | Audit Encryption | ML-KEM-768 | 0.09 |
+
+### 2. Intent Verification Latency (Dual LLM)
+Latency varies based on the provider and network conditions. We recommend lightweight "verifier" models to minimize the "Security Speed Bump."
+
+The default verifier configuration uses `ollama` provider with `default` model. This can be overridden in `config.toml` via `dual_llm_provider` and `dual_llm_model`.
+
+---
+
+## Security Configuration Reference
+
+The primary security configuration is in `src/config/defaults.toml`
+(overridden by `~/.llm_secure_cli/config.toml`):
+
+```toml
+[general]
+unified_default_provider = "ollama"
+pdf_as_base64 = true
+request_timeout = 1800
+command_timeout = 300
+max_security_log_lines = 1000
+max_audit_log_lines = 10000
+max_audit_archives = 10
+max_chat_log_lines = 5000
+max_chat_archives = 5
+
+[security]
+# Security Level: "high" (Default) | "standard"
+security_level = "high"
+
+# Workspace scope
+allowed_paths = ["."]
+
+# Auto-Approval Policy: "none" (default) | "low" | "medium"
+auto_approval_level = "none"
+
+# Tool whitelist
+allowed_tools = [
+    "list_files_in_directory", "read_file_content", "grep_files",
+    "search_files", "edit_file", "create_or_overwrite_file",
+    "read_url_content", "brave_search", "execute_command"
+]
+
+# Risk classification
+high_risk_tools = ["execute_command", "edit_file",
+                   "create_or_overwrite_file", "read_url_content",
+                   "brave_search"]
+medium_risk_tools = ["read_file_content", "grep_files"]
+# Low-risk tools → list_files_in_directory, search_files
+
+# Dual LLM Verification
+dual_llm_verification = true
+dual_llm_provider = "ollama"
+dual_llm_model = "default"
+dual_llm_confidence_threshold = 0.7
+
+# Verifier Fallback Policy: "require_approval" (default) | "block"
+verifier_fallback = "require_approval"
+
+# Static analysis errors block execution
+static_analysis_is_error = true
+```
+
+---
+
+## Dependency Security
+
+| Package | Purpose | Notes |
+|---|---|---|
+| `ed25519-dalek` | Ed25519 signatures, key serialization | Rust-native; monitor upstream advisories |
+| `saorsa-pqc` | ML-DSA / ML-KEM | FIPS-compliant implementations |
+| `ciborium` | CBOR serialization for COSE tokens | Rust-native CBOR implementation |
+| `aes-gcm` | AES-256-GCM for audit log encryption | Used with ML-KEM for hybrid encryption |
+| `sha2` | SHA-256 for integrity hashing | Standard cryptographic hash |
+
+> **Protocol Stability:** The COSE layer is implemented using Rust-native crates that are fully auditable and stable across library versions.
+
+---
+
+## Known Limitations & Security Trade-offs
+
+### 1. Pattern-based Analysis vs. Obfuscation
+The current Tier 1 static analysis utilizes a **structural fast-fail mechanism** (`src/security/static_analyzer.rs`). It blocks:
+- **Shell invocation patterns**: `sh -c`, `bash -c`, etc., which would bypass the structural safety of `Command::new` (no-shell execution).
+- **Control characters and null bytes**: Characters that could disrupt the tool execution engine or log output.
+
+While highly efficient (<0.01ms), this layer is intentionally minimal. **Real-world security relies on the Defense-in-Depth provided by Tier 2 (Dual LLM Verification) and Tier 3 (Audit Trail).** Complex intent analysis and semantic risk assessment are entirely delegated to the Dual LLM Verifier.
+
+### 2. Probabilistic Intent Verification
+Dual LLM Verification is a **probabilistic** defense. While it can achieve high accuracy with well-chosen verifier models, LLMs can hallucinate or fail to catch "jailbreak" style prompt injections. The confidence threshold setting (`dual_llm_confidence_threshold`) is important for balancing security and usability.
+
+### 3. ML-DSA COSE algorithm identifier (`alg=−48`)

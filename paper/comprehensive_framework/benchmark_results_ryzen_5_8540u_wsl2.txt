@@ -1,0 +1,19 @@
+=== High-Assurance Primitives Benchmark (Local) ===
+Environment: AMD Ryzen 5 8540U, WSL2 (Debian 13), Windows 11
+Build: Release (optimized)
+
+[1] Post-Quantum Cryptography (ML-DSA / ML-KEM)
+ML-DSA-44 Keygen: 549.784µs
+ML-DSA-44 Sign (avg): 563.282µs per run
+ML-DSA-44 Verify (avg): 157.075µs per run
+ML-DSA-65 Keygen: 512.444µs
+ML-DSA-65 Sign (avg): 958.637µs per run
+ML-DSA-65 Verify (avg): 195.044µs per run
+ML-DSA-87 Keygen: 530.127µs
+ML-DSA-87 Sign (avg): 820.151µs per run
+ML-DSA-87 Verify (avg): 286.108µs per run
+ML-KEM-768 Encaps (avg): 56.758µs per run
+ML-KEM-768 Decaps (avg): 71.736µs per run
+
+[2] Minimalist Fast-Fail (Static Analysis)
+Fast-Fail Check (avg): 5ns per run

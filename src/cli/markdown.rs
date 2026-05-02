@@ -1,0 +1,436 @@
+use colored::*;
+use comfy_table::Table;
+use pulldown_cmark::{Alignment, Event, Options as CmarkOptions, Parser, Tag, TagEnd};
+use textwrap::{Options as WrapOptions, WordSplitter, fill};
+
+pub struct MarkdownRenderer {
+    width: usize,
+}
+
+impl MarkdownRenderer {
+    pub fn new(width: usize) -> Self {
+        Self { width }
+    }
+
+    pub fn render(&self, markdown: &str) -> String {
+        let mut options = CmarkOptions::empty();
+        options.insert(CmarkOptions::ENABLE_TABLES);
+        options.insert(CmarkOptions::ENABLE_STRIKETHROUGH);
+        options.insert(CmarkOptions::ENABLE_TASKLISTS);
+
+        let parser = Parser::new_ext(markdown, options);
+        let mut output = String::new();
+        let mut list_depth = 0;
+        let mut in_table = false;
+        let mut in_code_block = false;
+        let mut table_headers = Vec::new();
+        let mut table_rows = Vec::new();
+        let mut table_alignments = Vec::new();
+        let mut current_row = Vec::new();
+        let mut current_cell = String::new();
+        let mut in_table_head = false;
+        let mut current_paragraph = String::new();
+        let mut current_heading_level = None;
+        let mut link_stack = Vec::new();
+
+        let wrap_options = WrapOptions::new(self.width.saturating_sub(4))
+            .break_words(false)
+            .word_splitter(WordSplitter::NoHyphenation);
+
+        for event in parser {
+            match event {
+                Event::Start(tag) => match tag {
+                    Tag::Heading { level, .. } => {
+                        self.flush_paragraph(
+                            &mut output,
+                            &mut current_paragraph,
+                            &wrap_options,
+                            0,
+                            None,
+                        );
+                        let level_num = level as usize;
+                        current_paragraph.push_str(&"#".repeat(level_num));
+                        current_paragraph.push(' ');
+                        current_heading_level = Some(level_num);
+                    }
+                    Tag::Paragraph => {
+                        self.flush_paragraph(
+                            &mut output,
+                            &mut current_paragraph,
+                            &wrap_options,
+                            0,
+                            None,
+                        );
+                    }
+                    Tag::List(_) => {
+                        self.flush_paragraph(
+                            &mut output,
+                            &mut current_paragraph,
+                            &wrap_options,
+                            0,
+                            None,
+                        );
+                        list_depth += 1;
+                    }
+                    Tag::Item => {
+                        self.flush_paragraph(
+                            &mut output,
+                            &mut current_paragraph,
+                            &wrap_options,
+                            list_depth * 2,
+                            None,
+                        );
+                        output.push('\n');
+                        output.push_str(&"  ".repeat(list_depth - 1));
+                        output.push_str("• ");
+                    }
+                    Tag::Table(alignments) => {
+                        self.flush_paragraph(
+                            &mut output,
+                            &mut current_paragraph,
+                            &wrap_options,
+                            0,
+                            None,
+                        );
+                        in_table = true;
+                        table_alignments = alignments;
+                        table_headers.clear();
+                        table_rows.clear();
+                        output.push('\n');
+                    }
+                    Tag::TableHead => {
+                        in_table_head = true;
+                        current_row.clear();
+                    }
+                    Tag::TableRow => {
+                        current_row.clear();
+                    }
+                    Tag::TableCell => {
+                        current_cell.clear();
+                    }
+                    Tag::CodeBlock(kind) => {
+                        self.flush_paragraph(
+                            &mut output,
+                            &mut current_paragraph,
+                            &wrap_options,
+                            0,
+                            None,
+                        );
+                        output.push_str("\n\n```");
+                        if let pulldown_cmark::CodeBlockKind::Fenced(lang) = kind {
+                            output.push_str(&lang);
+                        }
+                        output.push('\n');
+                        in_code_block = true;
+                    }
+                    Tag::Link { dest_url, .. } => {
+                        let clean_url: String =
+                            dest_url.chars().filter(|c| !c.is_whitespace()).collect();
+                        link_stack.push(clean_url.clone());
+                        if !in_table {
+                            let link_start = format!("\x1b]8;;{}\x1b\\", clean_url);
+                            current_paragraph.push_str(&link_start);
+                        }
+                    }
+                    _ => {}
+                },
+                Event::End(tag) => {
+                    match tag {
+                        TagEnd::Heading(_) => {
+                            self.flush_paragraph(
+                                &mut output,
+                                &mut current_paragraph,
+                                &wrap_options,
+                                0,
+                                current_heading_level,
+                            );
+                            output.push('\n');
+                            current_heading_level = None;
+                        }
+                        TagEnd::Item => {
+                            let indent = if list_depth > 0 { list_depth * 2 } else { 0 };
+                            self.flush_paragraph(
+                                &mut output,
+                                &mut current_paragraph,
+                                &wrap_options,
+                                indent,
+                                None,
+                            );
+                        }
+                        TagEnd::Paragraph => {
+                            let indent = if list_depth > 0 { list_depth * 2 } else { 0 };
+                            self.flush_paragraph(
+                                &mut output,
+                                &mut current_paragraph,
+                                &wrap_options,
+                                indent,
+                                None,
+                            );
+                            if !output.ends_with('\n') {
+                                output.push('\n');
+                            }
+                        }
+                        TagEnd::List(_) => {
+                            self.flush_paragraph(
+                                &mut output,
+                                &mut current_paragraph,
+                                &wrap_options,
+                                0,
+                                None,
+                            );
+                            list_depth -= 1;
+                            if !output.is_empty() && !output.ends_with('\n') {
+                                output.push('\n');
+                            }
+                        }
+                        TagEnd::Table => {
+                            in_table = false;
+                            let mut table = Table::new();
+                            table.load_preset(comfy_table::presets::UTF8_FULL);
+                            table.set_content_arrangement(comfy_table::ContentArrangement::Dynamic);
+                            table.set_width(self.width as u16);
+
+                            if !table_headers.is_empty() {
+                                table.set_header(&table_headers);
+                            }
+
+                            for (i, align) in table_alignments.iter().enumerate() {
+                                if let Some(column) = table.column_mut(i) {
+                                    match align {
+                                        Alignment::Left => column
+                                            .set_cell_alignment(comfy_table::CellAlignment::Left),
+                                        Alignment::Center => column
+                                            .set_cell_alignment(comfy_table::CellAlignment::Center),
+                                        Alignment::Right => column
+                                            .set_cell_alignment(comfy_table::CellAlignment::Right),
+                                        Alignment::None => {}
+                                    }
+                                }
+                            }
+
+                            for row in table_rows.drain(..) {
+                                table.add_row(row);
+                            }
+
+                            output.push_str(&table.to_string());
+                            output.push('\n');
+                        }
+                        TagEnd::TableHead => {
+                            in_table_head = false;
+                            table_headers = std::mem::take(&mut current_row);
+                        }
+                        TagEnd::TableRow if !in_table_head => {
+                            table_rows.push(std::mem::take(&mut current_row));
+                        }
+                        TagEnd::TableCell => {
+                            current_row.push(std::mem::take(&mut current_cell));
+                        }
+                        TagEnd::CodeBlock => {
+                            in_code_block = false;
+                            if !output.ends_with('\n') {
+                                output.push('\n');
+                            }
+                            output.push_str("```\n");
+                        }
+                        TagEnd::Link => {
+                            if let Some(url) = link_stack.pop() {
+                                if in_table {
+                                    if !current_cell.ends_with(&url) {
+                                        current_cell.push(' ');
+                                        current_cell.push_str(&url);
+                                    }
+                                } else {
+                                    current_paragraph.push_str("\x1b]8;;\x1b\\");
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                Event::Text(text) => {
+                    if in_code_block {
+                        output.push_str(&text);
+                    } else {
+                        let formatted = if !link_stack.is_empty() && !in_table {
+                            text.replace(' ', "\u{00A0}").blue().to_string()
+                        } else {
+                            text.to_string()
+                        };
+
+                        if in_table {
+                            current_cell.push_str(&formatted);
+                        } else {
+                            current_paragraph.push_str(&formatted);
+                        }
+                    }
+                }
+                Event::Code(text) => {
+                    let formatted = if !link_stack.is_empty() && !in_table {
+                        format!("`{}`", text.replace(' ', "\u{00A0}"))
+                            .blue()
+                            .to_string()
+                    } else {
+                        format!("`{}`", text)
+                    };
+
+                    if in_table {
+                        current_cell.push_str(&formatted);
+                    } else {
+                        current_paragraph.push_str(&formatted);
+                    }
+                }
+                Event::Html(text) | Event::InlineHtml(text)
+                    if text.to_lowercase().contains("<br") =>
+                {
+                    if in_table {
+                        current_cell.push('\n');
+                    } else {
+                        current_paragraph.push('\n');
+                    }
+                }
+                Event::SoftBreak => {
+                    if in_table {
+                        current_cell.push(' ');
+                    } else {
+                        current_paragraph.push(' ');
+                    }
+                }
+                Event::HardBreak => {
+                    if in_table {
+                        current_cell.push('\n');
+                    } else {
+                        current_paragraph.push('\n');
+                    }
+                }
+                Event::Rule => {
+                    self.flush_paragraph(
+                        &mut output,
+                        &mut current_paragraph,
+                        &wrap_options,
+                        0,
+                        None,
+                    );
+                    output.push_str("\n---\n");
+                }
+                _ => {}
+            }
+        }
+
+        self.flush_paragraph(&mut output, &mut current_paragraph, &wrap_options, 0, None);
+        output.trim().to_string()
+    }
+
+    fn flush_paragraph(
+        &self,
+        output: &mut String,
+        paragraph: &mut String,
+        options: &WrapOptions,
+        indent_size: usize,
+        heading_level: Option<usize>,
+    ) {
+        if paragraph.is_empty() {
+            return;
+        }
+
+        let trimmed = paragraph.trim();
+        if trimmed.is_empty() {
+            paragraph.clear();
+            return;
+        }
+
+        let filled = fill(trimmed, options);
+        let indent = " ".repeat(indent_size);
+
+        for (i, line) in filled.lines().enumerate() {
+            if i > 0 || output.ends_with('\n') {
+                output.push('\n');
+                output.push_str(&indent);
+            } else if output.is_empty() {
+                output.push_str(&indent);
+            }
+
+            if let Some(level) = heading_level {
+                let colored_line = match level {
+                    1 => line.cyan().bold(),
+                    2 => line.yellow().bold(),
+                    3 => line.green().bold(),
+                    _ => line.bright_black().bold(),
+                };
+                output.push_str(&colored_line.to_string());
+            } else {
+                output.push_str(line);
+            }
+        }
+
+        paragraph.clear();
+    }
+}
+
+pub fn render_markdown(content: &str, width: usize) -> String {
+    let renderer = MarkdownRenderer::new(width);
+    renderer.render(content)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_markdown;
+
+    #[test]
+    fn sources_list_items_render_on_separate_lines() {
+        let markdown = "**Sources:**\n- [1] [First Source](https://example.com/1)\n- [2] [Second Source](https://example.com/2)";
+        let rendered = render_markdown(markdown, 120);
+
+        assert!(rendered.contains("Sources:"));
+        assert!(rendered.contains("• [1]"));
+        assert!(rendered.contains("\n• [2]"));
+    }
+
+    #[test]
+    fn table_with_br_renders_correctly() {
+        let markdown = "| Column |\n|---|\n| Line 1<br>Line 2 |";
+        let rendered = render_markdown(markdown, 120);
+        assert!(rendered.contains("Line 1"));
+        assert!(rendered.contains("Line 2"));
+        assert!(!rendered.contains("<br>"));
+    }
+
+    #[test]
+    fn table_with_mixed_content_renders_correctly() {
+        let markdown = "| Column 1 | Column 2 |\n|---|---|\n| Text and `code` | More text |";
+        let rendered = render_markdown(markdown, 120);
+
+        // Check if the content is in the same row and not split into multiple columns
+        assert!(rendered.contains("Text and `code`"));
+        assert!(rendered.contains("More text"));
+
+        // Count the number of vertical separators in a row with content.
+        // A 2-column table with UTF8_FULL should have 3 separators per line
+        let content_line = rendered
+            .lines()
+            .find(|l| l.contains("Text and `code`"))
+            .unwrap();
+        let separators = ['│', '┆', '┃', '╽', '╿', '❘', '｜', '|'];
+        let pipe_count = content_line
+            .chars()
+            .filter(|c| separators.contains(c))
+            .count();
+        assert_eq!(
+            pipe_count, 3,
+            "Should have exactly 3 separators for a 2-column table"
+        );
+    }
+
+    #[test]
+    fn table_links_render_as_plain_text_with_url() {
+        let markdown = "| Title | Other |\n|---|---|\n| [A very long link title](https://example.com/very/long/path) | next cell |";
+        let rendered = render_markdown(markdown, 50);
+
+        assert!(rendered.contains("A very long link title"));
+        assert!(rendered.contains("https://example.com/very/long/path"));
+        assert!(rendered.contains("next cell"));
+        assert!(
+            !rendered.contains("\x1b]8;;"),
+            "table links must not use OSC 8 hyperlinks"
+        );
+    }
+}
