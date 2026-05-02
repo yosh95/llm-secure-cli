@@ -103,39 +103,31 @@ impl ChatSession {
                         continue;
                     }
 
-                    let (content, should_break) =
-                        match crate::cli::interactive::dispatcher::handle_command(
-                            self,
-                            &final_trimmed,
-                        )
+                    match crate::cli::interactive::dispatcher::handle_command(self, &final_trimmed)
                         .await
-                        {
-                            crate::cli::interactive::dispatcher::CommandResult::Exit => {
-                                let _ = rl.save_history(&*HISTORY_LOG_PATH);
-                                // Drop rustyline editor and return to let
-                                // ChatSession Drop run naturally (saves Merkle anchor).
-                                drop(rl);
-                                return;
-                            }
-                            crate::cli::interactive::dispatcher::CommandResult::Handled => {
-                                let _ = rl.add_history_entry(&final_trimmed);
-                                (None, false)
-                            }
-                            crate::cli::interactive::dispatcher::CommandResult::NotACommand => {
-                                (Some(final_trimmed.clone()), false)
-                            }
-                            crate::cli::interactive::dispatcher::CommandResult::Input(text) => {
-                                next_initial_text = Some(text);
-                                (None, true)
-                            }
-                        };
-
-                    if should_break {
-                        continue;
-                    }
+                    {
+                        crate::cli::interactive::dispatcher::CommandResult::Exit => {
+                            let _ = rl.save_history(&*HISTORY_LOG_PATH);
+                            // Drop rustyline editor and return to let
+                            // ChatSession Drop run naturally (saves Merkle anchor).
+                            drop(rl);
+                            return;
+                        }
+                        crate::cli::interactive::dispatcher::CommandResult::Handled => {
+                            let _ = rl.add_history_entry(&final_trimmed);
+                            let _ = rl.save_history(&*HISTORY_LOG_PATH);
+                            continue;
+                        }
+                        crate::cli::interactive::dispatcher::CommandResult::NotACommand => {}
+                        crate::cli::interactive::dispatcher::CommandResult::Input(text) => {
+                            let _ = rl.add_history_entry(&final_trimmed);
+                            next_initial_text = Some(text);
+                            continue;
+                        }
+                    };
 
                     let _ = rl.add_history_entry(&final_trimmed);
-                    let final_content = content.unwrap_or_else(|| final_trimmed.to_string());
+                    let final_content = final_trimmed.clone();
 
                     if self.intent.is_empty() {
                         self.intent = final_content.clone();
