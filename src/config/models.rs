@@ -3,8 +3,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GeneralConfig {
-    #[serde(default = "default_unified_provider")]
-    pub unified_default_provider: String,
+    pub system_prompt: Option<String>,
     #[serde(default = "default_true")]
     pub pdf_as_base64: bool,
     #[serde(default = "default_request_timeout")]
@@ -59,7 +58,7 @@ fn default_image_save_path() -> String {
 impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
-            unified_default_provider: default_unified_provider(),
+            system_prompt: None,
             pdf_as_base64: default_true(),
             request_timeout: default_request_timeout(),
             command_timeout: default_command_timeout(),
@@ -77,12 +76,21 @@ impl Default for GeneralConfig {
 pub struct ProviderConfig {
     pub api_key: Option<String>,
     pub api_url: Option<String>,
-    pub system_prompt: Option<String>,
-    pub max_tokens: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CapabilityRule {
+    pub pattern: String,
+    #[serde(default = "default_true")]
+    pub supports_tools: bool,
     #[serde(default)]
-    pub models: HashMap<String, serde_json::Value>,
-    #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
+    pub image_generation: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct AppState {
+    pub last_used_provider: Option<String>,
+    pub last_used_model: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -115,11 +123,6 @@ pub struct SecurityConfig {
     pub dual_llm_confidence_threshold: f64,
     #[serde(default = "default_security_level")]
     pub security_level: String,
-    /// Behavior when the Dual LLM Verifier is unavailable (network error, API failure, etc.).
-    /// - "require_approval" (default): Force human approval for every tool call.
-    ///   This is the fail-safe choice — if the verifier cannot judge intent, a human must.
-    /// - "block": Block all tool calls when the verifier is down.
-    ///   Maximum safety, but may cause excessive disruption.
     #[serde(default = "default_verifier_fallback")]
     pub verifier_fallback: String,
 }
@@ -136,7 +139,6 @@ fn default_security_level() -> String {
 fn default_confidence_threshold() -> f64 {
     0.7
 }
-
 fn default_verifier_fallback() -> String {
     "require_approval".to_string()
 }
@@ -181,6 +183,8 @@ pub struct AppConfig {
     pub security: SecurityConfig,
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
+    #[serde(default)]
+    pub rules: Vec<CapabilityRule>,
     #[serde(flatten)]
     pub providers: HashMap<String, ProviderConfig>,
     #[serde(default)]

@@ -24,8 +24,7 @@ pub fn init_config() {
     commented_lines.push_str("# IMPORTANT: API Keys are NOT stored in this file.\n");
     commented_lines.push_str("# Set API Keys as env vars (e.g., in ~/.bashrc or .env):\n");
     commented_lines.push_str("#   export OPENAI_API_KEY='your-key-here'\n");
-    commented_lines.push_str("#   export GEMINI_API_KEY='your-key-here'\n");
-    commented_lines.push_str("#   export ANTHROPIC_API_KEY='your-key-here'\n");
+    commented_lines.push_str("#   export OPENROUTER_API_KEY='your-key-here'\n");
     commented_lines.push_str("#\n");
     commented_lines.push_str(
         "# For Dual LLM Verification, ensure you have keys for TWO different providers.\n",
@@ -35,7 +34,10 @@ pub fn init_config() {
 
     for line in DEFAULTS.lines() {
         let stripped = line.trim();
-        if !stripped.is_empty() && !stripped.starts_with('[') && !stripped.starts_with('#') {
+        if !stripped.is_empty()
+            && !stripped.starts_with('#')
+            && (!stripped.starts_with('[') || stripped.starts_with("[["))
+        {
             commented_lines.push_str(&format!("# {}\n", line));
         } else {
             commented_lines.push_str(line);

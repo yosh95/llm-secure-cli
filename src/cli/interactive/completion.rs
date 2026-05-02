@@ -99,48 +99,26 @@ impl Completer for ChatCompleter {
                     }
                     "/model" | "/m" => {
                         let provider = self.current_provider.lock().unwrap().clone();
-                        let config = self.ctx.config_manager.get_config();
+                        let models_map = self.ctx.config_manager.get_cached_models_sync();
                         let mut matches = Vec::new();
 
-                        if let Some(p_cfg) = config.providers.get(&provider) {
-                            for alias in p_cfg.models.keys() {
-                                if alias.starts_with(arg_prefix) {
-                                    let model_config =
-                                        self.ctx.config_manager.get_model_config(&provider, alias);
-                                    let actual_model = model_config
-                                        .get("model")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or(alias);
-                                    let display = if actual_model != alias {
-                                        format!("{} ({})", alias, actual_model)
-                                    } else {
-                                        alias.clone()
-                                    };
+                        if let Some(models) = models_map.get(&provider) {
+                            for model in models {
+                                if model.starts_with(arg_prefix) {
                                     matches.push(Pair {
-                                        display,
-                                        replacement: alias.clone(),
+                                        display: model.clone(),
+                                        replacement: model.clone(),
                                     });
                                 }
                             }
                         } else {
                             // Fallback to all models if provider not found
-                            for (p_name, p_cfg) in &config.providers {
-                                for alias in p_cfg.models.keys() {
-                                    if alias.starts_with(arg_prefix) {
-                                        let model_config =
-                                            self.ctx.config_manager.get_model_config(p_name, alias);
-                                        let actual_model = model_config
-                                            .get("model")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or(alias);
-                                        let display = if actual_model != alias {
-                                            format!("{} ({})", alias, actual_model)
-                                        } else {
-                                            alias.clone()
-                                        };
+                            for models in models_map.values() {
+                                for model in models {
+                                    if model.starts_with(arg_prefix) {
                                         matches.push(Pair {
-                                            display,
-                                            replacement: alias.clone(),
+                                            display: model.clone(),
+                                            replacement: model.clone(),
                                         });
                                     }
                                 }

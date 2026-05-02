@@ -288,42 +288,26 @@ pub async fn handle_model_cmd(session: &mut ChatSession, args: &str) {
     };
 
     if args.is_empty() {
-        let config = session.ctx.config_manager.get_config();
-        if let Some(p_cfg) = config.providers.get(&provider) {
-            ui::print_rule(
-                Some(&format!("Available Models for {}", provider)),
-                Some("cyan"),
-            );
-            let mut keys: Vec<_> = p_cfg.models.keys().collect();
-            keys.sort();
-            for alias in keys {
-                let model_config = session
-                    .ctx
-                    .config_manager
-                    .get_model_config(&provider, alias);
-                let actual_model = model_config
-                    .get("model")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(alias);
-
-                let display_name = if actual_model != alias {
-                    format!("{} ({})", alias, actual_model)
+        ui::print_rule(
+            Some(&format!("Available Models for {}", provider)),
+            Some("cyan"),
+        );
+        let models_map = session.ctx.config_manager.get_cached_models().await;
+        if let Some(mut models) = models_map.get(&provider).cloned() {
+            models.sort();
+            for model in models {
+                if model == current_model {
+                    println!("  {} {}", "●".cyan(), model.bold().cyan());
                 } else {
-                    alias.to_string()
-                };
-
-                if alias == &current_model || actual_model == current_model {
-                    println!("  {} {}", "●".cyan(), display_name.bold().cyan());
-                } else {
-                    println!("    {}", display_name);
+                    println!("    {}", model);
                 }
             }
             ui::print_rule(None, Some("cyan"));
         } else {
-            ui::report_error(&format!(
-                "No configuration found for provider: {}",
+            println!(
+                "  No models cached for {}. Try running the provider to fetch models.",
                 provider
-            ));
+            );
         }
     } else {
         let client = {
@@ -334,6 +318,7 @@ pub async fn handle_model_cmd(session: &mut ChatSession, args: &str) {
         match client {
             Some(new_client) => {
                 session.switch_client(new_client);
+                session.ctx.config_manager.update_state(&provider, args);
                 ui::report_success(&format!(
                     "Model switched to: {} ({})",
                     args,
@@ -374,6 +359,8 @@ pub async fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
         match client {
             Some(new_client) => {
                 session.switch_client(new_client);
+                let new_model = session.get_client().get_state().model.clone();
+                session.ctx.config_manager.update_state(args, &new_model);
                 ui::report_success(&format!("Switched to provider: {}", args));
             }
             _ => {

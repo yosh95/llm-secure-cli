@@ -54,6 +54,9 @@ enum Commands {
         /// Verbose output (table format)
         #[clap(short, long)]
         verbose: bool,
+        /// Update models cache
+        #[clap(short, long)]
+        update: bool,
     },
     /// Identity and Integrity management
     Identity {
@@ -141,7 +144,14 @@ async fn handle_subcommand(
             provider,
             models,
             verbose,
+            update,
         } => {
+            if update {
+                println!("Updating models cache...");
+                ctx.config_manager.update_models_cache().await;
+                println!("Cache updated successfully.");
+                return;
+            }
             if let Some(p) = provider {
                 llm_secure_cli::cli::commands::models::list_models(
                     &ctx.config_manager,
@@ -198,12 +208,24 @@ async fn start_chat_session(
     ctx: std::sync::Arc<llm_secure_cli::core::context::AppContext>,
     is_atty: bool,
 ) {
-    let config = ctx.config_manager.get_config();
-    let active_providers = ctx.config_manager.get_active_providers();
+    let cm = &ctx.config_manager;
+    let _config = cm.get_config();
+    let state = cm.get_state();
+    let active_providers = cm.get_active_providers();
+
+    let is_first_launch = args.provider.is_none() && state.last_used_provider.is_none();
 
     let mut provider = args
         .provider
-        .unwrap_or_else(|| config.general.unified_default_provider.clone());
+        .or(state.last_used_provider)
+        .unwrap_or_else(|| {
+            if !active_providers.is_empty() {
+                active_providers[0].clone()
+            } else {
+                ui::report_error("No active LLM providers found. Please set API keys.");
+                process::exit(1);
+            }
+        });
 
     if !active_providers.contains(&provider) {
         if !active_providers.is_empty() {
@@ -214,13 +236,23 @@ async fn start_chat_session(
         }
     }
 
-    let model = args.model.unwrap_or_else(|| "default".to_string());
+    let model = args
+        .model
+        .or(state.last_used_model)
+        .unwrap_or_else(|| "default".to_string());
+
     let stdout = args.stdout || !is_atty;
 
     let client = {
         let registry = ctx.client_registry.lock().await;
         registry.create_client(&provider, &model, stdout, args.raw, &ctx.config_manager)
     };
+
+    if is_first_launch {
+        ui::report_warning(
+            "No provider/model configured. Use /m <model> or /p <provider> to configure.",
+        );
+    }
 
     if let Some(mut client) = client {
         client.get_state_mut().live_debug = args.debug;

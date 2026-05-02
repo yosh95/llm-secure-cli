@@ -32,7 +32,8 @@ impl OpenAiCompatibleClient {
             config_section: provider_name.to_string(),
             pdf_as_base64: true,
         };
-        let model_config = config_manager.get_model_config(provider_name, model);
+        let _model_config = config_manager.get_model_config(provider_name, model);
+        let config = config_manager.get_config();
         let base = BaseLlmClientData::new(config_manager, model, spec, stdout, raw);
 
         let api_url = if api_url.ends_with("/chat/completions") {
@@ -41,15 +42,19 @@ impl OpenAiCompatibleClient {
             format!("{}/chat/completions", api_url.trim_end_matches('/'))
         };
 
-        let image_generation_enabled = model_config
-            .get("image_generation")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let mut supports_tools = true;
+        let mut image_generation_enabled = false;
 
-        let supports_tools = model_config
-            .get("tools")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+        // Apply dynamic rules based on model ID
+        let model_id_lower = model.to_lowercase();
+        for rule in &config.rules {
+            if let Ok(re) = regex::Regex::new(&rule.pattern)
+                && re.is_match(&model_id_lower)
+            {
+                supports_tools = rule.supports_tools;
+                image_generation_enabled = rule.image_generation;
+            }
+        }
 
         let http_client = create_http_client(config_manager);
 

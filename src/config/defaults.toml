@@ -2,7 +2,6 @@
 # General Settings
 # =============================================================================
 [general]
-unified_default_provider = "ollama"
 pdf_as_base64 = true
 request_timeout = 1800
 command_timeout = 300
@@ -71,9 +70,9 @@ low_risk_tools = [
 
 # Dual LLM Verification (AI-native ABAC / Semantic Firewall)
 # Validates tool calls using a secondary LLM with a hardcoded Security Constitution.
-dual_llm_verification = true
-dual_llm_provider = "ollama"
-dual_llm_model = "default"
+dual_llm_verification = false
+dual_llm_provider = "openrouter"
+dual_llm_model = "google/gemini-3.1-flash-lite-preview"
 dual_llm_confidence_threshold = 0.7
 
 # Verifier Fallback Policy
@@ -86,38 +85,19 @@ verifier_fallback = "require_approval"
 # OpenRouter (Aggregation service)
 [openrouter]
 api_url = "https://openrouter.ai/api/v1"
-[openrouter.models]
-default = "google/gemini-3-flash-preview"
-gemini-lite = "google/gemini-3.1-flash-lite-preview"
-gemini-flash = "google/gemini-3.1-flash-lite-preview"
-gemini-pro = "google/gemini-3.1-pro-preview"
-gpt = "openai/gpt-5.5"
-claude-opus = "anthropic/claude-opus-4.7"
-claude-sonnet = "anthropic/claude-sonnet-4.6"
-claude-haiku = "anthropic/claude-haiku-4.6"
-nano-banana-2 = { model = "google/gemini-3.1-flash-image-preview", image_generation = true, tools = false }
-
-# OpenAI Official
-# [openai]
-# api_url = "https://api.openai.com/v1"
-# [openai.models]
-# default = "gpt-5.5"
-# mini = "gpt-5.4-mini"
-# nano = "gpt-5.4-nano"
 
 # Ollama
 [ollama]
-api_url = "https://ollama.com/v1"
-# api_url = "http://localhost:11434/v1"
-[ollama.models]
-default = "gemma4:e2b"
-gemini = "gemini-3-flash-preview"
+# api_url = "http://ollama.com/v1"
+api_url = "http://localhost:11434/v1"
 
-# LiteLLM Proxy / Other OpenAI-compatible
-# [litellm]
-# api_url = "http://localhost:4000/v1"
-# [litellm.models]
-# default = "gemini-3-flash-preview"
+# =============================================================================
+# Capability Rules
+# =============================================================================
+[[rules]]
+pattern = ".*(image).*"
+supports_tools = false
+image_generation = true
 
 # =============================================================================
 # Templates (Reusable Prompts)

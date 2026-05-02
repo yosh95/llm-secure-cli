@@ -29,6 +29,8 @@ pub static LOG_DIR: Lazy<PathBuf> = Lazy::new(|| LLM_CLI_BASE_DIR.join("logs"));
 pub static KEY_DIR: Lazy<PathBuf> = Lazy::new(|| LLM_CLI_BASE_DIR.join("keys"));
 
 pub static CONFIG_FILE_PATH: Lazy<PathBuf> = Lazy::new(|| CONFIG_DIR.join("config.toml"));
+pub static STATE_FILE_PATH: Lazy<PathBuf> = Lazy::new(|| CONFIG_DIR.join("state.toml"));
+pub static MODELS_CACHE_PATH: Lazy<PathBuf> = Lazy::new(|| CONFIG_DIR.join("models_cache.json"));
 pub static AUDIT_LOG_PATH: Lazy<PathBuf> = Lazy::new(|| LOG_DIR.join("audit.jsonl"));
 pub static SECURITY_LOG_PATH: Lazy<PathBuf> = Lazy::new(|| LOG_DIR.join("security.log"));
 pub static HISTORY_LOG_PATH: Lazy<PathBuf> = Lazy::new(|| LOG_DIR.join("history.log"));
