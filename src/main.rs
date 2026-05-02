@@ -1,3 +1,5 @@
+#![warn(clippy::unwrap_used)]
+
 use clap::{Parser, Subcommand};
 use llm_secure_cli::cli::ui;
 use llm_secure_cli::core::session::ChatSession;

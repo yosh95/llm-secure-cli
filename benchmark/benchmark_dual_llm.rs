@@ -61,7 +61,8 @@ async fn main() -> anyhow::Result<()> {
                         model,
                         stdout,
                         raw,
-                    ).map(|c| Box::new(c) as _)
+                    )
+                    .map(|c| Box::new(c) as _)
                 }),
             );
         }

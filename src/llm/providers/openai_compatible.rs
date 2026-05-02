@@ -81,7 +81,7 @@ impl OpenAiCompatibleClient {
         format!("data:{};base64,{}", mime_type, b64_data)
     }
 
-    fn build_messages(&self, data: &[DataSource]) -> Vec<Value> {
+    pub fn build_messages(&self, data: &[DataSource]) -> Vec<Value> {
         let mut messages = Vec::new();
 
         // Add system prompt if present
@@ -308,7 +308,7 @@ impl OpenAiCompatibleClient {
         messages
     }
 
-    fn build_tool_schemas(&self, tool_schemas: Vec<Value>) -> Vec<Value> {
+    pub fn build_tool_schemas(&self, tool_schemas: Vec<Value>) -> Vec<Value> {
         if self.supports_tools {
             tool_schemas
                 .into_iter()
@@ -400,12 +400,13 @@ impl LlmClient for OpenAiCompatibleClient {
                 if let Some(content) = m.get("content").and_then(|v| v.as_array()) {
                     for p in content {
                         if p.get("type").and_then(|v| v.as_str()) == Some("image_url")
-                            && let Some(image_url) = p.get("image_url") {
-                                images.push(json!({
-                                    "type": "image_url",
-                                    "image_url": image_url.clone()
-                                }));
-                            }
+                            && let Some(image_url) = p.get("image_url")
+                        {
+                            images.push(json!({
+                                "type": "image_url",
+                                "image_url": image_url.clone()
+                            }));
+                        }
                     }
                 }
             }
@@ -536,20 +537,22 @@ impl LlmClient for OpenAiCompatibleClient {
         }
 
         // OpenRouter /api/v1/videos response returns job ID and polling URL
-        if is_openrouter && self.video_generation_enabled
-            && let Some(job_id) = resp.get("id").and_then(|v| v.as_str()) {
-                let mut text = format!("Video generation submitted. Job ID: {}\n", job_id);
-                if let Some(polling_url) = resp.get("polling_url").and_then(|v| v.as_str()) {
-                    text.push_str(&format!("To check status: GET {}\n", polling_url));
-                    text.push_str("(Currently, the CLI does not automatically block and poll for video jobs due to high completion times.)");
-                }
-                let model_msg = Message {
-                    role: Role::Assistant,
-                    parts: vec![MessagePart::Text(text.clone())],
-                };
-                self.update_history(&data, model_msg);
-                return Ok((Some(text), None));
+        if is_openrouter
+            && self.video_generation_enabled
+            && let Some(job_id) = resp.get("id").and_then(|v| v.as_str())
+        {
+            let mut text = format!("Video generation submitted. Job ID: {}\n", job_id);
+            if let Some(polling_url) = resp.get("polling_url").and_then(|v| v.as_str()) {
+                text.push_str(&format!("To check status: GET {}\n", polling_url));
+                text.push_str("(Currently, the CLI does not automatically block and poll for video jobs due to high completion times.)");
             }
+            let model_msg = Message {
+                role: Role::Assistant,
+                parts: vec![MessagePart::Text(text.clone())],
+            };
+            self.update_history(&data, model_msg);
+            return Ok((Some(text), None));
+        }
 
         let choice = resp["choices"][0].clone();
         let message = &choice["message"];
@@ -766,40 +769,175 @@ impl LlmClient for OpenAiCompatibleClient {
     async fn send_as_verifier(
         &mut self,
         data: Vec<DataSource>,
-        _tool_schema: Value,
+        tool_schema: Value,
     ) -> anyhow::Result<Value> {
         let messages = self.build_messages(&data);
-        let body =
-            json!({ "model": self.base.state.model, "messages": messages, "max_tokens": 1024 });
+        let request_url = self.api_url.clone();
 
-        log::debug!(
-            "Verifier API Request: URL: {}, Body: {}",
-            self.api_url,
-            serde_json::to_string(&body).unwrap_or_default()
-        );
+        let req = json!({
+            "model": self.base.state.model,
+            "messages": messages,
+            "tools": [{"type": "function", "function": tool_schema}],
+            "tool_choice": "required",
+            "temperature": 0.0
+        });
 
         let res = self
             .http_client
-            .post(&self.api_url)
+            .post(&request_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&body)
+            .header("Content-Type", "application/json")
+            .json(&req)
             .send()
             .await?;
 
-        let status = res.status();
         let resp: Value = res.json().await?;
-        log::debug!(
-            "Verifier API Response: Status: {}, Body: {}",
-            status,
-            serde_json::to_string(&resp).unwrap_or_default()
-        );
-
-        let content = resp["choices"][0]["message"]["content"]
-            .as_str()
-            .unwrap_or("{}");
-        match serde_json::from_str(content) {
-            Ok(v) => Ok(v),
-            Err(_) => Ok(json!({"safe": false, "reason": content})),
+        if let Some(error) = resp.get("error") {
+            return Err(anyhow::anyhow!("Verifier API Error: {}", error));
         }
+
+        let choice = resp["choices"][0].clone();
+        let message = &choice["message"];
+
+        if let Some(tool_calls) = message.get("tool_calls").and_then(|v| v.as_array())
+            && let Some(tool_call) = tool_calls.first()
+        {
+            let args_str = tool_call["function"]["arguments"].as_str().unwrap_or("{}");
+            if let Ok(args_json) = serde_json::from_str(args_str) {
+                return Ok(args_json);
+            }
+        }
+
+        // Final fallback format sometimes returned by weird endpoints
+        if let Some(content) = message.get("content").and_then(|v| v.as_str())
+            && let Ok(args_json) = serde_json::from_str(content)
+        {
+            return Ok(args_json);
+        }
+
+        Err(anyhow::anyhow!(
+            "Verifier did not return a valid tool call or JSON"
+        ))
+    }
+}
+
+impl OpenAiCompatibleClient {
+    pub fn parse_response(
+        &mut self,
+        resp: Value,
+        _status: reqwest::StatusCode,
+        data: Vec<DataSource>,
+    ) -> anyhow::Result<(Option<String>, Option<String>)> {
+        let choice = resp["choices"][0].clone();
+        let message = &choice["message"];
+
+        let mut assistant_parts = Vec::new();
+        let mut text = None;
+
+        if let Some(content) = message.get("content") {
+            if let Some(s) = content.as_str() {
+                text = Some(s.to_string());
+                assistant_parts.push(MessagePart::Text(s.to_string()));
+            } else if let Some(arr) = content.as_array() {
+                for p in arr {
+                    if let Some(t) = p.get("text").and_then(|v| v.as_str()) {
+                        text.get_or_insert_with(String::new).push_str(t);
+                        assistant_parts.push(MessagePart::Text(t.to_string()));
+                    }
+                }
+            }
+        }
+
+        let mut _thoughts = None;
+
+        // Try getting thoughts from standard reasoning fields
+        if let Some(reasoning_content) = choice
+            .get("message")
+            .and_then(|m| m.get("reasoning"))
+            .or_else(|| {
+                choice
+                    .get("message")
+                    .and_then(|m| m.get("reasoning_content"))
+            })
+            .or_else(|| {
+                choice
+                    .get("message")
+                    .and_then(|m| m.get("reasoning_messages"))
+                    .and_then(|v| v.as_array().and_then(|a| a.first()))
+            })
+            .and_then(|v| v.as_str())
+            .or_else(|| {
+                choice
+                    .get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.as_str())
+                    .and_then(|c| {
+                        if let (Some(start), Some(end)) = (c.find("<think>"), c.find("</think>")) {
+                            Some(&c[start + 7..end])
+                        } else {
+                            None
+                        }
+                    })
+            })
+        {
+            _thoughts = Some(reasoning_content.to_string());
+            assistant_parts.push(MessagePart::Part(Box::new(ContentPart {
+                thought: Some(reasoning_content.to_string()),
+                ..Default::default()
+            })));
+        }
+
+        // Remove <think> from text if present
+        if let Some(t) = &mut text
+            && let (Some(start), Some(end)) = (t.find("<think>"), t.find("</think>"))
+        {
+            *t = format!("{}{}", &t[..start], &t[(end + 8)..]);
+        }
+
+        let mut response_func = None;
+
+        if let Some(tool_calls) = message.get("tool_calls").and_then(|v| v.as_array()) {
+            for tool_call in tool_calls {
+                let id = tool_call["id"].as_str().unwrap_or("").to_string();
+                let f = &tool_call["function"];
+                let name = f["name"].as_str().unwrap_or("").to_string();
+                let args = f["arguments"].as_str().unwrap_or("{}");
+
+                if name == "image_generation" {
+                    let args_json: Value = serde_json::from_str(args).unwrap_or(json!({}));
+                    response_func = Some(
+                        args_json
+                            .get("prompt")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    );
+                    assistant_parts.push(MessagePart::Text("[Generating image]".to_string()));
+                } else {
+                    let mut fc = HashMap::new();
+                    fc.insert("id".to_string(), json!(id));
+                    fc.insert("name".to_string(), json!(name));
+                    fc.insert(
+                        "arguments".to_string(),
+                        serde_json::from_str(args).unwrap_or(json!({})),
+                    );
+
+                    assistant_parts.push(MessagePart::Part(Box::new(ContentPart {
+                        function_call: Some(fc),
+                        ..Default::default()
+                    })));
+
+                    response_func = Some(format!("tool_call:{}", name));
+                }
+            }
+        }
+
+        let model_msg = Message {
+            role: Role::Assistant,
+            parts: assistant_parts,
+        };
+        self.update_history(&data, model_msg);
+
+        Ok((text, response_func))
     }
 }

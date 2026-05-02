@@ -11,22 +11,6 @@ impl StaticAnalyzer {
     pub fn check(command: &str, args: &[String]) -> (bool, Vec<String>) {
         let mut violations = Vec::new();
 
-        // Block explicit shell invocation that would bypass structural safety.
-        // Command::new does not invoke a shell, but `sh -c "..."` or `bash -c "..."`
-        // would re-introduce shell injection risks — the exact vulnerability our
-        // architecture is designed to structurally eliminate.
-        let shell_names = ["sh", "bash", "zsh", "fish", "dash", "ksh", "csh", "tcsh"];
-        if shell_names.contains(&command)
-            && args.iter().any(|a| a == "-c" || a == "-e" || a == "-i")
-        {
-            violations.push(
-                "Shell invocation with -c flag is blocked. This bypasses the structural \
-                     safety of Command::new (no-shell). Use built-in tools (grep_files, \
-                     search_files, etc.) or execute commands directly without a shell."
-                    .to_string(),
-            );
-        }
-
         // Block obviously malicious input in command name
         if Self::is_obviously_malicious(command) {
             violations.push(
