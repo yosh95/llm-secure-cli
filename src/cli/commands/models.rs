@@ -29,7 +29,10 @@ pub async fn list_models(
             if let Some(key) = &api_key {
                 h.push(("Authorization".to_string(), format!("Bearer {}", key)));
             }
-            ("https://openrouter.ai/api/v1/models".to_string(), h)
+            (
+                "https://openrouter.ai/api/v1/models?output_modalities=all".to_string(),
+                h,
+            )
         }
         "ollama" => {
             let config = match config_manager.get_config() {

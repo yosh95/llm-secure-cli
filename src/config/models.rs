@@ -87,6 +87,8 @@ pub struct CapabilityRule {
     pub image_generation: bool,
     #[serde(default)]
     pub video_generation: bool,
+    #[serde(default)]
+    pub audio_generation: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]

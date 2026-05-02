@@ -100,9 +100,14 @@ supports_tools = false
 image_generation = true
 
 [[rules]]
-pattern = ".*(video).*"
+pattern = ".*(video|veo|wan-|sora|kling).*"
 supports_tools = false
 video_generation = true
+
+[[rules]]
+pattern = ".*(tts|speech).*"
+supports_tools = false
+audio_generation = true
 
 # =============================================================================
 # Templates (Reusable Prompts)

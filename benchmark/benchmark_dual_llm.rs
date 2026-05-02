@@ -37,6 +37,7 @@ async fn main() -> anyhow::Result<()> {
                 Arc::new(move |model, stdout, raw, config_manager| {
                     let api_url = config_manager
                         .get_config()
+                        .unwrap()
                         .providers
                         .get(&closure_p_name)
                         .and_then(|p| p.api_url.clone())
@@ -52,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
                     let api_key = config_manager
                         .get_api_key(&closure_p_name)
                         .unwrap_or_default();
-                    Box::new(OpenAiCompatibleClient::new(
+                    OpenAiCompatibleClient::new(
                         config_manager,
                         &closure_p_name,
                         &api_url,
@@ -60,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
                         model,
                         stdout,
                         raw,
-                    ))
+                    ).map(|c| Box::new(c) as _)
                 }),
             );
         }
@@ -91,7 +92,7 @@ async fn main() -> anyhow::Result<()> {
         ]
     };
 
-    let security_config = ctx.config_manager.get_config().security.clone();
+    let security_config = ctx.config_manager.get_config().unwrap().security.clone();
 
     for (p_alias, p_model) in providers {
         let has_key = ctx.config_manager.get_api_key(p_alias).is_some();

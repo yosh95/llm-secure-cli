@@ -172,6 +172,10 @@ pub fn save_media(b64_data: &str, mime_type: &str, save_path: &str) -> anyhow::R
         "video/mp4" => "mp4",
         "video/webm" => "webm",
         "video/mpeg" => "mpeg",
+        "audio/mpeg" | "audio/mp3" => "mp3",
+        "audio/wav" => "wav",
+        "audio/ogg" => "ogg",
+        "audio/pcm" => "pcm",
         _ => "bin",
     };
 

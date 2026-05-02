@@ -16,6 +16,7 @@ pub struct OpenAiCompatibleClient {
     pub supports_vision: bool,
     pub image_generation_enabled: bool,
     pub video_generation_enabled: bool,
+    pub audio_generation_enabled: bool,
 }
 
 impl OpenAiCompatibleClient {
@@ -46,6 +47,7 @@ impl OpenAiCompatibleClient {
         let mut supports_tools = true;
         let mut image_generation_enabled = false;
         let mut video_generation_enabled = false;
+        let mut audio_generation_enabled = false;
 
         // Apply dynamic rules based on model ID
         let model_id_lower = model.to_lowercase();
@@ -56,6 +58,7 @@ impl OpenAiCompatibleClient {
                 supports_tools = rule.supports_tools;
                 image_generation_enabled = rule.image_generation;
                 video_generation_enabled = rule.video_generation;
+                audio_generation_enabled = rule.audio_generation;
             }
         }
 
@@ -70,6 +73,7 @@ impl OpenAiCompatibleClient {
             supports_vision: true,
             image_generation_enabled,
             video_generation_enabled,
+            audio_generation_enabled,
         })
     }
 
@@ -342,53 +346,210 @@ impl LlmClient for OpenAiCompatibleClient {
         tool_schemas: Vec<Value>,
     ) -> anyhow::Result<(Option<String>, Option<String>)> {
         let messages = self.build_messages(&data);
-        let mut body = json!({
-            "model": self.base.state.model,
-            "messages": messages,
-        });
 
-        let mut tools = if self.supports_tools && self.base.state.tools_enabled {
-            self.build_tool_schemas(tool_schemas)
+        // For OpenRouter, we need to handle specific modalities with separate endpoints
+        let is_openrouter = self.base.config_section == "openrouter";
+        let mut request_url = self.api_url.clone();
+
+        // If the model is exclusively a video or audio processing model, we override the endpoint
+        if is_openrouter && self.video_generation_enabled {
+            request_url = request_url.replace("/chat/completions", "/videos");
+        } else if is_openrouter && self.audio_generation_enabled {
+            request_url = request_url.replace("/chat/completions", "/audio/speech");
+        }
+
+        let body = if is_openrouter && self.video_generation_enabled {
+            // Build OpenRouter /api/v1/videos request
+            let prompt = messages
+                .iter()
+                .filter_map(|m| {
+                    if m.get("role").and_then(|v| v.as_str()) == Some("user") {
+                        let content = m.get("content")?;
+                        if let Some(s) = content.as_str() {
+                            Some(s.to_string())
+                        } else if let Some(arr) = content.as_array() {
+                            let mut texts = Vec::new();
+                            for p in arr {
+                                if let Some(t) = p.get("text").and_then(|v| v.as_str()) {
+                                    texts.push(t.to_string());
+                                }
+                            }
+                            if texts.is_empty() {
+                                None
+                            } else {
+                                Some(texts.join("\n"))
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let mut req = json!({
+                "model": self.base.state.model,
+                "prompt": prompt,
+            });
+
+            // Extract frame images or input references from user messages if they exist
+            let mut images = Vec::new();
+            for m in &messages {
+                if let Some(content) = m.get("content").and_then(|v| v.as_array()) {
+                    for p in content {
+                        if p.get("type").and_then(|v| v.as_str()) == Some("image_url")
+                            && let Some(image_url) = p.get("image_url") {
+                                images.push(json!({
+                                    "type": "image_url",
+                                    "image_url": image_url.clone()
+                                }));
+                            }
+                    }
+                }
+            }
+
+            if !images.is_empty() {
+                // By default put them as input_references. You could refine this to frame_images if needed.
+                req["input_references"] = json!(images);
+            }
+
+            req
+        } else if is_openrouter && self.audio_generation_enabled {
+            // Build OpenRouter /api/v1/audio/speech request
+            let input = messages
+                .iter()
+                .filter_map(|m| {
+                    if m.get("role").and_then(|v| v.as_str()) == Some("user") {
+                        let content = m.get("content")?;
+                        if let Some(s) = content.as_str() {
+                            return Some(s.to_string());
+                        } else if let Some(arr) = content.as_array() {
+                            let mut texts = Vec::new();
+                            for p in arr {
+                                if let Some(t) = p.get("text").and_then(|v| v.as_str()) {
+                                    texts.push(t.to_string());
+                                }
+                            }
+                            if !texts.is_empty() {
+                                return Some(texts.join("\n"));
+                            }
+                        }
+                    }
+                    None
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            json!({
+                "model": self.base.state.model,
+                "input": input,
+                // "voice": ... typically required but depends on provider. "alloy" works for OpenAI TTS.
+                // You can add logic to extract voice from settings or prompt if needed.
+                "voice": "alloy",
+            })
         } else {
-            Vec::new()
-        };
-        if self.supports_tools && self.image_generation_enabled {
-            tools.push(json!({ "type": "image_generation" }));
-        }
-        if self.supports_tools && self.video_generation_enabled {
-            tools.push(json!({ "type": "video_generation" }));
-        }
-        if !tools.is_empty() {
-            body["tools"] = json!(tools);
-            body["tool_choice"] = json!("auto");
-        }
+            // Standard /chat/completions payload
+            let mut req = json!({
+                "model": self.base.state.model,
+                "messages": messages,
+            });
 
-        if self.base.config_section == "openrouter"
-            && (self.image_generation_enabled || self.video_generation_enabled)
-        {
-            let mut modalities = vec!["text"];
-            if self.image_generation_enabled {
-                modalities.push("image");
+            let mut tools = if self.supports_tools && self.base.state.tools_enabled {
+                self.build_tool_schemas(tool_schemas)
+            } else {
+                Vec::new()
+            };
+            if self.supports_tools && self.image_generation_enabled {
+                tools.push(json!({ "type": "image_generation" }));
             }
-            if self.video_generation_enabled {
-                modalities.push("video");
+            if !tools.is_empty() {
+                req["tools"] = json!(tools);
+                req["tool_choice"] = json!("auto");
             }
-            body["modalities"] = json!(modalities);
-        }
+
+            if is_openrouter && self.image_generation_enabled {
+                req["modalities"] = json!(["image"]);
+            }
+            req
+        };
+
+        log::debug!(
+            "API Request: URL: {}, Body: {}",
+            request_url,
+            serde_json::to_string(&body).unwrap_or_default()
+        );
 
         let res = self
             .http_client
-            .post(&self.api_url)
+            .post(&request_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
             .await?;
 
+        let status = res.status();
+
+        // Check if response is JSON or BINARY (like audio)
+        let is_json = res
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.contains("application/json"))
+            .unwrap_or(false);
+
+        if !is_json && is_openrouter && self.audio_generation_enabled {
+            let bytes = res.bytes().await?;
+            use base64::{Engine as _, engine::general_purpose};
+            let b64 = general_purpose::STANDARD.encode(&bytes);
+            let mime_type = "audio/mpeg"; // default MP3
+
+            let mut inline_data = HashMap::new();
+            inline_data.insert("mimeType".to_string(), json!(mime_type));
+            inline_data.insert("data".to_string(), json!(b64));
+
+            let audio_part = MessagePart::Part(Box::new(ContentPart {
+                inline_data: Some(inline_data),
+                ..Default::default()
+            }));
+
+            let text = "Audio generated successfully.".to_string();
+            let model_msg = Message {
+                role: Role::Assistant,
+                parts: vec![MessagePart::Text(text.clone()), audio_part],
+            };
+            self.update_history(&data, model_msg);
+            return Ok((Some(text), None));
+        }
+
         let resp: Value = res.json().await?;
+        log::debug!(
+            "API Response: Status: {}, Body: {}",
+            status,
+            serde_json::to_string(&resp).unwrap_or_default()
+        );
+
         if let Some(error) = resp.get("error") {
             return Err(anyhow::anyhow!("API Error: {}", error));
         }
+
+        // OpenRouter /api/v1/videos response returns job ID and polling URL
+        if is_openrouter && self.video_generation_enabled
+            && let Some(job_id) = resp.get("id").and_then(|v| v.as_str()) {
+                let mut text = format!("Video generation submitted. Job ID: {}\n", job_id);
+                if let Some(polling_url) = resp.get("polling_url").and_then(|v| v.as_str()) {
+                    text.push_str(&format!("To check status: GET {}\n", polling_url));
+                    text.push_str("(Currently, the CLI does not automatically block and poll for video jobs due to high completion times.)");
+                }
+                let model_msg = Message {
+                    role: Role::Assistant,
+                    parts: vec![MessagePart::Text(text.clone())],
+                };
+                self.update_history(&data, model_msg);
+                return Ok((Some(text), None));
+            }
 
         let choice = resp["choices"][0].clone();
         let message = &choice["message"];
@@ -610,6 +771,13 @@ impl LlmClient for OpenAiCompatibleClient {
         let messages = self.build_messages(&data);
         let body =
             json!({ "model": self.base.state.model, "messages": messages, "max_tokens": 1024 });
+
+        log::debug!(
+            "Verifier API Request: URL: {}, Body: {}",
+            self.api_url,
+            serde_json::to_string(&body).unwrap_or_default()
+        );
+
         let res = self
             .http_client
             .post(&self.api_url)
@@ -617,7 +785,15 @@ impl LlmClient for OpenAiCompatibleClient {
             .json(&body)
             .send()
             .await?;
+
+        let status = res.status();
         let resp: Value = res.json().await?;
+        log::debug!(
+            "Verifier API Response: Status: {}, Body: {}",
+            status,
+            serde_json::to_string(&resp).unwrap_or_default()
+        );
+
         let content = resp["choices"][0]["message"]["content"]
             .as_str()
             .unwrap_or("{}");

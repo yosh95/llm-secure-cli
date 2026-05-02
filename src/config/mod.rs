@@ -127,6 +127,9 @@ impl ConfigManager {
 
         let models_url = if provider == "ollama" && !url.contains("/v1") {
             format!("{}/api/tags", url.trim_end_matches('/'))
+        } else if provider == "openrouter" && url == "https://openrouter.ai/api/v1" {
+            // openrouter requires query param to include all modalities like video/image generation
+            "https://openrouter.ai/api/v1/models?output_modalities=all".to_string()
         } else {
             format!("{}/models", url.trim_end_matches('/'))
         };
