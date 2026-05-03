@@ -168,7 +168,16 @@ impl OpenAiCompatibleClient {
                                 .unwrap_or("");
                             let data = id.get("data").and_then(|v| v.as_str()).unwrap_or("");
                             if !mime.is_empty() && !data.is_empty() {
-                                if mime == "application/pdf" || mime.starts_with("image/") {
+                                if mime == "application/pdf" {
+                                    content_parts.push(json!({
+                                        "type": "document",
+                                        "source": {
+                                            "type": "base64",
+                                            "media_type": "application/pdf",
+                                            "data": data
+                                        }
+                                    }));
+                                } else if mime.starts_with("image/") {
                                     content_parts.push(json!({
                                         "type": "image_url",
                                         "image_url": { "url": Self::data_url(mime, data) }
@@ -213,7 +222,7 @@ impl OpenAiCompatibleClient {
 
                 let has_media = content_only_parts.iter().any(|p| {
                     let t = p.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                    t == "image_url" || t == "input_audio" || t == "video_url"
+                    t == "image_url" || t == "input_audio" || t == "video_url" || t == "document"
                 });
 
                 let content = if content_only_parts.is_empty() {
@@ -246,7 +255,15 @@ impl OpenAiCompatibleClient {
                     new_parts
                         .push(json!({"type": "text", "text": d.content.as_str().unwrap_or("")}));
                 }
-                ct if ct == "application/pdf" || ct.starts_with("image/") => {
+                "application/pdf" => {
+                    if let Some(b64) = d.content.as_str() {
+                        new_parts.push(json!({
+                            "type": "document",
+                            "source": { "type": "base64", "media_type": "application/pdf", "data": b64 }
+                        }));
+                    }
+                }
+                ct if ct.starts_with("image/") => {
                     if let Some(b64) = d.content.as_str() {
                         new_parts.push(json!({
                             "type": "image_url",
@@ -291,7 +308,7 @@ impl OpenAiCompatibleClient {
         if !new_parts.is_empty() {
             let has_media = new_parts.iter().any(|p| {
                 let t = p.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                t == "image_url" || t == "input_audio" || t == "video_url"
+                t == "image_url" || t == "input_audio" || t == "video_url" || t == "document"
             });
             let content = if has_media || new_parts.len() > 1 {
                 Value::Array(new_parts)
