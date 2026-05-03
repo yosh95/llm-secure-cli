@@ -172,25 +172,10 @@ async fn fetch_url(url: &str) -> anyhow::Result<String> {
     let body = res.text().await?;
 
     if content_type.contains("html") {
-        Ok(html_to_text(&body)?)
+        Ok(crate::utils::media::html_to_text(&body)?)
     } else {
         Ok(body)
     }
-}
-
-fn html_to_text(html: &str) -> anyhow::Result<String> {
-    use regex::Regex;
-    use std::sync::LazyLock;
-
-    static RE_SCRIPT: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"(?is)<script[^>]*>.*?</script>").expect("Invalid script regex")
-    });
-    static RE_STYLE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"(?is)<style[^>]*>.*?</style>").expect("Invalid style regex"));
-
-    let cleaned = RE_SCRIPT.replace_all(html, "");
-    let cleaned = RE_STYLE.replace_all(&cleaned, "");
-    Ok(html2text::from_read(cleaned.as_bytes(), 100)?)
 }
 
 /// Parameters for the Brave LLM Context API.

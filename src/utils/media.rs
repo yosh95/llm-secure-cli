@@ -46,7 +46,7 @@ pub async fn fetch_url_content(
     }
 }
 
-/// Convert HTML to readable plain text, stripping scripts/styles first.
+/// Convert HTML to readable plain text by stripping tags and basic cleaning.
 pub fn html_to_text(html: &str) -> anyhow::Result<String> {
     use regex::Regex;
     use std::sync::LazyLock;
@@ -56,10 +56,41 @@ pub fn html_to_text(html: &str) -> anyhow::Result<String> {
     });
     static RE_STYLE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"(?is)<style[^>]*>.*?</style>").expect("Invalid style regex"));
+    static RE_COMMENTS: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?is)<!--.*?-->").expect("Invalid comment regex"));
+    static RE_TAGS: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"<[^>]+>").expect("Invalid tags regex"));
 
     let cleaned = RE_SCRIPT.replace_all(html, "");
     let cleaned = RE_STYLE.replace_all(&cleaned, "");
-    Ok(html2text::from_read(cleaned.as_bytes(), 100)?)
+    let cleaned = RE_COMMENTS.replace_all(&cleaned, "");
+    let cleaned = RE_TAGS.replace_all(&cleaned, " ");
+
+    // Basic entity decoding
+    let mut text = cleaned.to_string();
+    let entities = [
+        ("&nbsp;", " "),
+        ("&lt;", "<"),
+        ("&gt;", ">"),
+        ("&amp;", "&"),
+        ("&quot;", "\""),
+        ("&#39;", "'"),
+        ("&copy;", "©"),
+        ("&reg;", "®"),
+    ];
+    for (entity, replacement) in entities {
+        text = text.replace(entity, replacement);
+    }
+
+    // Clean up excessive whitespace and consolidate lines
+    let text = text
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    Ok(text)
 }
 
 pub fn process_file(path: &Path, pdf_as_base64: bool) -> anyhow::Result<DataSource> {
