@@ -48,9 +48,9 @@ impl LlmClient for OllamaClient {
     }
 
     fn should_send_pdf_as_base64(&self) -> bool {
-        // Depending on Ollama vision models, base64 might be supported or might not,
-        // but true is a safe bridge for multimodal models.
-        true
+        // Ollama doesn't natively support PDF as multimodal input yet.
+        // Returning false ensures that text is extracted from the PDF and sent as text.
+        false
     }
 
     async fn send(

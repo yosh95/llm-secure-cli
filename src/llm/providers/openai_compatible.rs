@@ -17,6 +17,7 @@ pub struct OpenAiCompatibleClient {
     pub image_generation_enabled: bool,
     pub video_generation_enabled: bool,
     pub audio_generation_enabled: bool,
+    pub is_openrouter: bool,
 }
 
 impl OpenAiCompatibleClient {
@@ -29,10 +30,14 @@ impl OpenAiCompatibleClient {
         stdout: bool,
         raw: bool,
     ) -> anyhow::Result<Self> {
+        let model_lower = model.to_lowercase();
+        let is_anthropic = model_lower.contains("claude") || model_lower.contains("anthropic");
+        let is_gemini = model_lower.contains("gemini") || model_lower.contains("google");
+
         let spec = ProviderSpec {
             api_key_name: "api_key".to_string(),
             config_section: provider_name.to_string(),
-            pdf_as_base64: true,
+            pdf_as_base64: is_anthropic || is_gemini,
         };
         let _model_config = config_manager.get_model_config(provider_name, model);
         let config = config_manager.get_config()?;
@@ -62,6 +67,8 @@ impl OpenAiCompatibleClient {
             }
         }
 
+        let is_openrouter = provider_name == "openrouter";
+
         let http_client = create_http_client(config_manager)?;
 
         Ok(Self {
@@ -74,6 +81,7 @@ impl OpenAiCompatibleClient {
             image_generation_enabled,
             video_generation_enabled,
             audio_generation_enabled,
+            is_openrouter,
         })
     }
 
@@ -169,14 +177,43 @@ impl OpenAiCompatibleClient {
                             let data = id.get("data").and_then(|v| v.as_str()).unwrap_or("");
                             if !mime.is_empty() && !data.is_empty() {
                                 if mime == "application/pdf" {
-                                    content_parts.push(json!({
-                                        "type": "document",
-                                        "source": {
-                                            "type": "base64",
-                                            "media_type": "application/pdf",
-                                            "data": data
+                                    if self.is_openrouter {
+                                        // OpenRouter uses a proprietary "file" type with data URL format
+                                        let filename = id
+                                            .get("filename")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("document.pdf");
+                                        let data_url = Self::data_url(mime, data);
+                                        content_parts.push(json!({
+                                            "type": "file",
+                                            "file": {
+                                                "filename": filename,
+                                                "file_data": data_url
+                                            }
+                                        }));
+                                    } else {
+                                        let model_lower = self.base.state.model.to_lowercase();
+                                        if model_lower.contains("claude")
+                                            || model_lower.contains("anthropic")
+                                            || model_lower.contains("gemini")
+                                            || model_lower.contains("google")
+                                        {
+                                            content_parts.push(json!({
+                                                "type": "document",
+                                                "source": {
+                                                    "type": "base64",
+                                                    "media_type": "application/pdf",
+                                                    "data": data
+                                                }
+                                            }));
+                                        } else {
+                                            // Fallback for others that might support it via image_url (less common now)
+                                            content_parts.push(json!({
+                                                "type": "image_url",
+                                                "image_url": { "url": Self::data_url(mime, data) }
+                                            }));
                                         }
-                                    }));
+                                    }
                                 } else if mime.starts_with("image/") {
                                     content_parts.push(json!({
                                         "type": "image_url",
@@ -222,7 +259,11 @@ impl OpenAiCompatibleClient {
 
                 let has_media = content_only_parts.iter().any(|p| {
                     let t = p.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                    t == "image_url" || t == "input_audio" || t == "video_url" || t == "document"
+                    t == "image_url"
+                        || t == "input_audio"
+                        || t == "video_url"
+                        || t == "document"
+                        || t == "file"
                 });
 
                 let content = if content_only_parts.is_empty() {
@@ -257,10 +298,39 @@ impl OpenAiCompatibleClient {
                 }
                 "application/pdf" => {
                     if let Some(b64) = d.content.as_str() {
-                        new_parts.push(json!({
-                            "type": "document",
-                            "source": { "type": "base64", "media_type": "application/pdf", "data": b64 }
-                        }));
+                        if self.is_openrouter {
+                            // OpenRouter uses a proprietary "file" type with data URL format
+                            let filename = d
+                                .metadata
+                                .get("filename")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("document.pdf");
+                            let data_url = Self::data_url("application/pdf", b64);
+                            new_parts.push(json!({
+                                "type": "file",
+                                "file": {
+                                    "filename": filename,
+                                    "file_data": data_url
+                                }
+                            }));
+                        } else {
+                            let model_lower = self.base.state.model.to_lowercase();
+                            if model_lower.contains("claude")
+                                || model_lower.contains("anthropic")
+                                || model_lower.contains("gemini")
+                                || model_lower.contains("google")
+                            {
+                                new_parts.push(json!({
+                                    "type": "document",
+                                    "source": { "type": "base64", "media_type": "application/pdf", "data": b64 }
+                                }));
+                            } else {
+                                new_parts.push(json!({
+                                    "type": "image_url",
+                                    "image_url": { "url": Self::data_url("application/pdf", b64) }
+                                }));
+                            }
+                        }
                     }
                 }
                 ct if ct.starts_with("image/") => {
@@ -308,7 +378,11 @@ impl OpenAiCompatibleClient {
         if !new_parts.is_empty() {
             let has_media = new_parts.iter().any(|p| {
                 let t = p.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                t == "image_url" || t == "input_audio" || t == "video_url" || t == "document"
+                t == "image_url"
+                    || t == "input_audio"
+                    || t == "video_url"
+                    || t == "document"
+                    || t == "file"
             });
             let content = if has_media || new_parts.len() > 1 {
                 Value::Array(new_parts)
@@ -354,7 +428,27 @@ impl LlmClient for OpenAiCompatibleClient {
         &self.base.config_section
     }
     fn should_send_pdf_as_base64(&self) -> bool {
-        true
+        let m = self.base.state.model.to_lowercase();
+        let is_anthropic = m.contains("claude") || m.contains("anthropic");
+        let is_google = m.contains("gemini") || m.contains("google");
+
+        // OpenRouter uses its own "file" format for PDFs.
+        // For non-OpenRouter providers, only Anthropic and Google get base64.
+        if self.is_openrouter {
+            return true;
+        }
+
+        if is_anthropic {
+            return true;
+        }
+
+        if is_google {
+            // Gemini supports PDF, but only some OpenAI-compatible backends handle it.
+            // For direct Google/Vertex, we can send it. For others, we'll extract text.
+            return self.base.config_section == "google" || self.base.config_section == "vertex";
+        }
+
+        false
     }
 
     async fn send(

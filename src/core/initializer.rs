@@ -143,7 +143,9 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
 }
 
 async fn register_clients(ctx: &Arc<AppContext>) {
+    use crate::llm::providers::ollama::OllamaClient;
     use crate::llm::providers::openai_compatible::OpenAiCompatibleClient;
+    use crate::llm::providers::openrouter::OpenRouterClient;
 
     let mut registry = ctx.client_registry.lock().await;
     let active_providers = ctx.config_manager.get_active_providers();
@@ -173,16 +175,36 @@ async fn register_clients(ctx: &Arc<AppContext>) {
                     "".to_string()
                 };
 
-                let client = OpenAiCompatibleClient::new(
-                    config_manager,
-                    &closure_p_name,
-                    &api_url,
-                    &api_key,
-                    model,
-                    stdout,
-                    raw,
-                )?;
-                Ok(Box::new(client) as Box<dyn LlmClient>)
+                let client: Box<dyn LlmClient> = match closure_p_name.as_str() {
+                    "openrouter" => Box::new(OpenRouterClient::new(
+                        config_manager,
+                        &closure_p_name,
+                        &api_url,
+                        &api_key,
+                        model,
+                        stdout,
+                        raw,
+                    )?),
+                    "ollama" => Box::new(OllamaClient::new(
+                        config_manager,
+                        &closure_p_name,
+                        &api_url,
+                        &api_key,
+                        model,
+                        stdout,
+                        raw,
+                    )?),
+                    _ => Box::new(OpenAiCompatibleClient::new(
+                        config_manager,
+                        &closure_p_name,
+                        &api_url,
+                        &api_key,
+                        model,
+                        stdout,
+                        raw,
+                    )?),
+                };
+                Ok(client)
             }),
         );
     }

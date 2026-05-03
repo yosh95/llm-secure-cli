@@ -24,22 +24,39 @@ impl ChatSession {
             }
         };
 
-        if let Some(data) = initial_data
+        if let Some(mut data) = initial_data
             && !data.is_empty()
         {
-            if self.intent.is_empty()
-                && let Some(DataSource {
-                    content: serde_json::Value::String(s),
-                    ..
-                }) = data.first()
-            {
-                self.intent = s.clone();
-                crate::utils::chat_logger::log_chat(
-                    &self.ctx.config_manager,
-                    &crate::llm::models::Role::User,
-                    s,
-                    None,
-                );
+            // Check if there's any actual text prompt from the user in the initial data
+            let has_text_prompt = data.iter().any(|d| {
+                d.content
+                    .as_str()
+                    .map(|s| !s.trim().is_empty())
+                    .unwrap_or(false)
+                    && !d.is_file_or_url
+            });
+
+            // If only files were provided without a text prompt, insert a default prompt
+            // to satisfy LLM requirements (e.g., Gemini requires at least 1 text token).
+            if !has_text_prompt {
+                data.push(DataSource {
+                    content: serde_json::Value::String(
+                        "Please analyze the provided file(s).".to_string(),
+                    ),
+                    content_type: "text/plain".to_string(),
+                    is_file_or_url: false,
+                    metadata: std::collections::HashMap::new(),
+                });
+            }
+
+            if self.intent.is_empty() {
+                // Set a default intent for the session
+                self.intent = data
+                    .first()
+                    .and_then(|d| d.metadata.get("filename"))
+                    .and_then(|v| v.as_str())
+                    .map(|f| format!("Analysis of {}", f))
+                    .unwrap_or_else(|| "Initial file analysis".to_string());
             }
 
             match self.process_and_print(data).await {

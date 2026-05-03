@@ -292,6 +292,12 @@ pub async fn handle_attach(session: &mut ChatSession, source: &str) {
     if let Some(d) = data {
         ui::report_success(&format!("Attached {}: {}", d.content_type, source));
         session.pending_data.push(d);
+        // Remind the user to pair the attachment with an explicit question.
+        // Without a clear referent the model may not know what to do with the file
+        // (e.g. a vague pronoun like "these" is ambiguous to the LLM).
+        ui::report_info(
+            "File queued. Type your question about it before sending (e.g. \"Summarize this PDF\").",
+        );
     } else {
         ui::report_error(&format!("Failed to attach: {}", source));
     }
