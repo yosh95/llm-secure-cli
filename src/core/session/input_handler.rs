@@ -25,36 +25,37 @@ impl ChatSession {
         };
 
         if let Some(data) = initial_data
-            && !data.is_empty() {
-                if self.intent.is_empty()
-                    && let Some(DataSource {
-                        content: serde_json::Value::String(s),
-                        ..
-                    }) = data.first()
-                {
-                    self.intent = s.clone();
-                    crate::utils::chat_logger::log_chat(
-                        &self.ctx.config_manager,
-                        &crate::llm::models::Role::User,
-                        s,
-                        None,
-                    );
-                }
+            && !data.is_empty()
+        {
+            if self.intent.is_empty()
+                && let Some(DataSource {
+                    content: serde_json::Value::String(s),
+                    ..
+                }) = data.first()
+            {
+                self.intent = s.clone();
+                crate::utils::chat_logger::log_chat(
+                    &self.ctx.config_manager,
+                    &crate::llm::models::Role::User,
+                    s,
+                    None,
+                );
+            }
 
-                match self.process_and_print(data).await {
-                    Ok(_) => {
-                        if is_stdout {
-                            return;
-                        }
+            match self.process_and_print(data).await {
+                Ok(_) => {
+                    if is_stdout {
+                        return;
                     }
-                    Err(e) => {
-                        ui::report_error(&format!("Error: {}", e));
-                        if is_stdout {
-                            return;
-                        }
+                }
+                Err(e) => {
+                    ui::report_error(&format!("Error: {}", e));
+                    if is_stdout {
+                        return;
                     }
                 }
             }
+        }
 
         if is_stdout {
             return;
