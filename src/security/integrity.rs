@@ -94,10 +94,10 @@ impl IntegrityVerifier {
                 }
                 hasher.update(&buffer[..n]);
             }
-            return Ok(hex::encode(hasher.finalize()));
+            return Ok(crate::utils::hex_encode(hasher.finalize()));
         }
 
-        Ok(hex::encode(overall_hasher.finalize()))
+        Ok(crate::utils::hex_encode(overall_hasher.finalize()))
     }
 
     /// Calculates the SHA-256 hash of the configuration file.
@@ -117,7 +117,7 @@ impl IntegrityVerifier {
             }
             hasher.update(&buffer[..n]);
         }
-        Ok(hex::encode(hasher.finalize()))
+        Ok(crate::utils::hex_encode(hasher.finalize()))
     }
 
     /// Generates a new integrity manifest, signs it with PQC, and saves it to disk.

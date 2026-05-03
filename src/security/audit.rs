@@ -129,7 +129,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
     let entry_json = serde_json::to_string(&log_entry).unwrap_or_default();
     let mut hasher = Sha256::new();
     hasher.update(entry_json.as_bytes());
-    log_entry.hash = hex::encode(hasher.finalize());
+    log_entry.hash = crate::utils::hex_encode(hasher.finalize());
 
     // PQC Signing
     let variant = crate::security::pqc::MldsaVariant::Mldsa65;

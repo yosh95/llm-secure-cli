@@ -135,7 +135,7 @@ fn test_merkle_session_verification_logic() {
     let entry_json = serde_json::to_string(&entry).unwrap();
     let mut hasher = Sha256::new();
     hasher.update(entry_json.as_bytes());
-    entry.hash = hex::encode(hasher.finalize());
+    entry.hash = llm_secure_cli::utils::hex_encode(hasher.finalize());
 
     let leaf_hashes = vec![entry.hash.clone()];
     let tree = MerkleTree::new(leaf_hashes.clone());
@@ -151,7 +151,7 @@ fn test_merkle_session_verification_logic() {
     let verify_json = serde_json::to_string(&entry_to_verify).unwrap();
     let mut verify_hasher = Sha256::new();
     verify_hasher.update(verify_json.as_bytes());
-    let recalculated_hash = hex::encode(verify_hasher.finalize());
+    let recalculated_hash = llm_secure_cli::utils::hex_encode(verify_hasher.finalize());
 
     assert_eq!(
         entry.hash, recalculated_hash,

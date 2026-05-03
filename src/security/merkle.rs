@@ -23,13 +23,13 @@ impl MerkleTree {
                     let mut hasher = Sha256::new();
                     hasher.update(&chunk[0]);
                     hasher.update(&chunk[1]);
-                    next_level.push(hex::encode(hasher.finalize()));
+                    next_level.push(crate::utils::hex_encode(hasher.finalize()));
                 } else {
                     // Odd number of leaves: repeat the last one
                     let mut hasher = Sha256::new();
                     hasher.update(&chunk[0]);
                     hasher.update(&chunk[0]);
-                    next_level.push(hex::encode(hasher.finalize()));
+                    next_level.push(crate::utils::hex_encode(hasher.finalize()));
                 }
             }
             current_hashes = next_level;

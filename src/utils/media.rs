@@ -48,13 +48,14 @@ pub async fn fetch_url_content(
 
 /// Convert HTML to readable plain text, stripping scripts/styles first.
 pub fn html_to_text(html: &str) -> anyhow::Result<String> {
-    use once_cell::sync::Lazy;
     use regex::Regex;
+    use std::sync::LazyLock;
 
-    static RE_SCRIPT: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"(?is)<script[^>]*>.*?</script>").expect("Invalid script regex"));
-    static RE_STYLE: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"(?is)<style[^>]*>.*?</style>").expect("Invalid style regex"));
+    static RE_SCRIPT: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?is)<script[^>]*>.*?</script>").expect("Invalid script regex")
+    });
+    static RE_STYLE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?is)<style[^>]*>.*?</style>").expect("Invalid style regex"));
 
     let cleaned = RE_SCRIPT.replace_all(html, "");
     let cleaned = RE_STYLE.replace_all(&cleaned, "");

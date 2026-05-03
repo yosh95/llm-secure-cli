@@ -1,8 +1,8 @@
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
-pub static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+pub static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .gzip(true)

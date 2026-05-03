@@ -5,15 +5,15 @@ use crate::security::merkle::MerkleTree;
 use crate::security::pqc::{MldsaVariant, PqcProvider};
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::Digest;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::sync::LazyLock;
 
-static ANCHOR_DIR: Lazy<PathBuf> = Lazy::new(|| {
+static ANCHOR_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
     let mut p = AUDIT_LOG_PATH.to_path_buf();
     if p.pop() {
         p.join("anchors")
@@ -202,7 +202,7 @@ impl SessionAnchorManager {
             let entry_str = serde_json::to_string(&audit_entry)?;
             let mut hasher = sha2::Sha256::new();
             hasher.update(entry_str.as_bytes());
-            let actual_hash = hex::encode(hasher.finalize());
+            let actual_hash = crate::utils::hex_encode(hasher.finalize());
 
             if provided_hash != actual_hash {
                 return Ok(false);

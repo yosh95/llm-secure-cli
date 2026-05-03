@@ -5,7 +5,6 @@ use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
-use once_cell::sync::Lazy;
 use pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
 use rand::rngs::OsRng;
 use serde_json::json;
@@ -13,13 +12,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use uuid::Uuid;
 
 pub struct IdentityManager;
 
-static KEY_CACHE: Lazy<Mutex<HashMap<String, Vec<u8>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
-static KEYS_ENSURED: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
+static KEY_CACHE: LazyLock<Mutex<HashMap<String, Vec<u8>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static KEYS_ENSURED: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
 
 impl IdentityManager {
     const PRIVATE_KEY_PATH: &str = "id_ed25519";
