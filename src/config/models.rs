@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct GeneralConfig {
     pub system_prompt: Option<String>,
     #[serde(default = "default_true")]
@@ -72,13 +72,13 @@ impl Default for GeneralConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct ProviderConfig {
     pub api_key: Option<String>,
     pub api_url: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct CapabilityRule {
     pub pattern: String,
     #[serde(default = "default_true")]
@@ -91,13 +91,13 @@ pub struct CapabilityRule {
     pub audio_generation: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct AppState {
     pub last_used_provider: Option<String>,
     pub last_used_model: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SecurityConfig {
     #[serde(default = "default_allowed_paths")]
     pub allowed_paths: Vec<String>,
@@ -169,7 +169,7 @@ impl Default for SecurityConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct McpServerConfig {
     pub name: String,
     pub command: String,
@@ -179,7 +179,7 @@ pub struct McpServerConfig {
     pub zero_trust: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct AppConfig {
     #[serde(default)]
     pub general: GeneralConfig,

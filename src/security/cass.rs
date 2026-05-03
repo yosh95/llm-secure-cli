@@ -1,7 +1,7 @@
 use crate::config::models::SecurityConfig;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RiskLevel {
     Low,
     Medium,
@@ -9,7 +9,7 @@ pub enum RiskLevel {
     Critical,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SecurityPosture {
     pub require_pqc_signature: bool,
     pub pqc_variant: String,

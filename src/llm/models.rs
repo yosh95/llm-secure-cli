@@ -2,7 +2,7 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     System,
@@ -12,7 +12,7 @@ pub enum Role {
     Tool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct ContentPart {
     pub text: Option<String>,
     pub inline_data: Option<HashMap<String, serde_json::Value>>,
@@ -26,14 +26,14 @@ pub struct ContentPart {
     pub is_diagnostic: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum MessagePart {
     Text(String),
     Part(Box<ContentPart>),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Message {
     pub role: Role,
     pub parts: Vec<MessagePart>,
@@ -58,7 +58,7 @@ impl Message {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct DataSource {
     pub content: serde_json::Value,
     pub content_type: String,
@@ -67,14 +67,14 @@ pub struct DataSource {
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ClientState {
     pub model: String,
     pub provider: String,
@@ -84,7 +84,6 @@ pub struct ClientState {
     pub system_prompt: Option<String>,
     pub stdout: bool,
     pub render_markdown: bool,
-    pub live_debug: bool,
 }
 
 impl ClientState {

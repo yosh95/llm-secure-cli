@@ -105,7 +105,6 @@ async fn test_processor_tool_execution_flow() {
                         system_prompt: None,
                         stdout,
                         render_markdown: !raw,
-                        live_debug: false,
                     },
                     responses: vec![],
                     call_count: 0,
@@ -136,7 +135,6 @@ async fn test_processor_tool_execution_flow() {
             system_prompt: None,
             stdout: false,
             render_markdown: false,
-            live_debug: false,
         },
         responses: vec![
             (None, None, Some(vec![tool_call_part])),

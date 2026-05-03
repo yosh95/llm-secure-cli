@@ -133,9 +133,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
                     ));
                 }
             }
-            Err(e) => {
-                tracing::warn!("Integrity verification error: {}", e);
-            }
+            Err(_e) => {}
         }
     }
 

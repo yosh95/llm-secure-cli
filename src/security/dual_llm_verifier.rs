@@ -13,7 +13,7 @@ pub struct DualLLMVerifier {
     verifier_llm: Box<dyn LlmClient>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub enum VerificationResult {
     Allowed,
     Rejected(String),
@@ -37,7 +37,7 @@ pub struct VerificationParams<'a> {
 /// Outcome of a Dual LLM verification attempt.
 /// Distinguishes between definitive safety judgments and cases where
 /// the verifier was unavailable and a human must decide.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum VerificationOutcome {
     /// The verifier explicitly approved the tool call.
     Allowed(String),

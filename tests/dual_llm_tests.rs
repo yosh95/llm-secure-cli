@@ -65,7 +65,6 @@ async fn test_dual_llm_verification_logic() {
                         system_prompt: None,
                         stdout,
                         render_markdown: !raw,
-                        live_debug: false,
                     },
                 }))
             }),
@@ -109,7 +108,6 @@ async fn test_dual_llm_verification_logic() {
                         system_prompt: None,
                         stdout,
                         render_markdown: !raw,
-                        live_debug: false,
                     },
                 }))
             }),

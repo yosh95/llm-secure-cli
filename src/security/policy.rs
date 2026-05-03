@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::env;
 
 /// SecurityContext holds the "Attributes" used for semantic evaluation by the LLM.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Serialize, Clone)]
 pub struct SecurityContext {
     pub os: String,
     pub user: String,

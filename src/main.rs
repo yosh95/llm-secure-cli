@@ -6,7 +6,7 @@ use llm_secure_cli::core::session::ChatSession;
 use std::io::{IsTerminal, stdin};
 use std::process;
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
     #[clap(subcommand)]
@@ -44,7 +44,7 @@ struct Args {
     debug: bool,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand)]
 enum Commands {
     /// List available models for a provider
     Models {
@@ -75,7 +75,7 @@ enum Commands {
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand)]
 enum IdentityCommands {
     /// Generate RSA and PQC key pairs
     Keygen,
@@ -96,70 +96,11 @@ enum IdentityCommands {
     ListSessions,
 }
 
-use opentelemetry::KeyValue;
-use opentelemetry::trace::TracerProvider as _;
-use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::Resource;
-use tracing::{info, warn};
-use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
-
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
     let is_atty = stdin().is_terminal();
 
-    // --- Tracing & OpenTelemetry Initialization ---
-    // 1. Captured traditional `log` records
-    tracing_log::LogTracer::init().ok();
-
-    // 2. Setup Console Layer
-    let fmt_layer = fmt::layer()
-        .with_target(false)
-        .with_thread_ids(false)
-        .with_writer(std::io::stderr); // Log to stderr to keep stdout clean for the CLI output
-
-    // 3. Setup OpenTelemetry Layer (Optional)
-    let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
-    let otel_layer = if let Some(endpoint) = otlp_endpoint {
-        let exporter = opentelemetry_otlp::SpanExporter::builder()
-            .with_http()
-            .with_endpoint(endpoint)
-            .build()
-            .ok();
-
-        exporter.map(|exp| {
-            let tracer = opentelemetry_sdk::trace::SdkTracerProvider::builder()
-                .with_batch_exporter(exp)
-                .with_resource(
-                    Resource::builder()
-                        .with_attributes(vec![KeyValue::new("service.name", "llm-secure-cli")])
-                        .build(),
-                )
-                .build()
-                .tracer("llm-secure-cli");
-            tracing_opentelemetry::layer().with_tracer(tracer)
-        })
-    } else {
-        None
-    };
-
-    // 4. Combine and Set Default Level
-    let filter = if args.debug {
-        EnvFilter::new("debug")
-    } else {
-        EnvFilter::new("warn")
-    };
-
-    let _ = tracing_subscriber::registry()
-        .with(filter)
-        .with(fmt_layer)
-        .with(otel_layer)
-        .try_init();
-
-    info!("Starting llm-secure-cli...");
-    // ----------------------------------------------
-
-    // 2. App Initialization (Security, Registry, MCP, Clients)
     let ctx = match llm_secure_cli::core::initializer::initialize_app().await {
         Ok(c) => c,
         Err(e) => {
@@ -168,7 +109,6 @@ async fn main() {
         }
     };
 
-    // 3. Handle Subcommands
     if let Some(command) = args.command {
         handle_subcommand(command, &ctx).await;
         return;
@@ -183,7 +123,6 @@ async fn main() {
         return;
     }
 
-    // 4. Standard Chat Initiation
     start_chat_session(args, ctx, is_atty).await;
 }
 
@@ -313,8 +252,6 @@ async fn start_chat_session(
     }
 
     if let Some(mut client) = client {
-        client.get_state_mut().live_debug = args.debug;
-
         if let Some(session_path) = args.session
             && let Err(e) = client.load_session(&session_path)
         {

@@ -85,7 +85,6 @@ impl PqcProvider {
     }
 
     pub fn generate_mldsa_keypair(variant: MldsaVariant) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
-        tracing::debug!("PQC: Generating ML-DSA keypair (variant: {:?})", variant);
         Self::ensure_init();
         let saorsa_variant = Self::map_mldsa_variant(variant);
         let ops = MlDsa::new(saorsa_variant);
@@ -103,11 +102,6 @@ impl PqcProvider {
         if sk_bytes.is_empty() {
             return Err(anyhow::anyhow!("PQC Secret Key is empty"));
         }
-        tracing::debug!(
-            "PQC: Signing message with ML-DSA (variant: {:?}, msg_len: {})",
-            variant,
-            message.len()
-        );
         Self::ensure_init();
         let saorsa_variant = Self::map_mldsa_variant(variant);
         let ops = MlDsa::new(saorsa_variant);
@@ -126,38 +120,28 @@ impl PqcProvider {
         variant: MldsaVariant,
     ) -> bool {
         if sig_bytes.is_empty() || pk_bytes.is_empty() {
-            tracing::debug!("PQC: ML-DSA verification failed (empty signature or public key)");
             return false;
         }
-        tracing::debug!(
-            "PQC: Verifying ML-DSA signature (variant: {:?}, msg_len: {})",
-            variant,
-            message.len()
-        );
         Self::ensure_init();
         let saorsa_variant = Self::map_mldsa_variant(variant);
         let ops = MlDsa::new(saorsa_variant);
         let pk = match MlDsaPublicKey::from_bytes(saorsa_variant, pk_bytes) {
             Ok(pk) => pk,
             Err(_) => {
-                tracing::debug!("PQC: ML-DSA verification failed (invalid public key)");
                 return false;
             }
         };
         let sig = match MlDsaSignature::from_bytes(saorsa_variant, sig_bytes) {
             Ok(sig) => sig,
             Err(_) => {
-                tracing::debug!("PQC: ML-DSA verification failed (invalid signature format)");
                 return false;
             }
         };
-        let result = ops.verify(&pk, message, &sig).unwrap_or_default();
-        tracing::debug!("PQC: ML-DSA verification result: {}", result);
-        result
+
+        ops.verify(&pk, message, &sig).unwrap_or_default()
     }
 
     pub fn generate_mlkem_keypair(variant: MlkemVariant) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
-        tracing::debug!("PQC: Generating ML-KEM keypair (variant: {:?})", variant);
         Self::ensure_init();
         let saorsa_variant = Self::map_mlkem_variant(variant);
         let ops = MlKem::new(saorsa_variant);
@@ -174,7 +158,6 @@ impl PqcProvider {
         if pk_bytes.is_empty() {
             return Ok((vec![0; 32], vec![]));
         }
-        tracing::debug!("PQC: ML-KEM encapsulation (variant: {:?})", variant);
         Self::ensure_init();
         let saorsa_variant = Self::map_mlkem_variant(variant);
         let ops = MlKem::new(saorsa_variant);
@@ -194,7 +177,6 @@ impl PqcProvider {
         if sk_bytes.is_empty() {
             return Ok(vec![0; 32]);
         }
-        tracing::debug!("PQC: ML-KEM decapsulation (variant: {:?})", variant);
         Self::ensure_init();
         let saorsa_variant = Self::map_mlkem_variant(variant);
         let ops = MlKem::new(saorsa_variant);
@@ -209,7 +191,7 @@ impl PqcProvider {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct EncryptedPacket {
     pub kem_ct: String,
     pub aes_ct: String,
@@ -222,7 +204,6 @@ pub struct SecureStorage;
 
 impl SecureStorage {
     pub fn encrypt(data: &[u8], recipient_public_key: &[u8]) -> anyhow::Result<EncryptedPacket> {
-        tracing::debug!("SecureStorage: Encrypting {} bytes of data", data.len());
         let (shared_secret, kem_ct) =
             PqcProvider::encapsulate_mlkem(recipient_public_key, MlkemVariant::Mlkem768)?;
 
@@ -254,12 +235,6 @@ impl SecureStorage {
         let aes_ct = &ciphertext_with_tag[..tag_start];
         let tag = &ciphertext_with_tag[tag_start..];
 
-        tracing::debug!(
-            "SecureStorage: Encryption complete (KEM CT len: {}, AES CT len: {})",
-            kem_ct.len(),
-            aes_ct.len()
-        );
-
         Ok(EncryptedPacket {
             kem_ct: general_purpose::STANDARD.encode(kem_ct),
             aes_ct: general_purpose::STANDARD.encode(aes_ct),
@@ -270,8 +245,6 @@ impl SecureStorage {
     }
 
     pub fn decrypt(packet: &EncryptedPacket, private_key: &[u8]) -> anyhow::Result<Vec<u8>> {
-        tracing::debug!("SecureStorage: Decrypting packet (algo: {})", packet.algo);
-
         let kem_ct = general_purpose::STANDARD
             .decode(&packet.kem_ct)
             .map_err(|e| anyhow::anyhow!("Invalid KEM ciphertext encoding: {}", e))?;
@@ -311,10 +284,6 @@ impl SecureStorage {
             .decrypt(&nonce, combined.as_slice())
             .map_err(|e| anyhow::anyhow!("AES decryption failure: {}", e))?;
 
-        tracing::debug!(
-            "SecureStorage: Decryption successful ({} bytes)",
-            decrypted.len()
-        );
         Ok(decrypted)
     }
 }
@@ -369,7 +338,7 @@ impl PQCAgilityManager {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct SignedResponse {
     pub result: String,
     pub verification_id: String,

@@ -8,13 +8,8 @@ use std::path::Path;
 pub fn setup_permissions() {
     // Ensure base directory exists.
     if !LLM_CLI_BASE_DIR.exists()
-        && let Err(e) = fs::create_dir_all(&*LLM_CLI_BASE_DIR)
+        && let Err(_e) = fs::create_dir_all(&*LLM_CLI_BASE_DIR)
     {
-        tracing::warn!(
-            "Could not create base directory {:?}: {}",
-            *LLM_CLI_BASE_DIR,
-            e
-        );
         return;
     }
 

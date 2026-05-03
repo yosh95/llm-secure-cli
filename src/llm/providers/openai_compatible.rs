@@ -587,12 +587,6 @@ impl LlmClient for OpenAiCompatibleClient {
             req
         };
 
-        tracing::debug!(
-            "API Request: URL: {}, Body: {}",
-            request_url,
-            serde_json::to_string(&body).unwrap_or_default()
-        );
-
         let res = self
             .http_client
             .post(&request_url)
@@ -602,7 +596,7 @@ impl LlmClient for OpenAiCompatibleClient {
             .send()
             .await?;
 
-        let status = res.status();
+        let _status = res.status();
 
         // Check if response is JSON or BINARY (like audio)
         let is_json = res
@@ -637,11 +631,6 @@ impl LlmClient for OpenAiCompatibleClient {
         }
 
         let resp: Value = res.json().await?;
-        tracing::debug!(
-            "API Response: Status: {}, Body: {}",
-            status,
-            serde_json::to_string(&resp).unwrap_or_default()
-        );
 
         if let Some(error) = resp.get("error") {
             return Err(anyhow::anyhow!("API Error: {}", error));

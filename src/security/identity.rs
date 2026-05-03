@@ -191,22 +191,11 @@ impl IdentityManager {
         }
 
         let variant = if let Some(tool) = tool_name {
-            let v = PQCAgilityManager::get_required_level(config, tool, args, "standard");
-            tracing::debug!(
-                "IdentityManager: Agility scaling for tool '{}': {:?}",
-                tool,
-                v
-            );
-            v
+            PQCAgilityManager::get_required_level(config, tool, args, "standard")
         } else {
             MldsaVariant::Mldsa65
         };
 
-        tracing::debug!(
-            "IdentityManager: Generating identity token for subject '{}' (PQC: {:?})",
-            uid,
-            variant
-        );
         let classical_priv = Self::get_classical_private_key_pem()?;
         let pqc_priv = Self::get_pqc_private_key(variant)?;
 

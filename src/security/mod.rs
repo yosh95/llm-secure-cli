@@ -10,7 +10,6 @@ pub mod permissions;
 pub mod policy;
 pub mod pqc;
 pub mod pqc_cose;
-pub mod resource_manager;
 pub mod static_analyzer;
 
 /// Validates a tool call using Phase 1 security checks (Path, Basic Sanity).

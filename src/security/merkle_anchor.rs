@@ -22,7 +22,7 @@ static ANCHOR_DIR: Lazy<PathBuf> = Lazy::new(|| {
     }
 });
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SessionAnchor {
     pub trace_id: String,
     pub merkle_root: String,

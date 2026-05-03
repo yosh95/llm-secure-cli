@@ -185,12 +185,6 @@ impl LlmClient for OpenRouterClient {
             req
         };
 
-        tracing::debug!(
-            "API Request: URL: {}, Body: {}",
-            request_url,
-            serde_json::to_string(&body).unwrap_or_default()
-        );
-
         let res = self
             .inner
             .http_client
@@ -236,11 +230,6 @@ impl LlmClient for OpenRouterClient {
         }
 
         let resp: Value = res.json().await?;
-        tracing::debug!(
-            "API Response: Status: {}, Body: {}",
-            status,
-            serde_json::to_string(&resp).unwrap_or_default()
-        );
 
         if let Some(error) = resp.get("error") {
             return Err(anyhow::anyhow!("API Error: {}", error));

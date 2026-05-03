@@ -7,14 +7,14 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct StdioServerParameters {
     pub command: String,
     pub args: Vec<String>,
     pub env: Option<HashMap<String, String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Content {
     #[serde(rename = "type")]
     pub content_type: String,
@@ -26,14 +26,14 @@ pub struct Content {
     pub mime_type: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ToolResult {
     pub content: Vec<Content>,
     #[serde(rename = "isError", default)]
     pub is_error: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ToolDescription {
     pub name: String,
     pub description: String,
@@ -41,7 +41,7 @@ pub struct ToolDescription {
     pub input_schema: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ListToolsResult {
     pub tools: Vec<ToolDescription>,
 }
@@ -123,14 +123,12 @@ impl ClientSession {
                         pending_requests.insert(id, response_tx);
                         let mut line = match serde_json::to_string(&req) {
                             Ok(l) => l,
-                            Err(e) => {
-                                tracing::error!("Failed to serialize MCP request: {}", e);
+                            Err(_e) => {
                                 continue;
                             }
                         };
                         line.push('\n');
-                        if let Err(e) = writer.write_all(line.as_bytes()).await {
-                            tracing::error!("Failed to write to MCP server: {}", e);
+                        if let Err(_e) = writer.write_all(line.as_bytes()).await {
                             break;
                         }
                     }
@@ -154,8 +152,7 @@ impl ClientSession {
                                             }
                             }
                             Ok(None) => break,
-                            Err(e) => {
-                                tracing::error!("Error reading from MCP server: {}", e);
+                            Err(_e) => {
                                 break;
                             }
                         }

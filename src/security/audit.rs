@@ -8,7 +8,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct AuditEntry {
     pub timestamp: String,
     pub trace_id: String,
@@ -99,9 +99,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                 final_args = serde_json::to_value(packet).unwrap_or(params.args);
                 pqc_encrypted = true;
             }
-            Err(e) => {
-                tracing::error!("PQC encryption for audit log failed: {}", e);
-            }
+            Err(_e) => {}
         }
     }
 
@@ -141,9 +139,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                 log_entry.pqc_signature = Some(signed.pqc_signature);
                 log_entry.pqc_algorithm = Some(signed.algorithm);
             }
-            Err(e) => {
-                tracing::error!("Failed to sign audit log entry: {}", e);
-            }
+            Err(_e) => {}
         }
     }
 

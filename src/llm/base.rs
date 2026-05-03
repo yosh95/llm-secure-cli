@@ -141,7 +141,6 @@ impl BaseLlmClientData {
             system_prompt,
             stdout,
             render_markdown: !raw,
-            live_debug: false,
         };
 
         Self {

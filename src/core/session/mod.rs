@@ -102,7 +102,6 @@ impl ChatSession {
             let old_state = old_client.get_state();
             let new_state = new_client.get_state_mut();
             new_state.conversation = old_state.conversation.clone();
-            new_state.live_debug = old_state.live_debug;
             if new_state.tools_enabled {
                 new_state.tools_enabled = old_state.tools_enabled;
             }

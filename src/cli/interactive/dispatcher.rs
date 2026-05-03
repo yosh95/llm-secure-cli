@@ -85,26 +85,6 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             handle_info(session);
             CommandResult::Handled
         }
-        "debug" => {
-            let state = match session.get_client_mut() {
-                Ok(c) => c.get_state_mut(),
-                Err(e) => {
-                    ui::report_error(&e.to_string());
-                    return CommandResult::Handled;
-                }
-            };
-            state.live_debug = !state.live_debug;
-            let status = if state.live_debug {
-                // tracing does not have a global set_max_level like log.
-                // This requires a ReloadHandle on the subscriber to change levels at runtime.
-                // For now, we update the internal state and the macros will respect the subscriber filter.
-                "ON"
-            } else {
-                "OFF"
-            };
-            ui::report_success(&format!("Live debug mode is now {}.", status));
-            CommandResult::Handled
-        }
         "raw" => {
             handle_raw(session);
             CommandResult::Handled
@@ -228,14 +208,6 @@ pub fn handle_info(session: &ChatSession) {
         }
         println!("  --------------------------------------------------");
     }
-    ui::print_key_value(
-        "Debug Mode",
-        if tracing::enabled!(tracing::Level::DEBUG) {
-            "On"
-        } else {
-            "Off"
-        },
-    );
     ui::print_rule(None, Some("cyan"));
 }
 
@@ -516,7 +488,6 @@ pub fn print_help() {
     println!("  /edit, /e       Edit message in external editor");
     println!("  /clear, /c      Clear conversation history");
     println!("  /info, /i       Show session info");
-    println!("  /debug          Toggle live debug mode");
     println!("  /raw            Show conversation as raw text");
     println!("  /dump           Dump conversation history as JSON");
     println!("  /save <path>    Save conversation history to JSON file");

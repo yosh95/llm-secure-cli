@@ -20,15 +20,10 @@ impl HybridSigner {
         pqc_private_key: &[u8],
         variant: MldsaVariant,
     ) -> anyhow::Result<Vec<u8>> {
-        tracing::debug!(
-            "HybridSigner: Creating hybrid COSE token (PQC variant: {:?})",
-            variant
-        );
         let payload_bytes = serde_json::to_vec(payload)?;
         let body_protected = Self::encode_header_map(HashMap::new())?;
 
         // --- Signer 0: Ed25519 (Classical) ---
-        tracing::debug!("HybridSigner: Generating EdDSA signature");
         let mut ed_header = HashMap::new();
         ed_header.insert(COSE_HEADER_ALG, Value::Integer(COSE_ALG_EDDSA.into()));
         let ed_sign_protected = Self::encode_header_map(ed_header)?;
@@ -47,7 +42,6 @@ impl HybridSigner {
         ]);
 
         // --- Signer 1: ML-DSA ---
-        tracing::debug!("HybridSigner: Generating ML-DSA signature");
         let mut pqc_header = HashMap::new();
         pqc_header.insert(COSE_HEADER_ALG, Value::Integer(COSE_ALG_MLDSA.into()));
         let pqc_sign_protected = Self::encode_header_map(pqc_header)?;
@@ -82,10 +76,6 @@ impl HybridSigner {
             &mut encoded,
         )
         .map_err(|e| anyhow::anyhow!("CBOR encoding failed: {}", e))?;
-        tracing::debug!(
-            "HybridSigner: Hybrid token created ({} bytes)",
-            encoded.len()
-        );
         Ok(encoded)
     }
 
@@ -94,24 +84,15 @@ impl HybridSigner {
         classical_public_key_pem: &str,
         pqc_public_key_provider: impl Fn(MldsaVariant) -> Vec<u8>,
     ) -> Option<JsonValue> {
-        tracing::debug!(
-            "HybridSigner: Verifying hybrid COSE token ({} bytes)",
-            cose_token.len()
-        );
         let value: Value = ciborium::de::from_reader(cose_token).ok()?;
         let (tag, structure) = match value {
             Value::Tag(tag, box_val) => (tag, *box_val),
             _ => {
-                tracing::debug!("HybridSigner: Verification failed (invalid COSE tag)");
                 return None;
             }
         };
 
         if tag != COSE_SIGN_TAG {
-            tracing::debug!(
-                "HybridSigner: Verification failed (not a COSE_Sign tag: {})",
-                tag
-            );
             return None;
         }
 
@@ -138,12 +119,10 @@ impl HybridSigner {
         };
 
         if signatures.len() < 2 {
-            tracing::debug!("HybridSigner: Verification failed (less than 2 signatures found)");
             return None;
         }
 
         // Signer 0: Ed25519 (Classical)
-        tracing::debug!("HybridSigner: Verifying EdDSA signature");
         let classical_entry = match &signatures[0] {
             Value::Array(arr) if arr.len() == 3 => arr,
             _ => return None,
@@ -167,7 +146,6 @@ impl HybridSigner {
             _ => None,
         };
         if classical_alg != Some(Value::Integer(COSE_ALG_EDDSA.into())) {
-            tracing::debug!("HybridSigner: Classical verification failed (unsupported algorithm)");
             return None;
         }
 
@@ -177,14 +155,11 @@ impl HybridSigner {
         let verifying_key = VerifyingKey::from_public_key_pem(classical_public_key_pem).ok()?;
         let classical_sig = Signature::from_slice(classical_sig_bytes).ok()?;
 
-        if let Err(e) = verifying_key.verify(&classical_tbs, &classical_sig) {
-            tracing::debug!("HybridSigner: Classical verification failed: {:?}", e);
+        if let Err(_e) = verifying_key.verify(&classical_tbs, &classical_sig) {
             return None;
         }
-        tracing::debug!("HybridSigner: Classical verification successful");
 
         // Signer 1: ML-DSA
-        tracing::debug!("HybridSigner: Verifying ML-DSA signature");
         let pqc_entry = match &signatures[1] {
             Value::Array(arr) if arr.len() == 3 => arr,
             _ => return None,
@@ -211,7 +186,6 @@ impl HybridSigner {
             _ => None,
         };
         if pqc_alg != Some(Value::Integer(COSE_ALG_MLDSA.into())) {
-            tracing::debug!("HybridSigner: ML-DSA verification failed (unsupported algorithm)");
             return None;
         }
 
@@ -232,15 +206,9 @@ impl HybridSigner {
         let pqc_tbs =
             Self::build_sig_structure(body_protected, pqc_sign_protected, payload_bytes).ok()?;
         if !PqcProvider::verify_mldsa(&pqc_tbs, pqc_sig, &pqc_pub, variant) {
-            tracing::debug!("HybridSigner: ML-DSA verification failed (invalid signature)");
             return None;
         }
-        tracing::debug!(
-            "HybridSigner: ML-DSA verification successful (variant: {:?})",
-            variant
-        );
 
-        tracing::debug!("HybridSigner: Full hybrid token verification successful");
         serde_json::from_slice(payload_bytes).ok()
     }
 

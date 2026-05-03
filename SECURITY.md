@@ -56,10 +56,6 @@ Instead of fragile, platform-dependent regex patterns (e.g., `rm -rf /` or Windo
 
 Paths are normalized to absolute form and validated against a basic whitelist (`allowed_paths`). Complex OS-specific blacklists are deprecated in favor of the Semantic Policy Engine, which recognizes sensitive paths like `C:\Windows` or `/etc` based on its inherent knowledge and the provided context.
 
-### Resource Limits
-
-In the modern architecture, hard resource enforcement (Memory, CPU) is offloaded to the **Isolation Layer** (e.g., Docker flags `--memory`, `--cpus`). Code-level `rlimit` is kept as a stub to maintain cross-platform compatibility without `libc` dependencies. Output length is still enforced by `src/tools/executor_utils.rs` to prevent Denial-of-Wallet attacks.
-
 ### Environment Isolation (MCP)
 
 High-risk tool execution is delegated to remote MCP servers running inside
