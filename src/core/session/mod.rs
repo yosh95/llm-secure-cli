@@ -45,6 +45,7 @@ impl ChatSession {
         let context_val = serde_json::json!({
             "trace_id": trace_id,
             "model": client.get_state().model,
+            "provider": client.get_state().provider,
             "user_id": user_id
         });
         let entry = crate::security::audit::log_audit_and_return(

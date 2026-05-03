@@ -55,6 +55,7 @@ fn test_audit_entry_serialization() {
         subject: "user".to_string(),
         audience: "system".to_string(),
         model: "gpt-4".to_string(),
+        provider: "openai".to_string(),
         event_type: "test".to_string(),
         tool: "test_tool".to_string(),
         args: serde_json::json!({"arg1": "val1"}),
@@ -66,6 +67,10 @@ fn test_audit_entry_serialization() {
         hash: "hash1".to_string(),
         pqc_signature: None,
         pqc_algorithm: None,
+        hostname: "test-host".to_string(),
+        os: "linux".to_string(),
+        arch: "x86_64".to_string(),
+        cli_version: "0.1.0".to_string(),
     };
 
     let json = serde_json::to_string(&entry).unwrap();

@@ -118,6 +118,7 @@ fn test_merkle_session_verification_logic() {
         subject: "user".to_string(),
         audience: "-".to_string(),
         model: "test-model".to_string(),
+        provider: "test-provider".to_string(),
         event_type: "tool_call".to_string(),
         tool: "test_tool".to_string(),
         args: serde_json::json!({"cmd": "ls"}),
@@ -129,6 +130,10 @@ fn test_merkle_session_verification_logic() {
         hash: String::new(),
         pqc_signature: None,
         pqc_algorithm: None,
+        hostname: "test-host".to_string(),
+        os: "linux".to_string(),
+        arch: "x86_64".to_string(),
+        cli_version: "0.1.0".to_string(),
     };
 
     // Calculate hash exactly like log_audit

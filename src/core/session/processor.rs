@@ -332,8 +332,12 @@ impl ChatSession {
         let audit_ctx = serde_json::json!({
             "trace_id": self.trace_id,
             "model": match self.get_client() {
-                Ok(client) => &client.get_state().model,
-                Err(_) => "unknown",
+                Ok(client) => client.get_state().model.clone(),
+                Err(_) => "unknown".to_string(),
+            },
+            "provider": match self.get_client() {
+                Ok(client) => client.get_state().provider.clone(),
+                Err(_) => "unknown".to_string(),
             },
             "user_id": user_id
         });

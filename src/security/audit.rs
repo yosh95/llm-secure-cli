@@ -1,6 +1,7 @@
 use crate::consts::AUDIT_LOG_PATH;
 use crate::security::pqc::ResponseSigner;
 use chrono::Utc;
+use hostname;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions};
@@ -15,6 +16,7 @@ pub struct AuditEntry {
     pub subject: String,
     pub audience: String,
     pub model: String,
+    pub provider: String,
     pub event_type: String,
     pub tool: String,
     pub args: serde_json::Value,
@@ -28,6 +30,10 @@ pub struct AuditEntry {
     pub pqc_signature: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pqc_algorithm: Option<String>,
+    pub hostname: String,
+    pub os: String,
+    pub arch: String,
+    pub cli_version: String,
 }
 
 pub struct AuditParams<'a> {
@@ -83,6 +89,19 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         .and_then(|v| v.as_str())
         .unwrap_or("-")
         .to_string();
+    let provider = ctx
+        .get("provider")
+        .and_then(|v| v.as_str())
+        .unwrap_or("-")
+        .to_string();
+
+    let hostname = hostname::get()
+        .ok()
+        .and_then(|h| h.into_string().ok())
+        .unwrap_or_else(|| "unknown".to_string());
+    let os = std::env::consts::OS.to_string();
+    let arch = std::env::consts::ARCH.to_string();
+    let cli_version = env!("CARGO_PKG_VERSION").to_string();
 
     let prev_hash = get_last_log_hash(path);
 
@@ -109,6 +128,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         subject,
         audience,
         model,
+        provider,
         event_type: params.event_type.to_string(),
         tool: params.tool_name.to_string(),
         args: final_args,
@@ -123,6 +143,10 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         hash: String::new(),
         pqc_signature: None,
         pqc_algorithm: None,
+        hostname,
+        os,
+        arch,
+        cli_version,
     };
 
     // Calculate hash over COMPLETE data before truncation for integrity
@@ -249,15 +273,35 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
         }
     }
 
+    let hostname = hostname::get()
+        .ok()
+        .and_then(|h| h.into_string().ok())
+        .unwrap_or_else(|| "unknown".to_string());
+    let os = std::env::consts::OS.to_string();
+    let arch = std::env::consts::ARCH.to_string();
+    let cli_version = env!("CARGO_PKG_VERSION").to_string();
+
     // Create temp file for the trimmed content
     let temp_path = path.with_extension("tmp");
     if let Ok(mut temp_file) = fs::File::create(&temp_path) {
         let continuity_marker = serde_json::json!({
             "timestamp": Utc::now().to_rfc3339(),
+            "trace_id": "rotation",
+            "subject": "system",
+            "audience": "audit",
+            "model": "-",
+            "provider": "-",
             "event_type": "LOG_ROTATION_MARKER",
+            "tool": "system",
+            "args": {},
+            "pqc_confidential": false,
             "prev_hash": last_removed_hash,
             "hash": format!("ROTATION-NONCE-{}", Uuid::new_v4()),
-            "status": "CONTINUITY_MAINTAINED"
+            "status": "CONTINUITY_MAINTAINED",
+            "hostname": hostname,
+            "os": os,
+            "arch": arch,
+            "cli_version": cli_version
         });
         let _ = writeln!(temp_file, "{}", continuity_marker);
 
