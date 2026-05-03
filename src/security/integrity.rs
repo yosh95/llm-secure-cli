@@ -162,7 +162,7 @@ impl IntegrityVerifier {
     /// Verifies the current system state against the saved manifest.
     /// Returns true if integrity is confirmed, false if tampering is detected.
     pub fn verify(&self) -> Result<bool> {
-        log::debug!(
+        tracing::debug!(
             "IntegrityVerifier: Starting system integrity verification using manifest at {:?}",
             self.manifest_path
         );
@@ -181,7 +181,7 @@ impl IntegrityVerifier {
         data_to_verify.insert("config_hash", &manifest.config_hash);
         let json_data = serde_json::to_string(&data_to_verify)?;
 
-        log::debug!(
+        tracing::debug!(
             "IntegrityVerifier: Verifying PQC signature (algo: {})",
             manifest.pqc_algorithm
         );
@@ -194,13 +194,13 @@ impl IntegrityVerifier {
             &pk_pqc,
             MldsaVariant::Mldsa65,
         ) {
-            log::warn!("IntegrityVerifier: PQC signature verification FAILED");
+            tracing::warn!("IntegrityVerifier: PQC signature verification FAILED");
             return Ok(false); // PQC signature mismatch
         }
 
         // 1b. Verify Classical Signature (Ed25519)
         if let Some(classical_sig_b64) = &manifest.classical_signature {
-            log::debug!("IntegrityVerifier: Verifying classical EdDSA signature");
+            tracing::debug!("IntegrityVerifier: Verifying classical EdDSA signature");
             let classical_pub_path = crate::consts::KEY_DIR.join("id_ed25519.pub");
             let classical_pub_pem = fs::read_to_string(classical_pub_path)?;
             let verifying_key = VerifyingKey::from_public_key_pem(&classical_pub_pem)
@@ -213,35 +213,35 @@ impl IntegrityVerifier {
                 .verify(json_data.as_bytes(), &classical_sig)
                 .is_err()
             {
-                log::warn!("IntegrityVerifier: Classical signature verification FAILED");
+                tracing::warn!("IntegrityVerifier: Classical signature verification FAILED");
                 return Ok(false); // Ed25519 signature mismatch
             }
         }
 
         // 2. Compare current file hashes with the manifest
         let current_binary = self.calculate_binary_hash()?;
-        log::debug!(
+        tracing::debug!(
             "IntegrityVerifier: Binary hash check: expected={}, actual={}",
             manifest.binary_hash,
             current_binary
         );
         if current_binary != manifest.binary_hash {
-            log::warn!("IntegrityVerifier: Binary hash mismatch");
+            tracing::warn!("IntegrityVerifier: Binary hash mismatch");
             return Ok(false); // Binary has been modified
         }
 
         let current_config = self.calculate_config_hash()?;
-        log::debug!(
+        tracing::debug!(
             "IntegrityVerifier: Config hash check: expected={}, actual={}",
             manifest.config_hash,
             current_config
         );
         if current_config != manifest.config_hash {
-            log::warn!("IntegrityVerifier: Config hash mismatch");
+            tracing::warn!("IntegrityVerifier: Config hash mismatch");
             return Ok(false); // Configuration has been modified
         }
 
-        log::debug!("IntegrityVerifier: System integrity verified successfully");
+        tracing::debug!("IntegrityVerifier: System integrity verified successfully");
         Ok(true)
     }
 }

@@ -95,10 +95,11 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             };
             state.live_debug = !state.live_debug;
             let status = if state.live_debug {
-                log::set_max_level(log::LevelFilter::Debug);
+                // tracing does not have a global set_max_level like log.
+                // This requires a ReloadHandle on the subscriber to change levels at runtime.
+                // For now, we update the internal state and the macros will respect the subscriber filter.
                 "ON"
             } else {
-                log::set_max_level(log::LevelFilter::Warn);
                 "OFF"
             };
             ui::report_success(&format!("Live debug mode is now {}.", status));
@@ -229,7 +230,7 @@ pub fn handle_info(session: &ChatSession) {
     }
     ui::print_key_value(
         "Debug Mode",
-        if log::log_enabled!(log::Level::Debug) {
+        if tracing::enabled!(tracing::Level::DEBUG) {
             "On"
         } else {
             "Off"

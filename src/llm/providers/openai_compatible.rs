@@ -587,7 +587,7 @@ impl LlmClient for OpenAiCompatibleClient {
             req
         };
 
-        log::debug!(
+        tracing::debug!(
             "API Request: URL: {}, Body: {}",
             request_url,
             serde_json::to_string(&body).unwrap_or_default()
@@ -637,7 +637,7 @@ impl LlmClient for OpenAiCompatibleClient {
         }
 
         let resp: Value = res.json().await?;
-        log::debug!(
+        tracing::debug!(
             "API Response: Status: {}, Body: {}",
             status,
             serde_json::to_string(&resp).unwrap_or_default()

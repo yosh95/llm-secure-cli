@@ -7,9 +7,11 @@ use serde_json::{self, Value};
 use std::collections::HashMap;
 use std::io::Write;
 use tokio;
+use tracing::instrument;
 
 impl ChatSession {
     /// Main loop for processing user input and handling LLM interaction until no more tool calls or actions are required.
+    #[instrument(skip(self, data), fields(trace_id = %self.trace_id))]
     pub async fn process_and_print(&mut self, data: Vec<DataSource>) -> anyhow::Result<()> {
         let mut current_data = data;
 
@@ -153,6 +155,7 @@ impl ChatSession {
     }
 
     /// Iterates through tool calls and manages their validation and execution.
+    #[instrument(skip(self))]
     async fn handle_tool_calls(&mut self) -> anyhow::Result<Vec<MessagePart>> {
         let mut tool_results = Vec::new();
         // Clone to avoid borrow checker issues during loop
@@ -197,6 +200,7 @@ impl ChatSession {
     }
 
     /// The Multi-Phase Security Workflow for a single tool call.
+    #[instrument(skip(self, args), fields(tool_name = %name))]
     async fn verify_and_execute_tool_workflow(
         &mut self,
         name: &str,

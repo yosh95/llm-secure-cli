@@ -14,7 +14,7 @@ pub async fn get_json<T: for<'de> Deserialize<'de> + Send + 'static>(
     url: String,
     headers: HashMap<String, String>,
 ) -> anyhow::Result<T> {
-    log::debug!("HTTP GET Request: URL: {}", url);
+    tracing::debug!("HTTP GET Request: URL: {}", url);
     let mut req = CLIENT.get(&url);
     for (k, v) in headers {
         req = req.header(k, v);
@@ -22,7 +22,7 @@ pub async fn get_json<T: for<'de> Deserialize<'de> + Send + 'static>(
     let res = req.send().await?;
     let status = res.status();
     let text = res.text().await?;
-    log::debug!("HTTP GET Response: Status: {}, Body: {}", status, text);
+    tracing::debug!("HTTP GET Response: Status: {}, Body: {}", status, text);
     let json = serde_json::from_str::<T>(&text)?;
     Ok(json)
 }
@@ -35,7 +35,7 @@ pub async fn post_json<
     headers: HashMap<String, String>,
     body: B,
 ) -> anyhow::Result<T> {
-    log::debug!(
+    tracing::debug!(
         "HTTP POST Request: URL: {}, Body: {}",
         url,
         serde_json::to_string(&body).unwrap_or_default()
@@ -47,7 +47,7 @@ pub async fn post_json<
     let res = req.json(&body).send().await?;
     let status = res.status();
     let text = res.text().await?;
-    log::debug!("HTTP POST Response: Status: {}, Body: {}", status, text);
+    tracing::debug!("HTTP POST Response: Status: {}, Body: {}", status, text);
     let json = serde_json::from_str::<T>(&text)?;
     Ok(json)
 }
@@ -57,7 +57,7 @@ pub async fn post_json_with_status<B: Serialize + Send + 'static>(
     headers: HashMap<String, String>,
     body: B,
 ) -> anyhow::Result<(u16, serde_json::Value)> {
-    log::debug!(
+    tracing::debug!(
         "HTTP POST Request (with status): URL: {}, Body: {}",
         url,
         serde_json::to_string(&body).unwrap_or_default()
@@ -71,7 +71,7 @@ pub async fn post_json_with_status<B: Serialize + Send + 'static>(
 
     let status = res.status().as_u16();
     let text = res.text().await.unwrap_or_default();
-    log::debug!(
+    tracing::debug!(
         "HTTP POST Response (with status): Status: {}, Body: {}",
         status,
         text

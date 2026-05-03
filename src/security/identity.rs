@@ -192,7 +192,7 @@ impl IdentityManager {
 
         let variant = if let Some(tool) = tool_name {
             let v = PQCAgilityManager::get_required_level(config, tool, args, "standard");
-            log::debug!(
+            tracing::debug!(
                 "IdentityManager: Agility scaling for tool '{}': {:?}",
                 tool,
                 v
@@ -202,7 +202,7 @@ impl IdentityManager {
             MldsaVariant::Mldsa65
         };
 
-        log::debug!(
+        tracing::debug!(
             "IdentityManager: Generating identity token for subject '{}' (PQC: {:?})",
             uid,
             variant

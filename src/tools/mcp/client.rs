@@ -124,13 +124,13 @@ impl ClientSession {
                         let mut line = match serde_json::to_string(&req) {
                             Ok(l) => l,
                             Err(e) => {
-                                log::error!("Failed to serialize MCP request: {}", e);
+                                tracing::error!("Failed to serialize MCP request: {}", e);
                                 continue;
                             }
                         };
                         line.push('\n');
                         if let Err(e) = writer.write_all(line.as_bytes()).await {
-                            log::error!("Failed to write to MCP server: {}", e);
+                            tracing::error!("Failed to write to MCP server: {}", e);
                             break;
                         }
                     }
@@ -155,7 +155,7 @@ impl ClientSession {
                             }
                             Ok(None) => break,
                             Err(e) => {
-                                log::error!("Error reading from MCP server: {}", e);
+                                tracing::error!("Error reading from MCP server: {}", e);
                                 break;
                             }
                         }

@@ -10,7 +10,7 @@ pub fn setup_permissions() {
     if !LLM_CLI_BASE_DIR.exists()
         && let Err(e) = fs::create_dir_all(&*LLM_CLI_BASE_DIR)
     {
-        log::warn!(
+        tracing::warn!(
             "Could not create base directory {:?}: {}",
             *LLM_CLI_BASE_DIR,
             e

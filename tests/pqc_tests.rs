@@ -4,7 +4,9 @@ use llm_secure_cli::security::pqc::{
 
 #[test]
 fn test_mldsa_sign_verify_all_variants() {
-    let _ = env_logger::builder().is_test(true).try_init();
+    let _ = tracing_subscriber::fmt()
+        .with_test_writer()
+        .try_init();
     let variants = [
         MldsaVariant::Mldsa44,
         MldsaVariant::Mldsa65,

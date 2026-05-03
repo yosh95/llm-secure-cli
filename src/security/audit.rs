@@ -100,7 +100,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                 pqc_encrypted = true;
             }
             Err(e) => {
-                log::error!("PQC encryption for audit log failed: {}", e);
+                tracing::error!("PQC encryption for audit log failed: {}", e);
             }
         }
     }
@@ -142,7 +142,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                 log_entry.pqc_algorithm = Some(signed.algorithm);
             }
             Err(e) => {
-                log::error!("Failed to sign audit log entry: {}", e);
+                tracing::error!("Failed to sign audit log entry: {}", e);
             }
         }
     }

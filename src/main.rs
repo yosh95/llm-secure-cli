@@ -96,18 +96,68 @@ enum IdentityCommands {
     ListSessions,
 }
 
+use opentelemetry::KeyValue;
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::Resource;
+use tracing::{info, warn};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
     let is_atty = stdin().is_terminal();
 
-    // 1. Logging Initialization
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
-    if args.debug {
-        log::set_max_level(log::LevelFilter::Debug);
+    // --- Tracing & OpenTelemetry Initialization ---
+    // 1. Captured traditional `log` records
+    tracing_log::LogTracer::init().ok();
+
+    // 2. Setup Console Layer
+    let fmt_layer = fmt::layer()
+        .with_target(false)
+        .with_thread_ids(false)
+        .with_writer(std::io::stderr); // Log to stderr to keep stdout clean for the CLI output
+
+    // 3. Setup OpenTelemetry Layer (Optional)
+    let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
+    let otel_layer = if let Some(endpoint) = otlp_endpoint {
+        let exporter = opentelemetry_otlp::SpanExporter::builder()
+            .with_http()
+            .with_endpoint(endpoint)
+            .build()
+            .ok();
+
+        exporter.map(|exp| {
+            let tracer = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+                .with_batch_exporter(exp)
+                .with_resource(
+                    Resource::builder()
+                        .with_attributes(vec![KeyValue::new("service.name", "llm-secure-cli")])
+                        .build(),
+                )
+                .build()
+                .tracer("llm-secure-cli");
+            tracing_opentelemetry::layer().with_tracer(tracer)
+        })
     } else {
-        log::set_max_level(log::LevelFilter::Warn);
-    }
+        None
+    };
+
+    // 4. Combine and Set Default Level
+    let filter = if args.debug {
+        EnvFilter::new("debug")
+    } else {
+        EnvFilter::new("warn")
+    };
+
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt_layer)
+        .with(otel_layer)
+        .try_init();
+
+    info!("Starting llm-secure-cli...");
+    // ----------------------------------------------
 
     // 2. App Initialization (Security, Registry, MCP, Clients)
     let ctx = match llm_secure_cli::core::initializer::initialize_app().await {
