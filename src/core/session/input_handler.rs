@@ -41,7 +41,7 @@ impl ChatSession {
             if !has_text_prompt {
                 data.push(DataSource {
                     content: serde_json::Value::String(
-                        "Please analyze the provided file(s).".to_string(),
+                        "The following content has been extracted and provided as context for this session. Please analyze this information and provide a summary or overview of its key points.".to_string(),
                     ),
                     content_type: "text/plain".to_string(),
                     is_file_or_url: false,

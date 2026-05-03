@@ -155,8 +155,14 @@ impl BaseLlmClientData {
 pub fn create_http_client(config_manager: &ConfigManager) -> anyhow::Result<reqwest::Client> {
     let config = config_manager.get_config()?;
     let timeout_secs = config.general.request_timeout;
+    let version = env!("CARGO_PKG_VERSION");
+    let ua = format!(
+        "llm-secure-cli/{} (https://github.com/yosh95/llm-secure-cli)",
+        version
+    );
 
     reqwest::Client::builder()
+        .user_agent(ua)
         .timeout(std::time::Duration::from_secs(timeout_secs))
         .build()
         .map_err(|e| anyhow::anyhow!("Failed to create reqwest client: {}", e))

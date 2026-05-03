@@ -3,7 +3,13 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 pub static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    let version = env!("CARGO_PKG_VERSION");
+    let ua = format!(
+        "llm-secure-cli/{} (https://github.com/yosh95/llm-secure-cli)",
+        version
+    );
     reqwest::Client::builder()
+        .user_agent(ua)
         .timeout(std::time::Duration::from_secs(30))
         .gzip(true)
         .build()

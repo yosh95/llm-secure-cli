@@ -144,11 +144,7 @@ pub async fn brave_search(
 }
 
 async fn fetch_url(url: &str) -> anyhow::Result<String> {
-    let res = CLIENT
-        .get(url)
-        .header("User-Agent", "Mozilla/5.0 (compatible; llsc/0.1)")
-        .send()
-        .await?;
+    let res = CLIENT.get(url).send().await?;
 
     let content_type = res
         .headers()
