@@ -83,18 +83,18 @@ impl ChatSession {
         }
     }
 
-    pub fn get_client(&self) -> &dyn LlmClient {
-        self.client
-            .as_ref()
-            .expect("ChatSession accessed after being cleared")
-            .as_ref()
+    pub fn get_client(&self) -> anyhow::Result<&(dyn LlmClient + '_)> {
+        match self.client.as_ref() {
+            Some(b) => Ok(b.as_ref()),
+            None => Err(anyhow::anyhow!("ChatSession accessed after being cleared")),
+        }
     }
 
-    pub fn get_client_mut(&mut self) -> &mut dyn LlmClient {
-        self.client
-            .as_mut()
-            .expect("ChatSession accessed after being cleared")
-            .as_mut()
+    pub fn get_client_mut(&mut self) -> anyhow::Result<&mut (dyn LlmClient + '_)> {
+        match self.client.as_mut() {
+            Some(b) => Ok(b.as_mut()),
+            None => Err(anyhow::anyhow!("ChatSession accessed after being cleared")),
+        }
     }
 
     pub fn switch_client(&mut self, mut new_client: Box<dyn LlmClient>) {

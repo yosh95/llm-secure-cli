@@ -31,13 +31,12 @@ impl ChatSession {
                 break; // No more tools to execute
             } else {
                 // Return tool results to the conversation
-                self.get_client_mut()
-                    .get_state_mut()
-                    .conversation
-                    .push(Message {
+                if let Ok(client) = self.get_client_mut() {
+                    client.get_state_mut().conversation.push(Message {
                         role: Role::Tool,
                         parts: tool_results,
                     });
+                }
             }
         }
         Ok(())
@@ -49,7 +48,10 @@ impl ChatSession {
         data: Vec<DataSource>,
     ) -> anyhow::Result<(Option<String>, Option<String>)> {
         let thinking_label = {
-            let state = self.get_client().get_state();
+            let state = match self.get_client() {
+                Ok(client) => client.get_state(),
+                Err(e) => return Err(anyhow::anyhow!("Session error: {}", e)),
+            };
             if state.provider.is_empty() {
                 state.model.clone()
             } else {
@@ -61,7 +63,10 @@ impl ChatSession {
         std::io::stdout().flush().ok();
 
         let tool_schemas = self.ctx.tool_registry.lock().await.get_tool_schemas();
-        let send_future = self.get_client_mut().send(data, tool_schemas);
+        let send_future = match self.get_client_mut() {
+            Ok(client) => client.send(data, tool_schemas),
+            Err(e) => return Err(anyhow::anyhow!("Session error: {}", e)),
+        };
 
         let result = tokio::select! {
             res = send_future => res?,
@@ -89,16 +94,19 @@ impl ChatSession {
         if let Some(text) = text
             && !text.trim().is_empty()
         {
-            ui::print_block(
-                &text,
-                Some(&self.get_client().get_display_name()),
-                Some("cyan"),
-            );
+            let (display_name, model) = match self.get_client() {
+                Ok(client) => (client.get_display_name(), client.get_state().model.clone()),
+                Err(e) => {
+                    ui::report_error(&e.to_string());
+                    return;
+                }
+            };
+            ui::print_block(&text, Some(&display_name), Some("cyan"));
             crate::utils::chat_logger::log_chat(
                 &self.ctx.config_manager,
                 &Role::Assistant,
                 &text,
-                Some(&self.get_client().get_state().model),
+                Some(&model),
             );
         }
     }
@@ -112,7 +120,13 @@ impl ChatSession {
                 return;
             }
         };
-        let last_msg = self.get_client().get_state().conversation.last();
+        let last_msg = match self.get_client() {
+            Ok(client) => client.get_state().conversation.last(),
+            Err(e) => {
+                ui::report_error(&e.to_string());
+                return;
+            }
+        };
 
         if let Some(msg) = last_msg
             && (msg.role == Role::Assistant || msg.role == Role::Model)
@@ -142,7 +156,10 @@ impl ChatSession {
     async fn handle_tool_calls(&mut self) -> anyhow::Result<Vec<MessagePart>> {
         let mut tool_results = Vec::new();
         // Clone to avoid borrow checker issues during loop
-        let last_msg = self.get_client().get_state().conversation.last().cloned();
+        let last_msg = match self.get_client() {
+            Ok(client) => client.get_state().conversation.last().cloned(),
+            Err(e) => return Err(anyhow::anyhow!("Session error: {}", e)),
+        };
 
         if let Some(msg) = last_msg
             && (msg.role == Role::Assistant || msg.role == Role::Model)
@@ -314,7 +331,10 @@ impl ChatSession {
 
         let audit_ctx = serde_json::json!({
             "trace_id": self.trace_id,
-            "model": self.get_client().get_state().model,
+            "model": match self.get_client() {
+                Ok(client) => &client.get_state().model,
+                Err(_) => "unknown",
+            },
             "user_id": user_id
         });
 
@@ -422,32 +442,34 @@ impl ChatSession {
     }
 
     fn get_intent_context(&self) -> String {
-        let history: Vec<String> = self
-            .get_client()
-            .get_state()
-            .conversation
-            .iter()
-            .filter(|m| m.role == Role::User)
-            .rev()
-            .take(5)
-            .map(|m| {
-                let text = m.get_text(true);
-                if text.chars().count() > 1000 {
-                    let head: String = text.chars().take(500).collect();
-                    let tail: String = text.chars().rev().take(500).collect::<String>();
-                    format!(
-                        "{}...[TRUNCATED]...{}",
-                        head,
-                        tail.chars().rev().collect::<String>()
-                    )
-                } else {
-                    text
-                }
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
+        let history: Vec<String> = match self.get_client() {
+            Ok(client) => client
+                .get_state()
+                .conversation
+                .iter()
+                .filter(|m| m.role == Role::User)
+                .rev()
+                .take(5)
+                .map(|m| {
+                    let text = m.get_text(true);
+                    if text.chars().count() > 1000 {
+                        let head: String = text.chars().take(500).collect();
+                        let tail: String = text.chars().rev().take(500).collect::<String>();
+                        format!(
+                            "{}...[TRUNCATED]...{}",
+                            head,
+                            tail.chars().rev().collect::<String>()
+                        )
+                    } else {
+                        text
+                    }
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect(),
+            Err(_) => Vec::new(),
+        };
 
         let context = history.join("\n---\n");
         if context.chars().count() > 4000 {

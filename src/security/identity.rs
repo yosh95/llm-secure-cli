@@ -72,7 +72,7 @@ impl IdentityManager {
         ] {
             let (priv_p, pub_p) = Self::get_pqc_paths(variant);
             if force || !priv_p.exists() || !pub_p.exists() {
-                let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant);
+                let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant)?;
                 Self::write_private_file(&priv_p, &sk)?;
                 Self::write_public_file(&pub_p, &pk)?;
             }
@@ -82,7 +82,7 @@ impl IdentityManager {
         let kem_priv_path = KEY_DIR.join(Self::PQC_KEM_PRIVATE_KEY_PATH);
         let kem_pub_path = KEY_DIR.join(Self::PQC_KEM_PUBLIC_KEY_PATH);
         if force || !kem_priv_path.exists() || !kem_pub_path.exists() {
-            let (pk, sk) = PqcProvider::generate_mlkem_keypair(MlkemVariant::Mlkem768);
+            let (pk, sk) = PqcProvider::generate_mlkem_keypair(MlkemVariant::Mlkem768)?;
             Self::write_private_file(&kem_priv_path, &sk)?;
             Self::write_public_file(&kem_pub_path, &pk)?;
         }

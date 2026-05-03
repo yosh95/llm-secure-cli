@@ -2,7 +2,7 @@ use llm_secure_cli::security::pqc::{MldsaVariant, MlkemVariant, PqcProvider};
 use llm_secure_cli::security::static_analyzer::StaticAnalyzer;
 use std::time::Instant;
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     println!("\n=== High-Assurance Primitives Benchmark (Local) ===");
 
     // 1. PQC Primitives (Primary Security Layer)
@@ -17,7 +17,7 @@ fn main() {
 
         // Keygen
         let start = Instant::now();
-        let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant);
+        let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant)?;
         let elapsed = start.elapsed();
         println!("{} Keygen: {:?}", name, elapsed);
 
@@ -28,7 +28,7 @@ fn main() {
             let _ = PqcProvider::sign_mldsa(msg, &sk, variant);
         }
         let elapsed = start.elapsed();
-        let sig = PqcProvider::sign_mldsa(msg, &sk, variant).expect("Signing failed");
+        let sig = PqcProvider::sign_mldsa(msg, &sk, variant)?;
         println!("{} Sign (100 runs): {:?}", name, elapsed);
         println!("{} Sign (avg): {:?} per run", name, elapsed / 100);
 
@@ -44,22 +44,22 @@ fn main() {
 
     // 3. ML-KEM
     let variant = MlkemVariant::Mlkem768;
-    let (pk, sk) = PqcProvider::generate_mlkem_keypair(variant);
+    let (pk, sk) = PqcProvider::generate_mlkem_keypair(variant)?;
 
     // Encaps
     let start = Instant::now();
     for _ in 0..1000 {
-        PqcProvider::encapsulate_mlkem(&pk, variant);
+        PqcProvider::encapsulate_mlkem(&pk, variant)?;
     }
     let elapsed = start.elapsed();
-    let (_ss, ct) = PqcProvider::encapsulate_mlkem(&pk, variant);
+    let (_ss, ct) = PqcProvider::encapsulate_mlkem(&pk, variant)?;
     println!("ML-KEM-768 Encaps (1000 runs): {:?}", elapsed);
     println!("ML-KEM-768 Encaps (avg): {:?} per run", elapsed / 1000);
 
     // Decaps
     let start = Instant::now();
     for _ in 0..1000 {
-        PqcProvider::decapsulate_mlkem(&ct, &sk, variant);
+        PqcProvider::decapsulate_mlkem(&ct, &sk, variant)?;
     }
     let elapsed = start.elapsed();
     println!("ML-KEM-768 Decaps (1000 runs): {:?}", elapsed);
@@ -75,4 +75,6 @@ fn main() {
     let elapsed = start.elapsed();
     println!("Fast-Fail Check (1000 runs): {:?}", elapsed);
     println!("Fast-Fail Check (avg): {:?} per run", elapsed / 1000);
+
+    Ok(())
 }

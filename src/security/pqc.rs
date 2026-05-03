@@ -84,13 +84,15 @@ impl PqcProvider {
         }
     }
 
-    pub fn generate_mldsa_keypair(variant: MldsaVariant) -> (Vec<u8>, Vec<u8>) {
+    pub fn generate_mldsa_keypair(variant: MldsaVariant) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
         log::debug!("PQC: Generating ML-DSA keypair (variant: {:?})", variant);
         Self::ensure_init();
         let saorsa_variant = Self::map_mldsa_variant(variant);
         let ops = MlDsa::new(saorsa_variant);
-        let (pk, sk) = ops.generate_keypair().expect("PQC keygen failed");
-        (pk.to_bytes(), sk.to_bytes())
+        let (pk, sk) = ops
+            .generate_keypair()
+            .map_err(|_| anyhow::anyhow!("PQC keygen failed"))?;
+        Ok((pk.to_bytes(), sk.to_bytes()))
     }
 
     pub fn sign_mldsa(
@@ -154,43 +156,56 @@ impl PqcProvider {
         result
     }
 
-    pub fn generate_mlkem_keypair(variant: MlkemVariant) -> (Vec<u8>, Vec<u8>) {
+    pub fn generate_mlkem_keypair(variant: MlkemVariant) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
         log::debug!("PQC: Generating ML-KEM keypair (variant: {:?})", variant);
         Self::ensure_init();
         let saorsa_variant = Self::map_mlkem_variant(variant);
         let ops = MlKem::new(saorsa_variant);
-        let (pk, sk) = ops.generate_keypair().expect("PQC keygen failed");
-        (pk.to_bytes(), sk.to_bytes())
+        let (pk, sk) = ops
+            .generate_keypair()
+            .map_err(|_| anyhow::anyhow!("PQC keygen failed"))?;
+        Ok((pk.to_bytes(), sk.to_bytes()))
     }
 
-    pub fn encapsulate_mlkem(pk_bytes: &[u8], variant: MlkemVariant) -> (Vec<u8>, Vec<u8>) {
+    pub fn encapsulate_mlkem(
+        pk_bytes: &[u8],
+        variant: MlkemVariant,
+    ) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
         if pk_bytes.is_empty() {
-            return (vec![0; 32], vec![]);
+            return Ok((vec![0; 32], vec![]));
         }
         log::debug!("PQC: ML-KEM encapsulation (variant: {:?})", variant);
         Self::ensure_init();
         let saorsa_variant = Self::map_mlkem_variant(variant);
         let ops = MlKem::new(saorsa_variant);
-        let pk =
-            MlKemPublicKey::from_bytes(saorsa_variant, pk_bytes).expect("Invalid PQC public key");
-        let (ss, ct) = ops.encapsulate(&pk).expect("PQC encapsulate failed");
-        (ss.to_bytes().to_vec(), ct.to_bytes().to_vec())
+        let pk = MlKemPublicKey::from_bytes(saorsa_variant, pk_bytes)
+            .map_err(|_| anyhow::anyhow!("Invalid PQC public key"))?;
+        let (ss, ct) = ops
+            .encapsulate(&pk)
+            .map_err(|_| anyhow::anyhow!("PQC encapsulate failed"))?;
+        Ok((ss.to_bytes().to_vec(), ct.to_bytes().to_vec()))
     }
 
-    pub fn decapsulate_mlkem(ct_bytes: &[u8], sk_bytes: &[u8], variant: MlkemVariant) -> Vec<u8> {
+    pub fn decapsulate_mlkem(
+        ct_bytes: &[u8],
+        sk_bytes: &[u8],
+        variant: MlkemVariant,
+    ) -> anyhow::Result<Vec<u8>> {
         if sk_bytes.is_empty() {
-            return vec![0; 32];
+            return Ok(vec![0; 32]);
         }
         log::debug!("PQC: ML-KEM decapsulation (variant: {:?})", variant);
         Self::ensure_init();
         let saorsa_variant = Self::map_mlkem_variant(variant);
         let ops = MlKem::new(saorsa_variant);
-        let sk =
-            MlKemSecretKey::from_bytes(saorsa_variant, sk_bytes).expect("Invalid PQC secret key");
-        let ct =
-            MlKemCiphertext::from_bytes(saorsa_variant, ct_bytes).expect("Invalid PQC ciphertext");
-        let ss = ops.decapsulate(&sk, &ct).expect("PQC decapsulate failed");
-        ss.to_bytes().to_vec()
+        let sk = MlKemSecretKey::from_bytes(saorsa_variant, sk_bytes)
+            .map_err(|_| anyhow::anyhow!("Invalid PQC secret key"))?;
+        let ct = MlKemCiphertext::from_bytes(saorsa_variant, ct_bytes)
+            .map_err(|_| anyhow::anyhow!("Invalid PQC ciphertext"))?;
+        let ss = ops
+            .decapsulate(&sk, &ct)
+            .map_err(|_| anyhow::anyhow!("PQC decapsulate failed"))?;
+        Ok(ss.to_bytes().to_vec())
     }
 }
 
@@ -209,7 +224,7 @@ impl SecureStorage {
     pub fn encrypt(data: &[u8], recipient_public_key: &[u8]) -> anyhow::Result<EncryptedPacket> {
         log::debug!("SecureStorage: Encrypting {} bytes of data", data.len());
         let (shared_secret, kem_ct) =
-            PqcProvider::encapsulate_mlkem(recipient_public_key, MlkemVariant::Mlkem768);
+            PqcProvider::encapsulate_mlkem(recipient_public_key, MlkemVariant::Mlkem768)?;
 
         if shared_secret == vec![0; 32] && recipient_public_key.is_empty() {
             return Err(anyhow::anyhow!(
@@ -260,7 +275,7 @@ impl SecureStorage {
             .map_err(|e| anyhow::anyhow!("Invalid KEM ciphertext encoding: {}", e))?;
 
         let shared_secret =
-            PqcProvider::decapsulate_mlkem(&kem_ct, private_key, MlkemVariant::Mlkem768);
+            PqcProvider::decapsulate_mlkem(&kem_ct, private_key, MlkemVariant::Mlkem768)?;
 
         if shared_secret == vec![0; 32] && private_key.is_empty() {
             return Err(anyhow::anyhow!("Decryption failed: Private key is empty"));

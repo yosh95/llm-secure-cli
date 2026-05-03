@@ -131,10 +131,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         MldsaVariant::Mldsa65,
         MldsaVariant::Mldsa87,
     ] {
-        let (kg_mean, _) = timeit(|| PqcProvider::generate_mldsa_keypair(variant), 10);
-        let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant);
+        let (kg_mean, _) = timeit(|| PqcProvider::generate_mldsa_keypair(variant).unwrap(), 10);
+        let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant).unwrap();
         let msg = b"Verify Tool Execution Claim";
-        let (s_mean, _) = timeit(|| PqcProvider::sign_mldsa(msg, &sk, variant), 100);
+        let (s_mean, _) = timeit(|| PqcProvider::sign_mldsa(msg, &sk, variant).unwrap(), 100);
         let sig = PqcProvider::sign_mldsa(msg, &sk, variant).unwrap();
         let (v_mean, _) = timeit(|| PqcProvider::verify_mldsa(msg, &sig, &pk, variant), 100);
         println!(
@@ -156,11 +156,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         MlkemVariant::Mlkem768,
         MlkemVariant::Mlkem1024,
     ] {
-        let (kg_mean, _) = timeit(|| PqcProvider::generate_mlkem_keypair(variant), 10);
-        let (pk, sk) = PqcProvider::generate_mlkem_keypair(variant);
-        let (e_mean, _) = timeit(|| PqcProvider::encapsulate_mlkem(&pk, variant), 100);
-        let (_ss, ct) = PqcProvider::encapsulate_mlkem(&pk, variant);
-        let (d_mean, _) = timeit(|| PqcProvider::decapsulate_mlkem(&ct, &sk, variant), 100);
+        let (kg_mean, _) = timeit(|| PqcProvider::generate_mlkem_keypair(variant).unwrap(), 10);
+        let (pk, sk) = PqcProvider::generate_mlkem_keypair(variant).unwrap();
+        let (e_mean, _) = timeit(|| PqcProvider::encapsulate_mlkem(&pk, variant).unwrap(), 100);
+        let (_ss, ct) = PqcProvider::encapsulate_mlkem(&pk, variant).unwrap();
+        let (d_mean, _) = timeit(|| PqcProvider::decapsulate_mlkem(&ct, &sk, variant).unwrap(), 100);
         println!(
             "  {:<12} | {:<12.2} | {:<12.2} | {:<12.2}",
             variant.to_str(),

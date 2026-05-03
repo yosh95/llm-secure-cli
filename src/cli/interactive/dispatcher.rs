@@ -26,7 +26,13 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
         }
         "q" | "quit" => CommandResult::Exit,
         "system" => {
-            let state = session.get_client_mut().get_state_mut();
+            let state = match session.get_client_mut() {
+                Ok(c) => c.get_state_mut(),
+                Err(e) => {
+                    ui::report_error(&e.to_string());
+                    return CommandResult::Handled;
+                }
+            };
             match args.to_lowercase().as_str() {
                 "on" => {
                     state.system_prompt_enabled = true;
@@ -66,12 +72,13 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             }
         },
         "clear" | "c" => {
-            session
-                .get_client_mut()
-                .get_state_mut()
-                .conversation
-                .clear();
-            ui::report_success("Conversation history cleared.");
+            match session.get_client_mut() {
+                Ok(client) => {
+                    client.get_state_mut().conversation.clear();
+                    ui::report_success("Conversation history cleared.");
+                }
+                Err(e) => ui::report_error(&e.to_string()),
+            }
             CommandResult::Handled
         }
         "info" | "i" => {
@@ -79,7 +86,13 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             CommandResult::Handled
         }
         "debug" => {
-            let state = session.get_client_mut().get_state_mut();
+            let state = match session.get_client_mut() {
+                Ok(c) => c.get_state_mut(),
+                Err(e) => {
+                    ui::report_error(&e.to_string());
+                    return CommandResult::Handled;
+                }
+            };
             state.live_debug = !state.live_debug;
             let status = if state.live_debug {
                 log::set_max_level(log::LevelFilter::Debug);
@@ -103,9 +116,12 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             if args.is_empty() {
                 ui::report_error("Usage: /save <path>");
             } else {
-                match session.get_client().save_session(args) {
-                    Ok(_) => ui::report_success(&format!("Session saved to {}", args)),
-                    Err(e) => ui::report_error(&format!("Failed to save session: {}", e)),
+                match session.get_client() {
+                    Ok(client) => match client.save_session(args) {
+                        Ok(_) => ui::report_success(&format!("Session saved to {}", args)),
+                        Err(e) => ui::report_error(&format!("Failed to save session: {}", e)),
+                    },
+                    Err(e) => ui::report_error(&e.to_string()),
                 }
             }
             CommandResult::Handled
@@ -114,9 +130,12 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             if args.is_empty() {
                 ui::report_error("Usage: /load <path>");
             } else {
-                match session.get_client_mut().load_session(args) {
-                    Ok(_) => ui::report_success(&format!("Session loaded from {}", args)),
-                    Err(e) => ui::report_error(&format!("Failed to load session: {}", e)),
+                match session.get_client_mut() {
+                    Ok(client) => match client.load_session(args) {
+                        Ok(_) => ui::report_success(&format!("Session loaded from {}", args)),
+                        Err(e) => ui::report_error(&format!("Failed to load session: {}", e)),
+                    },
+                    Err(e) => ui::report_error(&e.to_string()),
                 }
             }
             CommandResult::Handled
@@ -149,7 +168,13 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
 }
 
 pub fn handle_info(session: &ChatSession) {
-    let state = session.get_client().get_state();
+    let state = match session.get_client() {
+        Ok(client) => client.get_state(),
+        Err(e) => {
+            ui::report_error(&e.to_string());
+            return;
+        }
+    };
     let config = match session.ctx.config_manager.get_config() {
         Ok(c) => c,
         Err(e) => {
@@ -214,7 +239,13 @@ pub fn handle_info(session: &ChatSession) {
 }
 
 pub fn handle_raw(session: &ChatSession) {
-    let state = session.get_client().get_state();
+    let state = match session.get_client() {
+        Ok(client) => client.get_state(),
+        Err(e) => {
+            ui::report_error(&e.to_string());
+            return;
+        }
+    };
     for msg in &state.conversation {
         let role = match msg.role {
             Role::Assistant | Role::Model => &state.model,
@@ -227,7 +258,13 @@ pub fn handle_raw(session: &ChatSession) {
 }
 
 pub fn handle_dump(session: &ChatSession) {
-    let state = session.get_client().get_state();
+    let state = match session.get_client() {
+        Ok(client) => client.get_state(),
+        Err(e) => {
+            ui::report_error(&e.to_string());
+            return;
+        }
+    };
     match serde_json::to_string_pretty(&state.conversation) {
         Ok(json) => {
             ui::print_rule(Some("Conversation Dump"), Some("magenta"));
@@ -244,7 +281,13 @@ pub async fn handle_attach(session: &mut ChatSession, source: &str) {
         return;
     }
 
-    let pdf_as_base64 = session.get_client().should_send_pdf_as_base64();
+    let pdf_as_base64 = match session.get_client() {
+        Ok(client) => client.should_send_pdf_as_base64(),
+        Err(e) => {
+            ui::report_error(&e.to_string());
+            return;
+        }
+    };
     let data = crate::utils::media::process_single_source(source, pdf_as_base64).await;
     if let Some(d) = data {
         ui::report_success(&format!("Attached {}: {}", d.content_type, source));
@@ -255,7 +298,13 @@ pub async fn handle_attach(session: &mut ChatSession, source: &str) {
 }
 
 pub async fn handle_tools(session: &mut ChatSession, args: &str) {
-    let state = session.get_client_mut().get_state_mut();
+    let state = match session.get_client_mut() {
+        Ok(client) => client.get_state_mut(),
+        Err(e) => {
+            ui::report_error(&e.to_string());
+            return;
+        }
+    };
     match args.to_lowercase().as_str() {
         "on" => {
             state.tools_enabled = true;
@@ -284,7 +333,13 @@ pub async fn handle_tools(session: &mut ChatSession, args: &str) {
 
 pub async fn handle_model_cmd(session: &mut ChatSession, args: &str) {
     let (provider, current_model, stdout, raw) = {
-        let state = session.get_client().get_state();
+        let state = match session.get_client() {
+            Ok(client) => client.get_state(),
+            Err(e) => {
+                ui::report_error(&e.to_string());
+                return;
+            }
+        };
         (
             state.provider.clone(),
             state.model.clone(),
@@ -328,7 +383,10 @@ pub async fn handle_model_cmd(session: &mut ChatSession, args: &str) {
                 ui::report_success(&format!(
                     "Model switched to: {} ({})",
                     args,
-                    session.get_client().get_state().model
+                    match session.get_client() {
+                        Ok(c) => c.get_state().model.clone(),
+                        Err(_) => "unknown".to_string(),
+                    }
                 ));
             }
             _ => {
@@ -341,7 +399,13 @@ pub async fn handle_model_cmd(session: &mut ChatSession, args: &str) {
 pub async fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
     if args.is_empty() {
         let active_providers = session.ctx.config_manager.get_active_providers();
-        let current_provider = session.get_client().get_state().provider.clone();
+        let current_provider = match session.get_client() {
+            Ok(client) => client.get_state().provider.clone(),
+            Err(e) => {
+                ui::report_error(&e.to_string());
+                return;
+            }
+        };
         ui::print_rule(Some("Active Providers"), Some("magenta"));
         for p in active_providers {
             if p == current_provider {
@@ -353,7 +417,13 @@ pub async fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
         ui::print_rule(None, Some("magenta"));
     } else {
         let (stdout, raw) = {
-            let state = session.get_client().get_state();
+            let state = match session.get_client() {
+                Ok(client) => client.get_state(),
+                Err(e) => {
+                    ui::report_error(&e.to_string());
+                    return;
+                }
+            };
             (state.stdout, !state.render_markdown)
         };
 
@@ -365,8 +435,7 @@ pub async fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
         match client {
             Some(new_client) => {
                 session.switch_client(new_client);
-                let new_model = session.get_client().get_state().model.clone();
-                let _ = session.ctx.config_manager.update_state(args, &new_model);
+                let _ = session.ctx.config_manager.update_state(args, "default");
                 ui::report_success(&format!("Switched to provider: {}", args));
             }
             _ => {
@@ -377,7 +446,13 @@ pub async fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
 }
 
 pub async fn handle_checkpoint(session: &mut ChatSession) {
-    let history_len = session.get_client().get_state().conversation.len();
+    let history_len = match session.get_client() {
+        Ok(client) => client.get_state().conversation.len(),
+        Err(e) => {
+            ui::report_error(&e.to_string());
+            return;
+        }
+    };
     if history_len == 0 {
         ui::report_warning("History is empty. Nothing to checkpoint.");
         return;
@@ -401,7 +476,13 @@ pub async fn handle_checkpoint(session: &mut ChatSession) {
     }
 
     // After process_and_print, the history has [Old History] + [Summary Prompt] + [Summary Response]
-    let state = session.get_client_mut().get_state_mut();
+    let state = match session.get_client_mut() {
+        Ok(client) => client.get_state_mut(),
+        Err(e) => {
+            ui::report_error(&e.to_string());
+            return;
+        }
+    };
     if let Some(last_msg) = state.conversation.last().cloned() {
         // Clear all history and replace with the summary
         state.conversation.clear();

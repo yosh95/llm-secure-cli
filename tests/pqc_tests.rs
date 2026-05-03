@@ -13,7 +13,7 @@ fn test_mldsa_sign_verify_all_variants() {
     let message = b"Post-quantum security is essential for 2026.";
 
     for variant in variants {
-        let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant);
+        let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant).expect("Key generation failed");
         let sig = PqcProvider::sign_mldsa(message, &sk, variant).expect("Signing failed");
 
         assert!(
@@ -51,9 +51,11 @@ fn test_mlkem_encaps_decaps_all_variants() {
     ];
 
     for variant in variants {
-        let (pk, sk) = PqcProvider::generate_mlkem_keypair(variant);
-        let (ss_enc, ct) = PqcProvider::encapsulate_mlkem(&pk, variant);
-        let ss_dec = PqcProvider::decapsulate_mlkem(&ct, &sk, variant);
+        let (pk, sk) = PqcProvider::generate_mlkem_keypair(variant).expect("Key generation failed");
+        let (ss_enc, ct) =
+            PqcProvider::encapsulate_mlkem(&pk, variant).expect("Encapsulation failed");
+        let ss_dec =
+            PqcProvider::decapsulate_mlkem(&ct, &sk, variant).expect("Decapsulation failed");
 
         assert_eq!(
             ss_enc, ss_dec,
@@ -69,7 +71,8 @@ fn test_mlkem_encaps_decaps_all_variants() {
 
 #[test]
 fn test_secure_storage_hybrid_encryption() {
-    let (pk, sk) = PqcProvider::generate_mlkem_keypair(MlkemVariant::Mlkem768);
+    let (pk, sk) =
+        PqcProvider::generate_mlkem_keypair(MlkemVariant::Mlkem768).expect("KEM keygen failed");
     let original_data = b"Sensitive post-quantum data content";
 
     let packet = SecureStorage::encrypt(original_data, &pk).expect("Encryption failed");
@@ -86,7 +89,7 @@ fn test_secure_storage_hybrid_encryption() {
 #[test]
 fn test_response_signer() {
     let variant = MldsaVariant::Mldsa65;
-    let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant);
+    let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant).expect("Keygen failed");
     let response_text = "The quick brown fox jumps over the lazy dog";
     let verification_id = "test-v-id-123";
 

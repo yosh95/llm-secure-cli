@@ -16,39 +16,45 @@ impl ChatSession {
         initial_data: Option<Vec<DataSource>>,
         _sources: Option<Vec<String>>,
     ) {
-        let data = initial_data.unwrap_or_default();
-        let is_stdout = self.get_client().get_state().stdout;
-
-        if !data.is_empty() {
-            if self.intent.is_empty()
-                && let Some(DataSource {
-                    content: serde_json::Value::String(s),
-                    ..
-                }) = data.first()
-            {
-                self.intent = s.clone();
-                crate::utils::chat_logger::log_chat(
-                    &self.ctx.config_manager,
-                    &crate::llm::models::Role::User,
-                    s,
-                    None,
-                );
+        let is_stdout = match self.get_client() {
+            Ok(client) => client.get_state().stdout,
+            Err(e) => {
+                ui::report_error(&e.to_string());
+                return;
             }
+        };
 
-            match self.process_and_print(data).await {
-                Ok(_) => {
-                    if is_stdout {
-                        return;
+        if let Some(data) = initial_data
+            && !data.is_empty() {
+                if self.intent.is_empty()
+                    && let Some(DataSource {
+                        content: serde_json::Value::String(s),
+                        ..
+                    }) = data.first()
+                {
+                    self.intent = s.clone();
+                    crate::utils::chat_logger::log_chat(
+                        &self.ctx.config_manager,
+                        &crate::llm::models::Role::User,
+                        s,
+                        None,
+                    );
+                }
+
+                match self.process_and_print(data).await {
+                    Ok(_) => {
+                        if is_stdout {
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        ui::report_error(&format!("Error: {}", e));
+                        if is_stdout {
+                            return;
+                        }
                     }
                 }
-                Err(e) => {
-                    ui::report_error(&format!("Error: {}", e));
-                    if is_stdout {
-                        return;
-                    }
-                }
             }
-        }
 
         if is_stdout {
             return;
@@ -56,7 +62,13 @@ impl ChatSession {
 
         println!("{}", "Use Ctrl+C or /q to exit, /h for help.".dimmed());
 
-        let current_provider = Arc::new(Mutex::new(self.get_client().get_state().provider.clone()));
+        let current_provider = Arc::new(Mutex::new(match self.get_client() {
+            Ok(client) => client.get_state().provider.clone(),
+            Err(e) => {
+                ui::report_error(&e.to_string());
+                return;
+            }
+        }));
         let config = rustyline::Config::builder()
             .history_ignore_space(true)
             .completion_type(rustyline::CompletionType::List)
@@ -98,7 +110,13 @@ impl ChatSession {
                         break;
                     }
                 };
-                *cp = self.get_client().get_state().provider.clone();
+                *cp = match self.get_client() {
+                    Ok(client) => client.get_state().provider.clone(),
+                    Err(e) => {
+                        ui::report_error(&e.to_string());
+                        break;
+                    }
+                };
             }
 
             let readline = if let Some(initial) = next_initial_text.take() {
