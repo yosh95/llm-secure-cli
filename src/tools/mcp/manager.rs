@@ -31,80 +31,93 @@ impl McpManager {
         &self,
         config_manager: &crate::config::ConfigManager,
     ) -> Result<Vec<Value>> {
-        let mut cached_tools = self.cached_tools.lock().await;
-        if !cached_tools.is_empty() {
-            return Ok(cached_tools.clone());
+        {
+            let cached_tools = self.cached_tools.lock().await;
+            if !cached_tools.is_empty() {
+                return Ok(cached_tools.clone());
+            }
         }
 
         let config = config_manager.get_config()?;
-        let mut sessions = self.sessions.lock().await;
         let mut all_tools = Vec::new();
+        let mut join_set = tokio::task::JoinSet::new();
 
-        for server_cfg in &config.mcp_servers {
-            if sessions.contains_key(&server_cfg.name) {
-                continue;
+        for server_cfg in config.mcp_servers.clone() {
+            {
+                let sessions = self.sessions.lock().await;
+                if sessions.contains_key(&server_cfg.name) {
+                    continue;
+                }
             }
 
-            ui::report_success(&format!(
-                "Connecting to MCP server '{}'...",
-                server_cfg.name
-            ));
+            join_set.spawn(async move {
+                ui::report_success(&format!(
+                    "Connecting to MCP server '{}'...",
+                    server_cfg.name
+                ));
 
-            let params = StdioServerParameters {
-                command: server_cfg.command.clone(),
-                args: server_cfg.args.clone(),
-                env: None, // TODO: support env in config if needed
-            };
+                let params = StdioServerParameters {
+                    command: server_cfg.command.clone(),
+                    args: server_cfg.args.clone(),
+                    env: None,
+                };
 
-            match ClientSession::start(params).await {
-                Ok(session) => {
-                    if let Err(e) = session.initialize().await {
-                        ui::report_error(&format!(
-                            "Failed to initialize MCP server '{}': {}",
-                            server_cfg.name, e
-                        ));
-                        continue;
-                    }
-
-                    match session.list_tools().await {
-                        Ok(result) => {
-                            let mut namespaced_tools = Vec::new();
-                            for tool in result.tools {
-                                let namespaced_name = format!("{}__{}", server_cfg.name, tool.name);
-                                namespaced_tools.push(json!({
-                                    "name": namespaced_name,
-                                    "original_name": tool.name,
-                                    "server_name": server_cfg.name,
-                                    "description": tool.description,
-                                    "parameters": tool.input_schema,
-                                }));
-                            }
-                            ui::report_success(&format!(
-                                "[OK] Connected to MCP server '{}' ({} tools).",
+                match ClientSession::start(params).await {
+                    Ok(session) => {
+                        if let Err(e) = session.initialize().await {
+                            return Err(anyhow!(
+                                "Failed to initialize '{}': {}",
                                 server_cfg.name,
-                                namespaced_tools.len()
+                                e
                             ));
-                            all_tools.extend(namespaced_tools);
-                            sessions.insert(server_cfg.name.clone(), session);
                         }
-                        Err(e) => {
-                            ui::report_error(&format!(
-                                "Failed to list tools for MCP server '{}': {}",
-                                server_cfg.name, e
-                            ));
+
+                        match session.list_tools().await {
+                            Ok(result) => {
+                                let mut namespaced_tools = Vec::new();
+                                for tool in result.tools {
+                                    let namespaced_name =
+                                        format!("{}__{}", server_cfg.name, tool.name);
+                                    namespaced_tools.push(json!({
+                                        "name": namespaced_name,
+                                        "original_name": tool.name,
+                                        "server_name": server_cfg.name,
+                                        "description": tool.description,
+                                        "parameters": tool.input_schema,
+                                    }));
+                                }
+                                Ok((server_cfg.name, session, namespaced_tools))
+                            }
+                            Err(e) => Err(anyhow!(
+                                "Failed to list tools for '{}': {}",
+                                server_cfg.name,
+                                e
+                            )),
                         }
                     }
+                    Err(e) => Err(anyhow!("Failed to connect to '{}': {}", server_cfg.name, e)),
                 }
-                Err(e) => {
-                    ui::report_error(&format!(
-                        "Failed to connect to MCP server '{}': {}",
-                        server_cfg.name, e
+            });
+        }
+
+        while let Some(res) = join_set.join_next().await {
+            match res {
+                Ok(Ok((name, session, tools))) => {
+                    ui::report_success(&format!(
+                        "[OK] Connected to MCP server '{}' ({} tools).",
+                        name,
+                        tools.len()
                     ));
+                    all_tools.extend(tools);
+                    self.sessions.lock().await.insert(name, session);
                 }
+                Ok(Err(e)) => ui::report_error(&e.to_string()),
+                Err(e) => ui::report_error(&format!("Task panicked: {}", e)),
             }
         }
 
-        *cached_tools = all_tools.clone();
+        let mut cached = self.cached_tools.lock().await;
+        *cached = all_tools.clone();
         Ok(all_tools)
     }
 

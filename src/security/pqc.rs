@@ -19,14 +19,14 @@ pub enum MldsaVariant {
 }
 
 impl FromStr for MldsaVariant {
-    type Err = ();
+    type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_uppercase().as_str() {
             "ML-DSA-44" => Ok(MldsaVariant::Mldsa44),
             "ML-DSA-65" => Ok(MldsaVariant::Mldsa65),
             "ML-DSA-87" => Ok(MldsaVariant::Mldsa87),
-            _ => Err(()),
+            _ => Err(anyhow::anyhow!("Invalid ML-DSA variant: {}", s)),
         }
     }
 }
@@ -237,7 +237,9 @@ impl SecureStorage {
         let cipher = Aes256Gcm::new_from_slice(key)
             .map_err(|_| anyhow::anyhow!("Failed to initialize AES-GCM"))?;
 
-        let nonce_bytes: [u8; 12] = rand::random();
+        use rand::RngCore;
+        let mut nonce_bytes = [0u8; 12];
+        rand::thread_rng().fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from(nonce_bytes);
 
         let ciphertext_with_tag = cipher

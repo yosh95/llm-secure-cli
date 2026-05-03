@@ -215,27 +215,47 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
     if !path.exists() {
         return;
     }
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
+
+    let file = match fs::File::open(path) {
+        Ok(f) => f,
         Err(_) => return,
     };
-    let lines: Vec<&str> = content.lines().collect();
-    if lines.len() <= max_lines {
+    let reader = std::io::BufReader::new(file);
+    use std::io::BufRead;
+
+    // 1. First pass: count lines
+    let total_lines = reader.lines().count();
+    if total_lines <= max_lines {
         return;
     }
 
-    let last_removed_idx = lines.len() - max_lines - 1;
-    let last_removed_hash = serde_json::from_str::<serde_json::Value>(lines[last_removed_idx])
-        .ok()
-        .and_then(|v| {
-            v.get("hash")
-                .and_then(|h| h.as_str())
-                .map(|s| s.to_string())
-        })
-        .unwrap_or_else(|| "0".repeat(64));
+    // 2. Second pass: keep only the last max_lines
+    let file = match fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let mut reader = std::io::BufReader::new(file);
+    let skip_count = total_lines - max_lines;
 
-    let kept_lines = &lines[lines.len() - max_lines..];
-    if let Ok(mut file) = std::fs::File::create(path) {
+    let mut last_removed_hash = "0".repeat(64);
+    for (i, line) in (&mut reader).lines().enumerate() {
+        if i == skip_count - 1 {
+            if let Ok(l) = line
+                && let Ok(v) = serde_json::from_str::<serde_json::Value>(&l)
+            {
+                last_removed_hash = v
+                    .get("hash")
+                    .and_then(|h| h.as_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "0".repeat(64));
+            }
+            break;
+        }
+    }
+
+    // Create temp file for the trimmed content
+    let temp_path = path.with_extension("tmp");
+    if let Ok(mut temp_file) = fs::File::create(&temp_path) {
         let continuity_marker = serde_json::json!({
             "timestamp": Utc::now().to_rfc3339(),
             "event_type": "LOG_ROTATION_MARKER",
@@ -243,9 +263,14 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
             "hash": format!("ROTATION-NONCE-{}", Uuid::new_v4()),
             "status": "CONTINUITY_MAINTAINED"
         });
-        let _ = writeln!(file, "{}", continuity_marker);
-        for line in kept_lines {
-            let _ = writeln!(file, "{}", line);
+        let _ = writeln!(temp_file, "{}", continuity_marker);
+
+        for l in reader.lines().map_while(Result::ok) {
+            let _ = writeln!(temp_file, "{}", l);
         }
+
+        // Finalize by renaming
+        drop(temp_file);
+        let _ = fs::rename(&temp_path, path);
     }
 }

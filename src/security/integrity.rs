@@ -62,9 +62,19 @@ impl IntegrityVerifier {
         for bin_name in sorted_tools {
             let bin_path = bin_dir.join(bin_name);
             if bin_path.exists() && bin_path.is_file() {
-                let bytes = fs::read(&bin_path)?;
+                let mut file = fs::File::open(&bin_path)?;
                 let mut file_hasher = Sha256::new();
-                file_hasher.update(bytes);
+
+                let mut buffer = [0u8; 8192];
+                use std::io::Read;
+                loop {
+                    let n = file.read(&mut buffer)?;
+                    if n == 0 {
+                        break;
+                    }
+                    file_hasher.update(&buffer[..n]);
+                }
+
                 // Combine file hashes into the overall digest
                 overall_hasher.update(file_hasher.finalize());
                 found_any = true;
@@ -72,9 +82,18 @@ impl IntegrityVerifier {
         }
 
         if !found_any {
-            let bytes = fs::read(&exe_path)?;
+            let mut file = fs::File::open(&exe_path)?;
             let mut hasher = Sha256::new();
-            hasher.update(bytes);
+
+            let mut buffer = [0u8; 8192];
+            use std::io::Read;
+            loop {
+                let n = file.read(&mut buffer)?;
+                if n == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..n]);
+            }
             return Ok(hex::encode(hasher.finalize()));
         }
 
@@ -86,9 +105,18 @@ impl IntegrityVerifier {
         if !CONFIG_FILE_PATH.exists() {
             return Ok("MISSING".to_string());
         }
-        let bytes = fs::read(&*CONFIG_FILE_PATH)?;
+        let mut file = fs::File::open(&*CONFIG_FILE_PATH)?;
         let mut hasher = Sha256::new();
-        hasher.update(bytes);
+
+        let mut buffer = [0u8; 8192];
+        use std::io::Read;
+        loop {
+            let n = file.read(&mut buffer)?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buffer[..n]);
+        }
         Ok(hex::encode(hasher.finalize()))
     }
 
