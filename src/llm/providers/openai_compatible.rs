@@ -185,13 +185,18 @@ impl OpenAiCompatibleClient {
     pub fn build_messages(&self, data: &[DataSource]) -> Vec<Value> {
         let mut messages = Vec::new();
 
-        if let Some(sp) = &self.base.state.system_prompt {
+        if let Some(sp) = self.base.state.get_effective_system_prompt() {
             messages.push(json!({"role": "system", "content": sp}));
         }
 
         for m in &self.base.state.conversation {
             match m.role {
-                Role::System => continue,
+                Role::System => {
+                    messages.push(json!({
+                        "role": "system",
+                        "content": m.get_text(true)
+                    }));
+                }
                 Role::Tool => {
                     for part in &m.parts {
                         if let MessagePart::Part(cp) = part

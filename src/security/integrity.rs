@@ -14,6 +14,7 @@ use std::path::PathBuf;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct IntegrityManifest {
     pub binary_hash: String,
+    pub source_hash: String,
     pub config_hash: String,
     pub pqc_signature: String,
     pub pqc_algorithm: String,
@@ -39,6 +40,71 @@ impl Default for IntegrityVerifier {
 }
 
 impl IntegrityVerifier {
+    /// Recursively calculate the hash of the source code and metadata files.
+    fn calculate_source_hash(&self) -> Result<String> {
+        let mut files = Vec::new();
+
+        // Check common locations
+        let paths_to_check = vec![PathBuf::from("src"), PathBuf::from(".")];
+        for path in paths_to_check {
+            if !path.exists() {
+                continue;
+            }
+            self.collect_files(&path, &mut files)?;
+        }
+
+        files.sort();
+        files.dedup();
+
+        let mut overall_hasher = Sha256::new();
+        for path in files {
+            let mut file = fs::File::open(&path)?;
+            let mut file_hasher = Sha256::new();
+            let mut buffer = [0u8; 8192];
+            use std::io::Read;
+            loop {
+                let n = file.read(&mut buffer)?;
+                if n == 0 {
+                    break;
+                }
+                file_hasher.update(&buffer[..n]);
+            }
+            // Include path in the hash to detect moved files
+            overall_hasher.update(path.to_string_lossy().as_bytes());
+            overall_hasher.update(file_hasher.finalize());
+        }
+
+        Ok(crate::utils::hex_encode(overall_hasher.finalize()))
+    }
+
+    fn collect_files(&self, dir: &std::path::Path, files: &mut Vec<PathBuf>) -> Result<()> {
+        if dir.is_file() {
+            if let Some(ext) = dir.extension()
+                && (ext == "rs" || ext == "toml") {
+                    files.push(dir.to_path_buf());
+                }
+            return Ok(());
+        }
+
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    // Skip hidden directories and target
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                        && (name.starts_with('.') || name == "target") {
+                            continue;
+                        }
+                    self.collect_files(&path, files)?;
+                } else if let Some(ext) = path.extension()
+                    && (ext == "rs" || ext == "toml") {
+                        files.push(path);
+                    }
+            }
+        }
+        Ok(())
+    }
+
     /// Calculates a combined integrity hash of all tool binaries.
     /// This uses SHA-256 as the underlying primitive, which is then signed by ML-DSA.
     /// In a post-quantum context, this hash acts as the message digest for the ML-DSA signature.
@@ -123,10 +189,12 @@ impl IntegrityVerifier {
     /// Generates a new integrity manifest, signs it with PQC, and saves it to disk.
     pub fn rebuild_manifest(&self) -> Result<()> {
         let binary_hash = self.calculate_binary_hash()?;
+        let source_hash = self.calculate_source_hash()?;
         let config_hash = self.calculate_config_hash()?;
 
         let mut data_to_sign = BTreeMap::new();
         data_to_sign.insert("binary_hash", &binary_hash);
+        data_to_sign.insert("source_hash", &source_hash);
         data_to_sign.insert("config_hash", &config_hash);
         let json_data = serde_json::to_string(&data_to_sign)?;
 
@@ -144,6 +212,7 @@ impl IntegrityVerifier {
 
         let manifest = IntegrityManifest {
             binary_hash,
+            source_hash,
             config_hash,
             pqc_signature: general_purpose::STANDARD.encode(pqc_sig),
             pqc_algorithm: "ML-DSA-65".to_string(),
@@ -174,6 +243,7 @@ impl IntegrityVerifier {
         // 1. Verify PQC Signature of the manifest itself
         let mut data_to_verify = BTreeMap::new();
         data_to_verify.insert("binary_hash", &manifest.binary_hash);
+        data_to_verify.insert("source_hash", &manifest.source_hash);
         data_to_verify.insert("config_hash", &manifest.config_hash);
         let json_data = serde_json::to_string(&data_to_verify)?;
 
@@ -211,6 +281,11 @@ impl IntegrityVerifier {
         let current_binary = self.calculate_binary_hash()?;
         if current_binary != manifest.binary_hash {
             return Ok(false); // Binary has been modified
+        }
+
+        let current_source = self.calculate_source_hash()?;
+        if current_source != manifest.source_hash {
+            return Ok(false); // Source files have been modified or new files added
         }
 
         let current_config = self.calculate_config_hash()?;

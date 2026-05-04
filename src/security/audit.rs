@@ -183,7 +183,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         let arg_bytes = serde_json::to_vec(&params.args).unwrap_or_default();
         match crate::security::pqc::SecureStorage::encrypt(&arg_bytes, &pk) {
             Ok(packet) => {
-                final_args = serde_json::to_value(packet).unwrap_or(params.args);
+                final_args = serde_json::to_value(packet).unwrap_or_else(|_| params.args.clone());
                 pqc_encrypted = true;
             }
             Err(_e) => {}
@@ -224,7 +224,16 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
     log_entry.hash = crate::utils::hex_encode(hasher.finalize());
 
     // PQC Signing
-    let variant = crate::security::pqc::MldsaVariant::Mldsa65;
+    let variant = crate::security::pqc::PQCAgilityManager::get_required_level(
+        params.config,
+        params.tool_name,
+        Some(&params.args),
+        if params.config.security.security_level == "high" {
+            "high"
+        } else {
+            "standard"
+        },
+    );
     if let Ok(sk) = crate::security::identity::IdentityManager::get_pqc_private_key(variant) {
         match ResponseSigner::sign_response(&log_entry.hash, &log_entry.trace_id, &sk, variant) {
             Ok(signed) => {
