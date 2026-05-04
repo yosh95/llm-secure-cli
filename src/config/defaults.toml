@@ -72,7 +72,7 @@ low_risk_tools = [
 # Validates tool calls using a secondary LLM with a hardcoded Security Constitution.
 dual_llm_verification = false
 dual_llm_provider = "openrouter"
-dual_llm_model = "google/gemini-3.1-flash-lite-preview"
+dual_llm_model = "amazon/nova-2-lite-v1"
 dual_llm_confidence_threshold = 0.7
 
 # Verifier Fallback Policy
