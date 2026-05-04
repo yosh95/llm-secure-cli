@@ -58,10 +58,20 @@ pub async fn execute_command(
 
     // Structural Isolation: By using Command::new directly, we avoid shell-injection
     // vulnerabilities regardless of the operating system.
-    let child = cmd
+    let child = match cmd
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .spawn()?;
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(anyhow::anyhow!(
+                "Command '{}' not found in system PATH. Please ensure the command is correct and installed. Do NOT include natural language or explanations in the command field.",
+                program
+            ));
+        }
+        Err(e) => return Err(anyhow::anyhow!("Failed to start process: {}", e)),
+    };
 
     match tokio::time::timeout(Duration::from_secs(timeout_secs), child.wait_with_output()).await {
         Ok(Ok(output)) => Ok(json!({
