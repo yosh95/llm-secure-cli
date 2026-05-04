@@ -238,10 +238,7 @@ async fn start_chat_session(
         }
     }
 
-    let model = args
-        .model
-        .or(state.last_used_model)
-        .unwrap_or_default();
+    let model = args.model.or(state.last_used_model).unwrap_or_default();
 
     let stdout = args.stdout || !is_atty;
 
