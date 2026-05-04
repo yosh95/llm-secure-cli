@@ -384,7 +384,10 @@ impl ChatSession {
 
         crate::tools::executor_utils::truncate_json_strings(&mut final_v);
         ui::print_tool_result(final_v.as_str().unwrap_or(&final_v.to_string()));
-        final_v
+
+        // Convert to human-readable string for the LLM
+        let human_result = crate::tools::executor_utils::humanize_tool_result(name, &final_v);
+        Value::String(human_result)
     }
 
     fn is_auto_approved(&self, _name: &str, risk: RiskLevel) -> bool {

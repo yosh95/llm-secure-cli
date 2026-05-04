@@ -161,6 +161,36 @@ pub fn print_tool_result(result: &str) {
 
     // Try to parse as JSON for pretty printing
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(result) {
+        // Special handling for file modification results
+        if let (Some(path), Some(diff)) = (
+            v.get("path").and_then(|v| v.as_str()),
+            v.get("diff").and_then(|v| v.as_str()),
+        ) {
+            let message = v.get("message").and_then(|v| v.as_str()).unwrap_or("");
+            if !message.is_empty() {
+                println!("    {} {}", "•".bright_black(), message.cyan());
+            }
+            println!("    {} {}: {}", "•".bright_black(), "path".cyan(), path);
+
+            if !diff.is_empty() {
+                println!("    {} {}:", "•".bright_black(), "diff".cyan());
+                for line in diff.lines() {
+                    if line.starts_with('+') && !line.starts_with("+++") {
+                        println!("        {}", line.bright_green());
+                    } else if line.starts_with('-') && !line.starts_with("---") {
+                        println!("        {}", line.red());
+                    } else if line.starts_with("@@") {
+                        println!("        {}", line.cyan().dimmed());
+                    } else if line.starts_with("---") || line.starts_with("+++") {
+                        println!("        {}", line.bold().dimmed());
+                    } else {
+                        println!("        {}", line.dimmed());
+                    }
+                }
+            }
+            return;
+        }
+
         // Special handling for command execution results
         if let (Some(stdout), Some(stderr), Some(exit_code)) = (
             v.get("stdout").and_then(|v| v.as_str()),
