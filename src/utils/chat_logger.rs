@@ -26,8 +26,8 @@ pub fn log_chat(
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            if let Ok(path) = path.parent() {
-                let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o700));
+            if let Some(p) = path.parent() {
+                let _ = fs::set_permissions(p, fs::Permissions::from_mode(0o700));
             }
         }
     }

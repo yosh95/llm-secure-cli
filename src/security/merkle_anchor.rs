@@ -153,7 +153,7 @@ impl SessionAnchorManager {
         }
 
         let anchor_path = ANCHOR_DIR.join(format!("{}.anchor.json", trace_id));
-        
+
         let mut options = std::fs::OpenOptions::new();
         options.create(true).write(true).truncate(true);
         #[cfg(unix)]
@@ -161,7 +161,7 @@ impl SessionAnchorManager {
             use std::os::unix::fs::OpenOptionsExt;
             options.mode(0o600);
         }
-        
+
         let f = options.open(anchor_path)?;
         serde_json::to_writer_pretty(f, &anchor)?;
 
