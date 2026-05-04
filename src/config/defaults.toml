@@ -82,12 +82,11 @@ verifier_fallback = "require_approval"
 # OpenAI Compatible Providers
 # =============================================================================
 
+[ollama]
 # Ollama (Local)
-# api_url = "http://localhost:11434/v1"
+api_url = "http://localhost:11434/v1"
 # Ollama (Cloud)
 # api_url = "https://ollama.com/v1"
-[ollama]
-api_url = "http://localhost:11434/v1"
 
 # OpenRouter (Aggregation service)
 [openrouter]
