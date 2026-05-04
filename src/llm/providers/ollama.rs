@@ -55,7 +55,7 @@ impl LlmClient for OllamaClient {
         &mut self,
         data: Vec<DataSource>,
         tool_schemas: Vec<Value>,
-    ) -> anyhow::Result<(Option<String>, Option<String>)> {
+    ) -> anyhow::Result<(Option<String>, Option<String>, Option<String>)> {
         self.inner.send(data, tool_schemas).await
     }
 

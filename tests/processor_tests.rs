@@ -35,9 +35,9 @@ impl LlmClient for MockProcessorClient {
         &mut self,
         _data: Vec<DataSource>,
         _tool_schemas: Vec<serde_json::Value>,
-    ) -> anyhow::Result<(Option<String>, Option<String>)> {
+    ) -> anyhow::Result<(Option<String>, Option<String>, Option<String>)> {
         if self.call_count >= self.responses.len() {
-            return Ok((None, None));
+            return Ok((None, None, None));
         }
         let (text, thought, parts) = self.responses[self.call_count].clone();
         self.call_count += 1;
@@ -58,7 +58,7 @@ impl LlmClient for MockProcessorClient {
             });
         }
 
-        Ok((text, thought))
+        Ok((text, thought, None))
     }
 
     async fn send_as_verifier(

@@ -78,7 +78,12 @@ impl ChatSession {
         };
 
         println!("done");
-        Ok(result)
+
+        if let Some(redirect) = &result.2 {
+            ui::report_info(redirect);
+        }
+
+        Ok((result.0, result.1))
     }
 
     /// Displays Thought blocks and Assistant text results.

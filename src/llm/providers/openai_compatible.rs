@@ -312,7 +312,7 @@ impl LlmClient for OpenAiCompatibleClient {
         &mut self,
         data: Vec<DataSource>,
         tool_schemas: Vec<Value>,
-    ) -> anyhow::Result<(Option<String>, Option<String>)> {
+    ) -> anyhow::Result<(Option<String>, Option<String>, Option<String>)> {
         let messages = self.build_messages(&data);
         let mut body = json!({
             "model": self.base.state.model,
@@ -328,6 +328,12 @@ impl LlmClient for OpenAiCompatibleClient {
             );
         }
 
+        tracing::debug!(
+            "LLM Request (to {}): {}",
+            self.api_url,
+            serde_json::to_string_pretty(&body).unwrap_or_default()
+        );
+
         let res = self
             .http_client
             .post(&self.api_url)
@@ -337,9 +343,25 @@ impl LlmClient for OpenAiCompatibleClient {
             .await?;
 
         let resp_json: Value = res.json().await?;
+
+        tracing::debug!(
+            "LLM Response: {}",
+            serde_json::to_string_pretty(&resp_json).unwrap_or_default()
+        );
+
         if let Some(err) = resp_json.get("error") {
             return Err(anyhow::anyhow!("API Error: {}", err));
         }
+
+        // Report if the model changed (e.g. via OpenRouter fallback)
+        let mut redirect_msg = None;
+        if let Some(resp_model) = resp_json.get("model").and_then(|v| v.as_str())
+            && resp_model != self.base.state.model {
+                redirect_msg = Some(format!(
+                    "Model redirected from '{}' to '{}'",
+                    self.base.state.model, resp_model
+                ));
+            }
 
         let choice = &resp_json["choices"][0];
         let msg = &choice["message"];
@@ -373,7 +395,7 @@ impl LlmClient for OpenAiCompatibleClient {
         };
         self.update_history(&data, model_msg);
 
-        Ok((text, None))
+        Ok((text, None, redirect_msg))
     }
 
     async fn send_as_verifier(
@@ -393,6 +415,12 @@ impl LlmClient for OpenAiCompatibleClient {
             "tool_choice": {"type": "function", "function": {"name": tool_name}}
         });
 
+        tracing::debug!(
+            "LLM Verifier Request (to {}): {}",
+            self.api_url,
+            serde_json::to_string_pretty(&body).unwrap_or_default()
+        );
+
         let res = self
             .http_client
             .post(&self.api_url)
@@ -402,6 +430,11 @@ impl LlmClient for OpenAiCompatibleClient {
             .await?;
 
         let resp_json: Value = res.json().await?;
+
+        tracing::debug!(
+            "LLM Verifier Response: {}",
+            serde_json::to_string_pretty(&resp_json).unwrap_or_default()
+        );
 
         // 1. Check for API-level error field
         if let Some(err) = resp_json.get("error") {

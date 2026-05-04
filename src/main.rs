@@ -99,6 +99,18 @@ enum IdentityCommands {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
+
+    // Initialize logging
+    let filter = if args.debug {
+        tracing_subscriber::EnvFilter::new("debug")
+    } else {
+        tracing_subscriber::EnvFilter::from_default_env()
+    };
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .init();
+
     let is_atty = stdin().is_terminal();
 
     let ctx = match llm_secure_cli::core::initializer::initialize_app().await {

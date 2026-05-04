@@ -41,6 +41,8 @@ html-to-markdown-rs = "3.3"
 
 anyhow = "1.0"
 async-trait = "0.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 path-clean = "1.0"
 regex = { version = "1.11", default-features = false, features = ["std", "perf", "unicode-perl", "unicode-case"] }
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }
