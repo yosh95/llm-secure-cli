@@ -178,18 +178,32 @@ pub fn handle_info(session: &ChatSession) {
     ui::print_key_value("Model", &state.model);
 
     // Validator Info
-    if config.security.dual_llm_verification.unwrap_or(false) {
-        let v_provider = &config.security.dual_llm_provider;
-        let v_model = if config.security.dual_llm_model.is_empty() {
+    let v_enabled = config.security.dual_llm_verification.unwrap_or(false);
+    let v_provider = &config.security.dual_llm_provider;
+    let v_model = if config.security.dual_llm_model.is_empty() {
+        if v_enabled {
             "NOT SET (Falling back to manual approval)"
                 .red()
                 .to_string()
         } else {
-            config.security.dual_llm_model.clone()
-        };
-        ui::print_key_value("Validator Provider", v_provider);
-        ui::print_key_value("Validator Model", &v_model);
-    }
+            "Not Set".to_string()
+        }
+    } else {
+        config.security.dual_llm_model.clone()
+    };
+    ui::print_key_value(
+        "Verifier",
+        &format!(
+            "{} ({}) [{}]",
+            v_provider,
+            v_model,
+            if v_enabled {
+                "ENABLED".green()
+            } else {
+                "DISABLED".yellow()
+            }
+        ),
+    );
 
     // Security & Integrity
     let integrity_status = match crate::security::integrity::IntegrityVerifier::new().verify() {
