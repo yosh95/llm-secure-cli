@@ -133,7 +133,7 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
         ));
     }
 
-    Err(anyhow::anyhow!(
+    let mut error_msg = format!(
         "Search string not found in file (tried exact and fuzzy match).\n\
          File: {}\n\
          Search (first 200 chars): {}",
@@ -144,7 +144,14 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
             .nth(200)
             .map(|i| &search_str[..i])
             .unwrap_or(search_str)
-    ))
+    );
+
+    if search_str.contains("\\n") || replace_str.contains("\\n") {
+        error_msg.push_str("\n\nPROTIP: The search or replace string contains literal '\\n' (backslash + n). \
+            If you intended to represent a newline, use a real newline character in your JSON argument instead of the string \"\\n\".");
+    }
+
+    Err(anyhow::anyhow!(error_msg))
 }
 
 fn finalize_edit(

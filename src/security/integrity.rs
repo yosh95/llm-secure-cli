@@ -80,9 +80,10 @@ impl IntegrityVerifier {
     fn collect_files(&self, dir: &std::path::Path, files: &mut Vec<PathBuf>) -> Result<()> {
         if dir.is_file() {
             if let Some(ext) = dir.extension()
-                && (ext == "rs" || ext == "toml") {
-                    files.push(dir.to_path_buf());
-                }
+                && (ext == "rs" || ext == "toml")
+            {
+                files.push(dir.to_path_buf());
+            }
             return Ok(());
         }
 
@@ -92,14 +93,16 @@ impl IntegrityVerifier {
                 if path.is_dir() {
                     // Skip hidden directories and target
                     if let Some(name) = path.file_name().and_then(|n| n.to_str())
-                        && (name.starts_with('.') || name == "target") {
-                            continue;
-                        }
+                        && (name.starts_with('.') || name == "target")
+                    {
+                        continue;
+                    }
                     self.collect_files(&path, files)?;
                 } else if let Some(ext) = path.extension()
-                    && (ext == "rs" || ext == "toml") {
-                        files.push(path);
-                    }
+                    && (ext == "rs" || ext == "toml")
+                {
+                    files.push(path);
+                }
             }
         }
         Ok(())
