@@ -59,16 +59,28 @@ impl ChatSession {
                     .unwrap_or_else(|| "Initial file analysis".to_string());
             }
 
-            match self.process_and_print(data).await {
-                Ok(_) => {
-                    if is_stdout {
-                        return;
-                    }
+            let model_is_empty = match self.get_client() {
+                Ok(client) => client.get_state().model.is_empty(),
+                Err(_) => true,
+            };
+
+            if model_is_empty {
+                ui::report_error("Model is not set. Cannot process initial data.");
+                if is_stdout {
+                    return;
                 }
-                Err(e) => {
-                    ui::report_error(&format!("Error: {}", e));
-                    if is_stdout {
-                        return;
+            } else {
+                match self.process_and_print(data).await {
+                    Ok(_) => {
+                        if is_stdout {
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        ui::report_error(&format!("Error: {}", e));
+                        if is_stdout {
+                            return;
+                        }
                     }
                 }
             }
@@ -200,6 +212,20 @@ impl ChatSession {
                         is_file_or_url: false,
                         metadata: std::collections::HashMap::new(),
                     });
+
+                    let model_is_empty = match self.get_client() {
+                        Ok(client) => client.get_state().model.is_empty(),
+                        Err(_) => true,
+                    };
+
+                    if model_is_empty {
+                        ui::report_error(
+                            "Model is not set. Please use /model <model_name> to set a model before sending requests.",
+                        );
+                        // Put data back to pending
+                        self.pending_data = data;
+                        continue;
+                    }
 
                     if let Err(e) = self.process_and_print(data).await {
                         ui::report_error(&format!("Error: {}", e));

@@ -200,14 +200,24 @@ async fn start_chat_session(
     is_atty: bool,
 ) {
     let cm = &ctx.config_manager;
-    let _config = match cm.get_config() {
-        Ok(c) => c,
+    let mut config_struct = match cm.get_config() {
+        Ok(c) => (*c).clone(),
         Err(e) => {
             ui::report_error(&format!("Failed to load config: {}", e));
             process::exit(1);
         }
     };
     let state = cm.get_state().unwrap_or_default();
+
+    // Restore validator state if present
+    if let Some(v_p) = state.last_used_v_provider {
+        config_struct.security.dual_llm_provider = v_p;
+    }
+    if let Some(v_m) = state.last_used_v_model {
+        config_struct.security.dual_llm_model = v_m;
+    }
+    let _ = cm.set_config(config_struct);
+
     let active_providers = cm.get_active_providers();
 
     let is_first_launch = args.provider.is_none() && state.last_used_provider.is_none();
@@ -215,17 +225,12 @@ async fn start_chat_session(
     let mut provider = args
         .provider
         .or(state.last_used_provider)
-        .unwrap_or_else(|| {
-            if !active_providers.is_empty() {
-                active_providers[0].clone()
-            } else {
-                ui::report_error("No active LLM providers found. Please set API keys.");
-                process::exit(1);
-            }
-        });
+        .unwrap_or_else(|| "ollama".to_string());
 
     if !active_providers.contains(&provider) {
-        if !active_providers.is_empty() {
+        if active_providers.contains(&"ollama".to_string()) {
+            provider = "ollama".to_string();
+        } else if !active_providers.is_empty() {
             provider = active_providers[0].clone();
         } else {
             ui::report_error("No active LLM providers found.");
@@ -236,7 +241,7 @@ async fn start_chat_session(
     let model = args
         .model
         .or(state.last_used_model)
-        .unwrap_or_else(|| "default".to_string());
+        .unwrap_or_default();
 
     let stdout = args.stdout || !is_atty;
 
@@ -245,7 +250,11 @@ async fn start_chat_session(
         registry.create_client(&provider, &model, stdout, args.raw, &ctx.config_manager)
     };
 
-    if is_first_launch {
+    if model.is_empty() {
+        ui::report_warning(
+            "No model configured. Use /m <model> to set a model before sending requests.",
+        );
+    } else if is_first_launch {
         ui::report_warning(
             "No provider/model configured. Use /m <model> or /p <provider> to configure.",
         );

@@ -218,7 +218,13 @@ impl ChatSession {
         // Start Dual LLM Verifier background task if enabled
         let mut verifier_handle = None;
         if !approved && config.security.dual_llm_verification.unwrap_or(false) {
-            verifier_handle = Some(self.spawn_verifier_task(name, args));
+            if config.security.dual_llm_model.is_empty() {
+                ui::report_warning(
+                    "Dual LLM verification is enabled, but no validator model is set. Falling back to manual approval.",
+                );
+            } else {
+                verifier_handle = Some(self.spawn_verifier_task(name, args));
+            }
         }
 
         // Request Human Approval if not auto-approved

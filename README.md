@@ -49,6 +49,7 @@ The accompanying [Technical Report](paper/comprehensive_framework/paper.pdf) det
     ```
 3.  **Chat**: Type `llsc` to start an interactive session.
     *   **Automatic Initialization**: On the first run, `~/.llm_secure_cli/config.toml` is automatically created.
+    *   **Model Setup**: By default, no model is selected. Use `/model <model_name>` (e.g., `/model llama3`) to set one before your first request.
     *   **Brave Search**: Built-in support for the Brave Search API is available for comprehensive searching across all providers (requires `BRAVE_API_KEY`).
 4.  **Configure (Optional)**: Ollama is the default provider. To use OpenRouter or others, edit the configuration file:
     ```bash
@@ -68,25 +69,24 @@ Run the agent in a completely isolated container to protect your host system. In
      OPENAI_API_KEY=sk-...
      ```
    - **Option B: Environment Variables**: Pass them via the `-e` flag during `docker run`.
-   ```
 3. **Run**:
    ```bash
    docker run -it --rm \
      -v ~/.llm_secure_cli:/root/.llm_secure_cli \
      -v $(pwd):/workspace \
-     llm-secure-cli "Summarize the files in this directory"
+     llm-secure-cli -m llama3 "Summarize the files in this directory"
    ```
 
 ### One-Shot Examples
 ```bash
-# Ask a question using the default provider (Ollama)
-llsc "What is the capital of France?"
+# Ask a question using the default provider (Ollama) and a specific model
+llsc -m llama3 "What is the capital of France?"
 
 # Use a specific provider and model (e.g., OpenRouter)
-llsc -p openrouter -m google/gemini-3.1-flash-lite-preview "Explain quantum computing"
+llsc -p openrouter -m google/gemini-2.0-flash-001 "Explain quantum computing"
 
 # Output raw text to a file (disables Markdown rendering)
-llsc --stdout --raw "Write a python script to sort files" > sort.py
+llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 ```
 
 ## Core Features

@@ -382,11 +382,15 @@ impl LlmClient for OpenAiCompatibleClient {
         tool_schema: Value,
     ) -> anyhow::Result<Value> {
         let messages = self.build_messages(&data);
+        let tool_name = tool_schema["name"]
+            .as_str()
+            .unwrap_or("submit_verdict")
+            .to_string();
         let body = json!({
             "model": self.base.state.model,
             "messages": messages,
             "tools": [{"type": "function", "function": tool_schema}],
-            "tool_choice": {"type": "function", "function": {"name": tool_schema["name"]}}
+            "tool_choice": {"type": "function", "function": {"name": tool_name}}
         });
 
         let res = self
@@ -398,15 +402,50 @@ impl LlmClient for OpenAiCompatibleClient {
             .await?;
 
         let resp_json: Value = res.json().await?;
-        let choice = &resp_json["choices"][0];
+
+        // 1. Check for API-level error field
+        if let Some(err) = resp_json.get("error") {
+            return Err(anyhow::anyhow!("API Error: {}", err));
+        }
+
+        // 2. Validate response structure
+        let choice = match resp_json.get("choices").and_then(|c| c.get(0)) {
+            Some(c) => c,
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Invalid response from LLM: no choices found. Full response: {}",
+                    resp_json
+                ));
+            }
+        };
+
         let msg = &choice["message"];
 
-        if let Some(tool_calls) = msg.get("tool_calls").and_then(|v| v.as_array()) {
+        // 3. Check for refusal (OpenAI safety filters)
+        if let Some(refusal) = msg.get("refusal").and_then(|v| v.as_str()) {
+            return Err(anyhow::anyhow!("Model refused to verify: {}", refusal));
+        }
+
+        // 4. Extract tool calls
+        if let Some(tool_calls) = msg.get("tool_calls").and_then(|v| v.as_array())
+            && !tool_calls.is_empty()
+        {
             let tc = &tool_calls[0];
             let args_str = tc["function"]["arguments"].as_str().unwrap_or("{}");
             return Ok(serde_json::from_str(args_str).unwrap_or(json!({})));
         }
 
-        Err(anyhow::anyhow!("Verifier did not return a tool call"))
+        // 4. Fallback: If no tool call, check if it returned text (e.g. refused or explained)
+        if let Some(content) = msg.get("content").and_then(|v| v.as_str()) {
+            return Err(anyhow::anyhow!(
+                "Verifier returned text instead of tool call: \"{}\". This usually means the model refused the request or is not capable of tool calling.",
+                content
+            ));
+        }
+
+        Err(anyhow::anyhow!(
+            "Verifier did not return a tool call. Raw response: {}",
+            resp_json
+        ))
     }
 }

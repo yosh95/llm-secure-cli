@@ -40,8 +40,10 @@ impl ChatCompleter {
                 "/tools",
                 "/model",
                 "/m",
+                "/vmodel",
                 "/provider",
                 "/p",
+                "/vprovider",
                 "/checkpoint",
                 "/cp",
             ],
@@ -84,7 +86,7 @@ impl Completer for ChatCompleter {
                     "/load" | "/save" | "/attach" | "/edit" | "/e" => {
                         return self.file_completer.complete(line, pos, ctx);
                     }
-                    "/provider" | "/p" => {
+                    "/provider" | "/p" | "/vprovider" => {
                         let providers = self.ctx.config_manager.get_active_providers();
                         let mut matches = Vec::new();
                         for p in providers {
@@ -97,7 +99,7 @@ impl Completer for ChatCompleter {
                         }
                         return Ok((start, matches));
                     }
-                    "/model" | "/m" => {
+                    "/model" | "/m" | "/vmodel" => {
                         let provider = if let Ok(guard) = self.current_provider.lock() {
                             guard.clone()
                         } else {

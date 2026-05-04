@@ -24,9 +24,6 @@ pub struct GeneralConfig {
     pub image_save_path: String,
 }
 
-fn default_unified_provider() -> String {
-    "openrouter".to_string()
-}
 fn default_true() -> bool {
     true
 }
@@ -95,6 +92,8 @@ pub struct CapabilityRule {
 pub struct AppState {
     pub last_used_provider: Option<String>,
     pub last_used_model: Option<String>,
+    pub last_used_v_provider: Option<String>,
+    pub last_used_v_model: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -135,7 +134,10 @@ fn default_allowed_paths() -> Vec<String> {
     vec![".".to_string()]
 }
 fn default_dual_llm_model() -> String {
-    "lite".to_string()
+    "".to_string()
+}
+fn default_unified_provider() -> String {
+    "ollama".to_string()
 }
 fn default_security_level() -> String {
     "high".to_string()
@@ -160,8 +162,8 @@ impl Default for SecurityConfig {
             scaling_patterns: Vec::new(),
             auto_approval_level: None,
             dual_llm_verification: None,
-            dual_llm_provider: "openrouter".to_string(),
-            dual_llm_model: "lite".to_string(),
+            dual_llm_provider: default_unified_provider(),
+            dual_llm_model: default_dual_llm_model(),
             dual_llm_confidence_threshold: default_confidence_threshold(),
             security_level: default_security_level(),
             verifier_fallback: default_verifier_fallback(),

@@ -133,8 +133,16 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             handle_model_cmd(session, args).await;
             CommandResult::Handled
         }
+        "vmodel" | "vm" => {
+            handle_vmodel_cmd(session, args).await;
+            CommandResult::Handled
+        }
         "provider" | "p" => {
             handle_provider_cmd(session, args).await;
+            CommandResult::Handled
+        }
+        "vprovider" | "vp" => {
+            handle_vprovider_cmd(session, args).await;
             CommandResult::Handled
         }
         "checkpoint" | "cp" => {
@@ -168,6 +176,20 @@ pub fn handle_info(session: &ChatSession) {
     ui::print_key_value("Session ID", &session.trace_id);
     ui::print_key_value("Provider", &state.provider);
     ui::print_key_value("Model", &state.model);
+
+    // Validator Info
+    if config.security.dual_llm_verification.unwrap_or(false) {
+        let v_provider = &config.security.dual_llm_provider;
+        let v_model = if config.security.dual_llm_model.is_empty() {
+            "NOT SET (Falling back to manual approval)"
+                .red()
+                .to_string()
+        } else {
+            config.security.dual_llm_model.clone()
+        };
+        ui::print_key_value("Validator Provider", v_provider);
+        ui::print_key_value("Validator Model", &v_model);
+    }
 
     // Security & Integrity
     let integrity_status = match crate::security::integrity::IntegrityVerifier::new().verify() {
@@ -480,6 +502,96 @@ pub async fn handle_checkpoint(session: &mut ChatSession) {
     }
 }
 
+pub async fn handle_vmodel_cmd(session: &mut ChatSession, args: &str) {
+    let mut config = match session.ctx.config_manager.get_config() {
+        Ok(c) => (*c).clone(),
+        Err(e) => {
+            ui::report_error(&format!("Failed to load config: {}", e));
+            return;
+        }
+    };
+
+    if args.is_empty() {
+        let provider = &config.security.dual_llm_provider;
+        ui::print_rule(
+            Some(&format!("Available Models for Validator ({})", provider)),
+            Some("cyan"),
+        );
+        let models_map = session.ctx.config_manager.get_cached_models().await;
+        if let Some(mut models) = models_map.get(provider).cloned() {
+            models.sort();
+            for model in models {
+                if model == config.security.dual_llm_model {
+                    println!("  {} {}", "●".cyan(), model.bold().cyan());
+                } else {
+                    println!("    {}", model);
+                }
+            }
+            ui::print_rule(None, Some("cyan"));
+        } else {
+            println!(
+                "  No models cached for {}. Try running the provider to fetch models.",
+                provider
+            );
+        }
+    } else {
+        config.security.dual_llm_model = args.to_string();
+        let provider = config.security.dual_llm_provider.clone();
+        if let Err(e) = session.ctx.config_manager.set_config(config) {
+            ui::report_error(&format!("Failed to update validator model: {}", e));
+        } else {
+            let _ = session.ctx.config_manager.update_v_state(&provider, args);
+            ui::report_success(&format!("Validator model switched to: {}", args));
+        }
+    }
+}
+
+pub async fn handle_vprovider_cmd(session: &mut ChatSession, args: &str) {
+    if args.is_empty() {
+        let active_providers = session.ctx.config_manager.get_active_providers();
+        let current_v_provider = match session.ctx.config_manager.get_config() {
+            Ok(c) => c.security.dual_llm_provider.clone(),
+            Err(_) => "unknown".to_string(),
+        };
+        ui::print_rule(Some("Active Providers for Validator"), Some("magenta"));
+        for p in active_providers {
+            if p == current_v_provider {
+                println!("  {} {}", "●".magenta(), p.bold().magenta());
+            } else {
+                println!("    {}", p);
+            }
+        }
+        ui::print_rule(None, Some("magenta"));
+    } else {
+        let active_providers = session.ctx.config_manager.get_active_providers();
+        if !active_providers.contains(&args.to_string()) {
+            ui::report_error(&format!("Unknown or inactive provider: {}", args));
+            return;
+        }
+
+        let mut config = match session.ctx.config_manager.get_config() {
+            Ok(c) => (*c).clone(),
+            Err(e) => {
+                ui::report_error(&format!("Failed to load config: {}", e));
+                return;
+            }
+        };
+
+        config.security.dual_llm_provider = args.to_string();
+        config.security.dual_llm_model = "".to_string(); // Reset model on provider change
+
+        if let Err(e) = session.ctx.config_manager.set_config(config) {
+            ui::report_error(&format!("Failed to update validator provider: {}", e));
+        } else {
+            let _ = session.ctx.config_manager.update_v_state(args, "");
+            ui::report_success(&format!(
+                "Validator provider switched to: {}. Please set a model with /vmodel",
+                args
+            ));
+        }
+    }
+}
+
 pub fn print_help() {
     println!("\nChat Commands:");
     println!("  /help, /h       Show this help message");
@@ -496,6 +608,8 @@ pub fn print_help() {
     println!("  /tools [on|off] Show or toggle tool status");
     println!("  /model, /m      Switch models");
     println!("  /provider, /p   Switch provider");
+    println!("  /vmodel, /vm    Switch validator model");
+    println!("  /vprovider, /vp Switch validator provider");
     println!("  /checkpoint, /cp Summarize and compress history");
     println!();
 }

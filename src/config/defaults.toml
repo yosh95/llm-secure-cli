@@ -70,9 +70,9 @@ low_risk_tools = [
 
 # Dual LLM Verification (AI-native ABAC / Semantic Firewall)
 # Validates tool calls using a secondary LLM with a hardcoded Security Constitution.
-dual_llm_verification = false
-dual_llm_provider = "openrouter"
-dual_llm_model = "google/gemini-3.1-flash-lite-preview"
+dual_llm_verification = true
+dual_llm_provider = "ollama"
+dual_llm_model = ""
 dual_llm_confidence_threshold = 0.7
 
 # Verifier Fallback Policy
@@ -82,16 +82,16 @@ verifier_fallback = "require_approval"
 # OpenAI Compatible Providers
 # =============================================================================
 
-# OpenRouter (Aggregation service)
-[openrouter]
-api_url = "https://openrouter.ai/api/v1"
-
 # Ollama (Local)
 # api_url = "http://localhost:11434/v1"
 # Ollama (Cloud)
 # api_url = "https://ollama.com/v1"
-# [ollama]
-# api_url = "http://localhost:11434/v1"
+[ollama]
+api_url = "http://localhost:11434/v1"
+
+# OpenRouter (Aggregation service)
+[openrouter]
+api_url = "https://openrouter.ai/api/v1"
 
 # =============================================================================
 # Capability Rules
