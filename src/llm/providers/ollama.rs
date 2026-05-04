@@ -1,7 +1,7 @@
 use crate::config::ConfigManager;
 use crate::llm::base::LlmClient;
 use crate::llm::models::{ClientState, DataSource};
-use crate::llm::providers::openai_compatible::OpenAiCompatibleClient;
+use crate::llm::providers::openai_compatible::{GenericPayloadFormatter, OpenAiCompatibleClient};
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -19,16 +19,16 @@ impl OllamaClient {
         stdout: bool,
         raw: bool,
     ) -> anyhow::Result<Self> {
-        // Ollama uses OpenAI compatibility mode natively on /v1/chat/completions
-        let inner = OpenAiCompatibleClient::new(
-            config_manager,
-            provider_name,
-            api_url,
-            api_key,
-            model,
-            stdout,
-            raw,
-        )?;
+        // Ollama uses standard OpenAI compatibility on /v1/chat/completions
+        let inner = OpenAiCompatibleClient::builder(config_manager)
+            .provider_name(provider_name)
+            .api_url(api_url)
+            .api_key(api_key)
+            .model(model)
+            .stdout(stdout)
+            .raw(raw)
+            .formatter(Box::new(GenericPayloadFormatter))
+            .build()?;
         Ok(Self { inner })
     }
 }
@@ -38,18 +38,16 @@ impl LlmClient for OllamaClient {
     fn get_state(&self) -> &ClientState {
         self.inner.get_state()
     }
-
     fn get_state_mut(&mut self) -> &mut ClientState {
         self.inner.get_state_mut()
     }
-
     fn get_config_section(&self) -> &str {
         self.inner.get_config_section()
     }
 
     fn should_send_pdf_as_base64(&self) -> bool {
         // Ollama doesn't natively support PDF as multimodal input yet.
-        // Returning false ensures that text is extracted from the PDF and sent as text.
+        // Returning false ensures that text is extracted from the PDF by the session handler.
         false
     }
 
@@ -58,8 +56,6 @@ impl LlmClient for OllamaClient {
         data: Vec<DataSource>,
         tool_schemas: Vec<Value>,
     ) -> anyhow::Result<(Option<String>, Option<String>)> {
-        // Ollama specific pre-processing if any could go here.
-        // For now, delegate entirely to OpenAI-compatible logic.
         self.inner.send(data, tool_schemas).await
     }
 

@@ -1,418 +1,282 @@
 use crate::config::ConfigManager;
 use crate::llm::base::{BaseLlmClientData, LlmClient, ProviderSpec, create_http_client};
-use crate::llm::models::{ClientState, ContentPart, DataSource, Message, MessagePart, Role};
+use crate::llm::models::{ClientState, DataSource, Message, MessagePart, Role};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
-/// Generic OpenAI-compatible API client.
-/// Supports any provider that follows the OpenAI Chat Completions API format.
+/// Trait to handle provider-specific payload formatting.
+/// This decouples the generic client from specific API quirks (OpenRouter, Anthropic, etc.)
+pub trait PayloadFormatter: Send + Sync {
+    fn format_text(&self, text: &str) -> Value {
+        json!({"type": "text", "text": text})
+    }
+    fn format_image(&self, mime: &str, data: &str) -> Value {
+        json!({
+            "type": "image_url",
+            "image_url": { "url": format!("data:{};base64,{}", mime, data) }
+        })
+    }
+    fn format_pdf(&self, _data: &str, _filename: Option<&str>) -> Option<Value>;
+    fn format_audio(&self, mime: &str, data: &str) -> Value {
+        json!({
+            "type": "input_audio",
+            "input_audio": {
+                "data": data,
+                "format": mime.split('/').next_back().unwrap_or("mp3")
+            }
+        })
+    }
+}
+
+pub struct GenericPayloadFormatter;
+impl PayloadFormatter for GenericPayloadFormatter {
+    fn format_pdf(&self, data: &str, _filename: Option<&str>) -> Option<Value> {
+        // Default OpenAI compatibility: treat as image or ignore if not supported
+        Some(json!({
+            "type": "image_url",
+            "image_url": { "url": format!("data:application/pdf;base64,{}", data) }
+        }))
+    }
+}
+
+pub struct HighFeaturePayloadFormatter {
+    pub is_anthropic_gemini: bool,
+}
+impl PayloadFormatter for HighFeaturePayloadFormatter {
+    fn format_pdf(&self, data: &str, _filename: Option<&str>) -> Option<Value> {
+        if self.is_anthropic_gemini {
+            // Anthropic/Gemini style native PDF support
+            Some(json!({
+                "type": "document",
+                "source": { "type": "base64", "media_type": "application/pdf", "data": data }
+            }))
+        } else {
+            // Default to image_url fallback
+            Some(json!({
+                "type": "image_url",
+                "image_url": { "url": format!("data:application/pdf;base64,{}", data) }
+            }))
+        }
+    }
+}
+
 pub struct OpenAiCompatibleClient {
     pub base: BaseLlmClientData,
     pub api_url: String,
     pub api_key: String,
     pub http_client: reqwest::Client,
+    pub formatter: Box<dyn PayloadFormatter>,
     pub supports_tools: bool,
-    pub supports_vision: bool,
-    pub image_generation_enabled: bool,
-    pub video_generation_enabled: bool,
-    pub audio_generation_enabled: bool,
-    pub is_openrouter: bool,
 }
 
-impl OpenAiCompatibleClient {
-    pub fn new(
-        config_manager: &ConfigManager,
-        provider_name: &str,
-        api_url: &str,
-        api_key: &str,
-        model: &str,
-        stdout: bool,
-        raw: bool,
-    ) -> anyhow::Result<Self> {
-        let model_lower = model.to_lowercase();
-        let is_anthropic = model_lower.contains("claude") || model_lower.contains("anthropic");
-        let is_gemini = model_lower.contains("gemini") || model_lower.contains("google");
+pub struct OpenAiCompatibleClientBuilder<'a> {
+    config_manager: &'a ConfigManager,
+    provider_name: String,
+    api_url: String,
+    api_key: String,
+    model: String,
+    stdout: bool,
+    raw: bool,
+    formatter: Option<Box<dyn PayloadFormatter>>,
+}
 
+impl<'a> OpenAiCompatibleClientBuilder<'a> {
+    pub fn new(config_manager: &'a ConfigManager) -> Self {
+        Self {
+            config_manager,
+            provider_name: String::new(),
+            api_url: String::new(),
+            api_key: String::new(),
+            model: String::new(),
+            stdout: false,
+            raw: false,
+            formatter: None,
+        }
+    }
+
+    pub fn provider_name(mut self, name: &str) -> Self {
+        self.provider_name = name.to_string();
+        self
+    }
+
+    pub fn api_url(mut self, url: &str) -> Self {
+        self.api_url = url.to_string();
+        self
+    }
+
+    pub fn api_key(mut self, key: &str) -> Self {
+        self.api_key = key.to_string();
+        self
+    }
+
+    pub fn model(mut self, model: &str) -> Self {
+        self.model = model.to_string();
+        self
+    }
+
+    pub fn stdout(mut self, stdout: bool) -> Self {
+        self.stdout = stdout;
+        self
+    }
+
+    pub fn raw(mut self, raw: bool) -> Self {
+        self.raw = raw;
+        self
+    }
+
+    pub fn formatter(mut self, formatter: Box<dyn PayloadFormatter>) -> Self {
+        self.formatter = Some(formatter);
+        self
+    }
+
+    pub fn build(self) -> anyhow::Result<OpenAiCompatibleClient> {
         let spec = ProviderSpec {
             api_key_name: "api_key".to_string(),
-            config_section: provider_name.to_string(),
-            pdf_as_base64: is_anthropic || is_gemini,
+            config_section: self.provider_name.clone(),
+            pdf_as_base64: true, // We handle the decision in the formatter
         };
-        let _model_config = config_manager.get_model_config(provider_name, model);
-        let config = config_manager.get_config()?;
-        let base = BaseLlmClientData::new(config_manager, model, spec, stdout, raw);
+        let base = BaseLlmClientData::new(self.config_manager, &self.model, spec, self.stdout, self.raw);
 
-        let api_url = if api_url.ends_with("/chat/completions") {
-            api_url.to_string()
+        let api_url = if self.api_url.ends_with("/chat/completions") {
+            self.api_url
         } else {
-            format!("{}/chat/completions", api_url.trim_end_matches('/'))
+            format!("{}/chat/completions", self.api_url.trim_end_matches('/'))
         };
 
         let mut supports_tools = true;
-        let mut image_generation_enabled = false;
-        let mut video_generation_enabled = false;
-        let mut audio_generation_enabled = false;
-
-        // Apply dynamic rules based on model ID
-        let model_id_lower = model.to_lowercase();
+        let config = self.config_manager.get_config()?;
+        let model_id_lower = self.model.to_lowercase();
         for rule in &config.rules {
             if let Ok(re) = regex::Regex::new(&rule.pattern)
                 && re.is_match(&model_id_lower)
             {
                 supports_tools = rule.supports_tools;
-                image_generation_enabled = rule.image_generation;
-                video_generation_enabled = rule.video_generation;
-                audio_generation_enabled = rule.audio_generation;
             }
         }
 
-        let is_openrouter = provider_name == "openrouter";
+        let http_client = create_http_client(self.config_manager)?;
+        let formatter = self.formatter.unwrap_or_else(|| Box::new(GenericPayloadFormatter));
 
-        let http_client = create_http_client(config_manager)?;
-
-        Ok(Self {
+        Ok(OpenAiCompatibleClient {
             base,
             api_url,
-            api_key: api_key.to_string(),
+            api_key: self.api_key,
             http_client,
+            formatter,
             supports_tools,
-            supports_vision: true,
-            image_generation_enabled,
-            video_generation_enabled,
-            audio_generation_enabled,
-            is_openrouter,
         })
     }
+}
 
-    fn data_url(mime_type: &str, b64_data: &str) -> String {
-        format!("data:{};base64,{}", mime_type, b64_data)
+impl OpenAiCompatibleClient {
+    pub fn builder(config_manager: &ConfigManager) -> OpenAiCompatibleClientBuilder<'_> {
+        OpenAiCompatibleClientBuilder::new(config_manager)
     }
 
     pub fn build_messages(&self, data: &[DataSource]) -> Vec<Value> {
         let mut messages = Vec::new();
 
-        // Add system prompt if present
         if let Some(sp) = &self.base.state.system_prompt {
             messages.push(json!({"role": "system", "content": sp}));
         }
 
-        // Convert conversation history
         for m in &self.base.state.conversation {
-            if m.role == Role::System {
-                continue;
-            }
-
-            if m.role == Role::Tool {
-                for part in &m.parts {
-                    if let MessagePart::Part(cp) = part
-                        && let Some(fr) = &cp.function_response
-                    {
-                        let tool_call_id = fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                        let name = fr.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                        let response = fr.get("response").cloned().unwrap_or(json!(""));
-                        let content = if let Some(s) = response.as_str() {
-                            s.to_string()
-                        } else {
-                            response.to_string()
-                        };
-
-                        messages.push(json!({
-                            "role": "tool",
-                            "tool_call_id": tool_call_id,
-                            "name": name,
-                            "content": content
-                        }));
-                    }
-                }
-                continue;
-            }
-
-            let role = match m.role {
-                Role::User => "user",
-                Role::Assistant | Role::Model => "assistant",
-                _ => "user",
-            };
-
-            let mut content_parts = Vec::new();
-
-            for part in &m.parts {
-                match part {
-                    MessagePart::Text(t) => {
-                        content_parts.push(json!({"type": "text", "text": t}));
-                    }
-                    MessagePart::Part(cp) => {
-                        if let Some(t) = &cp.thought {
-                            content_parts
-                                .push(json!({"type": "text", "text": format!("[Thinking] {}", t)}));
-                        }
-                        if let Some(t) = &cp.text
-                            && !t.is_empty()
-                            && !cp.is_diagnostic
+            match m.role {
+                Role::System => continue,
+                Role::Tool => {
+                    for part in &m.parts {
+                        if let MessagePart::Part(cp) = part
+                            && let Some(fr) = &cp.function_response
                         {
-                            content_parts.push(json!({"type": "text", "text": t}));
-                        }
-                        if let Some(fc) = &cp.function_call {
-                            let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                            let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                            let args = fc.get("arguments").cloned().unwrap_or(json!({}));
-                            content_parts.push(json!({
-                                "type": "tool_call",
-                                "tool_call": {
-                                    "id": id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": name,
-                                        "arguments": args.to_string()
-                                    }
-                                }
+                            messages.push(json!({
+                                "role": "tool",
+                                "tool_call_id": fr.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                                "name": fr.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                                "content": fr.get("response").cloned().unwrap_or(json!("")).to_string()
                             }));
                         }
-                        if let Some(id) = &cp.inline_data {
-                            let mime = id
-                                .get("mimeType")
-                                .or(id.get("mime_type"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("");
-                            let data = id.get("data").and_then(|v| v.as_str()).unwrap_or("");
-                            if !mime.is_empty() && !data.is_empty() {
-                                if mime == "application/pdf" {
-                                    if self.is_openrouter {
-                                        // OpenRouter uses a proprietary "file" type with data URL format
-                                        let filename = id
-                                            .get("filename")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("document.pdf");
-                                        let data_url = Self::data_url(mime, data);
-                                        content_parts.push(json!({
-                                            "type": "file",
-                                            "file": {
-                                                "filename": filename,
-                                                "file_data": data_url
-                                            }
-                                        }));
-                                    } else {
-                                        let model_lower = self.base.state.model.to_lowercase();
-                                        if model_lower.contains("claude")
-                                            || model_lower.contains("anthropic")
-                                            || model_lower.contains("gemini")
-                                            || model_lower.contains("google")
-                                        {
-                                            content_parts.push(json!({
-                                                "type": "document",
-                                                "source": {
-                                                    "type": "base64",
-                                                    "media_type": "application/pdf",
-                                                    "data": data
-                                                }
-                                            }));
-                                        } else {
-                                            // Fallback for others that might support it via image_url (less common now)
-                                            content_parts.push(json!({
-                                                "type": "image_url",
-                                                "image_url": { "url": Self::data_url(mime, data) }
-                                            }));
-                                        }
-                                    }
-                                } else if mime.starts_with("image/") {
-                                    content_parts.push(json!({
-                                        "type": "image_url",
-                                        "image_url": { "url": Self::data_url(mime, data) }
-                                    }));
-                                } else if mime.starts_with("audio/") {
-                                    content_parts.push(json!({
-                                        "type": "input_audio",
-                                        "input_audio": {
-                                            "data": data,
-                                            "format": mime.split('/').next_back().unwrap_or("mp3")
-                                        }
-                                    }));
-                                } else if mime.starts_with("video/") {
-                                    content_parts.push(json!({
-                                        "type": "video_url",
-                                        "video_url": { "url": Self::data_url(mime, data) }
-                                    }));
-                                } else {
-                                    // Fallback for others
-                                    content_parts.push(json!({
-                                        "type": "image_url",
-                                        "image_url": { "url": Self::data_url(mime, data) }
-                                    }));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if !content_parts.is_empty() {
-                let tool_calls: Vec<Value> = content_parts
-                    .iter()
-                    .filter_map(|p| p.get("tool_call").cloned())
-                    .collect();
-
-                // Exclude tool_call type parts from content — those belong in tool_calls only
-                let content_only_parts: Vec<Value> = content_parts
-                    .into_iter()
-                    .filter(|p| p.get("type").and_then(|v| v.as_str()) != Some("tool_call"))
-                    .collect();
-
-                let has_media = content_only_parts.iter().any(|p| {
-                    let t = p.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                    t == "image_url"
-                        || t == "input_audio"
-                        || t == "video_url"
-                        || t == "document"
-                        || t == "file"
-                });
-
-                let content = if content_only_parts.is_empty() {
-                    // No text/media — content must be null for assistant tool-call messages
-                    Value::Null
-                } else if has_media || content_only_parts.len() > 1 {
-                    Value::Array(content_only_parts)
-                } else {
-                    let text = content_only_parts[0]
-                        .get("text")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    Value::String(text)
-                };
-
-                let mut msg = json!({"role": role, "content": content});
-                if role == "assistant" && !tool_calls.is_empty() {
-                    msg["tool_calls"] = Value::Array(tool_calls);
-                }
-                messages.push(msg);
-            }
-        }
-
-        // Add new user data
-        let mut new_parts = Vec::new();
-        for d in data {
-            match d.content_type.as_str() {
-                "text/plain" => {
-                    new_parts
-                        .push(json!({"type": "text", "text": d.content.as_str().unwrap_or("")}));
-                }
-                "application/pdf" => {
-                    if let Some(b64) = d.content.as_str() {
-                        if self.is_openrouter {
-                            // OpenRouter uses a proprietary "file" type with data URL format
-                            let filename = d
-                                .metadata
-                                .get("filename")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("document.pdf");
-                            let data_url = Self::data_url("application/pdf", b64);
-                            new_parts.push(json!({
-                                "type": "file",
-                                "file": {
-                                    "filename": filename,
-                                    "file_data": data_url
-                                }
-                            }));
-                        } else {
-                            let model_lower = self.base.state.model.to_lowercase();
-                            if model_lower.contains("claude")
-                                || model_lower.contains("anthropic")
-                                || model_lower.contains("gemini")
-                                || model_lower.contains("google")
-                            {
-                                new_parts.push(json!({
-                                    "type": "document",
-                                    "source": { "type": "base64", "media_type": "application/pdf", "data": b64 }
-                                }));
-                            } else {
-                                new_parts.push(json!({
-                                    "type": "image_url",
-                                    "image_url": { "url": Self::data_url("application/pdf", b64) }
-                                }));
-                            }
-                        }
-                    }
-                }
-                ct if ct.starts_with("image/") => {
-                    if let Some(b64) = d.content.as_str() {
-                        new_parts.push(json!({
-                            "type": "image_url",
-                            "image_url": { "url": Self::data_url(ct, b64) }
-                        }));
-                    }
-                }
-                ct if ct.starts_with("video/") => {
-                    if let Some(b64) = d.content.as_str() {
-                        new_parts.push(json!({
-                            "type": "video_url",
-                            "video_url": { "url": Self::data_url(ct, b64) }
-                        }));
-                    }
-                }
-                ct if ct.starts_with("audio/") => {
-                    if let Some(b64) = d.content.as_str() {
-                        new_parts.push(json!({
-                            "type": "input_audio",
-                            "input_audio": {
-                                "data": b64,
-                                "format": ct.split('/').next_back().unwrap_or("mp3")
-                            }
-                        }));
-                    }
-                }
-                _ if d.is_file_or_url => {
-                    if let Some(text) = d.content.as_str() {
-                        new_parts.push(json!({"type": "text", "text": format!("[File content: {}]\n{}", 
-                            d.metadata.get("filename").and_then(|v| v.as_str()).unwrap_or("unknown"),
-                            text
-                        )}));
                     }
                 }
                 _ => {
-                    new_parts
-                        .push(json!({"type": "text", "text": d.content.as_str().unwrap_or("")}));
+                    let role = if m.role == Role::Assistant || m.role == Role::Model {
+                        "assistant"
+                    } else {
+                        "user"
+                    };
+                    let mut parts = Vec::new();
+                    let mut tool_calls = Vec::new();
+
+                    for part in &m.parts {
+                        match part {
+                            MessagePart::Text(t) => parts.push(self.formatter.format_text(t)),
+                            MessagePart::Part(cp) => {
+                                if let Some(t) = &cp.text {
+                                    parts.push(self.formatter.format_text(t));
+                                }
+                                if let Some(fc) = &cp.function_call {
+                                    tool_calls.push(json!({
+                                        "id": fc.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                                        "type": "function",
+                                        "function": {
+                                            "name": fc.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                                            "arguments": fc.get("arguments").cloned().unwrap_or(json!({})).to_string()
+                                        }
+                                    }));
+                                }
+                                if let Some(id) = &cp.inline_data {
+                                    let mime =
+                                        id.get("mimeType").and_then(|v| v.as_str()).unwrap_or("");
+                                    let b64 = id.get("data").and_then(|v| v.as_str()).unwrap_or("");
+                                    if mime == "application/pdf" {
+                                        if let Some(v) = self.formatter.format_pdf(
+                                            b64,
+                                            id.get("filename").and_then(|v| v.as_str()),
+                                        ) {
+                                            parts.push(v);
+                                        }
+                                    } else if mime.starts_with("image/") {
+                                        parts.push(self.formatter.format_image(mime, b64));
+                                    } else if mime.starts_with("audio/") {
+                                        parts.push(self.formatter.format_audio(mime, b64));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    let mut msg = json!({"role": role, "content": if parts.len() == 1 && parts[0]["type"] == "text" { parts[0]["text"].clone() } else { Value::Array(parts) }});
+                    if !tool_calls.is_empty() {
+                        msg["tool_calls"] = Value::Array(tool_calls);
+                    }
+                    messages.push(msg);
                 }
             }
         }
 
-        if !new_parts.is_empty() {
-            let has_media = new_parts.iter().any(|p| {
-                let t = p.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                t == "image_url"
-                    || t == "input_audio"
-                    || t == "video_url"
-                    || t == "document"
-                    || t == "file"
-            });
-            let content = if has_media || new_parts.len() > 1 {
-                Value::Array(new_parts)
-            } else {
-                new_parts[0]
-                    .get("text")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .into()
-            };
-            messages.push(json!({"role": "user", "content": content}));
+        // Current pending data
+        let mut current_parts = Vec::new();
+        for d in data {
+            if d.content_type == "text/plain" {
+                current_parts.push(self.formatter.format_text(d.content.as_str().unwrap_or("")));
+            } else if d.content_type == "application/pdf" {
+                if let Some(v) = self.formatter.format_pdf(
+                    d.content.as_str().unwrap_or(""),
+                    d.metadata.get("filename").and_then(|v| v.as_str()),
+                ) {
+                    current_parts.push(v);
+                }
+            } else if d.content_type.starts_with("image/") {
+                current_parts.push(
+                    self.formatter
+                        .format_image(&d.content_type, d.content.as_str().unwrap_or("")),
+                );
+            }
+        }
+        if !current_parts.is_empty() {
+            messages.push(json!({"role": "user", "content": if current_parts.len() == 1 && current_parts[0]["type"] == "text" { current_parts[0]["text"].clone() } else { Value::Array(current_parts) }}));
         }
 
         messages
-    }
-
-    pub fn build_tool_schemas(&self, tool_schemas: Vec<Value>) -> Vec<Value> {
-        if self.supports_tools {
-            tool_schemas
-                .into_iter()
-                .map(|s| {
-                    json!({
-                        "type": "function",
-                        "function": s
-                    })
-                })
-                .collect()
-        } else {
-            Vec::new()
-        }
     }
 }
 
@@ -428,27 +292,7 @@ impl LlmClient for OpenAiCompatibleClient {
         &self.base.config_section
     }
     fn should_send_pdf_as_base64(&self) -> bool {
-        let m = self.base.state.model.to_lowercase();
-        let is_anthropic = m.contains("claude") || m.contains("anthropic");
-        let is_google = m.contains("gemini") || m.contains("google");
-
-        // OpenRouter uses its own "file" format for PDFs.
-        // For non-OpenRouter providers, only Anthropic and Google get base64.
-        if self.is_openrouter {
-            return true;
-        }
-
-        if is_anthropic {
-            return true;
-        }
-
-        if is_google {
-            // Gemini supports PDF, but only some OpenAI-compatible backends handle it.
-            // For direct Google/Vertex, we can send it. For others, we'll extract text.
-            return self.base.config_section == "google" || self.base.config_section == "vertex";
-        }
-
-        false
+        true
     }
 
     async fn send(
@@ -457,412 +301,65 @@ impl LlmClient for OpenAiCompatibleClient {
         tool_schemas: Vec<Value>,
     ) -> anyhow::Result<(Option<String>, Option<String>)> {
         let messages = self.build_messages(&data);
+        let mut body = json!({
+            "model": self.base.state.model,
+            "messages": messages,
+        });
 
-        // For OpenRouter, we need to handle specific modalities with separate endpoints
-        let is_openrouter = self.base.config_section == "openrouter";
-        let mut request_url = self.api_url.clone();
-
-        // If the model is exclusively a video or audio processing model, we override the endpoint
-        if is_openrouter && self.video_generation_enabled {
-            request_url = request_url.replace("/chat/completions", "/videos");
-        } else if is_openrouter && self.audio_generation_enabled {
-            request_url = request_url.replace("/chat/completions", "/audio/speech");
+        if self.supports_tools && !tool_schemas.is_empty() {
+            body["tools"] = json!(
+                tool_schemas
+                    .iter()
+                    .map(|s| json!({"type": "function", "function": s}))
+                    .collect::<Vec<_>>()
+            );
         }
-
-        let body = if is_openrouter && self.video_generation_enabled {
-            // Build OpenRouter /api/v1/videos request
-            let prompt = messages
-                .iter()
-                .filter_map(|m| {
-                    if m.get("role").and_then(|v| v.as_str()) == Some("user") {
-                        let content = m.get("content")?;
-                        if let Some(s) = content.as_str() {
-                            Some(s.to_string())
-                        } else if let Some(arr) = content.as_array() {
-                            let mut texts = Vec::new();
-                            for p in arr {
-                                if let Some(t) = p.get("text").and_then(|v| v.as_str()) {
-                                    texts.push(t.to_string());
-                                }
-                            }
-                            if texts.is_empty() {
-                                None
-                            } else {
-                                Some(texts.join("\n"))
-                            }
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            let mut req = json!({
-                "model": self.base.state.model,
-                "prompt": prompt,
-            });
-
-            // Extract frame images or input references from user messages if they exist
-            let mut images = Vec::new();
-            for m in &messages {
-                if let Some(content) = m.get("content").and_then(|v| v.as_array()) {
-                    for p in content {
-                        if p.get("type").and_then(|v| v.as_str()) == Some("image_url")
-                            && let Some(image_url) = p.get("image_url")
-                        {
-                            images.push(json!({
-                                "type": "image_url",
-                                "image_url": image_url.clone()
-                            }));
-                        }
-                    }
-                }
-            }
-
-            if !images.is_empty() {
-                // By default put them as input_references. You could refine this to frame_images if needed.
-                req["input_references"] = json!(images);
-            }
-
-            req
-        } else if is_openrouter && self.audio_generation_enabled {
-            // Build OpenRouter /api/v1/audio/speech request
-            let input = messages
-                .iter()
-                .filter_map(|m| {
-                    if m.get("role").and_then(|v| v.as_str()) == Some("user") {
-                        let content = m.get("content")?;
-                        if let Some(s) = content.as_str() {
-                            return Some(s.to_string());
-                        } else if let Some(arr) = content.as_array() {
-                            let mut texts = Vec::new();
-                            for p in arr {
-                                if let Some(t) = p.get("text").and_then(|v| v.as_str()) {
-                                    texts.push(t.to_string());
-                                }
-                            }
-                            if !texts.is_empty() {
-                                return Some(texts.join("\n"));
-                            }
-                        }
-                    }
-                    None
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            json!({
-                "model": self.base.state.model,
-                "input": input,
-                // "voice": ... typically required but depends on provider. "alloy" works for OpenAI TTS.
-                // You can add logic to extract voice from settings or prompt if needed.
-                "voice": "alloy",
-            })
-        } else {
-            // Standard /chat/completions payload
-            let mut req = json!({
-                "model": self.base.state.model,
-                "messages": messages,
-            });
-
-            let mut tools = if self.supports_tools && self.base.state.tools_enabled {
-                self.build_tool_schemas(tool_schemas)
-            } else {
-                Vec::new()
-            };
-            if self.supports_tools && self.image_generation_enabled {
-                tools.push(json!({ "type": "image_generation" }));
-            }
-            if !tools.is_empty() {
-                req["tools"] = json!(tools);
-                req["tool_choice"] = json!("auto");
-            }
-
-            if is_openrouter && self.image_generation_enabled {
-                req["modalities"] = json!(["image"]);
-            }
-            req
-        };
 
         let res = self
             .http_client
-            .post(&request_url)
+            .post(&self.api_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
             .json(&body)
             .send()
             .await?;
 
-        let _status = res.status();
-
-        // Check if response is JSON or BINARY (like audio)
-        let is_json = res
-            .headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.contains("application/json"))
-            .unwrap_or(false);
-
-        if !is_json && is_openrouter && self.audio_generation_enabled {
-            let bytes = res.bytes().await?;
-            use base64::{Engine as _, engine::general_purpose};
-            let b64 = general_purpose::STANDARD.encode(&bytes);
-            let mime_type = "audio/mpeg"; // default MP3
-
-            let mut inline_data = HashMap::new();
-            inline_data.insert("mimeType".to_string(), json!(mime_type));
-            inline_data.insert("data".to_string(), json!(b64));
-
-            let audio_part = MessagePart::Part(Box::new(ContentPart {
-                inline_data: Some(inline_data),
-                ..Default::default()
-            }));
-
-            let text = "Audio generated successfully.".to_string();
-            let model_msg = Message {
-                role: Role::Assistant,
-                parts: vec![MessagePart::Text(text.clone()), audio_part],
-            };
-            self.update_history(&data, model_msg);
-            return Ok((Some(text), None));
+        let resp_json: Value = res.json().await?;
+        if let Some(err) = resp_json.get("error") {
+            return Err(anyhow::anyhow!("API Error: {}", err));
         }
 
-        let resp: Value = res.json().await?;
+        let choice = &resp_json["choices"][0];
+        let msg = &choice["message"];
+        let text = msg["content"].as_str().map(|s| s.to_string());
 
-        if let Some(error) = resp.get("error") {
-            return Err(anyhow::anyhow!("API Error: {}", error));
+        let mut message_parts = Vec::new();
+        if let Some(t) = &text {
+            message_parts.push(MessagePart::Text(t.clone()));
         }
 
-        // OpenRouter /api/v1/videos response returns job ID and polling URL
-        if is_openrouter
-            && self.video_generation_enabled
-            && let Some(job_id) = resp.get("id").and_then(|v| v.as_str())
-        {
-            let mut text = format!("Video generation submitted. Job ID: {}\n", job_id);
-            if let Some(polling_url) = resp.get("polling_url").and_then(|v| v.as_str()) {
-                text.push_str(&format!("To check status: GET {}\n", polling_url));
-                text.push_str("(Currently, the CLI does not automatically block and poll for video jobs due to high completion times.)");
-            }
-            let model_msg = Message {
-                role: Role::Assistant,
-                parts: vec![MessagePart::Text(text.clone())],
-            };
-            self.update_history(&data, model_msg);
-            return Ok((Some(text), None));
-        }
-
-        let choice = resp["choices"][0].clone();
-        let message = &choice["message"];
-
-        let mut assistant_parts = Vec::new();
-        let mut text = None;
-
-        if let Some(content) = message.get("content") {
-            if let Some(s) = content.as_str() {
-                text = Some(s.to_string());
-                assistant_parts.push(MessagePart::Text(s.to_string()));
-            } else if let Some(arr) = content.as_array() {
-                let mut full_text = String::new();
-                for part in arr {
-                    if let Some(t) = part.get("text").and_then(|v| v.as_str()) {
-                        full_text.push_str(t);
-                        assistant_parts.push(MessagePart::Text(t.to_string()));
-                    }
-                    if let Some(image_url) = part
-                        .get("image_url")
-                        .and_then(|v| v.get("url"))
-                        .and_then(|v| v.as_str())
-                        && image_url.starts_with("data:")
-                        && let Some(comma_pos) = image_url.find(',')
-                    {
-                        let header = &image_url[..comma_pos];
-                        let b64_data = &image_url[comma_pos + 1..];
-                        let mime_type = header
-                            .trim_start_matches("data:")
-                            .split(';')
-                            .next()
-                            .unwrap_or("image/png");
-
-                        let mut inline_data = HashMap::new();
-                        inline_data.insert("mimeType".to_string(), json!(mime_type));
-                        inline_data.insert("data".to_string(), json!(b64_data));
-
-                        assistant_parts.push(MessagePart::Part(Box::new(ContentPart {
-                            inline_data: Some(inline_data),
-                            ..Default::default()
-                        })));
-                    }
-                    if let Some(video_url) = part
-                        .get("video_url")
-                        .and_then(|v| v.get("url"))
-                        .and_then(|v| v.as_str())
-                        && video_url.starts_with("data:")
-                        && let Some(comma_pos) = video_url.find(',')
-                    {
-                        let header = &video_url[..comma_pos];
-                        let b64_data = &video_url[comma_pos + 1..];
-                        let mime_type = header
-                            .trim_start_matches("data:")
-                            .split(';')
-                            .next()
-                            .unwrap_or("video/mp4");
-
-                        let mut inline_data = HashMap::new();
-                        inline_data.insert("mimeType".to_string(), json!(mime_type));
-                        inline_data.insert("data".to_string(), json!(b64_data));
-
-                        assistant_parts.push(MessagePart::Part(Box::new(ContentPart {
-                            inline_data: Some(inline_data),
-                            ..Default::default()
-                        })));
-                    }
-                    if let Some(id) = part.get("inline_data") {
-                        let mut inline_data = HashMap::new();
-                        if let Some(m) = id
-                            .get("mimeType")
-                            .or(id.get("mime_type"))
-                            .and_then(|v| v.as_str())
-                        {
-                            inline_data.insert("mimeType".to_string(), json!(m));
-                        }
-                        if let Some(d) = id.get("data").and_then(|v| v.as_str()) {
-                            inline_data.insert("data".to_string(), json!(d));
-                        }
-                        if !inline_data.is_empty() {
-                            assistant_parts.push(MessagePart::Part(Box::new(ContentPart {
-                                inline_data: Some(inline_data),
-                                ..Default::default()
-                            })));
-                        }
-                    }
-                }
-                if !full_text.is_empty() {
-                    text = Some(full_text);
-                }
-            }
-        }
-
-        // Handle OpenRouter-specific images array
-        if let Some(images) = message.get("images").and_then(|v| v.as_array()) {
-            for image in images {
-                if let Some(image_url) = image
-                    .get("image_url")
-                    .or(image.get("imageUrl"))
-                    .and_then(|v| v.get("url"))
-                    .and_then(|v| v.as_str())
-                    && image_url.starts_with("data:")
-                    && let Some(comma_pos) = image_url.find(',')
-                {
-                    let header = &image_url[..comma_pos];
-                    let b64_data = &image_url[comma_pos + 1..];
-                    let mime_type = header
-                        .trim_start_matches("data:")
-                        .split(';')
-                        .next()
-                        .unwrap_or("image/png");
-
-                    let mut inline_data = HashMap::new();
-                    inline_data.insert("mimeType".to_string(), json!(mime_type));
-                    inline_data.insert("data".to_string(), json!(b64_data));
-
-                    assistant_parts.push(MessagePart::Part(Box::new(ContentPart {
-                        inline_data: Some(inline_data),
-                        ..Default::default()
-                    })));
-                }
-            }
-        }
-
-        // Handle possible videos array
-        if let Some(videos) = message.get("videos").and_then(|v| v.as_array()) {
-            for video in videos {
-                if let Some(video_url) = video
-                    .get("video_url")
-                    .or(video.get("videoUrl"))
-                    .and_then(|v| v.get("url"))
-                    .and_then(|v| v.as_str())
-                    && video_url.starts_with("data:")
-                    && let Some(comma_pos) = video_url.find(',')
-                {
-                    let header = &video_url[..comma_pos];
-                    let b64_data = &video_url[comma_pos + 1..];
-                    let mime_type = header
-                        .trim_start_matches("data:")
-                        .split(';')
-                        .next()
-                        .unwrap_or("video/mp4");
-
-                    let mut inline_data = HashMap::new();
-                    inline_data.insert("mimeType".to_string(), json!(mime_type));
-                    inline_data.insert("data".to_string(), json!(b64_data));
-
-                    assistant_parts.push(MessagePart::Part(Box::new(ContentPart {
-                        inline_data: Some(inline_data),
-                        ..Default::default()
-                    })));
-                }
-            }
-        }
-
-        if let Some(citations) = resp.get("citations").and_then(|v| v.as_array()) {
-            let mut citation_links = Vec::new();
-            for (i, citation) in citations.iter().enumerate() {
-                if let Some(url) = citation.as_str() {
-                    citation_links.push(format!("{}. [Source {}]({})", i + 1, i + 1, url));
-                }
-            }
-            if !citation_links.is_empty() {
-                let citations_text = format!("\n\n**Sources:**\n{}", citation_links.join("\n"));
-                if let Some(ref mut t) = text {
-                    t.push_str(&citations_text);
-                    if let Some(MessagePart::Text(last_t)) = assistant_parts
-                        .iter_mut()
-                        .rev()
-                        .find(|p| matches!(p, MessagePart::Text(_)))
-                    {
-                        *last_t = t.clone();
-                    } else {
-                        assistant_parts.push(MessagePart::Text(citations_text));
-                    }
-                } else {
-                    text = Some(citations_text.clone());
-                    assistant_parts.push(MessagePart::Text(citations_text));
-                }
-            }
-        }
-
-        if let Some(tool_calls) = message.get("tool_calls").and_then(|v| v.as_array()) {
+        if let Some(tool_calls) = msg.get("tool_calls").and_then(|v| v.as_array()) {
             for tc in tool_calls {
-                if tc.get("type").and_then(|v| v.as_str()) == Some("function") {
-                    let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                    let func = &tc["function"];
-                    let name = func.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                    let args: Value = serde_json::from_str(
-                        func.get("arguments")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("{}"),
-                    )
-                    .unwrap_or(json!({}));
-                    let mut fc = HashMap::new();
-                    fc.insert("id".to_string(), json!(id));
-                    fc.insert("name".to_string(), json!(name));
-                    fc.insert("arguments".to_string(), args);
-                    assistant_parts.push(MessagePart::Part(Box::new(ContentPart {
+                let mut fc = HashMap::new();
+                fc.insert("id".to_string(), tc["id"].clone());
+                fc.insert("name".to_string(), tc["function"]["name"].clone());
+                let args_str = tc["function"]["arguments"].as_str().unwrap_or("{}");
+                let args: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
+                fc.insert("arguments".to_string(), args);
+                message_parts.push(MessagePart::Part(Box::new(
+                    crate::llm::models::ContentPart {
                         function_call: Some(fc),
                         ..Default::default()
-                    })));
-                }
+                    },
+                )));
             }
         }
 
         let model_msg = Message {
             role: Role::Assistant,
-            parts: assistant_parts,
+            parts: message_parts,
         };
         self.update_history(&data, model_msg);
+
         Ok((text, None))
     }
 
@@ -872,172 +369,31 @@ impl LlmClient for OpenAiCompatibleClient {
         tool_schema: Value,
     ) -> anyhow::Result<Value> {
         let messages = self.build_messages(&data);
-        let request_url = self.api_url.clone();
-
-        let req = json!({
+        let body = json!({
             "model": self.base.state.model,
             "messages": messages,
             "tools": [{"type": "function", "function": tool_schema}],
-            "tool_choice": "required",
-            "temperature": 0.0
+            "tool_choice": {"type": "function", "function": {"name": tool_schema["name"]}}
         });
 
         let res = self
             .http_client
-            .post(&request_url)
+            .post(&self.api_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&req)
+            .json(&body)
             .send()
             .await?;
 
-        let resp: Value = res.json().await?;
-        if let Some(error) = resp.get("error") {
-            return Err(anyhow::anyhow!("Verifier API Error: {}", error));
+        let resp_json: Value = res.json().await?;
+        let choice = &resp_json["choices"][0];
+        let msg = &choice["message"];
+
+        if let Some(tool_calls) = msg.get("tool_calls").and_then(|v| v.as_array()) {
+            let tc = &tool_calls[0];
+            let args_str = tc["function"]["arguments"].as_str().unwrap_or("{}");
+            return Ok(serde_json::from_str(args_str).unwrap_or(json!({})));
         }
 
-        let choice = resp["choices"][0].clone();
-        let message = &choice["message"];
-
-        if let Some(tool_calls) = message.get("tool_calls").and_then(|v| v.as_array())
-            && let Some(tool_call) = tool_calls.first()
-        {
-            let args_str = tool_call["function"]["arguments"].as_str().unwrap_or("{}");
-            if let Ok(args_json) = serde_json::from_str(args_str) {
-                return Ok(args_json);
-            }
-        }
-
-        // Final fallback format sometimes returned by weird endpoints
-        if let Some(content) = message.get("content").and_then(|v| v.as_str())
-            && let Ok(args_json) = serde_json::from_str(content)
-        {
-            return Ok(args_json);
-        }
-
-        Err(anyhow::anyhow!(
-            "Verifier did not return a valid tool call or JSON"
-        ))
-    }
-}
-
-impl OpenAiCompatibleClient {
-    pub fn parse_response(
-        &mut self,
-        resp: Value,
-        _status: reqwest::StatusCode,
-        data: Vec<DataSource>,
-    ) -> anyhow::Result<(Option<String>, Option<String>)> {
-        let choice = resp["choices"][0].clone();
-        let message = &choice["message"];
-
-        let mut assistant_parts = Vec::new();
-        let mut text = None;
-
-        if let Some(content) = message.get("content") {
-            if let Some(s) = content.as_str() {
-                text = Some(s.to_string());
-                assistant_parts.push(MessagePart::Text(s.to_string()));
-            } else if let Some(arr) = content.as_array() {
-                for p in arr {
-                    if let Some(t) = p.get("text").and_then(|v| v.as_str()) {
-                        text.get_or_insert_with(String::new).push_str(t);
-                        assistant_parts.push(MessagePart::Text(t.to_string()));
-                    }
-                }
-            }
-        }
-
-        let mut _thoughts = None;
-
-        // Try getting thoughts from standard reasoning fields
-        if let Some(reasoning_content) = choice
-            .get("message")
-            .and_then(|m| m.get("reasoning"))
-            .or_else(|| {
-                choice
-                    .get("message")
-                    .and_then(|m| m.get("reasoning_content"))
-            })
-            .or_else(|| {
-                choice
-                    .get("message")
-                    .and_then(|m| m.get("reasoning_messages"))
-                    .and_then(|v| v.as_array().and_then(|a| a.first()))
-            })
-            .and_then(|v| v.as_str())
-            .or_else(|| {
-                choice
-                    .get("message")
-                    .and_then(|m| m.get("content"))
-                    .and_then(|c| c.as_str())
-                    .and_then(|c| {
-                        if let (Some(start), Some(end)) = (c.find("<think>"), c.find("</think>")) {
-                            Some(&c[start + 7..end])
-                        } else {
-                            None
-                        }
-                    })
-            })
-        {
-            _thoughts = Some(reasoning_content.to_string());
-            assistant_parts.push(MessagePart::Part(Box::new(ContentPart {
-                thought: Some(reasoning_content.to_string()),
-                ..Default::default()
-            })));
-        }
-
-        // Remove <think> from text if present
-        if let Some(t) = &mut text
-            && let (Some(start), Some(end)) = (t.find("<think>"), t.find("</think>"))
-        {
-            *t = format!("{}{}", &t[..start], &t[(end + 8)..]);
-        }
-
-        let mut response_func = None;
-
-        if let Some(tool_calls) = message.get("tool_calls").and_then(|v| v.as_array()) {
-            for tool_call in tool_calls {
-                let id = tool_call["id"].as_str().unwrap_or("").to_string();
-                let f = &tool_call["function"];
-                let name = f["name"].as_str().unwrap_or("").to_string();
-                let args = f["arguments"].as_str().unwrap_or("{}");
-
-                if name == "image_generation" {
-                    let args_json: Value = serde_json::from_str(args).unwrap_or(json!({}));
-                    response_func = Some(
-                        args_json
-                            .get("prompt")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string(),
-                    );
-                    assistant_parts.push(MessagePart::Text("[Generating image]".to_string()));
-                } else {
-                    let mut fc = HashMap::new();
-                    fc.insert("id".to_string(), json!(id));
-                    fc.insert("name".to_string(), json!(name));
-                    fc.insert(
-                        "arguments".to_string(),
-                        serde_json::from_str(args).unwrap_or(json!({})),
-                    );
-
-                    assistant_parts.push(MessagePart::Part(Box::new(ContentPart {
-                        function_call: Some(fc),
-                        ..Default::default()
-                    })));
-
-                    response_func = Some(format!("tool_call:{}", name));
-                }
-            }
-        }
-
-        let model_msg = Message {
-            role: Role::Assistant,
-            parts: assistant_parts,
-        };
-        self.update_history(&data, model_msg);
-
-        Ok((text, response_func))
+        Err(anyhow::anyhow!("Verifier did not return a tool call"))
     }
 }

@@ -192,15 +192,25 @@ async fn register_clients(ctx: &Arc<AppContext>) {
                         stdout,
                         raw,
                     )?),
-                    _ => Box::new(OpenAiCompatibleClient::new(
-                        config_manager,
-                        &closure_p_name,
-                        &api_url,
-                        &api_key,
-                        model,
-                        stdout,
-                        raw,
-                    )?),
+                    _ => {
+                        let m_lower = model.to_lowercase();
+                        let is_high_feature = m_lower.contains("claude") || m_lower.contains("anthropic") || m_lower.contains("gemini") || m_lower.contains("google");
+                        let formatter: Box<dyn crate::llm::providers::openai_compatible::PayloadFormatter> = if is_high_feature {
+                            Box::new(crate::llm::providers::openai_compatible::HighFeaturePayloadFormatter { is_anthropic_gemini: true })
+                        } else {
+                            Box::new(crate::llm::providers::openai_compatible::GenericPayloadFormatter)
+                        };
+
+                        Box::new(OpenAiCompatibleClient::builder(config_manager)
+                            .provider_name(&closure_p_name)
+                            .api_url(&api_url)
+                            .api_key(&api_key)
+                            .model(model)
+                            .stdout(stdout)
+                            .raw(raw)
+                            .formatter(formatter)
+                            .build()?)
+                    },
                 };
                 Ok(client)
             }),

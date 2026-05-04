@@ -53,16 +53,15 @@ async fn main() -> anyhow::Result<()> {
                     let api_key = config_manager
                         .get_api_key(&closure_p_name)
                         .unwrap_or_default();
-                    OpenAiCompatibleClient::new(
-                        config_manager,
-                        &closure_p_name,
-                        &api_url,
-                        &api_key,
-                        model,
-                        stdout,
-                        raw,
-                    )
-                    .map(|c| Box::new(c) as _)
+                    OpenAiCompatibleClient::builder(config_manager)
+                        .provider_name(&closure_p_name)
+                        .api_url(&api_url)
+                        .api_key(&api_key)
+                        .model(model)
+                        .stdout(stdout)
+                        .raw(raw)
+                        .build()
+                        .map(|c| Box::new(c) as _)
                 }),
             );
         }
