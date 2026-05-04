@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
     // Register clients
     {
         let mut registry = ctx.client_registry.lock().await;
-        for provider in ["openai", "anthropic", "ollama", "google"] {
+        for provider in ["ollama", "openrouter"] {
             let p_name = provider.to_string();
             let closure_p_name = p_name.clone();
             registry.register(
@@ -42,12 +42,8 @@ async fn main() -> anyhow::Result<()> {
                         .get(&closure_p_name)
                         .and_then(|p| p.api_url.clone())
                         .unwrap_or_else(|| match closure_p_name.as_str() {
-                            "openai" => "https://api.openai.com/v1".to_string(),
                             "ollama" => "http://localhost:11434/v1".to_string(),
                             "openrouter" => "https://openrouter.ai/api/v1".to_string(),
-                            "anthropic" => "https://api.anthropic.com/v1".to_string(), // Note: Not OpenAI compatible natively, but for the sake of compiling
-                            "google" => "https://generativelanguage.googleapis.com/v1beta/openai"
-                                .to_string(),
                             _ => "".to_string(),
                         });
                     let api_key = config_manager
@@ -67,37 +63,46 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Load scenarios from JSON
+    // Load scenarios and arguments
     let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        eprintln!(
+            "Usage: cargo bench --bench {} -- <provider> <model> [json_path]",
+            "benchmark_dual_llm"
+        );
+        eprintln!(
+            "Example: cargo bench --bench {} -- ollama llama3",
+            "benchmark_dual_llm"
+        );
+        eprintln!(
+            "Example: cargo bench --bench {} -- openrouter anthropic/claude-3-haiku",
+            "benchmark_dual_llm"
+        );
+        std::process::exit(1);
+    }
+
+    let target_provider = &args[1];
+    let target_model = &args[2];
     let json_path = args
-        .get(1)
+        .get(3)
         .map(|s| s.as_str())
         .unwrap_or("benchmark/scenarios.json");
-
-    let target_provider = args.get(2).map(|s| s.as_str());
-    let target_model = args.get(3).map(|s| s.as_str());
 
     println!("Reading scenarios from: {}", json_path.cyan());
     let scenarios_json = fs::read_to_string(json_path)?;
     let scenarios: Vec<Scenario> = serde_json::from_str(&scenarios_json)?;
     println!("Loaded {} scenarios from {}\n", scenarios.len(), json_path);
 
-    let providers = if let (Some(p), Some(m)) = (target_provider, target_model) {
-        vec![(p, m)]
-    } else {
-        vec![
-            ("google", "lite"),
-            ("openai", "mini"),
-            ("anthropic", "haiku"),
-        ]
-    };
+    let providers = vec![(target_provider.as_str(), target_model.as_str())];
 
     let security_config = ctx.config_manager.get_config().unwrap().security.clone();
 
     for (p_alias, p_model) in providers {
-        let has_key = ctx.config_manager.get_api_key(p_alias).is_some();
-        if !has_key {
-            println!("Skipping {} (No API Key found)", p_alias.yellow());
+        let api_key = ctx.config_manager.get_api_key(p_alias);
+
+        // Validation for provider specific requirements
+        if p_alias == "openrouter" && api_key.is_none() {
+            println!("{}", "Error: OpenRouter requires OPENROUTER_API_KEY in environment or ~/.llm_secure_cli/.env".red());
             continue;
         }
 

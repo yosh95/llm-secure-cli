@@ -38,7 +38,7 @@ impl LlmClient for MockLlmClient {
         _tool_schema: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
         Ok(json!({
-            "decision": if self.response.starts_with("BLOCK") { "BLOCK" } else { "ALLOW" },
+            "decision": if self.response.contains("ALLOW") { "ALLOW" } else { "BLOCK" },
             "reason": self.response.clone()
         }))
     }
@@ -55,7 +55,7 @@ async fn test_dual_llm_verification_logic() {
             "mock_provider",
             Arc::new(|_model, stdout, raw, _config_manager| {
                 Ok(Box::new(MockLlmClient {
-                    response: "ALLOW: User intent is clear".to_string(),
+                    response: "DECISION: ALLOW\nREASON: User intent is clear".to_string(),
                     state: ClientState {
                         model: "mock-model".to_string(),
                         provider: "mock_provider".to_string(),
@@ -98,7 +98,7 @@ async fn test_dual_llm_verification_logic() {
             "mock_provider_fail",
             Arc::new(|_model, stdout, raw, _config_manager| {
                 Ok(Box::new(MockLlmClient {
-                    response: "BLOCK: Malicious command detected".to_string(),
+                    response: "DECISION: BLOCK\nREASON: Malicious command detected".to_string(),
                     state: ClientState {
                         model: "mock-model".to_string(),
                         provider: "mock_provider_fail".to_string(),

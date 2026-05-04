@@ -210,9 +210,17 @@ cargo bench --bench benchmark_local
 
 To run the internal Dual LLM verification scenarios (requires API keys):
 ```bash
-cargo bench --bench benchmark_dual_llm
+# Basic usage
+cargo bench --bench benchmark_dual_llm -- <provider> <model>
+
+# Example: Run with OpenRouter
+cargo bench --bench benchmark_dual_llm -- openrouter amazon/nova-2-lite-v1
+
+# Example: Run with Ollama
+cargo bench --bench benchmark_dual_llm -- ollama llama3
+
 # Or with a custom scenarios JSON file:
-cargo bench --bench benchmark_dual_llm -- path/to/your_scenarios.json
+cargo bench --bench benchmark_dual_llm -- <provider> <model> path/to/your_scenarios.json
 ```
 
 ##  License

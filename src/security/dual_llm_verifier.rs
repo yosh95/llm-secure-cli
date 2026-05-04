@@ -148,33 +148,22 @@ impl DualLLMVerifier {
             serde_json::to_string_pretty(context).unwrap_or_default()
         );
 
+        // Architecturally, we prefer a structured response for verification to avoid parsing overhead.
+        // However, many lightweight or specialized "small" LLMs (e.g., Gemini Flash-Lite, local Ollama models)
+        // have unreliable or missing tool-calling support.
+        // We switch to a clear text-based ALLOW/BLOCK protocol to maximize compatibility across
+        // diverse dual-LLM providers.
         let user_prompt = format!(
-            "### UNTRUSTED USER INPUT (CONTEXT ONLY)\n<user_intent>\n{}\n</user_intent>\n\n### PROPOSED TOOL CALL\n<tool_call>\nTool: {}\nArguments: {}\n</tool_call>\n\nEvaluation Task: Does the tool_call align with user_intent without violating the Security Constitution?",
+            "### UNTRUSTED USER INPUT (CONTEXT ONLY)\n<user_intent>\n{}\n</user_intent>\n\n\
+             ### PROPOSED TOOL CALL\n<tool_call>\nTool: {}\nArguments: {}\n</tool_call>\n\n\
+             Evaluation Task: Does the tool_call align with user_intent without violating the Security Constitution?\n\n\
+             Constraint: You must respond in the following format exactly:\n\
+             DECISION: [ALLOW or BLOCK]\n\
+             REASON: [One sentence explanation]",
             user_query,
             tool_name,
             serde_json::to_string_pretty(tool_args).unwrap_or_default()
         );
-
-        // Define the structured tool schema for the verdict
-        let verify_tool_schema = json!({
-            "name": "submit_verdict",
-            "description": "Submit the security evaluation result for a tool call.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "decision": {
-                        "type": "string",
-                        "enum": ["ALLOW", "BLOCK"],
-                        "description": "The security decision. ALLOW if safe, BLOCK if risky or violates policy."
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "A detailed explanation of the decision, referencing specific policy violations if blocked."
-                    }
-                },
-                "required": ["decision", "reason"]
-            }
-        });
 
         // Configure client for a one-off verification
         self.verifier_llm.get_state_mut().conversation.clear();
@@ -188,20 +177,27 @@ impl DualLLMVerifier {
             metadata: std::collections::HashMap::new(),
         }];
 
-        // Use the specialized structured output path
-        match self
-            .verifier_llm
-            .send_as_verifier(data, verify_tool_schema)
-            .await
-        {
-            Ok(args) => {
-                let decision = args.get("decision").and_then(|v| v.as_str()).unwrap_or("");
-                let reason = args
-                    .get("reason")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("No reason provided");
+        // Use the standard send method instead of send_as_verifier to support models without tool calling.
+        match self.verifier_llm.send(data, vec![]).await {
+            Ok((content, _tool_name, _tool_args)) => {
+                let response = content.unwrap_or_default();
+                let decision_line = response
+                    .lines()
+                    .find(|l| l.to_uppercase().starts_with("DECISION:"))
+                    .unwrap_or("");
+                let reason_line = response
+                    .lines()
+                    .find(|l| l.to_uppercase().starts_with("REASON:"))
+                    .unwrap_or("REASON: No reason provided");
 
-                if decision == "ALLOW" {
+                let is_allowed = decision_line.to_uppercase().contains("ALLOW");
+                let reason = reason_line
+                    .split_once(':')
+                    .map(|x| x.1)
+                    .unwrap_or("No reason provided")
+                    .trim();
+
+                if is_allowed {
                     VerificationResult::Allowed
                 } else {
                     VerificationResult::Rejected(reason.to_string())
