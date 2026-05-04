@@ -136,7 +136,13 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
             config_section: self.provider_name.clone(),
             pdf_as_base64: true, // We handle the decision in the formatter
         };
-        let base = BaseLlmClientData::new(self.config_manager, &self.model, spec, self.stdout, self.raw);
+        let base = BaseLlmClientData::new(
+            self.config_manager,
+            &self.model,
+            spec,
+            self.stdout,
+            self.raw,
+        );
 
         let api_url = if self.api_url.ends_with("/chat/completions") {
             self.api_url
@@ -156,7 +162,9 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
         }
 
         let http_client = create_http_client(self.config_manager)?;
-        let formatter = self.formatter.unwrap_or_else(|| Box::new(GenericPayloadFormatter));
+        let formatter = self
+            .formatter
+            .unwrap_or_else(|| Box::new(GenericPayloadFormatter));
 
         Ok(OpenAiCompatibleClient {
             base,
