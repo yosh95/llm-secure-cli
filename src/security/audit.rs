@@ -267,7 +267,15 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         out.push_str("...[TRUNCATED]");
     }
 
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path)
+    let mut options = OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+
+    if let Ok(mut file) = options.open(path)
         && let Ok(line) = serde_json::to_string(&log_entry)
     {
         let _ = writeln!(file, "{}", line);

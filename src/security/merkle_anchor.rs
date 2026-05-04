@@ -146,8 +146,23 @@ impl SessionAnchorManager {
         }
 
         fs::create_dir_all(&*ANCHOR_DIR)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&*ANCHOR_DIR, fs::Permissions::from_mode(0o700))?;
+        }
+
         let anchor_path = ANCHOR_DIR.join(format!("{}.anchor.json", trace_id));
-        let f = File::create(anchor_path)?;
+        
+        let mut options = std::fs::OpenOptions::new();
+        options.create(true).write(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        
+        let f = options.open(anchor_path)?;
         serde_json::to_writer_pretty(f, &anchor)?;
 
         Ok(Some(root_hex))

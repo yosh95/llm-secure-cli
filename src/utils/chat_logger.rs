@@ -23,6 +23,13 @@ pub fn log_chat(
         && !parent.exists()
     {
         let _ = fs::create_dir_all(parent);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(path) = path.parent() {
+                let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o700));
+            }
+        }
     }
 
     let timestamp = Utc::now().to_rfc3339();
@@ -40,7 +47,15 @@ pub fn log_chat(
         content.replace('\n', " ")
     );
 
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+    let mut options = OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+
+    if let Ok(mut file) = options.open(path) {
         let _ = file.write_all(log_entry.as_bytes());
     }
 
