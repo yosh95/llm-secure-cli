@@ -48,19 +48,10 @@ impl ChatSession {
             "provider": client.get_state().provider,
             "user_id": user_id
         });
-        let entry = crate::security::audit::log_audit_and_return(
-            crate::security::audit::AuditParams {
-                event_type: "session_start",
-                tool_name: "session",
-                args: serde_json::json!({}),
-                output: None,
-                exit_code: None,
-                error: None,
-                context: Some(&context_val),
-                config: &config,
-            },
-            None,
-        );
+        let entry =
+            crate::security::audit::AuditParams::builder("session_start", "session", &config)
+                .context(&context_val)
+                .log_and_return(None);
 
         Ok(Self {
             client: Some(client),

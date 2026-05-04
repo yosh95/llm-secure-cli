@@ -47,6 +47,74 @@ pub struct AuditParams<'a> {
     pub config: &'a crate::config::models::AppConfig,
 }
 
+pub struct AuditParamsBuilder<'a> {
+    params: AuditParams<'a>,
+}
+
+impl<'a> AuditParamsBuilder<'a> {
+    pub fn new(
+        event_type: &'a str,
+        tool_name: &'a str,
+        config: &'a crate::config::models::AppConfig,
+    ) -> Self {
+        Self {
+            params: AuditParams {
+                event_type,
+                tool_name,
+                args: serde_json::json!({}),
+                output: None,
+                exit_code: None,
+                error: None,
+                context: None,
+                config,
+            },
+        }
+    }
+
+    pub fn args(mut self, args: serde_json::Value) -> Self {
+        self.params.args = args;
+        self
+    }
+
+    pub fn output(mut self, output: &'a str) -> Self {
+        self.params.output = Some(output);
+        self
+    }
+
+    pub fn exit_code(mut self, code: i32) -> Self {
+        self.params.exit_code = Some(code);
+        self
+    }
+
+    pub fn error(mut self, error: &'a str) -> Self {
+        self.params.error = Some(error);
+        self
+    }
+
+    pub fn context(mut self, context: &'a serde_json::Value) -> Self {
+        self.params.context = Some(context);
+        self
+    }
+
+    pub fn log(self) {
+        log_audit(self.params);
+    }
+
+    pub fn log_and_return(self, log_path: Option<&std::path::Path>) -> Option<AuditEntry> {
+        log_audit_and_return(self.params, log_path)
+    }
+}
+
+impl<'a> AuditParams<'a> {
+    pub fn builder(
+        event_type: &'a str,
+        tool_name: &'a str,
+        config: &'a crate::config::models::AppConfig,
+    ) -> AuditParamsBuilder<'a> {
+        AuditParamsBuilder::new(event_type, tool_name, config)
+    }
+}
+
 pub fn log_audit(params: AuditParams) {
     let _ = log_audit_and_return(params, None);
 }
