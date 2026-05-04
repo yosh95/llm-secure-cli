@@ -240,8 +240,19 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                 log_entry.pqc_signature = Some(signed.pqc_signature);
                 log_entry.pqc_algorithm = Some(signed.algorithm);
             }
-            Err(_e) => {}
+            Err(e) => {
+                if params.config.security.security_level == "high" {
+                    eprintln!(
+                        "CRITICAL SECURITY ERROR: PQC Sign failed in high-security mode: {}",
+                        e
+                    );
+                    return None; // Integrity failure, block audit write
+                }
+            }
         }
+    } else if params.config.security.security_level == "high" {
+        eprintln!("CRITICAL SECURITY ERROR: PQC Private Key unavailable in high-security mode.");
+        return None;
     }
 
     // Now truncate the output only for storage efficiency
@@ -283,24 +294,51 @@ fn get_last_log_hash(path: &Path) -> String {
             return "0".repeat(64);
         }
 
-        // Increase buffer size to 128KB as requested in 3.7
-        let read_size = std::cmp::min(size, 131072);
-        let mut buffer = vec![0; read_size as usize];
-        let _ = file.seek(SeekFrom::End(-(read_size as i64)));
-        let _ = file.read_exact(&mut buffer);
+        // Scan backwards from end of file to find the last valid JSON entry
+        let mut pos = size;
+        let mut buffer = Vec::new();
+        let chunk_size = 4096;
 
-        let content = String::from_utf8_lossy(&buffer);
-        let lines: Vec<&str> = content.split('\n').collect();
+        while pos > 0 {
+            let to_read = std::cmp::min(pos, chunk_size as u64);
+            pos -= to_read;
 
-        for line in lines.iter().rev() {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(trimmed)
-                && let Some(hash) = entry.get("hash").and_then(|v| v.as_str())
+            let mut chunk = vec![0; to_read as usize];
+            if i64::try_from(pos).is_err()
+                || file.seek(SeekFrom::Start(pos)).is_err()
+                || file.read_exact(&mut chunk).is_err()
             {
-                return hash.to_string();
+                break;
+            }
+
+            // Prepend chunk to what we've collected so far
+            chunk.extend_from_slice(&buffer);
+            buffer = chunk;
+
+            // Search for full lines from the end
+            let content = String::from_utf8_lossy(&buffer);
+            let mut lines: Vec<&str> = content.split('\n').collect();
+
+            // The last fragment after the last '\n' might be empty or incomplete
+            if content.ends_with('\n') {
+                lines.pop();
+            }
+
+            for line in lines.iter().rev() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                if let Ok(entry) = serde_json::from_str::<serde_json::Value>(trimmed)
+                    && let Some(hash) = entry.get("hash").and_then(|v| v.as_str())
+                {
+                    return hash.to_string();
+                }
+            }
+
+            // Limit backward search to 1MB to avoid performance issues on corrupt logs
+            if size - pos > 1024 * 1024 {
+                break;
             }
         }
     }

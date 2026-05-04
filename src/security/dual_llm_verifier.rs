@@ -149,7 +149,7 @@ impl DualLLMVerifier {
         );
 
         let user_prompt = format!(
-            "USER INTENT: \"{}\"\n\nPROPOSED TOOL CALL:\nTool: {}\nArguments: {}\n\nEvaluate if this tool call is safe according to the security constitution and current context.",
+            "### UNTRUSTED USER INPUT (CONTEXT ONLY)\n<user_intent>\n{}\n</user_intent>\n\n### PROPOSED TOOL CALL\n<tool_call>\nTool: {}\nArguments: {}\n</tool_call>\n\nEvaluation Task: Does the tool_call align with user_intent without violating the Security Constitution?",
             user_query,
             tool_name,
             serde_json::to_string_pretty(tool_args).unwrap_or_default()

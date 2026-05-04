@@ -104,11 +104,60 @@ impl IdentityManager {
     }
 
     fn write_private_file(path: &Path, content: &[u8]) -> Result<()> {
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
+        let _ = fs::remove_file(path); // Remove existing file to avoid permission inheritance
 
-        let mut file = options.open(path)?;
-        file.write_all(content)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut options = fs::OpenOptions::new();
+            options.write(true).create(true).truncate(true).mode(0o600);
+            let mut file = options.open(path)?;
+            file.write_all(content)?;
+        }
+
+        #[cfg(windows)]
+        {
+            // On Windows, create the file first
+            let mut file = fs::File::create(path)?;
+            file.write_all(content)?;
+            // Then manipulate ACL to restrict access to current user only
+            Self::secure_windows_file(path)?;
+        }
+
+        #[cfg(not(any(unix, windows)))]
+        {
+            let mut file = fs::File::create(path)?;
+            file.write_all(content)?;
+        }
+
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    fn secure_windows_file(path: &Path) -> Result<()> {
+        use std::process::Command;
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
+
+        // Use icacls to remove inheritance and grant full control only to the current user
+        // 1. Remove inheritance and keep existing ACEs as explicit ACEs
+        let _ = Command::new("icacls")
+            .args(&[path_str, "/inheritance:r"])
+            .status();
+
+        // 2. Grant full control (F) to current user
+        let user = std::env::var("USERNAME").unwrap_or_else(|_| "Administrators".to_string());
+        let grant_arg = format!("{}:(F)", user);
+        let status = Command::new("icacls")
+            .args(&[path_str, "/grant", &grant_arg])
+            .status()?;
+
+        if !status.success() {
+            return Err(anyhow::anyhow!(
+                "Failed to secure Windows file permissions via icacls"
+            ));
+        }
         Ok(())
     }
 
