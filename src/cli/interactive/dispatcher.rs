@@ -506,8 +506,7 @@ pub async fn handle_model_cmd(session: &mut ChatSession, args: &str) {
                 session.switch_client(new_client);
                 let _ = session.ctx.config_manager.update_state(&provider, args);
                 ui::report_success(&format!(
-                    "Model switched to: {} ({})",
-                    args,
+                    "Model switched to: {}",
                     match session.get_client() {
                         Ok(c) => c.get_state().model.clone(),
                         Err(_) => "unknown".to_string(),
