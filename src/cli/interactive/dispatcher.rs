@@ -2,6 +2,13 @@ use crate::cli::ui;
 use crate::core::session::ChatSession;
 use crate::llm::models::{DataSource, Message, MessagePart, Role};
 use colored::Colorize;
+use serde::{Deserialize, Serialize};
+use serde_json;
+
+#[derive(Serialize, Deserialize)]
+struct ConversationDump {
+    messages: Vec<Message>,
+}
 
 pub enum CommandResult {
     Handled,
@@ -91,6 +98,10 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
         }
         "dump" => {
             handle_dump(session);
+            CommandResult::Handled
+        }
+        "edit_history" | "eh" => {
+            handle_edit_history(session);
             CommandResult::Handled
         }
         "save" => {
@@ -274,13 +285,112 @@ pub fn handle_dump(session: &ChatSession) {
             return;
         }
     };
-    match serde_json::to_string_pretty(&state.conversation) {
-        Ok(json) => {
-            ui::print_rule(Some("Conversation Dump"), Some("magenta"));
-            println!("{}", json);
+
+    let mut conversation = state.conversation.clone();
+    let mut blobs = std::collections::HashMap::new();
+    mask_base64_in_conversation(&mut conversation, &mut blobs);
+
+    let dump = ConversationDump {
+        messages: conversation,
+    };
+
+    match toml::to_string(&dump) {
+        Ok(toml_str) => {
+            ui::print_rule(Some("Conversation Dump (TOML)"), Some("magenta"));
+            print!("{}", toml_str);
             ui::print_rule(None, Some("magenta"));
         }
         Err(e) => ui::report_error(&format!("Failed to dump conversation: {}", e)),
+    }
+}
+
+pub fn handle_edit_history(session: &mut ChatSession) {
+    let state = match session.get_client() {
+        Ok(client) => client.get_state(),
+        Err(e) => {
+            ui::report_error(&e.to_string());
+            return;
+        }
+    };
+
+    let mut conversation = state.conversation.clone();
+    let mut blobs = std::collections::HashMap::new();
+    mask_base64_in_conversation(&mut conversation, &mut blobs);
+
+    let initial_content = match toml::to_string(&ConversationDump {
+        messages: conversation,
+    }) {
+        Ok(toml_str) => toml_str,
+        Err(e) => {
+            ui::report_error(&format!("Failed to serialize conversation: {}", e));
+            return;
+        }
+    };
+
+    match ui::open_external_editor(&initial_content) {
+        Ok(edited_toml) => {
+            if edited_toml.trim() == initial_content.trim() {
+                ui::report_info("No changes made to conversation history.");
+                return;
+            }
+
+            match toml::from_str::<ConversationDump>(&edited_toml) {
+                Ok(mut dump) => {
+                    unmask_base64_in_conversation(&mut dump.messages, &blobs);
+                    match session.get_client_mut() {
+                        Ok(client) => {
+                            client.get_state_mut().conversation = dump.messages;
+                            ui::report_success("Conversation history updated.");
+                        }
+                        Err(e) => ui::report_error(&e.to_string()),
+                    }
+                }
+                Err(e) => ui::report_error(&format!("Failed to parse edited TOML: {}", e)),
+            }
+        }
+        Err(e) => ui::report_error(&format!("Failed to open editor: {}", e)),
+    }
+}
+
+fn mask_base64_in_conversation(
+    conversation: &mut [Message],
+    blobs: &mut std::collections::HashMap<String, serde_json::Value>,
+) {
+    for msg in conversation {
+        for part in &mut msg.parts {
+            if let MessagePart::Part(cp) = part
+                && let Some(inline_data) = &mut cp.inline_data
+                && let Some(data) = inline_data.get_mut("data")
+                && let Some(s) = data.as_str()
+                && s.len() > 100
+            {
+                let id = format!("blob_{}", blobs.len());
+                blobs.insert(id.clone(), data.clone());
+                *data = serde_json::Value::String(format!("<< {} >>", id));
+            }
+        }
+    }
+}
+
+fn unmask_base64_in_conversation(
+    conversation: &mut [Message],
+    blobs: &std::collections::HashMap<String, serde_json::Value>,
+) {
+    for msg in conversation {
+        for part in &mut msg.parts {
+            if let MessagePart::Part(cp) = part
+                && let Some(inline_data) = &mut cp.inline_data
+                && let Some(data) = inline_data.get_mut("data")
+                && let Some(s) = data.as_str()
+                && s.starts_with("<< blob_")
+                && s.ends_with(" >>")
+            {
+                let id = s.trim_matches(|c| c == '<' || c == '>' || c == ' ');
+                if let Some(original_data) = blobs.get(id) {
+                    *data = original_data.clone();
+                }
+            }
+        }
     }
 }
 
@@ -615,7 +725,8 @@ pub fn print_help() {
     println!("  /clear, /c      Clear conversation history");
     println!("  /info, /i       Show session info");
     println!("  /raw            Show conversation as raw text");
-    println!("  /dump           Dump conversation history as JSON");
+    println!("  /dump           Dump conversation history as YAML");
+    println!("  /edit_history, /eh Edit conversation history as YAML");
     println!("  /save <path>    Save conversation history to JSON file");
     println!("  /load <path>    Load conversation history from JSON file");
     println!("  /attach <path>  Attach a file or URL to the next message");
