@@ -312,7 +312,7 @@ impl LlmClient for OpenAiCompatibleClient {
         &mut self,
         data: Vec<DataSource>,
         tool_schemas: Vec<Value>,
-    ) -> anyhow::Result<(Option<String>, Option<String>, Option<String>)> {
+    ) -> anyhow::Result<crate::llm::models::LlmResponse> {
         let messages = self.build_messages(&data);
         let mut body = json!({
             "model": self.base.state.model,
@@ -396,7 +396,11 @@ impl LlmClient for OpenAiCompatibleClient {
         };
         self.update_history(&data, model_msg);
 
-        Ok((text, None, redirect_msg))
+        Ok(crate::llm::models::LlmResponse {
+            content: text,
+            tool_name: None,
+            tool_args: redirect_msg,
+        })
     }
 
     async fn send_as_verifier(

@@ -179,28 +179,35 @@ impl DualLLMVerifier {
 
         // Use the standard send method instead of send_as_verifier to support models without tool calling.
         match self.verifier_llm.send(data, vec![]).await {
-            Ok((content, _tool_name, _tool_args)) => {
-                let response = content.unwrap_or_default();
-                let decision_line = response
-                    .lines()
-                    .find(|l| l.to_uppercase().starts_with("DECISION:"))
-                    .unwrap_or("");
-                let reason_line = response
-                    .lines()
-                    .find(|l| l.to_uppercase().starts_with("REASON:"))
-                    .unwrap_or("REASON: No reason provided");
+            Ok(response_struct) => {
+                let response = response_struct.content.unwrap_or_default();
 
-                let is_allowed = decision_line.to_uppercase().contains("ALLOW");
-                let reason = reason_line
-                    .split_once(':')
-                    .map(|x| x.1)
-                    .unwrap_or("No reason provided")
-                    .trim();
+                // Advanced Regex Parsing for robustness against LLM formatting variations (Markdown, etc.)
+                let decision_re = regex::Regex::new(r"(?i)DECISION:\s*\*?\*?\s*(ALLOW|BLOCK)").ok();
+                let reason_re = regex::Regex::new(r"(?i)REASON:\s*(.*)").ok();
 
-                if is_allowed {
+                let decision = decision_re
+                    .and_then(|re| re.captures(&response))
+                    .and_then(|cap| cap.get(1))
+                    .map(|m| m.as_str().to_uppercase())
+                    .unwrap_or_default();
+
+                let reason = reason_re
+                    .and_then(|re| re.captures(&response))
+                    .and_then(|cap| cap.get(1))
+                    .map(|m| m.as_str().trim())
+                    .unwrap_or("No reason provided");
+
+                if decision == "ALLOW" {
                     VerificationResult::Allowed
-                } else {
+                } else if decision == "BLOCK" {
                     VerificationResult::Rejected(reason.to_string())
+                } else {
+                    // Could not find a clear ALLOW/BLOCK verdict - default to safety
+                    VerificationResult::Rejected(format!(
+                        "Invalid verifier response format. Raw: {}",
+                        response.lines().next().unwrap_or("Empty")
+                    ))
                 }
             }
             Err(e) => VerificationResult::Error(format!("Verifier LLM error: {}", e)),

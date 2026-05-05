@@ -35,9 +35,9 @@ impl LlmClient for MockProcessorClient {
         &mut self,
         _data: Vec<DataSource>,
         _tool_schemas: Vec<serde_json::Value>,
-    ) -> anyhow::Result<(Option<String>, Option<String>, Option<String>)> {
+    ) -> anyhow::Result<llm_secure_cli::llm::models::LlmResponse> {
         if self.call_count >= self.responses.len() {
-            return Ok((None, None, None));
+            return Ok(llm_secure_cli::llm::models::LlmResponse::default());
         }
         let (text, thought, parts) = self.responses[self.call_count].clone();
         self.call_count += 1;
@@ -45,8 +45,24 @@ impl LlmClient for MockProcessorClient {
         if let Some(p) = parts {
             self.state.conversation.push(Message {
                 role: Role::Assistant,
-                parts: p,
+                parts: p.clone(),
             });
+
+            // If it's a tool call, we need to populate LlmResponse properly
+            for part in p {
+                if let MessagePart::Part(cp) = part {
+                    if let Some(fc) = cp.function_call {
+                        return Ok(llm_secure_cli::llm::models::LlmResponse {
+                            content: text,
+                            tool_name: fc
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            tool_args: fc.get("arguments").map(|v| v.to_string()),
+                        });
+                    }
+                }
+            }
         } else if let Some(t) = &text {
             self.state.conversation.push(Message {
                 role: Role::Assistant,
@@ -58,7 +74,11 @@ impl LlmClient for MockProcessorClient {
             });
         }
 
-        Ok((text, thought, None))
+        Ok(llm_secure_cli::llm::models::LlmResponse {
+            content: text,
+            tool_name: None,
+            tool_args: None,
+        })
     }
 
     async fn send_as_verifier(

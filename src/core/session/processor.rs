@@ -79,11 +79,11 @@ impl ChatSession {
 
         println!("done");
 
-        if let Some(redirect) = &result.2 {
+        if let Some(redirect) = &result.tool_args {
             ui::report_info(redirect);
         }
 
-        Ok((result.0, result.1))
+        Ok((result.content, None))
     }
 
     /// Displays Thought blocks and Assistant text results.

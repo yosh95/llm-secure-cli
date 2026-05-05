@@ -74,6 +74,13 @@ pub struct Usage {
     pub total_tokens: u32,
 }
 
+#[derive(Debug, Default)]
+pub struct LlmResponse {
+    pub content: Option<String>,
+    pub tool_name: Option<String>,
+    pub tool_args: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ClientState {
     pub model: String,

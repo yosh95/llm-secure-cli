@@ -65,7 +65,7 @@ impl LlmClient for OpenRouterClient {
         &mut self,
         data: Vec<DataSource>,
         tool_schemas: Vec<Value>,
-    ) -> anyhow::Result<(Option<String>, Option<String>, Option<String>)> {
+    ) -> anyhow::Result<crate::llm::models::LlmResponse> {
         // Delegate to inner; special logic for videos/audio can be added to formatter if needed
         self.inner.send(data, tool_schemas).await
     }

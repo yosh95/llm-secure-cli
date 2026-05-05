@@ -28,8 +28,12 @@ impl LlmClient for MockLlmClient {
         &mut self,
         _data: Vec<DataSource>,
         _tool_schemas: Vec<serde_json::Value>,
-    ) -> anyhow::Result<(Option<String>, Option<String>, Option<String>)> {
-        Ok((Some(self.response.clone()), None, None))
+    ) -> anyhow::Result<llm_secure_cli::llm::models::LlmResponse> {
+        Ok(llm_secure_cli::llm::models::LlmResponse {
+            content: Some(self.response.clone()),
+            tool_name: None,
+            tool_args: None,
+        })
     }
 
     async fn send_as_verifier(

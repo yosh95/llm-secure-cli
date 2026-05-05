@@ -18,7 +18,7 @@ pub trait LlmClient: Send + Sync {
         &mut self,
         data: Vec<DataSource>,
         tool_schemas: Vec<serde_json::Value>,
-    ) -> anyhow::Result<(Option<String>, Option<String>, Option<String>)>;
+    ) -> anyhow::Result<crate::llm::models::LlmResponse>;
 
     /// Send a request specifically for verification purposes, forcing a structured tool call response.
     async fn send_as_verifier(

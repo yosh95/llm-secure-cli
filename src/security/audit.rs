@@ -242,16 +242,21 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
             }
             Err(e) => {
                 if params.config.security.security_level == "high" {
-                    eprintln!(
+                    crate::cli::ui::report_error(&format!(
                         "CRITICAL SECURITY ERROR: PQC Sign failed in high-security mode: {}",
                         e
-                    );
+                    ));
+                    log_entry.status = format!("INTEGRITY_FAILURE: PQC Sign failed: {}", e);
                     return None; // Integrity failure, block audit write
+                } else {
+                    log_entry.status = format!("SUCCESS_WITHOUT_SIGNATURE: {}", e);
                 }
             }
         }
     } else if params.config.security.security_level == "high" {
-        eprintln!("CRITICAL SECURITY ERROR: PQC Private Key unavailable in high-security mode.");
+        let msg = "CRITICAL SECURITY ERROR: PQC Private Key unavailable in high-security mode.";
+        crate::cli::ui::report_error(msg);
+        log_entry.status = format!("INTEGRITY_FAILURE: {}", msg);
         return None;
     }
 
