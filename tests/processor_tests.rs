@@ -39,7 +39,7 @@ impl LlmClient for MockProcessorClient {
         if self.call_count >= self.responses.len() {
             return Ok(llm_secure_cli::llm::models::LlmResponse::default());
         }
-        let (text, thought, parts) = self.responses[self.call_count].clone();
+        let (text, _thought, parts) = self.responses[self.call_count].clone();
         self.call_count += 1;
 
         if let Some(p) = parts {

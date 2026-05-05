@@ -216,8 +216,11 @@ impl ChatSession {
         }
 
         // 2. Phase 2 & Human-in-the-loop preparation
-        let risk_level =
-            crate::security::cass::CASS_ORCHESTRATOR.evaluate_risk(name, &config.security);
+        let risk_level = crate::security::cass::CASS_ORCHESTRATOR.evaluate_risk(
+            name,
+            Some(&serde_json::json!(args)),
+            &config.security,
+        );
         let approved = self.is_auto_approved(name, risk_level);
 
         // Start Dual LLM Verifier background task if enabled

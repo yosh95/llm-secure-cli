@@ -156,7 +156,9 @@ impl PqcProvider {
         variant: MlkemVariant,
     ) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
         if pk_bytes.is_empty() {
-            return Ok((vec![0; 32], vec![]));
+            return Err(anyhow::anyhow!(
+                "PQC encapsulation failed: Public key is empty"
+            ));
         }
         Self::ensure_init();
         let saorsa_variant = Self::map_mlkem_variant(variant);
@@ -175,7 +177,9 @@ impl PqcProvider {
         variant: MlkemVariant,
     ) -> anyhow::Result<Vec<u8>> {
         if sk_bytes.is_empty() {
-            return Ok(vec![0; 32]);
+            return Err(anyhow::anyhow!(
+                "PQC decapsulation failed: Secret key is empty"
+            ));
         }
         Self::ensure_init();
         let saorsa_variant = Self::map_mlkem_variant(variant);
@@ -206,12 +210,6 @@ impl SecureStorage {
     pub fn encrypt(data: &[u8], recipient_public_key: &[u8]) -> anyhow::Result<EncryptedPacket> {
         let (shared_secret, kem_ct) =
             PqcProvider::encapsulate_mlkem(recipient_public_key, MlkemVariant::Mlkem768)?;
-
-        if shared_secret == vec![0; 32] && recipient_public_key.is_empty() {
-            return Err(anyhow::anyhow!(
-                "Encryption failed: Recipient public key is empty"
-            ));
-        }
 
         // Use first 32 bytes of shared secret for AES-256
         let key = &shared_secret[..32];
@@ -252,10 +250,6 @@ impl SecureStorage {
         let shared_secret =
             PqcProvider::decapsulate_mlkem(&kem_ct, private_key, MlkemVariant::Mlkem768)?;
 
-        if shared_secret == vec![0; 32] && private_key.is_empty() {
-            return Err(anyhow::anyhow!("Decryption failed: Private key is empty"));
-        }
-
         let key = &shared_secret[..32];
         let cipher = Aes256Gcm::new_from_slice(key)
             .map_err(|_| anyhow::anyhow!("Failed to initialize AES-GCM"))?;
@@ -295,46 +289,18 @@ impl PQCAgilityManager {
         config: &crate::config::models::AppConfig,
         tool_name: &str,
         args: Option<&serde_json::Value>,
-        environment_risk: &str,
+        _environment_risk: &str,
     ) -> MldsaVariant {
-        let security_config = &config.security;
+        use crate::security::cass::{CASS_ORCHESTRATOR, RiskLevel};
 
-        let mut is_sensitive_context = false;
-        if let Some(args_val) = args {
-            let args_str = args_val.to_string().to_lowercase();
-            for pattern in &security_config.scaling_patterns {
-                if args_str.contains(&pattern.to_lowercase()) {
-                    is_sensitive_context = true;
-                    break;
-                }
-            }
-            if !is_sensitive_context {
-                for pattern in &security_config.blocked_paths {
-                    if args_str.contains(&pattern.to_lowercase()) {
-                        is_sensitive_context = true;
-                        break;
-                    }
-                }
-            }
+        // Use the integrated risk assessment from CASS
+        let risk = CASS_ORCHESTRATOR.evaluate_risk(tool_name, args, &config.security);
+
+        match risk {
+            RiskLevel::Critical | RiskLevel::High => MldsaVariant::Mldsa87,
+            RiskLevel::Medium => MldsaVariant::Mldsa65,
+            RiskLevel::Low => MldsaVariant::Mldsa44,
         }
-
-        if environment_risk == "high"
-            || security_config
-                .high_risk_tools
-                .contains(&tool_name.to_string())
-            || is_sensitive_context
-        {
-            return MldsaVariant::Mldsa87;
-        }
-
-        if security_config
-            .medium_risk_tools
-            .contains(&tool_name.to_string())
-        {
-            return MldsaVariant::Mldsa65;
-        }
-
-        MldsaVariant::Mldsa44
     }
 }
 
