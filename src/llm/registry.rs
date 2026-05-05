@@ -1,3 +1,4 @@
+use crate::cli::ui;
 use crate::llm::base::LlmClient;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -42,7 +43,7 @@ impl ClientRegistry {
             .and_then(|f| match f(model, stdout, raw, config_manager) {
                 Ok(client) => Some(client),
                 Err(e) => {
-                    eprintln!("Error creating client '{}': {}", name, e);
+                    ui::report_error(&format!("Error creating client '{}': {}", name, e));
                     None
                 }
             })

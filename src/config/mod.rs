@@ -1,6 +1,7 @@
 pub mod init;
 pub mod models;
 
+use crate::cli::ui;
 use crate::config::models::{AppConfig, AppState};
 use crate::consts::{CONFIG_FILE_PATH, LLM_CLI_BASE_DIR, MODELS_CACHE_PATH, STATE_FILE_PATH};
 use std::collections::HashMap;
@@ -259,9 +260,10 @@ impl ConfigManager {
             {
                 match toml::from_str::<serde_json::Value>(&content) {
                     Ok(user_value) => merge_json(&mut config_value, user_value),
-                    Err(e) => {
-                        eprintln!("Warning: Failed to parse config file at {:?}: {}", path, e)
-                    }
+                    Err(e) => ui::report_warning(&format!(
+                        "Failed to parse config file at {:?}: {}",
+                        path, e
+                    )),
                 }
             }
         }

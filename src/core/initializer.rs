@@ -101,10 +101,12 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
             }
             Ok(false) => {
                 ui::report_warning("CRITICAL: SYSTEM INTEGRITY MISMATCH");
-                eprintln!(
-                    "The binary or configuration has changed since the last manifest update."
+                ui::report_warning(
+                    "The binary or configuration has changed since the last manifest update.",
                 );
-                eprintln!("(This occurs after 'cargo install' or manual configuration edits)");
+                ui::report_warning(
+                    "(This occurs after 'cargo install' or manual configuration edits)",
+                );
 
                 if is_atty
                     && ui::ask_confirm_async(

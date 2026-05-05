@@ -1,3 +1,4 @@
+use crate::cli::ui;
 use std::fs;
 
 use crate::consts::{CONFIG_DIR, CONFIG_FILE_PATH};
@@ -10,10 +11,10 @@ pub fn init_config() {
     }
 
     if let Err(e) = fs::create_dir_all(&*CONFIG_DIR) {
-        eprintln!(
-            "Error: Could not create config directory {:?}: {}",
+        ui::report_error(&format!(
+            "Could not create config directory {:?}: {}",
             *CONFIG_DIR, e
-        );
+        ));
         return;
     }
 
@@ -46,11 +47,11 @@ pub fn init_config() {
     }
 
     if let Err(e) = fs::write(&*CONFIG_FILE_PATH, commented_lines) {
-        eprintln!(
-            "Error: Could not write config file {:?}: {}",
+        ui::report_error(&format!(
+            "Could not write config file {:?}: {}",
             *CONFIG_FILE_PATH, e
-        );
+        ));
     } else {
-        eprintln!("Initialized config at {:?}", *CONFIG_FILE_PATH);
+        ui::report_success(&format!("Initialized config at {:?}", *CONFIG_FILE_PATH));
     }
 }
