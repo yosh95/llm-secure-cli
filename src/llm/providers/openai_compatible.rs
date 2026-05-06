@@ -185,6 +185,7 @@ impl OpenAiCompatibleClient {
     pub fn build_messages(&self, data: &[DataSource]) -> Vec<Value> {
         let mut messages = Vec::new();
 
+        // 1. Mandatory System Prompt (with Date)
         if let Some(sp) = self.base.state.get_effective_system_prompt() {
             messages.push(json!({"role": "system", "content": sp}));
         }
@@ -195,10 +196,15 @@ impl OpenAiCompatibleClient {
         for m in &self.base.state.conversation {
             match m.role {
                 Role::System => {
-                    processed_messages.push(json!({
-                        "role": "system",
-                        "content": m.get_text(true)
-                    }));
+                    // Skip if prompt is empty or if we want to avoid duplicate system messages.
+                    // The primary system prompt is already injected above.
+                    let text = m.get_text(true);
+                    if !text.is_empty() {
+                        processed_messages.push(json!({
+                            "role": "system",
+                            "content": text
+                        }));
+                    }
                 }
                 Role::Tool => {
                     for part in &m.parts {
@@ -329,7 +335,8 @@ impl OpenAiCompatibleClient {
             processed_messages.push(json!({"role": "user", "content": if current_parts.len() == 1 && current_parts[0]["type"] == "text" { current_parts[0]["text"].clone() } else { Value::Array(current_parts) }}));
         }
 
-        processed_messages
+        messages.extend(processed_messages);
+        messages
     }
 }
 
