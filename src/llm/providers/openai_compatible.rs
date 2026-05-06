@@ -189,10 +189,13 @@ impl OpenAiCompatibleClient {
             messages.push(json!({"role": "system", "content": sp}));
         }
 
+        let mut processed_messages = Vec::new();
+        let mut last_assistant_tool_ids = std::collections::HashSet::new();
+
         for m in &self.base.state.conversation {
             match m.role {
                 Role::System => {
-                    messages.push(json!({
+                    processed_messages.push(json!({
                         "role": "system",
                         "content": m.get_text(true)
                     }));
@@ -202,12 +205,30 @@ impl OpenAiCompatibleClient {
                         if let MessagePart::Part(cp) = part
                             && let Some(fr) = &cp.function_response
                         {
-                            messages.push(json!({
-                                "role": "tool",
-                                "tool_call_id": fr.get("id").and_then(|v| v.as_str()).unwrap_or(""),
-                                "name": fr.get("name").and_then(|v| v.as_str()).unwrap_or(""),
-                                "content": fr.get("response").cloned().unwrap_or(json!("")).to_string()
-                            }));
+                            let content = match fr.get("response") {
+                                Some(Value::String(s)) => s.clone(),
+                                Some(v) => v.to_string(),
+                                None => "".to_string(),
+                            };
+                            let id = fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
+
+                            // Validation for Google/Anthropic backends:
+                            // If the ID is empty or wasn't requested in the immediate previous Assistant message,
+                            // sending it as Role::Tool will cause a 400 error.
+                            // Fallback to Role::User text to preserve context without breaking the API.
+                            if id.is_empty() || !last_assistant_tool_ids.contains(id) {
+                                processed_messages.push(json!({
+                                    "role": "user",
+                                    "content": format!("Tool Output ({}): {}", fr.get("name").and_then(|v| v.as_str()).unwrap_or("unknown"), content)
+                                }));
+                            } else {
+                                processed_messages.push(json!({
+                                    "role": "tool",
+                                    "tool_call_id": id,
+                                    "name": fr.get("name").and_then(|v| v.as_str()).unwrap_or("tool"),
+                                    "content": content
+                                }));
+                            }
                         }
                     }
                 }
@@ -220,6 +241,10 @@ impl OpenAiCompatibleClient {
                     let mut parts = Vec::new();
                     let mut tool_calls = Vec::new();
 
+                    if role == "assistant" {
+                        last_assistant_tool_ids.clear();
+                    }
+
                     for part in &m.parts {
                         match part {
                             MessagePart::Text(t) => parts.push(self.formatter.format_text(t)),
@@ -228,8 +253,13 @@ impl OpenAiCompatibleClient {
                                     parts.push(self.formatter.format_text(t));
                                 }
                                 if let Some(fc) = &cp.function_call {
+                                    let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                    if role == "assistant" && !id.is_empty() {
+                                        last_assistant_tool_ids.insert(id.to_string());
+                                    }
+
                                     tool_calls.push(json!({
-                                        "id": fc.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                                        "id": id,
                                         "type": "function",
                                         "function": {
                                             "name": fc.get("name").and_then(|v| v.as_str()).unwrap_or(""),
@@ -261,7 +291,7 @@ impl OpenAiCompatibleClient {
                     if !tool_calls.is_empty() {
                         msg["tool_calls"] = Value::Array(tool_calls);
                     }
-                    messages.push(msg);
+                    processed_messages.push(msg);
                 }
             }
         }
@@ -286,10 +316,10 @@ impl OpenAiCompatibleClient {
             }
         }
         if !current_parts.is_empty() {
-            messages.push(json!({"role": "user", "content": if current_parts.len() == 1 && current_parts[0]["type"] == "text" { current_parts[0]["text"].clone() } else { Value::Array(current_parts) }}));
+            processed_messages.push(json!({"role": "user", "content": if current_parts.len() == 1 && current_parts[0]["type"] == "text" { current_parts[0]["text"].clone() } else { Value::Array(current_parts) }}));
         }
 
-        messages
+        processed_messages
     }
 }
 
