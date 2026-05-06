@@ -38,10 +38,6 @@ struct Args {
     /// Load a saved session JSON file on startup
     #[clap(long)]
     session: Option<String>,
-
-    /// Enable debug logging
-    #[clap(long)]
-    debug: bool,
 }
 
 #[derive(Subcommand)]
@@ -101,13 +97,8 @@ async fn main() {
     let args = Args::parse();
 
     // Initialize logging
-    let filter = if args.debug {
-        tracing_subscriber::EnvFilter::new("debug")
-    } else {
-        tracing_subscriber::EnvFilter::from_default_env()
-    };
     tracing_subscriber::fmt()
-        .with_env_filter(filter)
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_writer(std::io::stderr)
         .init();
 
