@@ -50,17 +50,17 @@ impl LlmClient for MockProcessorClient {
 
             // If it's a tool call, we need to populate LlmResponse properly
             for part in p {
-                if let MessagePart::Part(cp) = part {
-                    if let Some(fc) = cp.function_call {
-                        return Ok(llm_secure_cli::llm::models::LlmResponse {
-                            content: text,
-                            tool_name: fc
-                                .get("name")
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_string()),
-                            tool_args: fc.get("arguments").map(|v| v.to_string()),
-                        });
-                    }
+                if let MessagePart::Part(cp) = part
+                    && let Some(fc) = cp.function_call
+                {
+                    return Ok(llm_secure_cli::llm::models::LlmResponse {
+                        content: text,
+                        tool_name: fc
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
+                        tool_args: fc.get("arguments").map(|v| v.to_string()),
+                    });
                 }
             }
         } else if let Some(t) = &text {

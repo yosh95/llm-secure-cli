@@ -313,11 +313,19 @@ impl OpenAiCompatibleClient {
 
                     let mut msg = json!({
                         "role": role,
-                        "content": content_value
+                        "content": content_value,
                     });
 
                     if !tool_calls.is_empty() {
                         msg["tool_calls"] = Value::Array(tool_calls);
+                        // Some providers (like Amazon Bedrock via OpenRouter/Nova) fail if 'content' is an empty string
+                        // when 'tool_calls' is present.
+                        if role == "assistant"
+                            && (content_value == Value::String("".to_string())
+                                || content_value == Value::Array(vec![]))
+                            && let Some(obj) = msg.as_object_mut() {
+                                obj.remove("content");
+                            }
                     }
                     processed_messages.push(msg);
                 }

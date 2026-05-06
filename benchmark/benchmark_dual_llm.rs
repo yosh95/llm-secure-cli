@@ -67,16 +67,11 @@ async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
         eprintln!(
-            "Usage: cargo bench --bench {} -- <provider> <model> [json_path]",
-            "benchmark_dual_llm"
+            "Usage: cargo bench --bench benchmark_dual_llm -- <provider> <model> [json_path]"
         );
+        eprintln!("Example: cargo bench --bench benchmark_dual_llm -- ollama llama3");
         eprintln!(
-            "Example: cargo bench --bench {} -- ollama llama3",
-            "benchmark_dual_llm"
-        );
-        eprintln!(
-            "Example: cargo bench --bench {} -- openrouter anthropic/claude-3-haiku",
-            "benchmark_dual_llm"
+            "Example: cargo bench --bench benchmark_dual_llm -- openrouter anthropic/claude-3-haiku"
         );
         std::process::exit(1);
     }
