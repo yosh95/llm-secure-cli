@@ -94,6 +94,13 @@ pub struct AppState {
     pub last_used_model: Option<String>,
     pub last_used_v_provider: Option<String>,
     pub last_used_v_model: Option<String>,
+    #[serde(default)]
+    pub model_aliases: HashMap<String, ModelAlias>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ModelAlias {
+    pub target: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

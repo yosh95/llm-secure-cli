@@ -89,6 +89,27 @@ impl ConfigManager {
         Ok(())
     }
 
+    pub fn set_alias(&self, alias: &str, target: &str) -> anyhow::Result<()> {
+        let mut state = self.get_state()?;
+        state.model_aliases.insert(
+            alias.to_string(),
+            crate::config::models::ModelAlias {
+                target: target.to_string(),
+            },
+        );
+
+        let mut write = self
+            .app_state
+            .write()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+        *write = Some(state.clone());
+
+        if let Ok(content) = toml::to_string(&state) {
+            let _ = fs::write(&*STATE_FILE_PATH, content);
+        }
+        Ok(())
+    }
+
     pub async fn get_cached_models(&self) -> HashMap<String, Vec<String>> {
         if !MODELS_CACHE_PATH.exists() {
             return self.update_models_cache().await;

@@ -104,7 +104,7 @@ impl Completer for ChatCompleter {
                         return Ok((start, matches));
                     }
                     "/model" | "/m" | "/models" | "/vmodel" | "/vm" => {
-                        let provider = if let Ok(guard) = self.current_provider.lock() {
+                        let current_p = if let Ok(guard) = self.current_provider.lock() {
                             guard.clone()
                         } else {
                             String::new()
@@ -112,18 +112,44 @@ impl Completer for ChatCompleter {
                         let models_map = self.ctx.config_manager.get_cached_models_sync();
                         let mut matches = Vec::new();
 
-                        if let Some(models) = models_map.get(&provider) {
-                            for model in models {
-                                if model.starts_with(arg_prefix) {
+                        // Add aliases to completions
+                        if let Ok(state) = self.ctx.config_manager.get_state() {
+                            for alias in state.model_aliases.keys() {
+                                if alias.starts_with(arg_prefix) {
                                     matches.push(Pair {
-                                        display: model.clone(),
-                                        replacement: model.clone(),
+                                        display: format!("{} (alias)", alias),
+                                        replacement: alias.clone(),
                                     });
                                 }
                             }
+                        }
+
+                        // If user has typed "provider/", suggest models for that provider
+                        if let Some((p_prefix, m_prefix)) = arg_prefix.split_once('/') {
+                            if let Some(models) = models_map.get(p_prefix) {
+                                for model in models {
+                                    if model.starts_with(m_prefix) {
+                                        matches.push(Pair {
+                                            display: format!("{}/{}", p_prefix, model),
+                                            replacement: format!("{}/{}", p_prefix, model),
+                                        });
+                                    }
+                                }
+                            }
                         } else {
-                            // Fallback to all models if provider not found
-                            for models in models_map.values() {
+                            // Suggest "provider/" for all active providers
+                            let providers = self.ctx.config_manager.get_active_providers();
+                            for p in providers {
+                                if p.starts_with(arg_prefix) {
+                                    matches.push(Pair {
+                                        display: format!("{}/", p),
+                                        replacement: format!("{}/", p),
+                                    });
+                                }
+                            }
+
+                            // Also suggest models for the current provider (without prefix)
+                            if let Some(models) = models_map.get(&current_p) {
                                 for model in models {
                                     if model.starts_with(arg_prefix) {
                                         matches.push(Pair {
@@ -134,6 +160,7 @@ impl Completer for ChatCompleter {
                                 }
                             }
                         }
+
                         matches.sort_by(|a, b| a.display.cmp(&b.display));
                         matches.dedup_by(|a, b| a.display == b.display);
                         return Ok((start, matches));

@@ -488,33 +488,103 @@ pub async fn handle_model_cmd(session: &mut ChatSession, args: &str) {
                     println!("    {}", model);
                 }
             }
-            ui::print_rule(None, Some("cyan"));
         } else {
             println!(
                 "  No models cached for {}. Try running the provider to fetch models.",
                 provider
             );
         }
+
+        let state = match session.ctx.config_manager.get_state() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        if !state.model_aliases.is_empty() {
+            ui::print_rule(Some("Aliases"), Some("magenta"));
+            let mut aliases: Vec<_> = state.model_aliases.keys().collect();
+            aliases.sort();
+            for alias in aliases {
+                let am = &state.model_aliases[alias];
+                println!("  {} -> {}", alias.bold().magenta(), am.target);
+            }
+        }
+        ui::print_rule(None, Some("cyan"));
     } else {
+        let parts: Vec<&str> = args.split_whitespace().collect();
+        if parts.first() == Some(&"alias") {
+            if parts.len() < 2 {
+                ui::report_error("Usage: /m alias <name>");
+                return;
+            }
+            let alias_name = parts[1];
+            let target = format!("{}/{}", provider, current_model);
+            if let Err(e) = session.ctx.config_manager.set_alias(alias_name, &target) {
+                ui::report_error(&format!("Failed to set alias: {}", e));
+            } else {
+                ui::report_success(&format!("Alias '{}' set to {}", alias_name, target));
+            }
+            return;
+        }
+
+        let resolved_args = {
+            let state = match session.ctx.config_manager.get_state() {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            state
+                .model_aliases
+                .get(args)
+                .map(|a| a.target.clone())
+                .unwrap_or_else(|| args.to_string())
+        };
+
+        let (target_provider, target_model) = {
+            let providers = session.ctx.config_manager.get_active_providers();
+            let mut found = None;
+
+            for p in &providers {
+                let prefix = format!("{}/", p);
+                if resolved_args.starts_with(&prefix) {
+                    let model_part = &resolved_args[prefix.len()..];
+                    found = Some((p.clone(), model_part.to_string()));
+                    break;
+                }
+            }
+
+            if let Some(res) = found {
+                res
+            } else if let Some((p, m)) = resolved_args.split_once('/') {
+                (p.to_string(), m.to_string())
+            } else {
+                (provider.clone(), resolved_args)
+            }
+        };
+
         let client = {
             let registry = session.ctx.client_registry.lock().await;
-            registry.create_client(&provider, args, stdout, raw, &session.ctx.config_manager)
+            registry.create_client(
+                &target_provider,
+                &target_model,
+                stdout,
+                raw,
+                &session.ctx.config_manager,
+            )
         };
 
         match client {
             Some(new_client) => {
                 session.switch_client(new_client);
-                let _ = session.ctx.config_manager.update_state(&provider, args);
+                let _ = session
+                    .ctx
+                    .config_manager
+                    .update_state(&target_provider, &target_model);
                 ui::report_success(&format!(
-                    "Model switched to: {}",
-                    match session.get_client() {
-                        Ok(c) => c.get_state().model.clone(),
-                        Err(_) => "unknown".to_string(),
-                    }
+                    "Model switched to: {} ({})",
+                    target_model, target_provider
                 ));
             }
             _ => {
-                ui::report_error(&format!("Failed to switch model to: {}", args));
+                ui::report_error(&format!("Failed to switch model to: {}", target_model));
             }
         }
     }
@@ -658,13 +728,54 @@ pub async fn handle_vmodel_cmd(session: &mut ChatSession, args: &str) {
             );
         }
     } else {
-        config.security.dual_llm_model = args.to_string();
-        let provider = config.security.dual_llm_provider.clone();
+        let resolved_args = {
+            let state = match session.ctx.config_manager.get_state() {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            state
+                .model_aliases
+                .get(args)
+                .map(|a| a.target.clone())
+                .unwrap_or_else(|| args.to_string())
+        };
+
+        let (target_provider, target_model) = {
+            let providers = session.ctx.config_manager.get_active_providers();
+            let mut found = None;
+
+            for p in &providers {
+                let prefix = format!("{}/", p);
+                if resolved_args.starts_with(&prefix) {
+                    let model_part = &resolved_args[prefix.len()..];
+                    found = Some((p.clone(), model_part.to_string()));
+                    break;
+                }
+            }
+
+            if let Some(res) = found {
+                res
+            } else if let Some((p, m)) = resolved_args.split_once('/') {
+                (p.to_string(), m.to_string())
+            } else {
+                (config.security.dual_llm_provider.clone(), resolved_args)
+            }
+        };
+
+        config.security.dual_llm_provider = target_provider.clone();
+        config.security.dual_llm_model = target_model.clone();
+
         if let Err(e) = session.ctx.config_manager.set_config(config) {
             ui::report_error(&format!("Failed to update validator model: {}", e));
         } else {
-            let _ = session.ctx.config_manager.update_v_state(&provider, args);
-            ui::report_success(&format!("Validator model switched to: {}", args));
+            let _ = session
+                .ctx
+                .config_manager
+                .update_v_state(&target_provider, &target_model);
+            ui::report_success(&format!(
+                "Validator model switched to: {} ({})",
+                target_model, target_provider
+            ));
         }
     }
 }
@@ -730,7 +841,7 @@ pub fn print_help() {
     println!("  /load <path>    Load conversation history from JSON file");
     println!("  /attach <path>  Attach a file or URL to the next message");
     println!("  /tools [on|off] Show or toggle tool status");
-    println!("  /model, /m      Switch models");
+    println!("  /model, /m [<name>|alias <name>] Switch models or set alias");
     println!("  /provider, /p   Switch provider");
     println!("  /vmodel, /vm    Switch validator model");
     println!("  /vprovider, /vp Switch validator provider");
