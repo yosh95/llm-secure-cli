@@ -212,20 +212,27 @@ impl OpenAiCompatibleClient {
                             };
                             let id = fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
 
-                            // Validation for Google/Anthropic backends:
-                            // If the ID is empty or wasn't requested in the immediate previous Assistant message,
-                            // sending it as Role::Tool will cause a 400 error.
-                            // Fallback to Role::User text to preserve context without breaking the API.
+                            // Validation for Strict Backends (Amazon Bedrock, Anthropic, Google Vertex):
+                            // 1. Each 'tool' message must be preceded by an 'assistant' message containing the 'tool_calls'.
+                            // 2. The IDs must match exactly.
+                            // 3. If the model or provider has switched, previous tool_use_ids are often invalid.
+
+                            let tool_name =
+                                fr.get("name").and_then(|v| v.as_str()).unwrap_or("tool");
+
                             if id.is_empty() || !last_assistant_tool_ids.contains(id) {
+                                // If the ID is missing or was not in the immediate previous message,
+                                // sending it as Role::Tool will cause a 400 error on strict providers.
+                                // Fallback to Role::User text to preserve history context.
                                 processed_messages.push(json!({
                                     "role": "user",
-                                    "content": format!("Tool Output ({}): {}", fr.get("name").and_then(|v| v.as_str()).unwrap_or("unknown"), content)
+                                    "content": format!("Tool Result ({}): {}", tool_name, content)
                                 }));
                             } else {
                                 processed_messages.push(json!({
                                     "role": "tool",
                                     "tool_call_id": id,
-                                    "name": fr.get("name").and_then(|v| v.as_str()).unwrap_or("tool"),
+                                    "name": tool_name,
                                     "content": content
                                 }));
                             }
@@ -241,6 +248,9 @@ impl OpenAiCompatibleClient {
                     let mut parts = Vec::new();
                     let mut tool_calls = Vec::new();
 
+                    // Every time we see an assistant message, we update the valid tool IDs.
+                    // If this is a user message, we DON'T clear them yet because the next
+                    // message might be the tool result corresponding to the previous assistant message.
                     if role == "assistant" {
                         last_assistant_tool_ids.clear();
                     }
