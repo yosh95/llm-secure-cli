@@ -185,8 +185,7 @@ pub fn handle_info(session: &ChatSession) {
 
     ui::print_rule(Some("Session Info"), Some("cyan"));
     ui::print_key_value("Session ID", &session.trace_id);
-    ui::print_key_value("Provider", &state.provider);
-    ui::print_key_value("Model", &state.model);
+    ui::print_key_value("Model", &format!("{} ({})", state.provider, state.model));
 
     // Validator Info
     let v_enabled = config.security.dual_llm_verification.unwrap_or(false);

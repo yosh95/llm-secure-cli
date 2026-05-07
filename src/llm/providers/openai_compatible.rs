@@ -323,9 +323,10 @@ impl OpenAiCompatibleClient {
                         if role == "assistant"
                             && (content_value == Value::String("".to_string())
                                 || content_value == Value::Array(vec![]))
-                            && let Some(obj) = msg.as_object_mut() {
-                                obj.remove("content");
-                            }
+                            && let Some(obj) = msg.as_object_mut()
+                        {
+                            obj.remove("content");
+                        }
                     }
                     processed_messages.push(msg);
                 }

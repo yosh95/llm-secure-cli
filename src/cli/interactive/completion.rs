@@ -104,11 +104,6 @@ impl Completer for ChatCompleter {
                         return Ok((start, matches));
                     }
                     "/model" | "/m" | "/models" | "/vmodel" | "/vm" => {
-                        let current_p = if let Ok(guard) = self.current_provider.lock() {
-                            guard.clone()
-                        } else {
-                            String::new()
-                        };
                         let models_map = self.ctx.config_manager.get_cached_models_sync();
                         let mut matches = Vec::new();
 
@@ -145,18 +140,6 @@ impl Completer for ChatCompleter {
                                         display: format!("{}/", p),
                                         replacement: format!("{}/", p),
                                     });
-                                }
-                            }
-
-                            // Also suggest models for the current provider (without prefix)
-                            if let Some(models) = models_map.get(&current_p) {
-                                for model in models {
-                                    if model.starts_with(arg_prefix) {
-                                        matches.push(Pair {
-                                            display: model.clone(),
-                                            replacement: model.clone(),
-                                        });
-                                    }
                                 }
                             }
                         }
