@@ -181,9 +181,8 @@ impl ChatSession {
                         .unwrap_or_default();
                     let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
 
-                    ui::print_tool_call(name, &serde_json::json!(args));
-
-                    let result_value = self.verify_and_execute_tool_workflow(name, &args).await?;
+                    let (result_value, _approved) =
+                        self.verify_and_execute_tool_workflow(name, &args).await?;
 
                     let mut fr = HashMap::new();
                     fr.insert("id".to_string(), serde_json::json!(id));
@@ -206,13 +205,13 @@ impl ChatSession {
         &mut self,
         name: &str,
         args: &serde_json::Map<String, Value>,
-    ) -> anyhow::Result<Value> {
+    ) -> anyhow::Result<(Value, bool)> {
         let config = self.ctx.config_manager.get_config()?;
 
         // 1. Phase 1: Static Checks (Path, Syntax)
         if let Err(e) = crate::security::validate_tool_call(name, args, &config.security) {
             ui::report_error(&e);
-            return Ok(Value::String(e));
+            return Ok((Value::String(e), false));
         }
 
         // 2. Phase 2 & Human-in-the-loop preparation
@@ -222,6 +221,10 @@ impl ChatSession {
             &config.security,
         );
         let approved = self.is_auto_approved(name, risk_level);
+
+        if !approved {
+            ui::print_tool_call(name, &serde_json::json!(args));
+        }
 
         // Start Dual LLM Verifier background task if enabled
         let mut verifier_handle = None;
@@ -240,7 +243,7 @@ impl ChatSession {
             if let Some(h) = verifier_handle {
                 h.abort();
             }
-            return self.handle_rejection_feedback();
+            return self.handle_rejection_feedback().map(|v| (v, false));
         }
 
         // 3. Resolve Dual LLM Verification
@@ -253,22 +256,24 @@ impl ChatSession {
                 VerificationOutcome::Rejected(reason) => {
                     let msg = format!("Security Policy Violation: {}", reason);
                     ui::report_error(&msg);
-                    return Ok(Value::String(msg));
+                    return Ok((Value::String(msg), false));
                 }
                 VerificationOutcome::FallbackRequired(reason) => {
                     if !self.handle_verifier_fallback(name, &reason).await {
-                        return Ok(Value::String(format!(
-                            "Blocked (Verifier Unavailable): {}",
-                            reason
-                        )));
+                        return Ok((
+                            Value::String(format!("Blocked (Verifier Unavailable): {}", reason)),
+                            false,
+                        ));
                     }
                 }
             }
         }
 
         // 4. Execution & Audit
-        let result = self.execute_and_audit_tool(name, args, risk_level).await;
-        Ok(result)
+        let result = self
+            .execute_and_audit_tool(name, args, risk_level, approved)
+            .await;
+        Ok((result, approved))
     }
 
     /// Spawns the Dual LLM Verification task.
@@ -327,6 +332,7 @@ impl ChatSession {
         name: &str,
         args: &serde_json::Map<String, Value>,
         _risk_level: RiskLevel,
+        approved: bool,
     ) -> Value {
         let config = match self.ctx.config_manager.get_config() {
             Ok(c) => c,
@@ -356,6 +362,7 @@ impl ChatSession {
             "user_id": user_id
         });
 
+        let mut is_error = false;
         let mut final_v = match result {
             Ok(v) => {
                 if let Some(entry) = crate::security::audit::log_audit_and_return(
@@ -376,6 +383,7 @@ impl ChatSession {
                 v
             }
             Err(e) => {
+                is_error = true;
                 let err_msg = e.to_string();
                 if let Some(entry) = crate::security::audit::log_audit_and_return(
                     crate::security::audit::AuditParams {
@@ -397,7 +405,9 @@ impl ChatSession {
         };
 
         crate::tools::executor_utils::truncate_json_strings(&mut final_v);
-        ui::print_tool_result(final_v.as_str().unwrap_or(&final_v.to_string()));
+        if !approved || is_error {
+            ui::print_tool_result(final_v.as_str().unwrap_or(&final_v.to_string()));
+        }
 
         // Convert to human-readable string for the LLM
         let human_result = crate::tools::executor_utils::humanize_tool_result(name, &final_v);
