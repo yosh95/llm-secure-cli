@@ -76,8 +76,17 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    let target_provider = &args[1];
-    let target_model = &args[2];
+    let (target_provider, target_model) = match (args.get(1), args.get(2)) {
+        (Some(p), Some(m)) => (p, m),
+        _ => {
+            eprintln!("{}: Missing arguments.", "Error".red().bold());
+            eprintln!(
+                "Usage: cargo bench --bench benchmark_dual_llm -- <provider> <model> [json_path]"
+            );
+            std::process::exit(1);
+        }
+    };
+
     let json_path = args
         .get(3)
         .map(|s| s.as_str())

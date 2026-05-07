@@ -222,9 +222,7 @@ impl ChatSession {
         );
         let approved = self.is_auto_approved(name, risk_level);
 
-        if !approved {
-            ui::print_tool_call(name, &serde_json::json!(args));
-        }
+        ui::print_tool_call(name, &serde_json::json!(args));
 
         // Start Dual LLM Verifier background task if enabled
         let mut verifier_handle = None;
@@ -405,6 +403,9 @@ impl ChatSession {
         };
 
         crate::tools::executor_utils::truncate_json_strings(&mut final_v);
+        // Display result if it was not auto-approved OR if an error occurred.
+        // This ensures that auto-approved successful calls don't clutter the UI with output (like stdout),
+        // but failures are always shown. The tool call itself is always printed above.
         if !approved || is_error {
             ui::print_tool_result(final_v.as_str().unwrap_or(&final_v.to_string()));
         }
