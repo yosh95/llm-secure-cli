@@ -1,6 +1,7 @@
 use colored::*;
 use serde_json::Value;
 
+#[derive(Clone)]
 pub struct ToolResultStats {
     pub byte_count: usize,
     pub line_count: usize,
@@ -61,12 +62,11 @@ pub fn get_tool_result_stats(result: &Value) -> ToolResultStats {
 }
 
 pub fn print_tool_stats(stats: &ToolResultStats) {
-    let mut parts = vec![
-        format!("{} bytes", stats.byte_count),
-        format!("{} lines", stats.line_count),
-    ];
+    let mut parts = vec![format!("  {} bytes", stats.byte_count)];
     if let Some(fc) = stats.file_count {
         parts.push(format!("{} files", fc));
+    } else {
+        parts.push(format!("{} lines", stats.line_count));
     }
 
     println!("{}", parts.join(" / ").bright_black());

@@ -109,6 +109,16 @@ impl ActiveSession {
         rl.bind_sequence(KeyEvent(KeyCode::Up, Modifiers::CTRL), Cmd::PreviousHistory);
         rl.bind_sequence(KeyEvent(KeyCode::Down, Modifiers::CTRL), Cmd::NextHistory);
 
+        // Quick navigation: Ctrl + Home/End for navigating long prompts
+        rl.bind_sequence(
+            KeyEvent(KeyCode::Home, Modifiers::CTRL),
+            Cmd::Move(rustyline::Movement::BeginningOfBuffer),
+        );
+        rl.bind_sequence(
+            KeyEvent(KeyCode::End, Modifiers::CTRL),
+            Cmd::Move(rustyline::Movement::EndOfBuffer),
+        );
+
         if let Some(parent) = HISTORY_LOG_PATH.parent() {
             let _ = std::fs::create_dir_all(parent);
         }

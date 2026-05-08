@@ -403,7 +403,11 @@ impl ActiveSession {
         // but failures are always shown. The tool call itself is always printed above.
         if !approved || is_error {
             ui::print_tool_result(final_v.as_str().unwrap_or(&final_v.to_string()));
-            crate::cli::stats::print_tool_stats(&stats);
+
+            // If we already printed common tool result UI, we don't want to re-print stderr in stats
+            let mut quiet_stats = stats.clone();
+            quiet_stats.stderr = None;
+            crate::cli::stats::print_tool_stats(&quiet_stats);
         } else {
             // Even if auto-approved, we show stats and stderr if present
             crate::cli::stats::print_tool_stats(&stats);
