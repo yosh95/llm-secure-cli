@@ -589,7 +589,7 @@ pub async fn handle_summarize(session: &mut ActiveSession) {
 
     ui::report_info("Summarizing conversation and clearing history...");
 
-    let summary_prompt = "これまで話してきた内容の要点を簡潔なサマリー（要約）にまとめてください。この要約は今後の会話のコンテキストとして使用します。";
+    let summary_prompt = "Please provide a concise summary of the conversation so far. This summary will be used as context for future interactions. IMPORTANT: The summary must be written in the same language as the conversation (e.g., if the user is speaking Japanese, summarize in Japanese).";
 
     // Prepare data source for summarization
     let data = vec![DataSource {
@@ -604,24 +604,25 @@ pub async fn handle_summarize(session: &mut ActiveSession) {
         Ok(response) => {
             let summary_text = response.content.clone().unwrap_or_default();
 
-            // Reconstruct history with system prompt (if exists) + summary
+            // Reconstruct history with summary
             let mut new_conversation = Vec::new();
 
-            // Keep existing system prompts
-            for msg in &session.get_client().get_state().conversation {
-                if msg.role == Role::System {
-                    new_conversation.push(msg.clone());
-                }
-            }
-
-            // Add the summary as a system message or a special assistant message
-            // Here we add it as a system message to preserve context efficiently
+            // Add the summary as a historical context rather than a system message
+            // to avoid clashing with the dynamic system prompt (which includes the date).
             new_conversation.push(Message {
-                role: Role::System,
+                role: Role::User,
                 parts: vec![MessagePart::Text(format!(
-                    "Summary of previous conversation:\n{}",
+                    "Summary of our previous conversation for context:\n{}",
                     summary_text
                 ))],
+            });
+
+            new_conversation.push(Message {
+                role: Role::Assistant,
+                parts: vec![MessagePart::Text(
+                    "I have acknowledged the summary and will use it as context for our continued conversation."
+                        .to_string(),
+                )],
             });
 
             session.get_client_mut().get_state_mut().conversation = new_conversation;
