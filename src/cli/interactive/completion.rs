@@ -106,6 +106,11 @@ impl Completer for ChatCompleter {
                     "/model" | "/m" | "/models" | "/vmodel" | "/vm" => {
                         let models_map = self.ctx.config_manager.get_cached_models_sync();
                         let mut matches = Vec::new();
+                        let current_p = self
+                            .current_provider
+                            .lock()
+                            .expect("mutex lock failed")
+                            .clone();
 
                         // Add aliases to completions
                         if let Ok(state) = self.ctx.config_manager.get_state() {
@@ -119,7 +124,19 @@ impl Completer for ChatCompleter {
                             }
                         }
 
-                        // If user has typed "provider/", suggest models for that provider
+                        // Suggest models for the CURRENT provider directly
+                        if let Some(models) = models_map.get(&current_p) {
+                            for model in models {
+                                if model.starts_with(arg_prefix) {
+                                    matches.push(Pair {
+                                        display: model.clone(),
+                                        replacement: model.clone(),
+                                    });
+                                }
+                            }
+                        }
+
+                        // If user has typed "provider/", suggest models for that provider (keep for flexibility)
                         if let Some((p_prefix, m_prefix)) = arg_prefix.split_once('/') {
                             if let Some(models) = models_map.get(p_prefix) {
                                 for model in models {
@@ -132,10 +149,10 @@ impl Completer for ChatCompleter {
                                 }
                             }
                         } else {
-                            // Suggest "provider/" for all active providers
+                            // Suggest "provider/" for all active providers if it's not the current one
                             let providers = self.ctx.config_manager.get_active_providers();
                             for p in providers {
-                                if p.starts_with(arg_prefix) {
+                                if p != current_p && p.starts_with(arg_prefix) {
                                     matches.push(Pair {
                                         display: format!("{}/", p),
                                         replacement: format!("{}/", p),

@@ -33,6 +33,7 @@ impl LlmClient for MockLlmClient {
             content: Some(self.response.clone()),
             tool_name: None,
             tool_args: None,
+            ..Default::default()
         })
     }
 

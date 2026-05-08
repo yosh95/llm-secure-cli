@@ -319,13 +319,17 @@ impl OpenAiCompatibleClient {
                     if !tool_calls.is_empty() {
                         msg["tool_calls"] = Value::Array(tool_calls);
                         // Some providers (like Amazon Bedrock via OpenRouter/Nova) fail if 'content' is an empty string
-                        // when 'tool_calls' is present.
+                        // when 'tool_calls' is present. Others like Arcee AI require it to be present.
                         if role == "assistant"
                             && (content_value == Value::String("".to_string())
                                 || content_value == Value::Array(vec![]))
-                            && let Some(obj) = msg.as_object_mut()
                         {
-                            obj.remove("content");
+                            let model_lower = self.base.state.model.to_lowercase();
+                            if model_lower.contains("nova")
+                                && let Some(obj) = msg.as_object_mut()
+                            {
+                                obj.remove("content");
+                            }
                         }
                     }
                     processed_messages.push(msg);
@@ -436,6 +440,10 @@ impl LlmClient for OpenAiCompatibleClient {
         let msg = &choice["message"];
         let text = msg["content"].as_str().map(|s| s.to_string());
 
+        let usage = resp_json
+            .get("usage")
+            .and_then(|u| serde_json::from_value::<crate::llm::models::Usage>(u.clone()).ok());
+
         let mut message_parts = Vec::new();
         if let Some(t) = &text {
             message_parts.push(MessagePart::Text(t.clone()));
@@ -468,6 +476,7 @@ impl LlmClient for OpenAiCompatibleClient {
             content: text,
             tool_name: None,
             tool_args: redirect_msg,
+            usage,
         })
     }
 

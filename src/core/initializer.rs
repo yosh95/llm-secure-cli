@@ -11,12 +11,32 @@ pub async fn switch_model(
     stdout: bool,
     render_markdown: bool,
 ) -> anyhow::Result<()> {
-    let provider = session.client.get_state().provider.clone();
+    // 1. Resolve alias if it exists
+    let (target_model, target_provider) = {
+        let state = session.ctx.config_manager.get_state()?;
+        if let Some(alias) = state.model_aliases.get(model) {
+            // Alias target is usually "model" or "provider:model"
+            if let Some((p, m)) = alias.target.split_once(':') {
+                (m.to_string(), p.to_string())
+            } else {
+                (
+                    alias.target.clone(),
+                    session.client.get_state().provider.clone(),
+                )
+            }
+        } else {
+            (
+                model.to_string(),
+                session.client.get_state().provider.clone(),
+            )
+        }
+    };
+
     let client = {
         let registry = session.ctx.client_registry.lock().await;
         registry.create_client(
-            &provider,
-            model,
+            &target_provider,
+            &target_model,
             stdout,
             !render_markdown,
             &session.ctx.config_manager,
@@ -25,10 +45,13 @@ pub async fn switch_model(
 
     if let Some(new_client) = client {
         session.switch_client(new_client);
-        let _ = session.ctx.config_manager.update_state(&provider, model);
+        let _ = session
+            .ctx
+            .config_manager
+            .update_state(&target_provider, &target_model);
         Ok(())
     } else {
-        anyhow::bail!("Failed to create client for model: {}", model)
+        anyhow::bail!("Failed to create client for model: {}", target_model)
     }
 }
 

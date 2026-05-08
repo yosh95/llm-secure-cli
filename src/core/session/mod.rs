@@ -21,6 +21,7 @@ pub struct ActiveSession {
     pub pending_data: Vec<DataSource>,
     pub trace_id: String,
     pub audit_entries: Vec<AuditEntry>,
+    pub total_usage: crate::llm::models::Usage,
 }
 
 /// A session that has been closed or failed to initialize.
@@ -59,6 +60,7 @@ impl ActiveSession {
             pending_data: Vec::new(),
             trace_id,
             audit_entries: entry.into_iter().collect(),
+            total_usage: crate::llm::models::Usage::default(),
         })
     }
 

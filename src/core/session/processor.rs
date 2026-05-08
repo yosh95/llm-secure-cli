@@ -71,6 +71,17 @@ impl ActiveSession {
 
         println!("done");
 
+        if let Some(usage) = &result.usage {
+            self.total_usage.prompt_tokens += usage.prompt_tokens;
+            self.total_usage.completion_tokens += usage.completion_tokens;
+            self.total_usage.total_tokens += usage.total_tokens;
+
+            ui::report_info(&format!(
+                "Tokens: {} (↑) / {} (↓) / {} (Total)",
+                usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
+            ));
+        }
+
         if let Some(redirect) = &result.tool_args {
             ui::report_info(redirect);
         }

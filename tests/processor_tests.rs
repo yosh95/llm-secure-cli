@@ -60,6 +60,7 @@ impl LlmClient for MockProcessorClient {
                             .and_then(|v| v.as_str())
                             .map(|s| s.to_string()),
                         tool_args: fc.get("arguments").map(|v| v.to_string()),
+                        ..Default::default()
                     });
                 }
             }
@@ -78,6 +79,7 @@ impl LlmClient for MockProcessorClient {
             content: text,
             tool_name: None,
             tool_args: None,
+            ..Default::default()
         })
     }
 

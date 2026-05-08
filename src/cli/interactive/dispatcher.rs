@@ -168,7 +168,8 @@ pub fn handle_info(session: &ActiveSession) {
 
     ui::print_rule(Some("Session Info"), Some("cyan"));
     ui::print_key_value("Session ID", &session.trace_id);
-    ui::print_key_value("Model", &format!("{} ({})", state.provider, state.model));
+    ui::print_key_value("Model", &state.model);
+    ui::print_key_value("Provider", &state.provider);
 
     // Validator Info
     let v_enabled = config.security.dual_llm_verification.unwrap_or(false);
@@ -184,19 +185,14 @@ pub fn handle_info(session: &ActiveSession) {
     } else {
         config.security.dual_llm_model.clone()
     };
-    ui::print_key_value(
-        "Verifier",
-        &format!(
-            "{} ({}) [{}]",
-            v_provider,
-            v_model,
-            if v_enabled {
-                "ENABLED".green()
-            } else {
-                "DISABLED".yellow()
-            }
-        ),
-    );
+    ui::print_key_value("Verifier Model", &v_model);
+    ui::print_key_value("Verifier Prov", v_provider);
+    let v_status = if v_enabled {
+        "ENABLED".green().to_string()
+    } else {
+        "DISABLED".yellow().to_string()
+    };
+    ui::print_key_value("Verifier Status", &v_status);
 
     // Security & Integrity
     let integrity_status = match crate::security::integrity::IntegrityVerifier::new().verify() {
@@ -209,6 +205,17 @@ pub fn handle_info(session: &ActiveSession) {
     ui::print_key_value("System Integrity", &integrity_status);
     ui::print_key_value("PQC Algorithm", "ML-DSA-65 (Dilithium)");
     ui::print_key_value("Security Level", &config.security.security_level);
+
+    ui::print_rule(Some("Statistics"), Some("cyan"));
+    ui::print_key_value(
+        "Usage (Session)",
+        &format!(
+            "{} prompt / {} completion / {} total tokens",
+            session.total_usage.prompt_tokens,
+            session.total_usage.completion_tokens,
+            session.total_usage.total_tokens
+        ),
+    );
 
     ui::print_rule(Some("Status"), Some("cyan"));
     ui::print_key_value("History", &format!("{} messages", state.conversation.len()));
