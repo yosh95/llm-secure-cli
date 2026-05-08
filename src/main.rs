@@ -2,7 +2,7 @@
 
 use clap::{Parser, Subcommand};
 use llm_secure_cli::cli::ui;
-use llm_secure_cli::core::session::ChatSession;
+use llm_secure_cli::core::session::ActiveSession;
 use std::io::{IsTerminal, stdin};
 use std::process;
 
@@ -268,7 +268,7 @@ async fn start_chat_session(
         }
 
         let pdf_as_base64 = client.should_send_pdf_as_base64();
-        let mut session = match ChatSession::new(client, ctx.clone()) {
+        let mut session = match ActiveSession::new(client, ctx.clone()) {
             Ok(s) => s,
             Err(e) => {
                 ui::report_error(&format!("Failed to initialize session: {}", e));

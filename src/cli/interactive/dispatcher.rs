@@ -1,6 +1,6 @@
 use crate::cli::ui;
-use crate::core::session::ChatSession;
-use crate::llm::models::{DataSource, Message, MessagePart, Role};
+use crate::core::session::ActiveSession;
+use crate::llm::models::{Message, MessagePart, Role};
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -17,7 +17,7 @@ pub enum CommandResult {
     Input(String),
 }
 
-pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandResult {
+pub async fn handle_command(session: &mut ActiveSession, input: &str) -> CommandResult {
     if !input.starts_with('/') {
         return CommandResult::NotACommand;
     }
@@ -33,13 +33,7 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
         }
         "q" | "quit" => CommandResult::Exit,
         "system" => {
-            let state = match session.get_client_mut() {
-                Ok(c) => c.get_state_mut(),
-                Err(e) => {
-                    ui::report_error(&e.to_string());
-                    return CommandResult::Handled;
-                }
-            };
+            let state = session.get_client_mut().get_state_mut();
             match args.to_lowercase().as_str() {
                 "on" => {
                     state.system_prompt_enabled = true;
@@ -79,13 +73,12 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             }
         },
         "clear" | "c" => {
-            match session.get_client_mut() {
-                Ok(client) => {
-                    client.get_state_mut().conversation.clear();
-                    ui::report_success("Conversation history cleared.");
-                }
-                Err(e) => ui::report_error(&e.to_string()),
-            }
+            session
+                .get_client_mut()
+                .get_state_mut()
+                .conversation
+                .clear();
+            ui::report_success("Conversation history cleared.");
             CommandResult::Handled
         }
         "info" | "i" => {
@@ -108,12 +101,10 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             if args.is_empty() {
                 ui::report_error("Usage: /save <path>");
             } else {
-                match session.get_client() {
-                    Ok(client) => match client.save_session(args) {
-                        Ok(_) => ui::report_success(&format!("Session saved to {}", args)),
-                        Err(e) => ui::report_error(&format!("Failed to save session: {}", e)),
-                    },
-                    Err(e) => ui::report_error(&e.to_string()),
+                let client = session.get_client();
+                match client.save_session(args) {
+                    Ok(_) => ui::report_success(&format!("Session saved to {}", args)),
+                    Err(e) => ui::report_error(&format!("Failed to save session: {}", e)),
                 }
             }
             CommandResult::Handled
@@ -122,12 +113,10 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
             if args.is_empty() {
                 ui::report_error("Usage: /load <path>");
             } else {
-                match session.get_client_mut() {
-                    Ok(client) => match client.load_session(args) {
-                        Ok(_) => ui::report_success(&format!("Session loaded from {}", args)),
-                        Err(e) => ui::report_error(&format!("Failed to load session: {}", e)),
-                    },
-                    Err(e) => ui::report_error(&e.to_string()),
+                let client = session.get_client_mut();
+                match client.load_session(args) {
+                    Ok(_) => ui::report_success(&format!("Session loaded from {}", args)),
+                    Err(e) => ui::report_error(&format!("Failed to load session: {}", e)),
                 }
             }
             CommandResult::Handled
@@ -167,14 +156,8 @@ pub async fn handle_command(session: &mut ChatSession, input: &str) -> CommandRe
     }
 }
 
-pub fn handle_info(session: &ChatSession) {
-    let state = match session.get_client() {
-        Ok(client) => client.get_state(),
-        Err(e) => {
-            ui::report_error(&e.to_string());
-            return;
-        }
-    };
+pub fn handle_info(session: &ActiveSession) {
+    let state = session.get_client().get_state();
     let config = match session.ctx.config_manager.get_config() {
         Ok(c) => c,
         Err(e) => {
@@ -257,14 +240,8 @@ pub fn handle_info(session: &ChatSession) {
     ui::print_rule(None, Some("cyan"));
 }
 
-pub fn handle_raw(session: &ChatSession) {
-    let state = match session.get_client() {
-        Ok(client) => client.get_state(),
-        Err(e) => {
-            ui::report_error(&e.to_string());
-            return;
-        }
-    };
+pub fn handle_raw(session: &ActiveSession) {
+    let state = session.get_client().get_state();
     for msg in &state.conversation {
         let role = match msg.role {
             Role::Assistant | Role::Model => &state.model,
@@ -276,14 +253,8 @@ pub fn handle_raw(session: &ChatSession) {
     }
 }
 
-pub fn handle_dump(session: &ChatSession) {
-    let state = match session.get_client() {
-        Ok(client) => client.get_state(),
-        Err(e) => {
-            ui::report_error(&e.to_string());
-            return;
-        }
-    };
+pub fn handle_dump(session: &ActiveSession) {
+    let state = session.get_client().get_state();
 
     let mut conversation = state.conversation.clone();
     let mut blobs = std::collections::HashMap::new();
@@ -303,14 +274,8 @@ pub fn handle_dump(session: &ChatSession) {
     }
 }
 
-pub fn handle_edit_history(session: &mut ChatSession) {
-    let state = match session.get_client() {
-        Ok(client) => client.get_state(),
-        Err(e) => {
-            ui::report_error(&e.to_string());
-            return;
-        }
-    };
+pub fn handle_edit_history(session: &mut ActiveSession) {
+    let state = session.get_client().get_state();
 
     let mut conversation = state.conversation.clone();
     let mut blobs = std::collections::HashMap::new();
@@ -336,13 +301,8 @@ pub fn handle_edit_history(session: &mut ChatSession) {
             match toml::from_str::<ConversationDump>(&edited_toml) {
                 Ok(mut dump) => {
                     unmask_base64_in_conversation(&mut dump.messages, &blobs);
-                    match session.get_client_mut() {
-                        Ok(client) => {
-                            client.get_state_mut().conversation = dump.messages;
-                            ui::report_success("Conversation history updated.");
-                        }
-                        Err(e) => ui::report_error(&e.to_string()),
-                    }
+                    session.get_client_mut().get_state_mut().conversation = dump.messages;
+                    ui::report_success("Conversation history updated.");
                 }
                 Err(e) => ui::report_error(&format!("Failed to parse edited TOML: {}", e)),
             }
@@ -393,26 +353,17 @@ fn unmask_base64_in_conversation(
     }
 }
 
-pub async fn handle_attach(session: &mut ChatSession, source: &str) {
+pub async fn handle_attach(session: &mut ActiveSession, source: &str) {
     if source.is_empty() {
         ui::report_error("Usage: /attach <path_or_url>");
         return;
     }
 
-    let pdf_as_base64 = match session.get_client() {
-        Ok(client) => client.should_send_pdf_as_base64(),
-        Err(e) => {
-            ui::report_error(&e.to_string());
-            return;
-        }
-    };
+    let pdf_as_base64 = session.get_client().should_send_pdf_as_base64();
     let data = crate::utils::media::process_single_source(source, pdf_as_base64).await;
     if let Some(d) = data {
         ui::report_success(&format!("Attached {}: {}", d.content_type, source));
         session.pending_data.push(d);
-        // Remind the user to pair the attachment with an explicit question.
-        // Without a clear referent the model may not know what to do with the file
-        // (e.g. a vague pronoun like "these" is ambiguous to the LLM).
         ui::report_info(
             "File queued. Type your question about it before sending (e.g. \"Summarize this PDF\").",
         );
@@ -421,14 +372,8 @@ pub async fn handle_attach(session: &mut ChatSession, source: &str) {
     }
 }
 
-pub async fn handle_tools(session: &mut ChatSession, args: &str) {
-    let state = match session.get_client_mut() {
-        Ok(client) => client.get_state_mut(),
-        Err(e) => {
-            ui::report_error(&e.to_string());
-            return;
-        }
-    };
+pub async fn handle_tools(session: &mut ActiveSession, args: &str) {
+    let state = session.get_client_mut().get_state_mut();
     match args.to_lowercase().as_str() {
         "on" => {
             state.tools_enabled = true;
@@ -455,15 +400,9 @@ pub async fn handle_tools(session: &mut ChatSession, args: &str) {
     }
 }
 
-pub async fn handle_model_cmd(session: &mut ChatSession, args: &str) {
+pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
     let (provider, current_model, stdout, raw) = {
-        let state = match session.get_client() {
-            Ok(client) => client.get_state(),
-            Err(e) => {
-                ui::report_error(&e.to_string());
-                return;
-            }
-        };
+        let state = session.get_client().get_state();
         (
             state.provider.clone(),
             state.model.clone(),
@@ -498,352 +437,192 @@ pub async fn handle_model_cmd(session: &mut ChatSession, args: &str) {
             Ok(s) => s,
             Err(_) => return,
         };
-        if !state.model_aliases.is_empty() {
-            ui::print_rule(Some("Aliases"), Some("magenta"));
-            let mut aliases: Vec<_> = state.model_aliases.keys().collect();
-            aliases.sort();
-            for alias in aliases {
-                let am = &state.model_aliases[alias];
-                println!("  {} -> {}", alias.bold().magenta(), am.target);
+        let mut filtered_aliases: Vec<_> = state
+            .model_aliases
+            .iter()
+            .filter(|(_, v)| v.target.starts_with(&provider))
+            .collect();
+
+        if !filtered_aliases.is_empty() {
+            println!("\nConfigured Aliases:");
+            filtered_aliases.sort_by_key(|(k, _)| *k);
+            for (name, alias) in filtered_aliases {
+                println!("  {} -> {}", name, alias.target);
             }
         }
-        ui::print_rule(None, Some("cyan"));
-    } else {
-        let parts: Vec<&str> = args.split_whitespace().collect();
-        if parts.first() == Some(&"alias") {
-            if parts.len() < 2 {
-                ui::report_error("Usage: /m alias <name>");
-                return;
-            }
-            let alias_name = parts[1];
-            let target = format!("{}/{}", provider, current_model);
-            if let Err(e) = session.ctx.config_manager.set_alias(alias_name, &target) {
-                ui::report_error(&format!("Failed to set alias: {}", e));
-            } else {
-                ui::report_success(&format!("Alias '{}' set to {}", alias_name, target));
-            }
-            return;
+        return;
+    }
+
+    let target_model = args;
+    match crate::core::initializer::switch_model(session, target_model, stdout, !raw).await {
+        Ok(_) => {
+            let state = session.get_client().get_state();
+            ui::report_success(&format!(
+                "Model switched to: {} ({})",
+                state.model, state.provider
+            ));
         }
-
-        let resolved_args = {
-            let state = match session.ctx.config_manager.get_state() {
-                Ok(s) => s,
-                Err(_) => return,
-            };
-            state
-                .model_aliases
-                .get(args)
-                .map(|a| a.target.clone())
-                .unwrap_or_else(|| args.to_string())
-        };
-
-        let (target_provider, target_model) = {
-            let providers = session.ctx.config_manager.get_active_providers();
-            let mut found = None;
-
-            for p in &providers {
-                let prefix = format!("{}/", p);
-                if resolved_args.starts_with(&prefix) {
-                    let model_part = &resolved_args[prefix.len()..];
-                    found = Some((p.clone(), model_part.to_string()));
-                    break;
-                }
-            }
-
-            if let Some(res) = found {
-                res
-            } else if let Some((p, m)) = resolved_args.split_once('/') {
-                (p.to_string(), m.to_string())
-            } else {
-                (provider.clone(), resolved_args)
-            }
-        };
-
-        let client = {
-            let registry = session.ctx.client_registry.lock().await;
-            registry.create_client(
-                &target_provider,
-                &target_model,
-                stdout,
-                raw,
-                &session.ctx.config_manager,
-            )
-        };
-
-        match client {
-            Some(new_client) => {
-                session.switch_client(new_client);
-                let _ = session
-                    .ctx
-                    .config_manager
-                    .update_state(&target_provider, &target_model);
-                ui::report_success(&format!(
-                    "Model switched to: {} ({})",
-                    target_model, target_provider
-                ));
-            }
-            _ => {
-                ui::report_error(&format!("Failed to switch model to: {}", target_model));
-            }
-        }
+        Err(e) => ui::report_error(&format!("Failed to switch model to: {}", e)),
     }
 }
 
-pub async fn handle_provider_cmd(session: &mut ChatSession, args: &str) {
+pub async fn handle_provider_cmd(session: &mut ActiveSession, args: &str) {
+    let current_provider = session.get_client().get_state().provider.clone();
+
     if args.is_empty() {
-        let active_providers = session.ctx.config_manager.get_active_providers();
-        let current_provider = match session.get_client() {
-            Ok(client) => client.get_state().provider.clone(),
-            Err(e) => {
-                ui::report_error(&e.to_string());
-                return;
-            }
-        };
-        ui::print_rule(Some("Active Providers"), Some("magenta"));
-        for p in active_providers {
+        ui::print_rule(Some("Available Providers"), Some("cyan"));
+        let providers = session.ctx.client_registry.lock().await.list_providers();
+        for p in providers {
             if p == current_provider {
-                println!("  {} {}", "●".magenta(), p.bold().magenta());
+                println!("  {} {}", "●".cyan(), p.bold().cyan());
             } else {
                 println!("    {}", p);
             }
         }
-        ui::print_rule(None, Some("magenta"));
-    } else {
-        let (stdout, raw) = {
-            let state = match session.get_client() {
-                Ok(client) => client.get_state(),
-                Err(e) => {
-                    ui::report_error(&e.to_string());
-                    return;
-                }
-            };
-            (state.stdout, !state.render_markdown)
-        };
-
-        let client = {
-            let registry = session.ctx.client_registry.lock().await;
-            registry.create_client(args, "default", stdout, raw, &session.ctx.config_manager)
-        };
-
-        match client {
-            Some(new_client) => {
-                session.switch_client(new_client);
-                let _ = session.ctx.config_manager.update_state(args, "default");
-                ui::report_success(&format!("Switched to provider: {}", args));
-            }
-            _ => {
-                ui::report_error(&format!("Unknown or inactive provider: {}", args));
-            }
-        }
-    }
-}
-
-pub async fn handle_checkpoint(session: &mut ChatSession) {
-    let history_len = match session.get_client() {
-        Ok(client) => client.get_state().conversation.len(),
-        Err(e) => {
-            ui::report_error(&e.to_string());
-            return;
-        }
-    };
-    if history_len == 0 {
-        ui::report_warning("History is empty. Nothing to checkpoint.");
         return;
     }
 
-    ui::report_info("Creating checkpoint (summarizing history)...");
-
-    let summary_prompt = "Please provide a concise but comprehensive summary of our work so far, including key findings, decisions made, and any pending tasks. This summary will be used as a 'checkpoint' message to replace the current conversation history and save context. Respond ONLY with the summary text.";
-
-    let data = vec![DataSource {
-        content: serde_json::Value::String(summary_prompt.to_string()),
-        content_type: "text/plain".to_string(),
-        is_file_or_url: false,
-        metadata: std::collections::HashMap::new(),
-    }];
-
-    // Use process_and_print to get the summary so the user sees it and thinking is shown
-    if let Err(e) = session.process_and_print(data).await {
-        ui::report_error(&format!("Failed to create checkpoint: {}", e));
-        return;
-    }
-
-    // After process_and_print, the history has [Old History] + [Summary Prompt] + [Summary Response]
-    let state = match session.get_client_mut() {
-        Ok(client) => client.get_state_mut(),
-        Err(e) => {
-            ui::report_error(&e.to_string());
-            return;
+    let target_provider = args;
+    match crate::core::initializer::switch_provider(session, target_provider).await {
+        Ok(_) => {
+            let state = session.get_client().get_state();
+            ui::report_success(&format!(
+                "Provider switched to: {} (Model: {})",
+                state.provider, state.model
+            ));
         }
-    };
-    if let Some(last_msg) = state.conversation.last().cloned() {
-        // Clear all history and replace with the summary
-        state.conversation.clear();
-
-        // Wrap the summary in a descriptive header
-        let summary_text = last_msg.get_text(true);
-        let checkpoint_msg = Message {
-            role: Role::System,
-            parts: vec![MessagePart::Text(format!(
-                "--- CHECKPOINT SUMMARY ---\n{}\n--- END OF SUMMARY ---",
-                summary_text
-            ))],
-        };
-        state.conversation.push(checkpoint_msg);
-        ui::report_success("Checkpoint created. History has been compressed.");
+        Err(e) => ui::report_error(&format!("Failed to switch provider: {}", e)),
     }
 }
 
-pub async fn handle_vmodel_cmd(session: &mut ChatSession, args: &str) {
-    let mut config = match session.ctx.config_manager.get_config() {
-        Ok(c) => (*c).clone(),
+pub async fn handle_vmodel_cmd(session: &mut ActiveSession, args: &str) {
+    let config = match session.ctx.config_manager.get_config() {
+        Ok(c) => c,
         Err(e) => {
             ui::report_error(&format!("Failed to load config: {}", e));
             return;
         }
     };
+    let current_provider = &config.security.dual_llm_provider;
+    let current_model = &config.security.dual_llm_model;
 
     if args.is_empty() {
-        let provider = &config.security.dual_llm_provider;
         ui::print_rule(
-            Some(&format!("Available Models for Validator ({})", provider)),
+            Some(&format!(
+                "Available Models for Verifier ({})",
+                current_provider
+            )),
             Some("cyan"),
         );
         let models_map = session.ctx.config_manager.get_cached_models().await;
-        if let Some(mut models) = models_map.get(provider).cloned() {
+        if let Some(mut models) = models_map.get(current_provider).cloned() {
             models.sort();
             for model in models {
-                if model == config.security.dual_llm_model {
+                if &model == current_model {
                     println!("  {} {}", "●".cyan(), model.bold().cyan());
                 } else {
                     println!("    {}", model);
                 }
             }
-            ui::print_rule(None, Some("cyan"));
-        } else {
-            println!(
-                "  No models cached for {}. Try running the provider to fetch models.",
-                provider
-            );
         }
+        return;
+    }
+
+    let mut new_config = (*config).clone();
+    new_config.security.dual_llm_model = args.to_string();
+    if let Err(e) = session.ctx.config_manager.set_config(new_config) {
+        ui::report_error(&format!("Failed to update config: {}", e));
     } else {
-        let resolved_args = {
-            let state = match session.ctx.config_manager.get_state() {
-                Ok(s) => s,
-                Err(_) => return,
-            };
-            state
-                .model_aliases
-                .get(args)
-                .map(|a| a.target.clone())
-                .unwrap_or_else(|| args.to_string())
-        };
-
-        let (target_provider, target_model) = {
-            let providers = session.ctx.config_manager.get_active_providers();
-            let mut found = None;
-
-            for p in &providers {
-                let prefix = format!("{}/", p);
-                if resolved_args.starts_with(&prefix) {
-                    let model_part = &resolved_args[prefix.len()..];
-                    found = Some((p.clone(), model_part.to_string()));
-                    break;
-                }
-            }
-
-            if let Some(res) = found {
-                res
-            } else if let Some((p, m)) = resolved_args.split_once('/') {
-                (p.to_string(), m.to_string())
-            } else {
-                (config.security.dual_llm_provider.clone(), resolved_args)
-            }
-        };
-
-        config.security.dual_llm_provider = target_provider.clone();
-        config.security.dual_llm_model = target_model.clone();
-
-        if let Err(e) = session.ctx.config_manager.set_config(config) {
-            ui::report_error(&format!("Failed to update validator model: {}", e));
-        } else {
-            let _ = session
-                .ctx
-                .config_manager
-                .update_v_state(&target_provider, &target_model);
-            ui::report_success(&format!(
-                "Validator model switched to: {} ({})",
-                target_model, target_provider
-            ));
-        }
+        ui::report_success(&format!("Verifier model set to: {}", args));
     }
 }
 
-pub async fn handle_vprovider_cmd(session: &mut ChatSession, args: &str) {
+pub async fn handle_vprovider_cmd(session: &mut ActiveSession, args: &str) {
+    let config = match session.ctx.config_manager.get_config() {
+        Ok(c) => c,
+        Err(e) => {
+            ui::report_error(&format!("Failed to load config: {}", e));
+            return;
+        }
+    };
+    let current_provider = &config.security.dual_llm_provider;
+
     if args.is_empty() {
-        let active_providers = session.ctx.config_manager.get_active_providers();
-        let current_v_provider = match session.ctx.config_manager.get_config() {
-            Ok(c) => c.security.dual_llm_provider.clone(),
-            Err(_) => "unknown".to_string(),
-        };
-        ui::print_rule(Some("Active Providers for Validator"), Some("magenta"));
-        for p in active_providers {
-            if p == current_v_provider {
-                println!("  {} {}", "●".magenta(), p.bold().magenta());
+        ui::print_rule(Some("Available Providers for Verifier"), Some("cyan"));
+        let providers = session.ctx.client_registry.lock().await.list_providers();
+        for p in providers {
+            if &p == current_provider {
+                println!("  {} {}", "●".cyan(), p.bold().cyan());
             } else {
                 println!("    {}", p);
             }
         }
-        ui::print_rule(None, Some("magenta"));
+        return;
+    }
+
+    let mut new_config = (*config).clone();
+    new_config.security.dual_llm_provider = args.to_string();
+    new_config.security.dual_llm_model = String::new(); // Reset model when provider changes
+    if let Err(e) = session.ctx.config_manager.set_config(new_config) {
+        ui::report_error(&format!("Failed to update config: {}", e));
     } else {
-        let active_providers = session.ctx.config_manager.get_active_providers();
-        if !active_providers.contains(&args.to_string()) {
-            ui::report_error(&format!("Unknown or inactive provider: {}", args));
-            return;
-        }
-
-        let mut config = match session.ctx.config_manager.get_config() {
-            Ok(c) => (*c).clone(),
-            Err(e) => {
-                ui::report_error(&format!("Failed to load config: {}", e));
-                return;
-            }
-        };
-
-        config.security.dual_llm_provider = args.to_string();
-        config.security.dual_llm_model = "".to_string(); // Reset model on provider change
-
-        if let Err(e) = session.ctx.config_manager.set_config(config) {
-            ui::report_error(&format!("Failed to update validator provider: {}", e));
-        } else {
-            let _ = session.ctx.config_manager.update_v_state(args, "");
-            ui::report_success(&format!(
-                "Validator provider switched to: {}. Please set a model with /vmodel",
-                args
-            ));
-        }
+        ui::report_success(&format!(
+            "Verifier provider set to: {}. Please set a model with /vmodel.",
+            args
+        ));
     }
 }
 
-pub fn print_help() {
-    println!("\nChat Commands:");
-    println!("  /help, /h       Show this help message");
-    println!("  /quit, /q       Exit the application");
-    println!("  /system [on|off] Show or toggle system prompt status");
-    println!("  /edit, /e       Edit message in external editor");
-    println!("  /clear, /c      Clear conversation history");
-    println!("  /info, /i       Show session info");
-    println!("  /raw            Show conversation as raw text");
-    println!("  /dump           Dump conversation history as YAML");
-    println!("  /edit_history, /eh Edit conversation history as YAML");
-    println!("  /save <path>    Save conversation history to JSON file");
-    println!("  /load <path>    Load conversation history from JSON file");
-    println!("  /attach <path>  Attach a file or URL to the next message");
-    println!("  /tools [on|off] Show or toggle tool status");
-    println!("  /model, /m [<name>|alias <name>] Switch models or set alias");
-    println!("  /provider, /p   Switch provider");
-    println!("  /vmodel, /vm    Switch validator model");
-    println!("  /vprovider, /vp Switch validator provider");
-    println!("  /checkpoint, /cp Summarize and compress history");
-    println!();
+pub async fn handle_checkpoint(session: &mut ActiveSession) {
+    let history_len = session.get_client().get_state().conversation.len();
+
+    if history_len == 0 {
+        ui::report_warning("Conversation is empty, nothing to checkpoint.");
+        return;
+    }
+
+    ui::report_info("Creating session checkpoint (PQC-anchored)...");
+    let trace_id = &session.trace_id;
+    let entries = session
+        .audit_entries
+        .iter()
+        .filter_map(|e| serde_json::to_value(e).ok())
+        .collect::<Vec<_>>();
+
+    match crate::security::merkle_anchor::SessionAnchorManager::create_anchor(
+        trace_id,
+        Some(entries),
+    ) {
+        Ok(root) => {
+            ui::report_success(&format!(
+                "Checkpoint created. Merkle Root: {}",
+                root.unwrap_or_default()
+            ));
+            ui::report_info("Integrity of conversation history is now cryptographically anchored.");
+        }
+        Err(e) => ui::report_error(&format!("Failed to create checkpoint: {}", e)),
+    }
+}
+
+fn print_help() {
+    ui::print_rule(Some("Interactive Commands"), Some("cyan"));
+    println!("  /h, /help          Show this help message");
+    println!("  /q, /quit          Exit the session");
+    println!("  /i, /info          Show session and security status");
+    println!("  /c, /clear         Clear conversation history");
+    println!("  /e, /edit          Open external editor for multi-line input");
+    println!("  /eh, /edit_history Edit the conversation history in TOML format");
+    println!("  /save <path>       Save the current session history to a file");
+    println!("  /load <path>       Load session history from a file");
+    println!("  /attach <path|url> Attach a file or URL to the next request");
+    println!("  /tools [on|off]    Toggle or show status of tool execution");
+    println!("  /system [on|off]   Toggle or show system prompt status");
+    println!("  /m, /model <name>  Switch LLM model for the current provider");
+    println!("  /p, /provider <n>  Switch LLM provider");
+    println!("  /vm, /vmodel <n>   Set model for dual-LLM verification");
+    println!("  /vp, /vprovider <n> Set provider for dual-LLM verification");
+    println!("  /cp, /checkpoint   Manually anchor session integrity");
+    println!("  /raw               Show raw conversation history");
+    println!("  /dump              Dump conversation history as TOML");
+    ui::print_rule(None, Some("cyan"));
 }

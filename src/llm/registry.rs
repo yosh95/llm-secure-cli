@@ -52,4 +52,8 @@ impl ClientRegistry {
     pub fn list_aliases(&self) -> Vec<String> {
         self.factories.keys().cloned().collect()
     }
+
+    pub fn list_providers(&self) -> Vec<String> {
+        self.factories.keys().cloned().collect()
+    }
 }

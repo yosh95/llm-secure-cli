@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use llm_secure_cli::core::context::AppContext;
-use llm_secure_cli::core::session::ChatSession;
+use llm_secure_cli::core::session::ActiveSession;
 use llm_secure_cli::llm::base::LlmClient;
 use llm_secure_cli::llm::models::{
     ClientState, ContentPart, DataSource, Message, MessagePart, Role,
@@ -163,21 +163,17 @@ async fn test_processor_tool_execution_flow() {
         call_count: 0,
     };
 
-    let mut session = ChatSession {
-        client: Some(Box::new(mock_client)),
-        ctx,
-        intent: "test".to_string(),
-        pending_data: Vec::new(),
-        trace_id: "test-trace".to_string(),
-        audit_entries: Vec::new(),
-    };
+    let mut session =
+        ActiveSession::new(Box::new(mock_client), ctx).expect("Failed to create session");
+    session.intent = "test".to_string();
+    session.trace_id = "test-trace".to_string();
 
     // 4. Execute
     let result = session.process_and_print(vec![]).await;
     assert!(result.is_ok());
 
     // 5. Verify
-    let state = session.client.as_ref().unwrap().get_state();
+    let state = session.client.get_state();
     assert_eq!(state.conversation.len(), 3);
     assert_eq!(state.conversation[1].role, Role::Tool);
 

@@ -1,7 +1,7 @@
 use crate::cli::interactive::completion::ChatCompleter;
 use crate::cli::ui;
 use crate::consts::HISTORY_LOG_PATH;
-use crate::core::session::ChatSession;
+use crate::core::session::ActiveSession;
 use crate::llm::models::DataSource;
 use colored::*;
 use rustyline::error::ReadlineError;
@@ -10,19 +10,13 @@ use rustyline::{Cmd, Editor, KeyCode, KeyEvent, Modifiers};
 use serde_json;
 use std::sync::{Arc, Mutex};
 
-impl ChatSession {
+impl ActiveSession {
     pub async fn run(
         &mut self,
         initial_data: Option<Vec<DataSource>>,
         _sources: Option<Vec<String>>,
     ) {
-        let is_stdout = match self.get_client() {
-            Ok(client) => client.get_state().stdout,
-            Err(e) => {
-                ui::report_error(&e.to_string());
-                return;
-            }
-        };
+        let is_stdout = self.client.get_state().stdout;
 
         if let Some(mut data) = initial_data
             && !data.is_empty()
@@ -59,10 +53,7 @@ impl ChatSession {
                     .unwrap_or_else(|| "Initial file analysis".to_string());
             }
 
-            let model_is_empty = match self.get_client() {
-                Ok(client) => client.get_state().model.is_empty(),
-                Err(_) => true,
-            };
+            let model_is_empty = self.client.get_state().model.is_empty();
 
             if model_is_empty {
                 ui::report_error("Model is not set. Cannot process initial data.");
@@ -92,13 +83,7 @@ impl ChatSession {
 
         println!("{}", "Use Ctrl+C or /q to exit, /h for help.".dimmed());
 
-        let current_provider = Arc::new(Mutex::new(match self.get_client() {
-            Ok(client) => client.get_state().provider.clone(),
-            Err(e) => {
-                ui::report_error(&e.to_string());
-                return;
-            }
-        }));
+        let current_provider = Arc::new(Mutex::new(self.client.get_state().provider.clone()));
         let config = rustyline::Config::builder()
             .history_ignore_space(true)
             .completion_type(rustyline::CompletionType::List)
@@ -140,13 +125,7 @@ impl ChatSession {
                         break;
                     }
                 };
-                *cp = match self.get_client() {
-                    Ok(client) => client.get_state().provider.clone(),
-                    Err(e) => {
-                        ui::report_error(&e.to_string());
-                        break;
-                    }
-                };
+                *cp = self.client.get_state().provider.clone();
             }
 
             let readline = if let Some(initial) = next_initial_text.take() {
@@ -213,10 +192,7 @@ impl ChatSession {
                         metadata: std::collections::HashMap::new(),
                     });
 
-                    let model_is_empty = match self.get_client() {
-                        Ok(client) => client.get_state().model.is_empty(),
-                        Err(_) => true,
-                    };
+                    let model_is_empty = self.client.get_state().model.is_empty();
 
                     if model_is_empty {
                         ui::report_error(

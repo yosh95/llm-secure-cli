@@ -1,8 +1,62 @@
 use crate::cli::ui;
 use crate::core::context::AppContext;
+use crate::core::session::ActiveSession;
 use crate::llm::base::LlmClient;
 use std::io::{IsTerminal, stdin};
 use std::sync::Arc;
+
+pub async fn switch_model(
+    session: &mut ActiveSession,
+    model: &str,
+    stdout: bool,
+    render_markdown: bool,
+) -> anyhow::Result<()> {
+    let provider = session.client.get_state().provider.clone();
+    let client = {
+        let registry = session.ctx.client_registry.lock().await;
+        registry.create_client(
+            &provider,
+            model,
+            stdout,
+            !render_markdown,
+            &session.ctx.config_manager,
+        )
+    };
+
+    if let Some(new_client) = client {
+        session.switch_client(new_client);
+        let _ = session.ctx.config_manager.update_state(&provider, model);
+        Ok(())
+    } else {
+        anyhow::bail!("Failed to create client for model: {}", model)
+    }
+}
+
+pub async fn switch_provider(session: &mut ActiveSession, provider: &str) -> anyhow::Result<()> {
+    let (stdout, render_markdown) = {
+        let state = session.client.get_state();
+        (state.stdout, state.render_markdown)
+    };
+
+    let client = {
+        let registry = session.ctx.client_registry.lock().await;
+        registry.create_client(
+            provider,
+            "default",
+            stdout,
+            !render_markdown,
+            &session.ctx.config_manager,
+        )
+    };
+
+    if let Some(new_client) = client {
+        session.switch_client(new_client);
+        let _ = session.ctx.config_manager.update_state(provider, "default");
+        Ok(())
+    } else {
+        anyhow::bail!("Failed to create client for provider: {}", provider)
+    }
+}
 
 pub async fn initialize_app() -> anyhow::Result<Arc<AppContext>> {
     let ctx = Arc::new(AppContext::new());

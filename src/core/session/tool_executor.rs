@@ -1,8 +1,8 @@
-use crate::core::session::ChatSession;
+use crate::core::session::ActiveSession;
 use anyhow;
 use std::collections::HashMap;
 
-impl ChatSession {
+impl ActiveSession {
     pub(crate) async fn execute_tool(
         &mut self,
         name: &str,

@@ -13,8 +13,9 @@ pub mod input_handler;
 pub mod processor;
 pub mod tool_executor;
 
-pub struct ChatSession {
-    pub client: Option<Box<dyn LlmClient>>,
+/// A session that is actively running and has an initialized LLM client.
+pub struct ActiveSession {
+    pub client: Box<dyn LlmClient>,
     pub ctx: Arc<AppContext>,
     pub intent: String,
     pub pending_data: Vec<DataSource>,
@@ -22,21 +23,19 @@ pub struct ChatSession {
     pub audit_entries: Vec<AuditEntry>,
 }
 
-impl Drop for ChatSession {
-    fn drop(&mut self) {
-        let entries_val = self
-            .audit_entries
-            .iter()
-            .filter_map(|e| serde_json::to_value(e).ok())
-            .collect::<Vec<_>>();
+/// A session that has been closed or failed to initialize.
+pub struct ClosedSession {
+    pub trace_id: String,
+    pub audit_entries: Vec<AuditEntry>,
+}
 
-        if !entries_val.is_empty() {
-            let _ = SessionAnchorManager::create_anchor(&self.trace_id, Some(entries_val));
-        }
+impl Drop for ActiveSession {
+    fn drop(&mut self) {
+        self.finalize_audit();
     }
 }
 
-impl ChatSession {
+impl ActiveSession {
     pub fn new(client: Box<dyn LlmClient>, ctx: Arc<AppContext>) -> anyhow::Result<Self> {
         let trace_id = format!("sess-{}", &uuid::Uuid::new_v4().to_string()[..8]);
         let user_id = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
@@ -54,7 +53,7 @@ impl ChatSession {
                 .log_and_return(None);
 
         Ok(Self {
-            client: Some(client),
+            client,
             ctx,
             intent: String::new(),
             pending_data: Vec::new(),
@@ -63,91 +62,91 @@ impl ChatSession {
         })
     }
 
-    /// Create an empty placeholder session
-    pub fn empty(ctx: Arc<AppContext>) -> Self {
-        Self {
-            client: None,
-            ctx,
-            intent: String::new(),
-            pending_data: Vec::new(),
-            trace_id: "none".to_string(),
-            audit_entries: Vec::new(),
+    /// Consumes the ActiveSession and returns a ClosedSession.
+    pub fn close(mut self) -> ClosedSession {
+        self.finalize_audit();
+        ClosedSession {
+            trace_id: self.trace_id.clone(),
+            audit_entries: std::mem::take(&mut self.audit_entries),
         }
     }
 
-    pub fn get_client(&self) -> anyhow::Result<&(dyn LlmClient + '_)> {
-        match self.client.as_ref() {
-            Some(b) => Ok(b.as_ref()),
-            None => Err(anyhow::anyhow!("ChatSession accessed after being cleared")),
+    fn finalize_audit(&mut self) {
+        let entries_val = self
+            .audit_entries
+            .iter()
+            .filter_map(|e| serde_json::to_value(e).ok())
+            .collect::<Vec<_>>();
+
+        if !entries_val.is_empty() {
+            let _ = SessionAnchorManager::create_anchor(&self.trace_id, Some(entries_val));
         }
     }
 
-    pub fn get_client_mut(&mut self) -> anyhow::Result<&mut (dyn LlmClient + '_)> {
-        match self.client.as_mut() {
-            Some(b) => Ok(b.as_mut()),
-            None => Err(anyhow::anyhow!("ChatSession accessed after being cleared")),
-        }
+    pub fn get_client(&self) -> &(dyn LlmClient + '_) {
+        self.client.as_ref()
+    }
+
+    pub fn get_client_mut(&mut self) -> &mut (dyn LlmClient + '_) {
+        self.client.as_mut()
     }
 
     pub fn switch_client(&mut self, mut new_client: Box<dyn LlmClient>) {
-        if let Some(old_client) = &self.client {
-            let old_state = old_client.get_state();
-            let new_state = new_client.get_state_mut();
-            new_state.conversation = old_state.conversation.clone();
-            if new_state.tools_enabled {
-                new_state.tools_enabled = old_state.tools_enabled;
-            }
-            new_state.system_prompt_enabled = old_state.system_prompt_enabled;
+        let old_state = self.client.get_state();
+        let new_state = new_client.get_state_mut();
+        new_state.conversation = old_state.conversation.clone();
+        if new_state.tools_enabled {
+            new_state.tools_enabled = old_state.tools_enabled;
         }
-        self.client = Some(new_client);
+        new_state.system_prompt_enabled = old_state.system_prompt_enabled;
+        self.client = new_client;
     }
 
     pub(crate) fn handle_interruption(&mut self) {
-        if let Some(client) = &mut self.client {
-            let state = client.get_state_mut();
-            let last_msg = state.conversation.last().cloned();
-            if let Some(msg) = last_msg
-                && (msg.role == Role::Assistant || msg.role == Role::Model)
-            {
-                let mut has_unanswered_tools = false;
+        let state = self.client.get_state_mut();
+        // ... (rest of interruption logic remains the same, but without Option checks)
+        let last_msg = state.conversation.last().cloned();
+        if let Some(msg) = last_msg
+            && (msg.role == Role::Assistant || msg.role == Role::Model)
+        {
+            let mut has_unanswered_tools = false;
+            for part in &msg.parts {
+                if let MessagePart::Part(cp) = part
+                    && cp.function_call.is_some()
+                {
+                    has_unanswered_tools = true;
+                    break;
+                }
+            }
+
+            if has_unanswered_tools {
+                let mut tool_results = Vec::new();
                 for part in &msg.parts {
                     if let MessagePart::Part(cp) = part
-                        && cp.function_call.is_some()
+                        && let Some(fc) = &cp.function_call
                     {
-                        has_unanswered_tools = true;
-                        break;
+                        let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                        let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+
+                        let mut fr = HashMap::new();
+                        fr.insert("id".to_string(), serde_json::json!(id));
+                        fr.insert("name".to_string(), serde_json::json!(name));
+                        fr.insert(
+                            "response".to_string(),
+                            serde_json::json!("Error: Interrupted by user."),
+                        );
+
+                        tool_results.push(MessagePart::Part(Box::new(ContentPart {
+                            function_response: Some(fr),
+                            is_diagnostic: false,
+                            ..Default::default()
+                        })));
                     }
                 }
-
-                if has_unanswered_tools {
-                    let mut tool_results = Vec::new();
-                    for part in &msg.parts {
-                        if let MessagePart::Part(cp) = part
-                            && let Some(fc) = &cp.function_call
-                        {
-                            let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                            let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
-
-                            let mut fr = HashMap::new();
-                            fr.insert("id".to_string(), serde_json::json!(id));
-                            fr.insert("name".to_string(), serde_json::json!(name));
-                            fr.insert(
-                                "response".to_string(),
-                                serde_json::json!("Error: Interrupted by user."),
-                            );
-
-                            tool_results.push(MessagePart::Part(Box::new(ContentPart {
-                                function_response: Some(fr),
-                                is_diagnostic: false,
-                                ..Default::default()
-                            })));
-                        }
-                    }
-                    state.conversation.push(Message {
-                        role: Role::Tool,
-                        parts: tool_results,
-                    });
-                }
+                state.conversation.push(Message {
+                    role: Role::Tool,
+                    parts: tool_results,
+                });
             }
         }
     }
