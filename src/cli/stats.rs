@@ -33,9 +33,10 @@ pub fn get_tool_result_stats(result: &Value) -> ToolResultStats {
             line_count = stdout.lines().count();
         }
         if let Some(se) = obj.get("stderr").and_then(|v| v.as_str())
-            && !se.is_empty() {
-                stderr = Some(se.to_string());
-            }
+            && !se.is_empty()
+        {
+            stderr = Some(se.to_string());
+        }
 
         // Special handling for file lists
         for key in ["matches", "results", "files"] {
@@ -68,7 +69,7 @@ pub fn print_tool_stats(stats: &ToolResultStats) {
         parts.push(format!("{} files", fc));
     }
 
-    println!("  {}", parts.join(" / ").bright_black());
+    println!("{}", parts.join(" / ").bright_black());
 
     if let Some(stderr) = &stats.stderr {
         println!("  {}", "STDERR:".bold().red());

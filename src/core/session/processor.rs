@@ -76,14 +76,20 @@ impl ActiveSession {
             self.total_usage.completion_tokens += usage.completion_tokens;
             self.total_usage.total_tokens += usage.total_tokens;
 
-            ui::report_info(&format!(
-                "Tokens: {} (↑) / {} (↓) / {} (Total)",
-                usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
-            ));
+            use colored::*;
+            println!(
+                "{}",
+                format!(
+                    "Tokens: {} (↑) / {} (↓) / {} (Total)",
+                    usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
+                )
+                .bright_black()
+            );
         }
 
         if let Some(redirect) = &result.tool_args {
-            ui::report_info(redirect);
+            use colored::*;
+            println!("{}", redirect.bright_black());
         }
 
         Ok((result.content, None))
