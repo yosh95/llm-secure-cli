@@ -269,13 +269,14 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
         "edit_file",
         "Edit a file by replacing a block of text. \
          IMPORTANT: provide the exact block of text to be replaced (search) and the exact block to replace it with. \
+         Do NOT use ellipsis (...) or omit any lines in the search or replace blocks; they must match the file content perfectly. \
          Do NOT escape newlines; provide raw newline characters in your tool call.",
         json!({
             "type": "object",
             "properties": {
                 "path": {"type": "string", "description": "File path."},
-                "search": {"type": "string", "description": "The exact block of text to search for. Use raw newlines, not '\\n'."},
-                "replace": {"type": "string", "description": "The block of text to replace it with. Use raw newlines, not '\\n'."},
+                "search": {"type": "string", "description": "The exact block of text to search for. Use raw newlines, not '\\n'. Do NOT use ellipsis (...)."},
+                "replace": {"type": "string", "description": "The block of text to replace it with. Use raw newlines, not '\\n'. Do NOT use ellipsis (...)."},
                 "dry_run": {"type": "boolean", "default": false}
             },
             "required": ["path", "search", "replace"]
