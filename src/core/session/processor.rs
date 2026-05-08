@@ -83,13 +83,13 @@ impl ActiveSession {
                     "Tokens: {} (↑) / {} (↓) / {} (Total)",
                     usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
                 )
-                .bright_black()
+                .dimmed()
             );
         }
 
         if let Some(redirect) = &result.tool_args {
             use colored::*;
-            println!("{}", redirect.bright_black());
+            println!("{}", redirect.dimmed());
         }
 
         Ok((result.content, None))

@@ -69,7 +69,7 @@ pub fn print_tool_stats(stats: &ToolResultStats) {
         parts.push(format!("{} lines", stats.line_count));
     }
 
-    println!("{}", parts.join(" / ").bright_black());
+    println!("{}", parts.join(" / ").dimmed());
 
     if let Some(stderr) = &stats.stderr {
         println!("  {}", "STDERR:".bold().red());
