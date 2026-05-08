@@ -167,13 +167,13 @@ Inside the `llsc` interactive session:
 - `/clear`, `/c`: Clear conversation history.
 - `/info`, `/i`: Show session info, integrity, and security status.
 - `/raw`: Show conversation as raw text.
-- `/dump`: Dump conversation history as JSON.
+- `/dump`: Dump conversation history as TOML.
 - `/save <path>` / `/load <path>`: Manage conversation history.
 - `/attach <path/URL>`: Add a file or website content to the context.
 - `/tools [on|off]`: Show or toggle autonomous tool use status.
 - `/model`, `/m [<alias>]`: Switch or list models for current provider.
 - `/provider`, `/p [<name>]`: Switch or list providers.
-- `/checkpoint`, `/cp`: Checkpoint (Summarize and clear history).
+- `/summarize`, `/s`: Summarize history and clear it (context preservation).
 
 ### Keybindings
 - **Newline**: `Ctrl+J` (Insert a newline without submitting).

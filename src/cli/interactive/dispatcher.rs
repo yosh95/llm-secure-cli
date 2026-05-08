@@ -1,6 +1,6 @@
 use crate::cli::ui;
 use crate::core::session::ActiveSession;
-use crate::llm::models::{Message, MessagePart, Role};
+use crate::llm::models::{DataSource, Message, MessagePart, Role};
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -145,8 +145,8 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             handle_vprovider_cmd(session, args).await;
             CommandResult::Handled
         }
-        "checkpoint" | "cp" => {
-            handle_checkpoint(session).await;
+        "summarize" | "s" => {
+            handle_summarize(session).await;
             CommandResult::Handled
         }
         _ => {
@@ -580,34 +580,58 @@ pub async fn handle_vprovider_cmd(session: &mut ActiveSession, args: &str) {
     }
 }
 
-pub async fn handle_checkpoint(session: &mut ActiveSession) {
+pub async fn handle_summarize(session: &mut ActiveSession) {
     let history_len = session.get_client().get_state().conversation.len();
-
     if history_len == 0 {
-        ui::report_warning("Conversation is empty, nothing to checkpoint.");
+        ui::report_warning("Conversation is empty, nothing to summarize.");
         return;
     }
 
-    ui::report_info("Creating session checkpoint (PQC-anchored)...");
-    let trace_id = &session.trace_id;
-    let entries = session
-        .audit_entries
-        .iter()
-        .filter_map(|e| serde_json::to_value(e).ok())
-        .collect::<Vec<_>>();
+    ui::report_info("Summarizing conversation and clearing history...");
 
-    match crate::security::merkle_anchor::SessionAnchorManager::create_anchor(
-        trace_id,
-        Some(entries),
-    ) {
-        Ok(root) => {
-            ui::report_success(&format!(
-                "Checkpoint created. Merkle Root: {}",
-                root.unwrap_or_default()
-            ));
-            ui::report_info("Integrity of conversation history is now cryptographically anchored.");
+    let summary_prompt = "これまで話してきた内容の要点を簡潔なサマリー（要約）にまとめてください。この要約は今後の会話のコンテキストとして使用します。";
+
+    // Prepare data source for summarization
+    let data = vec![DataSource {
+        content: serde_json::Value::String(summary_prompt.to_string()),
+        content_type: "text/plain".to_string(),
+        is_file_or_url: false,
+        metadata: std::collections::HashMap::new(),
+    }];
+
+    // We use the empty tool_schemas as we just want a summary
+    match session.get_client_mut().send(data, Vec::new()).await {
+        Ok(response) => {
+            let summary_text = response.content.clone().unwrap_or_default();
+
+            // Reconstruct history with system prompt (if exists) + summary
+            let mut new_conversation = Vec::new();
+
+            // Keep existing system prompts
+            for msg in &session.get_client().get_state().conversation {
+                if msg.role == Role::System {
+                    new_conversation.push(msg.clone());
+                }
+            }
+
+            // Add the summary as a system message or a special assistant message
+            // Here we add it as a system message to preserve context efficiently
+            new_conversation.push(Message {
+                role: Role::System,
+                parts: vec![MessagePart::Text(format!(
+                    "Summary of previous conversation:\n{}",
+                    summary_text
+                ))],
+            });
+
+            session.get_client_mut().get_state_mut().conversation = new_conversation;
+
+            ui::report_success("Conversation summarized and history cleared.");
+            println!("\n{}\n", "--- Summary ---".cyan());
+            println!("{}", summary_text);
+            println!("{}\n", "---------------".cyan());
         }
-        Err(e) => ui::report_error(&format!("Failed to create checkpoint: {}", e)),
+        Err(e) => ui::report_error(&format!("Failed to summarize: {}", e)),
     }
 }
 
@@ -628,7 +652,7 @@ fn print_help() {
     println!("  /p, /provider <n>  Switch LLM provider");
     println!("  /vm, /vmodel <n>   Set model for dual-LLM verification");
     println!("  /vp, /vprovider <n> Set provider for dual-LLM verification");
-    println!("  /cp, /checkpoint   Manually anchor session integrity");
+    println!("  /s, /summarize     Summarize history and clear it");
     println!("  /raw               Show raw conversation history");
     println!("  /dump              Dump conversation history as TOML");
     ui::print_rule(None, Some("cyan"));
