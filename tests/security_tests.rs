@@ -145,3 +145,37 @@ fn test_audit_hash_chaining() {
         );
     }
 }
+
+#[test]
+fn test_mcp_security_validation() {
+    use llm_secure_cli::security::validate_tool_call;
+    use serde_json::json;
+
+    let config = SecurityConfig {
+        allowed_paths: vec!["/tmp/allowed".to_string()],
+        ..SecurityConfig::default()
+    };
+
+    // 1. MCP-like tool name with path traversal
+    let args = json!({
+        "server_root": "/etc/passwd" // root を含む引数名
+    });
+    let res = validate_tool_call("filesystem__read_file", args.as_object().unwrap(), &config);
+    assert!(
+        res.is_err(),
+        "MCP tool with sensitive path should be blocked"
+    );
+    assert!(res.unwrap_err().contains("Path Guardrails"));
+
+    // 2. MCP-like command execution with malicious characters
+    let args = json!({
+        "cmd": "ls",
+        "args": ["/etc", "with\0null"] // NULLバイト
+    });
+    let res = validate_tool_call("shell__run_shell", args.as_object().unwrap(), &config);
+    assert!(
+        res.is_err(),
+        "MCP shell tool with control characters should be blocked"
+    );
+    assert!(res.unwrap_err().contains("Static Analysis"));
+}

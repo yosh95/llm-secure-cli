@@ -19,21 +19,59 @@ pub fn validate_tool_call(
     args: &serde_json::Map<String, serde_json::Value>,
     config: &crate::config::models::SecurityConfig,
 ) -> Result<(), String> {
-    // 1. Path Guardrails (Simplified)
-    let path_args = ["path", "directory", "file", "src", "dest", "filename"];
-    for arg_name in path_args {
-        if let Some(p_val) = args.get(arg_name).and_then(|v| v.as_str())
-            && let Err(e) = crate::security::path_validator::validate_path(p_val, config)
-        {
-            return Err(format!("Security Blocked (Path Guardrails): {}", e));
+    // 1. Path Guardrails (Enhanced for MCP/Generic Tools)
+    // Check any argument that looks like a path.
+    let path_patterns = [
+        "path",
+        "directory",
+        "dir",
+        "file",
+        "src",
+        "dest",
+        "filename",
+        "filepath",
+        "root",
+    ];
+    for (arg_key, arg_val) in args {
+        let key_lower = arg_key.to_lowercase();
+        if path_patterns.iter().any(|&p| key_lower.contains(p)) {
+            if let Some(p_val) = arg_val.as_str() {
+                if let Err(e) = crate::security::path_validator::validate_path(p_val, config) {
+                    return Err(format!("Security Blocked (Path Guardrails): {}", e));
+                }
+            } else if let Some(p_arr) = arg_val.as_array() {
+                // Handle tools that take multiple paths
+                for p_item in p_arr {
+                    if let Some(p_str) = p_item.as_str()
+                        && let Err(e) =
+                            crate::security::path_validator::validate_path(p_str, config)
+                    {
+                        return Err(format!("Security Blocked (Path Guardrails): {}", e));
+                    }
+                }
+            }
         }
     }
 
-    // 2. Fast-fail Syntactic Check
-    if name == "execute_command" {
-        let program = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
+    // 2. Command/Shell Validation (Generalized for MCP)
+    // Detect if this is a command execution tool (local or remote MCP)
+    let is_exec = name == "execute_command"
+        || name.ends_with("__execute_command")
+        || name.contains("run_shell")
+        || name.contains("shell_execute")
+        || name.contains("command_exec");
+
+    if is_exec {
+        let program = args
+            .get("command")
+            .or_else(|| args.get("cmd"))
+            .or_else(|| args.get("executable"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
         let cmd_args: Vec<String> = args
             .get("args")
+            .or_else(|| args.get("arguments"))
             .and_then(|v| v.as_array())
             .map(|arr| {
                 arr.iter()
@@ -51,9 +89,6 @@ pub fn validate_tool_call(
             ));
         }
     }
-
-    // Note: Intent alignment and semantic safety are now deferred to the Dual LLM Verifier,
-    // which uses the Security Context and Constitution for a holistic semantic check.
 
     Ok(())
 }
