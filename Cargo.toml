@@ -27,41 +27,40 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "rus
 
 [dependencies]
 clap = { version = "4.5", default-features = false, features = ["derive", "help", "usage", "error-context", "suggestions", "color", "std"] }
-tokio = { version = "1.43", features = ["rt-multi-thread", "macros", "sync", "process", "io-std", "io-util", "time", "signal"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-toml = "1.1"
-dirs = "6.0"
-colored = { version = "3.1.1", features = [] }
-console = "0.16"
+tokio = { version = "1.43", default-features = false, features = ["rt-multi-thread", "macros", "sync", "process", "io-std", "io-util", "time", "signal"] }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde_json = { version = "1.0", default-features = false }
+toml = { version = "1.1", default-features = false, features = ["display", "parse", "serde"] }
+dirs = { version = "6.0", default-features = false }
+colored = { version = "3.1.1", default-features = false, features = [] }
+console = { version = "0.16", default-features = false, features = ["std"] }
 textwrap = { version = "0.16", features = ["unicode-width"] }
-pulldown-cmark = "0.13"
-comfy-table = "7.1"
-html-to-markdown-rs = "3.3"
-
-anyhow = "1.0"
-async-trait = "0.1"
-tracing = "0.1"
+pulldown-cmark = { version = "0.13", default-features = false }
+comfy-table = { version = "7.1", default-features = false }
+html-to-markdown-rs = { version = "3.3", default-features = false, features = ["serde"] }
+anyhow = { version = "1.0", default-features = false }
+async-trait = { version = "0.1", default-features = false }
+tracing = { version = "0.1", default-features = false }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-path-clean = "1.0"
+path-clean = { version = "1.0", default-features = false }
 regex = { version = "1.11", default-features = false, features = ["std", "perf", "unicode-perl", "unicode-case"] }
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }
-tempfile = "3.12"
-base64 = "0.22"
-url = "2.5"
-sha2 = "0.11"
-rustyline = "18.0"
-mime_guess = "2.0"
-difflib = "0.4"
-pdf-extract = "0.10"
-saorsa-pqc = "0.5"
-aes-gcm = "0.10"
-ciborium = "0.2"
+tempfile = { version = "3.12", default-features = false }
+base64 = { version = "0.22", default-features = false }
+url = { version = "2.5", default-features = false }
+sha2 = { version = "0.11", default-features = false }
+rustyline = { version = "18.0", default-features = false, features = ["custom-bindings", "with-file-history"] }
+mime_guess = { version = "2.0", default-features = false }
+difflib = { version = "0.4", default-features = false }
+pdf-extract = { version = "0.10", default-features = false }
+saorsa-pqc = { version = "0.5", default-features = false }
+aes-gcm = { version = "0.10", default-features = false }
+ciborium = { version = "0.2", default-features = false }
 ed25519-dalek = { version = "2.2", features = ["pkcs8", "rand_core"] }
-pkcs8 = { version = "0.10", features = ["pem"] }
-uuid = { version = "1.10", features = ["v4"] }
-hostname = "0.4"
-rand = "0.8"
+pkcs8 = { version = "0.10", default-features = false, features = ["pem"] }
+uuid = { version = "1.10", default-features = false, features = ["v4"] }
+hostname = { version = "0.4", default-features = false }
+rand = { version = "0.8", default-features = false }
 
 [dev-dependencies]
-tokio-test = "0.4"
+tokio-test = { version = "0.4", default-features = false }
