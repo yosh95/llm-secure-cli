@@ -388,11 +388,19 @@ impl ActiveSession {
         };
 
         crate::tools::executor_utils::truncate_json_strings(&mut final_v);
+
+        // Calculate and display stats
+        let stats = crate::cli::stats::get_tool_result_stats(&final_v);
+
         // Display result if it was not auto-approved OR if an error occurred.
         // This ensures that auto-approved successful calls don't clutter the UI with output (like stdout),
         // but failures are always shown. The tool call itself is always printed above.
         if !approved || is_error {
             ui::print_tool_result(final_v.as_str().unwrap_or(&final_v.to_string()));
+            crate::cli::stats::print_tool_stats(&stats);
+        } else {
+            // Even if auto-approved, we show stats and stderr if present
+            crate::cli::stats::print_tool_stats(&stats);
         }
 
         // Convert to human-readable string for the LLM
