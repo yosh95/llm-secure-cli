@@ -57,7 +57,11 @@ impl ActiveSession {
         print!("Thinking ({}) ... ", thinking_label);
         std::io::stdout().flush().ok();
 
-        let tool_schemas = self.ctx.tool_registry.lock().await.get_tool_schemas();
+        let tool_schemas = if self.client.get_state().tools_enabled {
+            self.ctx.tool_registry.lock().await.get_tool_schemas()
+        } else {
+            Vec::new()
+        };
         let send_future = self.client.send(data, tool_schemas);
 
         let result = tokio::select! {

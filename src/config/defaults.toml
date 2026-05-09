@@ -93,24 +93,6 @@ api_url = "http://localhost:11434/v1"
 api_url = "https://openrouter.ai/api/v1"
 
 # =============================================================================
-# Capability Rules
-# =============================================================================
-[[rules]]
-pattern = ".*(image).*"
-supports_tools = false
-image_generation = true
-
-[[rules]]
-pattern = ".*(video|veo|wan-|kling).*"
-supports_tools = false
-video_generation = true
-
-[[rules]]
-pattern = ".*(tts|speech).*"
-supports_tools = false
-audio_generation = true
-
-# =============================================================================
 # Templates (Reusable Prompts)
 # =============================================================================
 [templates]

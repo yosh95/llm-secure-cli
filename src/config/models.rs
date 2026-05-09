@@ -75,19 +75,6 @@ pub struct ProviderConfig {
     pub api_url: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct CapabilityRule {
-    pub pattern: String,
-    #[serde(default = "default_true")]
-    pub supports_tools: bool,
-    #[serde(default)]
-    pub image_generation: bool,
-    #[serde(default)]
-    pub video_generation: bool,
-    #[serde(default)]
-    pub audio_generation: bool,
-}
-
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct AppState {
     pub last_used_provider: Option<String>,
@@ -196,8 +183,6 @@ pub struct AppConfig {
     pub security: SecurityConfig,
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
-    #[serde(default)]
-    pub rules: Vec<CapabilityRule>,
     #[serde(flatten)]
     pub providers: HashMap<String, ProviderConfig>,
     #[serde(default)]

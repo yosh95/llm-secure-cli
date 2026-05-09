@@ -150,17 +150,7 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
             format!("{}/chat/completions", self.api_url.trim_end_matches('/'))
         };
 
-        let mut supports_tools = true;
-        let config = self.config_manager.get_config()?;
-        let model_id_lower = self.model.to_lowercase();
-        for rule in &config.rules {
-            if let Ok(re) = regex::Regex::new(&rule.pattern)
-                && re.is_match(&model_id_lower)
-            {
-                supports_tools = rule.supports_tools;
-            }
-        }
-
+        let supports_tools = true;
         let http_client = create_http_client(self.config_manager)?;
         let formatter = self
             .formatter
@@ -447,6 +437,127 @@ impl LlmClient for OpenAiCompatibleClient {
         let mut message_parts = Vec::new();
         if let Some(t) = &text {
             message_parts.push(MessagePart::Text(t.clone()));
+        }
+
+        // Handle multimodal content in response (e.g. DALL-E 3 images)
+        if let Some(content_array) = msg.get("content").and_then(|v| v.as_array()) {
+            for part in content_array {
+                if let Some(p_type) = part.get("type").and_then(|v| v.as_str()) {
+                    match p_type {
+                        "image_url" => {
+                            if let Some(url) = part
+                                .get("image_url")
+                                .and_then(|v| v.get("url"))
+                                .and_then(|v| v.as_str())
+                            {
+                                if url.starts_with("data:") {
+                                    let content_parts: Vec<&str> = url.splitn(2, ',').collect();
+                                    if content_parts.len() == 2 {
+                                        let mime = content_parts[0]
+                                            .trim_start_matches("data:")
+                                            .split(';')
+                                            .next()
+                                            .unwrap_or("image/png");
+                                        let b64 = content_parts[1];
+                                        let mut id = HashMap::new();
+                                        id.insert("mimeType".to_string(), json!(mime));
+                                        id.insert("data".to_string(), json!(b64));
+                                        message_parts.push(MessagePart::Part(Box::new(
+                                            crate::llm::models::ContentPart {
+                                                inline_data: Some(id),
+                                                ..Default::default()
+                                            },
+                                        )));
+                                    }
+                                }
+                            } else if let Some(b64) = part
+                                .get("image_url")
+                                .and_then(|v| v.get("b64_json"))
+                                .and_then(|v| v.as_str())
+                            {
+                                // Some providers return b64_json instead of url
+                                let mut id = HashMap::new();
+                                id.insert("mimeType".to_string(), json!("image/png"));
+                                id.insert("data".to_string(), json!(b64));
+                                message_parts.push(MessagePart::Part(Box::new(
+                                    crate::llm::models::ContentPart {
+                                        inline_data: Some(id),
+                                        ..Default::default()
+                                    },
+                                )));
+                            }
+                        }
+                        "input_audio" => {
+                            if let Some(audio_data) = part.get("input_audio") {
+                                let b64 = audio_data
+                                    .get("data")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+                                let format = audio_data
+                                    .get("format")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("mp3");
+                                if !b64.is_empty() {
+                                    let mut id = HashMap::new();
+                                    id.insert(
+                                        "mimeType".to_string(),
+                                        json!(format!("audio/{}", format)),
+                                    );
+                                    id.insert("data".to_string(), json!(b64));
+                                    message_parts.push(MessagePart::Part(Box::new(
+                                        crate::llm::models::ContentPart {
+                                            inline_data: Some(id),
+                                            ..Default::default()
+                                        },
+                                    )));
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // Handle multimodal content in response (e.g. DALL-E 3 images, or Recraft/OpenRouter specific fields)
+        let media_fields = ["images", "videos", "audios"];
+        for field in media_fields {
+            if let Some(media_array) = msg.get(field).and_then(|v| v.as_array()) {
+                for part in media_array {
+                    let url = part
+                        .get("image_url") // Recraft uses this even for videos sometimes in the object
+                        .and_then(|v| v.get("url"))
+                        .and_then(|v| v.as_str())
+                        .or_else(|| part.get("url").and_then(|v| v.as_str()))
+                        .or_else(|| part.as_str()); // Sometimes it's just a string array
+
+                    if let Some(url) = url
+                        && url.starts_with("data:") {
+                            let content_parts: Vec<&str> = url.splitn(2, ',').collect();
+                            if content_parts.len() == 2 {
+                                let mime = content_parts[0]
+                                    .trim_start_matches("data:")
+                                    .split(';')
+                                    .next()
+                                    .unwrap_or(match field {
+                                        "videos" => "video/mp4",
+                                        "audios" => "audio/mpeg",
+                                        _ => "image/png",
+                                    });
+                                let b64 = content_parts[1];
+                                let mut id = HashMap::new();
+                                id.insert("mimeType".to_string(), json!(mime));
+                                id.insert("data".to_string(), json!(b64));
+                                message_parts.push(MessagePart::Part(Box::new(
+                                    crate::llm::models::ContentPart {
+                                        inline_data: Some(id),
+                                        ..Default::default()
+                                    },
+                                )));
+                            }
+                        }
+                }
+            }
         }
 
         if let Some(tool_calls) = msg.get("tool_calls").and_then(|v| v.as_array()) {
