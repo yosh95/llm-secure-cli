@@ -228,12 +228,15 @@ impl ActiveSession {
         // Start Dual LLM Verifier background task if enabled
         let mut verifier_handle = None;
         if !approved && config.security.dual_llm_verification.unwrap_or(false) {
-            if config.security.dual_llm_model.is_empty() {
+            let (v_provider, v_model) = self.ctx.config_manager.get_dual_llm_settings();
+
+            if v_provider.is_empty() || v_model.is_empty() {
                 ui::report_warning(
-                    "Dual LLM verification is enabled, but no validator model is set. Falling back to manual approval.",
+                    "Dual LLM verification is enabled, but provider/model is not set. Falling back to manual approval.",
                 );
+                ui::report_info("Hint: Use /vp and /vm to set the verifier LLM.");
             } else {
-                verifier_handle = Some(self.spawn_verifier_task(name, args));
+                verifier_handle = Some(self.spawn_verifier_task(name, args, v_provider, v_model));
             }
         }
 
@@ -280,6 +283,8 @@ impl ActiveSession {
         &self,
         name: &str,
         args: &serde_json::Map<String, Value>,
+        provider: String,
+        model: String,
     ) -> tokio::task::JoinHandle<VerificationOutcome> {
         let ctx_clone = self.ctx.clone();
         let config_clone = match self.ctx.config_manager.get_config() {
@@ -298,8 +303,8 @@ impl ActiveSession {
                 tool_args: &args_clone,
                 context: None,
                 config: &config_clone,
-                provider: None,
-                model: None,
+                provider: Some(provider),
+                model: Some(model),
             })
             .await
         })

@@ -131,7 +131,7 @@ fn default_dual_llm_model() -> String {
     "".to_string()
 }
 fn default_unified_provider() -> String {
-    "ollama".to_string()
+    "".to_string()
 }
 fn default_security_level() -> String {
     "high".to_string()

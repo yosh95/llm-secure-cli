@@ -300,6 +300,31 @@ impl ConfigManager {
         Ok(final_config)
     }
 
+    /// Resolve the dual LLM provider and model, prioritizing AppState (state.toml)
+    /// but falling back to AppConfig (config.toml).
+    pub fn get_dual_llm_settings(&self) -> (String, String) {
+        let state = self.get_state().unwrap_or_default();
+        let config = self.get_config().ok();
+
+        let provider = state
+            .last_used_v_provider
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                config
+                    .as_ref()
+                    .map(|c| c.security.dual_llm_provider.clone())
+            })
+            .unwrap_or_default();
+
+        let model = state
+            .last_used_v_model
+            .filter(|s| !s.is_empty())
+            .or_else(|| config.as_ref().map(|c| c.security.dual_llm_model.clone()))
+            .unwrap_or_default();
+
+        (provider, model)
+    }
+
     pub fn get_api_key(&self, provider: &str) -> Option<String> {
         // 1. Try generic provider-based env var (e.g., OPENROUTER_API_KEY, OLLAMA_API_KEY)
         let generic_env_var = format!("{}_API_KEY", provider.to_uppercase());

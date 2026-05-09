@@ -172,9 +172,10 @@ pub fn handle_info(session: &ActiveSession) {
     ui::print_key_value("Provider", &state.provider);
 
     // Validator Info
+    let (v_provider, v_model_raw) = session.ctx.config_manager.get_dual_llm_settings();
     let v_enabled = config.security.dual_llm_verification.unwrap_or(false);
-    let v_provider = &config.security.dual_llm_provider;
-    let v_model = if config.security.dual_llm_model.is_empty() {
+
+    let v_model = if v_model_raw.is_empty() {
         if v_enabled {
             "NOT SET (Falling back to manual approval)"
                 .red()
@@ -183,10 +184,17 @@ pub fn handle_info(session: &ActiveSession) {
             "Not Set".to_string()
         }
     } else {
-        config.security.dual_llm_model.clone()
+        v_model_raw
     };
     ui::print_key_value("Verifier Model", &v_model);
-    ui::print_key_value("Verifier Prov", v_provider);
+    ui::print_key_value(
+        "Verifier Prov",
+        if v_provider.is_empty() {
+            "Not Set"
+        } else {
+            &v_provider
+        },
+    );
     let v_status = if v_enabled {
         "ENABLED".green().to_string()
     } else {
@@ -503,17 +511,13 @@ pub async fn handle_provider_cmd(session: &mut ActiveSession, args: &str) {
 }
 
 pub async fn handle_vmodel_cmd(session: &mut ActiveSession, args: &str) {
-    let config = match session.ctx.config_manager.get_config() {
-        Ok(c) => c,
-        Err(e) => {
-            ui::report_error(&format!("Failed to load config: {}", e));
-            return;
-        }
-    };
-    let current_provider = &config.security.dual_llm_provider;
-    let current_model = &config.security.dual_llm_model;
+    let (current_provider, current_model) = session.ctx.config_manager.get_dual_llm_settings();
 
     if args.is_empty() {
+        if current_provider.is_empty() {
+            ui::report_error("Verifier provider is not set. Use /vp <provider> first.");
+            return;
+        }
         ui::print_rule(
             Some(&format!(
                 "Available Models for Verifier ({})",
@@ -522,10 +526,10 @@ pub async fn handle_vmodel_cmd(session: &mut ActiveSession, args: &str) {
             Some("cyan"),
         );
         let models_map = session.ctx.config_manager.get_cached_models().await;
-        if let Some(mut models) = models_map.get(current_provider).cloned() {
+        if let Some(mut models) = models_map.get(&current_provider).cloned() {
             models.sort();
             for model in models {
-                if &model == current_model {
+                if model == current_model {
                     println!("  {} {}", "●".cyan(), model.bold().cyan());
                 } else {
                     println!("    {}", model);
@@ -535,34 +539,25 @@ pub async fn handle_vmodel_cmd(session: &mut ActiveSession, args: &str) {
         return;
     }
 
-    let mut new_config = (*config).clone();
-    new_config.security.dual_llm_model = args.to_string();
-    if let Err(e) = session.ctx.config_manager.set_config(new_config) {
-        ui::report_error(&format!("Failed to update config: {}", e));
+    if let Err(e) = session
+        .ctx
+        .config_manager
+        .update_v_state(&current_provider, args)
+    {
+        ui::report_error(&format!("Failed to update verifier model: {}", e));
     } else {
-        let _ = session
-            .ctx
-            .config_manager
-            .update_v_state(current_provider, args);
         ui::report_success(&format!("Verifier model set to: {}", args));
     }
 }
 
 pub async fn handle_vprovider_cmd(session: &mut ActiveSession, args: &str) {
-    let config = match session.ctx.config_manager.get_config() {
-        Ok(c) => c,
-        Err(e) => {
-            ui::report_error(&format!("Failed to load config: {}", e));
-            return;
-        }
-    };
-    let current_provider = &config.security.dual_llm_provider;
+    let (current_provider, _) = session.ctx.config_manager.get_dual_llm_settings();
 
     if args.is_empty() {
         ui::print_rule(Some("Available Providers for Verifier"), Some("cyan"));
         let providers = session.ctx.client_registry.lock().await.list_providers();
         for p in providers {
-            if &p == current_provider {
+            if p == current_provider {
                 println!("  {} {}", "●".cyan(), p.bold().cyan());
             } else {
                 println!("    {}", p);
@@ -571,13 +566,9 @@ pub async fn handle_vprovider_cmd(session: &mut ActiveSession, args: &str) {
         return;
     }
 
-    let mut new_config = (*config).clone();
-    new_config.security.dual_llm_provider = args.to_string();
-    new_config.security.dual_llm_model = String::new(); // Reset model when provider changes
-    if let Err(e) = session.ctx.config_manager.set_config(new_config) {
-        ui::report_error(&format!("Failed to update config: {}", e));
+    if let Err(e) = session.ctx.config_manager.update_v_state(args, "") {
+        ui::report_error(&format!("Failed to update verifier provider: {}", e));
     } else {
-        let _ = session.ctx.config_manager.update_v_state(args, "");
         ui::report_success(&format!(
             "Verifier provider set to: {}. Please set a model with /vmodel.",
             args
