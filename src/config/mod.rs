@@ -270,22 +270,17 @@ impl ConfigManager {
             .map_err(|e| anyhow::anyhow!("Failed to parse defaults: {}", e))?;
 
         // 2. Load user config from files and merge them
-        let config_paths = [
-            config_file_path(),
-            std::path::Path::new("config.toml").to_path_buf(),
-        ];
+        let config_path = config_file_path();
 
-        for path in config_paths {
-            if path.exists()
-                && let Ok(content) = fs::read_to_string(&path)
-            {
-                match toml::from_str::<serde_json::Value>(&content) {
-                    Ok(user_value) => merge_json(&mut config_value, user_value),
-                    Err(e) => ui::report_warning(&format!(
-                        "Failed to parse config file at {:?}: {}",
-                        path, e
-                    )),
-                }
+        if config_path.exists()
+            && let Ok(content) = fs::read_to_string(&config_path)
+        {
+            match toml::from_str::<serde_json::Value>(&content) {
+                Ok(user_value) => merge_json(&mut config_value, user_value),
+                Err(e) => ui::report_warning(&format!(
+                    "Failed to parse config file at {:?}: {}",
+                    config_path, e
+                )),
             }
         }
 

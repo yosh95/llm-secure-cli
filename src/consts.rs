@@ -6,18 +6,12 @@ static BASE_DIR_INNER: OnceLock<PathBuf> = OnceLock::new();
 pub fn init_base_dir(custom_path: Option<PathBuf>) {
     let base_dir = if let Some(path) = custom_path {
         path
-    } else if let Some(env_base) = std::env::var_os("LLM_SECURE_CLI_BASE_DIR") {
-        PathBuf::from(env_base)
     } else if let Some(home) = dirs::home_dir() {
         home.join(".llm_secure_cli")
-    } else if let Some(home) = std::env::var_os("HOME")
-        && !home.is_empty()
-    {
-        PathBuf::from(home).join(".llm_secure_cli")
     } else {
         panic!(
             "Could not find home directory. \
-             Please set $HOME, $LLM_SECURE_CLI_BASE_DIR, or use --base-dir."
+             Please set $HOME or use --base-dir."
         );
     };
     let _ = BASE_DIR_INNER.set(base_dir);
@@ -25,10 +19,7 @@ pub fn init_base_dir(custom_path: Option<PathBuf>) {
 
 pub fn get_base_dir() -> &'static PathBuf {
     BASE_DIR_INNER.get_or_init(|| {
-        // Fallback initialization if init_base_dir wasn't called
-        if let Some(env_base) = std::env::var_os("LLM_SECURE_CLI_BASE_DIR") {
-            PathBuf::from(env_base)
-        } else if let Some(home) = dirs::home_dir() {
+        if let Some(home) = dirs::home_dir() {
             home.join(".llm_secure_cli")
         } else {
             PathBuf::from(".llm_secure_cli")
