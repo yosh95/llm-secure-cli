@@ -1,0 +1,93 @@
+use llm_secure_cli::config::models::SecurityConfig;
+use llm_secure_cli::security::cass::{CASS_ORCHESTRATOR, RiskLevel};
+use llm_secure_cli::security::merkle::MerkleTree;
+use llm_secure_cli::security::path_validator::validate_path;
+use serde_json::json;
+use std::fs;
+use tempfile::tempdir;
+
+#[test]
+fn test_path_validator_traversal_and_links() {
+    let tmp = tempdir().unwrap();
+    let base_path = tmp.path().canonicalize().unwrap();
+
+    // Create physical environment
+    let safe_dir = base_path.join("safe");
+    fs::create_dir(&safe_dir).unwrap();
+    let safe_file = safe_dir.join("data.txt");
+    fs::write(&safe_file, "secret").unwrap();
+
+    let sensitive_file = base_path.join("sensitive.key");
+    fs::write(&sensitive_file, "private_key").unwrap();
+
+    // Mock config
+    let mut config = SecurityConfig::default();
+    config.allowed_paths = vec![safe_dir.to_string_lossy().to_string()];
+
+    // 1. Basic valid path
+    assert!(validate_path(&safe_file.to_string_lossy(), &config).is_ok());
+
+    // 2. Test classic traversal (../)
+    let traversal_path = safe_dir.join("../sensitive.key");
+    assert!(validate_path(&traversal_path.to_string_lossy(), &config).is_err());
+
+    // 3. Test Symbolic Link Attack
+    #[cfg(unix)]
+    {
+        let symlink_path = safe_dir.join("leak.txt");
+        // Create a symlink inside safe_dir pointing to sensitive_file outside
+        let _ = std::os::unix::fs::symlink(&sensitive_file, &symlink_path);
+
+        // validate_path resolves symlinks and checks the canonical target
+        assert!(validate_path(&symlink_path.to_string_lossy(), &config).is_err());
+    }
+}
+
+#[test]
+fn test_merkle_audit_integrity() {
+    let logs = vec![
+        "session_start".to_string(),
+        "tool_call: ls".to_string(),
+        "tool_result: file.txt".to_string(),
+    ];
+
+    // 1. Root hash generation
+    let tree = MerkleTree::new(logs.clone());
+    let root_before = tree.root_hex.clone();
+    assert_ne!(root_before, "0".repeat(64));
+
+    // 2. Tamper test
+    let mut tampered_logs = logs.clone();
+    tampered_logs[1] = "tool_call: rm -rf /".to_string();
+    let tree_tampered = MerkleTree::new(tampered_logs);
+
+    assert_ne!(
+        root_before, tree_tampered.root_hex,
+        "Tampered log must result in different hash"
+    );
+}
+
+#[test]
+fn test_cass_risk_scaling() {
+    let config = SecurityConfig::default();
+
+    // 1. Test Low Risk Tool (default)
+    let level_low = CASS_ORCHESTRATOR.evaluate_risk("read_file", None, &config);
+    assert!(level_low <= RiskLevel::Medium);
+
+    // 2. Test Critical Risk Tool
+    let level_crit = CASS_ORCHESTRATOR.evaluate_risk("execute_command", None, &config);
+    assert_eq!(level_crit, RiskLevel::Critical);
+
+    // 3. Test Argument-based escalation
+    let mut config_with_patterns = SecurityConfig::default();
+    config_with_patterns.scaling_patterns = vec!["/etc/shadow".to_string()];
+
+    let sensitive_read = CASS_ORCHESTRATOR.evaluate_risk(
+        "read_file",
+        Some(&json!({"path": "/etc/shadow"})),
+        &config_with_patterns,
+    );
+
+    assert!(sensitive_read >= RiskLevel::High);
+}

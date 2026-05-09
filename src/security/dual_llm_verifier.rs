@@ -37,7 +37,7 @@ pub struct VerificationParams<'a> {
 /// Outcome of a Dual LLM verification attempt.
 /// Distinguishes between definitive safety judgments and cases where
 /// the verifier was unavailable and a human must decide.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum VerificationOutcome {
     /// The verifier explicitly approved the tool call.
     Allowed(String),
