@@ -39,17 +39,7 @@ auto_approval_level = "none"
 allowed_paths = ["."]
 
 # Whitelist-based Tool Loading
-allowed_tools = [
-    "list_files_in_directory",
-    "read_file_content",
-    "grep_files",
-    "search_files",
-    "edit_file",
-    "create_or_overwrite_file",
-    "read_url_content",
-    "brave_search",
-    "execute_command"
-]
+allowed_tools = ["*"]
 
 # Risk Level Classification
 high_risk_tools = [
