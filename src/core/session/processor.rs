@@ -221,9 +221,36 @@ impl ActiveSession {
             Some(&serde_json::json!(args)),
             &config.security,
         );
-        let approved = self.is_auto_approved(name, risk_level);
+
+        // Zero Trust Check for MCP Servers
+        let mut force_manual = false;
+        if name.contains("__") {
+            let server_name = name.split("__").next().unwrap_or("");
+            if let Some(mcp_config) = config.mcp_servers.iter().find(|s| s.name == server_name)
+                && mcp_config.zero_trust
+            {
+                force_manual = true;
+                ui::report_info(&format!(
+                    "Zero Trust Policy enabled for server '{}'.",
+                    server_name
+                ));
+            }
+        }
+
+        let approved = if force_manual {
+            false
+        } else {
+            self.is_auto_approved(name, risk_level)
+        };
 
         ui::print_tool_call(name, &serde_json::json!(args));
+
+        if force_manual {
+            match crate::security::identity::IdentityManager::generate_token(Some(name)) {
+                Ok(_token) => ui::report_success("Identity Verified (Hybrid PQC Token generated)"),
+                Err(e) => ui::report_warning(&format!("Identity Verification failed: {}", e)),
+            }
+        }
 
         // Start Dual LLM Verifier background task if enabled
         let mut verifier_handle = None;

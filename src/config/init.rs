@@ -1,19 +1,22 @@
 use crate::cli::ui;
 use std::fs;
 
-use crate::consts::{CONFIG_DIR, CONFIG_FILE_PATH};
+use crate::consts::{config_dir, config_file_path};
 
 const DEFAULTS: &str = include_str!("defaults.toml");
 
 pub fn init_config() {
-    if CONFIG_FILE_PATH.exists() {
+    let c_file = config_file_path();
+    let c_dir = config_dir();
+
+    if c_file.exists() {
         return;
     }
 
-    if let Err(e) = fs::create_dir_all(&*CONFIG_DIR) {
+    if let Err(e) = fs::create_dir_all(&c_dir) {
         ui::report_error(&format!(
             "Could not create config directory {:?}: {}",
-            *CONFIG_DIR, e
+            c_dir, e
         ));
         return;
     }
@@ -46,12 +49,9 @@ pub fn init_config() {
         }
     }
 
-    if let Err(e) = fs::write(&*CONFIG_FILE_PATH, commented_lines) {
-        ui::report_error(&format!(
-            "Could not write config file {:?}: {}",
-            *CONFIG_FILE_PATH, e
-        ));
+    if let Err(e) = fs::write(&c_file, commented_lines) {
+        ui::report_error(&format!("Could not write config file {:?}: {}", c_file, e));
     } else {
-        ui::report_success(&format!("Initialized config at {:?}", *CONFIG_FILE_PATH));
+        ui::report_success(&format!("Initialized config at {:?}", c_file));
     }
 }

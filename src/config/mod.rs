@@ -3,7 +3,7 @@ pub mod models;
 
 use crate::cli::ui;
 use crate::config::models::{AppConfig, AppState};
-use crate::consts::{CONFIG_FILE_PATH, LLM_CLI_BASE_DIR, MODELS_CACHE_PATH, STATE_FILE_PATH};
+use crate::consts::{config_file_path, get_base_dir, models_cache_path, state_file_path};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -44,8 +44,9 @@ impl ConfigManager {
             return Ok(state.clone());
         }
 
-        let state = if STATE_FILE_PATH.exists() {
-            let content = fs::read_to_string(&*STATE_FILE_PATH).unwrap_or_default();
+        let s_path = state_file_path();
+        let state = if s_path.exists() {
+            let content = fs::read_to_string(&s_path).unwrap_or_default();
             toml::from_str(&content).unwrap_or_default()
         } else {
             AppState::default()
@@ -67,7 +68,7 @@ impl ConfigManager {
         *write = Some(state.clone());
 
         if let Ok(content) = toml::to_string(&state) {
-            let _ = fs::write(&*STATE_FILE_PATH, content);
+            let _ = fs::write(state_file_path(), content);
         }
         Ok(())
     }
@@ -84,7 +85,7 @@ impl ConfigManager {
         *write = Some(state.clone());
 
         if let Ok(content) = toml::to_string(&state) {
-            let _ = fs::write(&*STATE_FILE_PATH, content);
+            let _ = fs::write(state_file_path(), content);
         }
         Ok(())
     }
@@ -105,26 +106,28 @@ impl ConfigManager {
         *write = Some(state.clone());
 
         if let Ok(content) = toml::to_string(&state) {
-            let _ = fs::write(&*STATE_FILE_PATH, content);
+            let _ = fs::write(state_file_path(), content);
         }
         Ok(())
     }
 
     pub async fn get_cached_models(&self) -> HashMap<String, Vec<String>> {
-        if !MODELS_CACHE_PATH.exists() {
+        let c_path = models_cache_path();
+        if !c_path.exists() {
             return self.update_models_cache().await;
         }
 
-        let content = fs::read_to_string(&*MODELS_CACHE_PATH).unwrap_or_default();
+        let content = fs::read_to_string(&c_path).unwrap_or_default();
         serde_json::from_str(&content).unwrap_or_default()
     }
 
     pub fn get_cached_models_sync(&self) -> HashMap<String, Vec<String>> {
-        if !MODELS_CACHE_PATH.exists() {
+        let c_path = models_cache_path();
+        if !c_path.exists() {
             return HashMap::new();
         }
 
-        let content = fs::read_to_string(&*MODELS_CACHE_PATH).unwrap_or_default();
+        let content = fs::read_to_string(&c_path).unwrap_or_default();
         serde_json::from_str(&content).unwrap_or_default()
     }
 
@@ -139,7 +142,7 @@ impl ConfigManager {
         }
 
         if let Ok(content) = serde_json::to_string_pretty(&cache) {
-            let _ = fs::write(&*MODELS_CACHE_PATH, content);
+            let _ = fs::write(models_cache_path(), content);
         }
         cache
     }
@@ -214,10 +217,7 @@ impl ConfigManager {
     fn load_env_files(&self) -> &HashMap<String, String> {
         self.env_cache.get_or_init(|| {
             let mut cache = HashMap::new();
-            let dotenv_paths = [
-                Path::new(".env").to_path_buf(),
-                LLM_CLI_BASE_DIR.join(".env"),
-            ];
+            let dotenv_paths = [Path::new(".env").to_path_buf(), get_base_dir().join(".env")];
 
             for path in dotenv_paths {
                 if path.exists()
@@ -271,7 +271,7 @@ impl ConfigManager {
 
         // 2. Load user config from files and merge them
         let config_paths = [
-            (*CONFIG_FILE_PATH).clone(),
+            config_file_path(),
             std::path::Path::new("config.toml").to_path_buf(),
         ];
 
@@ -292,7 +292,7 @@ impl ConfigManager {
         // 3. Final deserialization into AppConfig
         let final_config_struct: AppConfig =
             serde_json::from_value(config_value).map_err(|e| {
-                anyhow::anyhow!("CRITICAL: Failed to deserialize merged configuration: {}\nPlease check your ~/.llm_secure_cli/config.toml for schema errors.", e)
+                anyhow::anyhow!("CRITICAL: Failed to deserialize merged configuration: {}\nPlease check your {}/config.toml for schema errors.", e, get_base_dir().to_string_lossy())
             })?;
 
         let final_config = Arc::new(final_config_struct);

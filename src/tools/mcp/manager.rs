@@ -62,7 +62,7 @@ impl McpManager {
                     env: None,
                 };
 
-                match ClientSession::start(params).await {
+                match ClientSession::start(params, server_cfg.zero_trust).await {
                     Ok(session) => {
                         if let Err(e) = session.initialize().await {
                             return Err(anyhow!(
@@ -128,6 +128,7 @@ impl McpManager {
         arguments: Value,
     ) -> Result<String> {
         let sessions = self.sessions.lock().await;
+
         let session = sessions
             .get(server_name)
             .ok_or_else(|| anyhow!("MCP server '{}' not connected.", server_name))?;
@@ -143,6 +144,35 @@ impl McpManager {
                 } else {
                     tool_args[key] = value.clone();
                 }
+            }
+        }
+
+        // Apply Zero Trust security if enabled for this session
+        if session.is_zero_trust {
+            use crate::security::identity::IdentityManager;
+            use crate::security::pqc::SecureStorage;
+
+            // 1. Generate PQC Signature Token
+            let token = IdentityManager::generate_token(Some(tool_name))?;
+            metadata["auth_token"] = json!(token);
+
+            // 2. Encrypt arguments with PQC using server's specific key
+            if let Ok(pk) =
+                IdentityManager::get_public_key_for("servers", server_name, "id_kem768.pub")
+            {
+                let args_bytes = serde_json::to_vec(&tool_args)?;
+                let encrypted_packet = SecureStorage::encrypt(&args_bytes, &pk)?;
+                tool_args = json!({
+                    "pqc_encrypted": true,
+                    "data": encrypted_packet
+                });
+            } else {
+                // If ZT is enabled but server key is missing, it's a security risk
+                return Err(anyhow!(
+                    "Zero Trust error: Public key for server '{}' not found in {}/keys/servers/",
+                    server_name,
+                    crate::consts::get_base_dir().to_string_lossy()
+                ));
             }
         }
 

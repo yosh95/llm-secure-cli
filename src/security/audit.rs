@@ -1,4 +1,4 @@
-use crate::consts::AUDIT_LOG_PATH;
+use crate::consts::audit_log_path;
 use crate::security::pqc::ResponseSigner;
 use chrono::Utc;
 use hostname;
@@ -120,7 +120,8 @@ pub fn log_audit(params: AuditParams) {
 }
 
 pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Option<AuditEntry> {
-    let default_path = &*AUDIT_LOG_PATH;
+    let a_path = audit_log_path();
+    let default_path = &a_path;
     let path = log_path.unwrap_or(default_path);
     let max_lines = params.config.general.max_audit_log_lines;
 
@@ -228,17 +229,18 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         params.config,
         params.tool_name,
         Some(&params.args),
-        if params.config.security.security_level == "high" {
-            "high"
-        } else {
-            "standard"
-        },
     );
     if let Ok(sk) = crate::security::identity::IdentityManager::get_pqc_private_key(variant) {
         match ResponseSigner::sign_response(&log_entry.hash, &log_entry.trace_id, &sk, variant) {
             Ok(signed) => {
-                log_entry.pqc_signature = Some(signed.pqc_signature);
-                log_entry.pqc_algorithm = Some(signed.algorithm);
+                log_entry.pqc_signature = signed
+                    .get("pqc_signature")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                log_entry.pqc_algorithm = signed
+                    .get("algorithm")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
             }
             Err(e) => {
                 if params.config.security.security_level == "high" {

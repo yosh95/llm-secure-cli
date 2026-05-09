@@ -1,3 +1,4 @@
+use crate::security::pqc::PQCVariant;
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -84,10 +85,11 @@ pub struct ClientSession {
     #[allow(dead_code)]
     child: Child,
     request_tx: mpsc::UnboundedSender<(Value, oneshot::Sender<Result<Value>>)>,
+    pub is_zero_trust: bool,
 }
 
 impl ClientSession {
-    pub async fn start(params: StdioServerParameters) -> Result<Self> {
+    pub async fn start(params: StdioServerParameters, is_zero_trust: bool) -> Result<Self> {
         let mut cmd = Command::new(&params.command);
         cmd.args(&params.args);
         cmd.stdin(Stdio::piped());
@@ -161,7 +163,11 @@ impl ClientSession {
             }
         });
 
-        Ok(Self { child, request_tx })
+        Ok(Self {
+            child,
+            request_tx,
+            is_zero_trust,
+        })
     }
 
     async fn send_request(&self, method: &str, params: Option<Value>) -> Result<Value> {
@@ -244,13 +250,15 @@ pub type FastMcpToolFn =
 pub struct FastMcp {
     pub name: String,
     pub tools: HashMap<String, FastMcpToolFn>,
+    pub zero_trust: bool,
 }
 
 impl FastMcp {
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: &str, zero_trust: bool) -> Self {
         Self {
             name: name.to_string(),
             tools: HashMap::new(),
+            zero_trust,
         }
     }
 
@@ -326,7 +334,98 @@ impl FastMcp {
                             .cloned()
                             .unwrap_or(json!({}));
 
-                        let result = if let Some(name) = tool_name {
+                        // Zero Trust Validation
+                        let validation_error = if self.zero_trust {
+                            let auth_token = arguments
+                                .get("_meta")
+                                .and_then(|m| m.get("auth_token"))
+                                .and_then(|t| t.as_str());
+
+                            if let Some(token_b64) = auth_token {
+                                match base64::Engine::decode(
+                                    &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+                                    token_b64,
+                                ) {
+                                    Ok(token_bytes) => {
+                                        use crate::security::identity::IdentityManager;
+                                        use crate::security::pqc_cose::HybridSigner;
+
+                                        // 1. First pass: extract identity without full verification to get the client ID
+                                        // In COSE, we can peek the payload or use a hint.
+                                        // For simplicity, we use verify_hybrid_token with a dynamic fetcher.
+                                        let identity = HybridSigner::verify_hybrid_token(
+                                            &token_bytes,
+                                            &[],        // Temporary empty classical key
+                                            |_| vec![], // Temporary empty PQC key
+                                        );
+
+                                        // 2. Real verification: use the ID from the token to find registered keys
+                                        if let Some(id_obj) = identity
+                                            && let Some(client_id) =
+                                                id_obj.get("sub").and_then(|s| s.as_str())
+                                        {
+                                            let classical_pub = IdentityManager::get_public_key_for(
+                                                "clients",
+                                                client_id,
+                                                "id_ed25519.pub",
+                                            );
+
+                                            if let Ok(cpk) = classical_pub {
+                                                let verified_identity =
+                                                    HybridSigner::verify_hybrid_token(
+                                                        &token_bytes,
+                                                        &cpk,
+                                                        |v| {
+                                                            let filename = match v {
+                                                                PQCVariant::MLDSA44 => {
+                                                                    "id_mldsa44.pub"
+                                                                }
+                                                                PQCVariant::MLDSA65 => {
+                                                                    "id_mldsa65.pub"
+                                                                }
+                                                                PQCVariant::MLDSA87 => {
+                                                                    "id_mldsa87.pub"
+                                                                }
+                                                            };
+                                                            IdentityManager::get_public_key_for(
+                                                                "clients", client_id, filename,
+                                                            )
+                                                            .unwrap_or_default()
+                                                        },
+                                                    );
+
+                                                if verified_identity.is_some() {
+                                                    None // Success
+                                                } else {
+                                                    Some("Zero Trust: PQC signature verification failed for client".to_string())
+                                                }
+                                            } else {
+                                                Some(format!(
+                                                    "Zero Trust: Client '{}' is not registered (keys not found)",
+                                                    client_id
+                                                ))
+                                            }
+                                        } else {
+                                            Some(
+                                                "Zero Trust: Invalid or missing identity in token"
+                                                    .to_string(),
+                                            )
+                                        }
+                                    }
+                                    Err(_) => {
+                                        Some("Zero Trust: Invalid token encoding".to_string())
+                                    }
+                                }
+                            } else {
+                                Some("Zero Trust: Missing auth_token in _meta".to_string())
+                            }
+                        } else {
+                            None
+                        };
+
+                        let result = if let Some(err_msg) = validation_error {
+                            Err(err_msg)
+                        } else if let Some(name) = tool_name {
                             if let Some(tool) = self.tools.get(name) {
                                 match tool(arguments).await {
                                     Ok(res) => Ok(res),

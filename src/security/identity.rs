@@ -1,256 +1,175 @@
-use crate::consts::KEY_DIR;
-use crate::security::pqc::{MldsaVariant, MlkemVariant, PQCAgilityManager, PqcProvider};
+use crate::security::pqc::{PQCVariant, PqcProvider};
 use crate::security::pqc_cose::HybridSigner;
-use anyhow::Result;
-use base64::{Engine as _, engine::general_purpose};
+use anyhow::{Result, anyhow};
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
-use pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
 use rand::rngs::OsRng;
-use serde_json::json;
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex};
+use std::path::PathBuf;
 use uuid::Uuid;
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct IdentityClaims {
+    pub iss: String,
+    pub sub: String,
+    pub iat: i64,
+    pub exp: i64,
+    pub jti: String,
+    pub tool: Option<String>,
+    pub workspace: String,
+}
 
 pub struct IdentityManager;
 
-static KEY_CACHE: LazyLock<Mutex<HashMap<String, Vec<u8>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-static KEYS_ENSURED: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
-
 impl IdentityManager {
-    const PRIVATE_KEY_PATH: &str = "id_ed25519";
-    const PUBLIC_KEY_PATH: &str = "id_ed25519.pub";
-    const PQC_KEM_PRIVATE_KEY_PATH: &str = "id_kem.key";
-    const PQC_KEM_PUBLIC_KEY_PATH: &str = "id_kem.pub";
-
-    fn get_pqc_paths(variant: MldsaVariant) -> (PathBuf, PathBuf) {
-        let (priv_name, pub_name) = match variant {
-            MldsaVariant::Mldsa44 => ("id_pqc_l2.key", "id_pqc_l2.pub"),
-            MldsaVariant::Mldsa65 => ("id_pqc_l3.key", "id_pqc_l3.pub"),
-            MldsaVariant::Mldsa87 => ("id_pqc_l5.key", "id_pqc_l5.pub"),
-        };
-        (KEY_DIR.join(priv_name), KEY_DIR.join(pub_name))
+    fn get_base_dir() -> PathBuf {
+        crate::consts::key_dir()
     }
 
-    pub fn ensure_keys(force: bool) -> Result<()> {
-        let mut ensured = KEYS_ENSURED
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-        if *ensured && !force {
-            return Ok(());
+    fn get_key_dir(entity_type: &str, name: &str) -> PathBuf {
+        Self::get_base_dir().join(entity_type).join(name)
+    }
+
+    pub fn ensure_keys() -> Result<()> {
+        let dir = Self::get_key_dir("self", "me");
+        if !dir.exists() {
+            fs::create_dir_all(&dir)?;
         }
 
-        if !KEY_DIR.exists() {
-            fs::create_dir_all(&*KEY_DIR)?;
-        }
-
-        // Classical Ed25519 Keys
-        let ed_priv_path = KEY_DIR.join(Self::PRIVATE_KEY_PATH);
-        let ed_pub_path = KEY_DIR.join(Self::PUBLIC_KEY_PATH);
-
-        if force || !ed_priv_path.exists() || !ed_pub_path.exists() {
+        let ed_path = dir.join("id_ed25519");
+        if !ed_path.exists() {
             let mut rng = OsRng;
             let signing_key = SigningKey::generate(&mut rng);
-            let verifying_key = signing_key.verifying_key();
-
-            let priv_pem = signing_key.to_pkcs8_pem(LineEnding::LF)?;
-            let pub_pem = verifying_key.to_public_key_pem(LineEnding::LF)?;
-
-            Self::write_private_file(&ed_priv_path, priv_pem.as_bytes())?;
-            Self::write_public_file(&ed_pub_path, pub_pem.as_bytes())?;
+            let priv_bytes = signing_key.to_bytes();
+            let pub_bytes = signing_key.verifying_key().to_bytes();
+            fs::write(&ed_path, priv_bytes)?;
+            fs::write(dir.join("id_ed25519.pub"), pub_bytes)?;
         }
 
-        // ML-DSA Keys
-        for variant in [
-            MldsaVariant::Mldsa44,
-            MldsaVariant::Mldsa65,
-            MldsaVariant::Mldsa87,
-        ] {
-            let (priv_p, pub_p) = Self::get_pqc_paths(variant);
-            if force || !priv_p.exists() || !pub_p.exists() {
-                let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant)?;
-                Self::write_private_file(&priv_p, &sk)?;
-                Self::write_public_file(&pub_p, &pk)?;
+        let pqc_variants = [
+            PQCVariant::MLDSA44,
+            PQCVariant::MLDSA65,
+            PQCVariant::MLDSA87,
+        ];
+        for variant in pqc_variants {
+            let filename = match variant {
+                PQCVariant::MLDSA44 => "id_mldsa44",
+                PQCVariant::MLDSA65 => "id_mldsa65",
+                PQCVariant::MLDSA87 => "id_mldsa87",
+            };
+            let pqc_path = dir.join(filename);
+            if !pqc_path.exists() {
+                let (pk, sk) = PqcProvider::generate_keypair(variant)?;
+                fs::write(&pqc_path, sk)?;
+                fs::write(dir.join(format!("{}.pub", filename)), pk)?;
             }
         }
 
-        // ML-KEM Keys
-        let kem_priv_path = KEY_DIR.join(Self::PQC_KEM_PRIVATE_KEY_PATH);
-        let kem_pub_path = KEY_DIR.join(Self::PQC_KEM_PUBLIC_KEY_PATH);
-        if force || !kem_priv_path.exists() || !kem_pub_path.exists() {
-            let (pk, sk) = PqcProvider::generate_mlkem_keypair(MlkemVariant::Mlkem768)?;
-            Self::write_private_file(&kem_priv_path, &sk)?;
-            Self::write_public_file(&kem_pub_path, &pk)?;
+        let kem_path = dir.join("id_kem768");
+        if !kem_path.exists() {
+            let v = saorsa_pqc::api::MlKemVariant::MlKem768;
+            let ops = saorsa_pqc::api::MlKem::new(v);
+            let (pk, sk) = ops
+                .generate_keypair()
+                .map_err(|_| anyhow!("KEM keygen failed"))?;
+            fs::write(&kem_path, sk.to_bytes())?;
+            fs::write(dir.join("id_kem768.pub"), pk.to_bytes())?;
         }
 
-        *ensured = true;
-        if force {
-            KEY_CACHE
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?
-                .clear();
-        }
         Ok(())
+    }
+
+    pub fn get_public_key_for(entity_type: &str, name: &str, filename: &str) -> Result<Vec<u8>> {
+        let path = Self::get_key_dir(entity_type, name).join(filename);
+        if !path.exists() {
+            return Err(anyhow!("Public key not found: {:?}", path));
+        }
+        Ok(fs::read(path)?)
     }
 
     pub fn has_keys() -> bool {
-        let ed_priv_path = KEY_DIR.join(Self::PRIVATE_KEY_PATH);
-        let (pqc_priv_path, _) = Self::get_pqc_paths(MldsaVariant::Mldsa65);
-        ed_priv_path.exists() && pqc_priv_path.exists()
-    }
-
-    fn write_private_file(path: &Path, content: &[u8]) -> Result<()> {
-        let _ = fs::remove_file(path); // Remove existing file to avoid permission inheritance
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            let mut options = fs::OpenOptions::new();
-            options.write(true).create(true).truncate(true).mode(0o600);
-            let mut file = options.open(path)?;
-            file.write_all(content)?;
-        }
-
-        #[cfg(windows)]
-        {
-            // On Windows, create the file first
-            let mut file = fs::File::create(path)?;
-            file.write_all(content)?;
-            // Then manipulate ACL to restrict access to current user only
-            Self::secure_windows_file(path)?;
-        }
-
-        #[cfg(not(any(unix, windows)))]
-        {
-            let mut file = fs::File::create(path)?;
-            file.write_all(content)?;
-        }
-
-        Ok(())
-    }
-
-    #[cfg(windows)]
-    fn secure_windows_file(path: &Path) -> Result<()> {
-        use std::process::Command;
-        let path_str = path
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
-
-        // Use icacls to remove inheritance and grant full control only to the current user
-        // 1. Remove inheritance and keep existing ACEs as explicit ACEs
-        let _ = Command::new("icacls")
-            .args(&[path_str, "/inheritance:r"])
-            .status();
-
-        // 2. Grant full control (F) to current user
-        let user = std::env::var("USERNAME").unwrap_or_else(|_| "Administrators".to_string());
-        let grant_arg = format!("{}:(F)", user);
-        let status = Command::new("icacls")
-            .args(&[path_str, "/grant", &grant_arg])
-            .status()?;
-
-        if !status.success() {
-            return Err(anyhow::anyhow!(
-                "Failed to secure Windows file permissions via icacls"
-            ));
-        }
-        Ok(())
-    }
-
-    fn write_public_file(path: &Path, content: &[u8]) -> Result<()> {
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
-
-        let mut file = options.open(path)?;
-        file.write_all(content)?;
-        Ok(())
+        let dir = Self::get_key_dir("self", "me");
+        dir.join("id_ed25519").exists() && dir.join("id_mldsa65").exists()
     }
 
     pub fn get_classical_private_key_pem() -> Result<String> {
-        Self::ensure_keys(false)?;
-        let path = KEY_DIR.join(Self::PRIVATE_KEY_PATH);
-        Ok(fs::read_to_string(path)?)
+        let path = Self::get_key_dir("self", "me").join("id_ed25519");
+        let bytes = fs::read(path)?;
+        let key = SigningKey::from_bytes(bytes.as_slice().try_into()?);
+        use pkcs8::EncodePrivateKey;
+        Ok(key.to_pkcs8_pem(pkcs8::LineEnding::LF)?.to_string())
     }
 
-    pub fn get_pqc_private_key(variant: MldsaVariant) -> Result<Vec<u8>> {
-        Self::ensure_keys(false)?;
-        let (path, _) = Self::get_pqc_paths(variant);
-        Ok(fs::read(path)?)
+    pub fn get_classical_public_key() -> Result<Vec<u8>> {
+        Self::get_public_key_for("self", "me", "id_ed25519.pub")
     }
 
-    pub fn get_pqc_public_key(variant: MldsaVariant) -> Result<Vec<u8>> {
-        Self::ensure_keys(false)?;
-        let (_, path) = Self::get_pqc_paths(variant);
-        Ok(fs::read(path)?)
+    pub fn get_pqc_private_key(variant: PQCVariant) -> Result<Vec<u8>> {
+        let filename = match variant {
+            PQCVariant::MLDSA44 => "id_mldsa44",
+            PQCVariant::MLDSA65 => "id_mldsa65",
+            PQCVariant::MLDSA87 => "id_mldsa87",
+        };
+        Ok(fs::read(Self::get_key_dir("self", "me").join(filename))?)
     }
 
-    pub fn get_kem_public_key() -> Result<Vec<u8>> {
-        Self::ensure_keys(false)?;
-        let path = KEY_DIR.join(Self::PQC_KEM_PUBLIC_KEY_PATH);
-        Ok(fs::read(path)?)
+    pub fn get_pqc_public_key(variant: PQCVariant) -> Result<Vec<u8>> {
+        let filename = match variant {
+            PQCVariant::MLDSA44 => "id_mldsa44.pub",
+            PQCVariant::MLDSA65 => "id_mldsa65.pub",
+            PQCVariant::MLDSA87 => "id_mldsa87.pub",
+        };
+        Ok(fs::read(Self::get_key_dir("self", "me").join(filename))?)
     }
 
     pub fn get_kem_private_key() -> Result<Vec<u8>> {
-        Self::ensure_keys(false)?;
-        let path = KEY_DIR.join(Self::PQC_KEM_PRIVATE_KEY_PATH);
-        Ok(fs::read(path)?)
+        Ok(fs::read(Self::get_key_dir("self", "me").join("id_kem768"))?)
     }
 
-    pub fn get_local_identity() -> String {
-        let user = std::env::var("USER")
-            .or_else(|_| std::env::var("USERNAME"))
-            .unwrap_or_else(|_| "unknown_user".to_string());
-        let hostname = hostname::get()
-            .map(|h| h.to_string_lossy().into_owned())
-            .unwrap_or_else(|_| "unknown_host".to_string());
-        format!("{}@{}", user, hostname)
+    pub fn get_kem_public_key() -> Result<Vec<u8>> {
+        Ok(fs::read(
+            Self::get_key_dir("self", "me").join("id_kem768.pub"),
+        )?)
     }
 
-    pub fn generate_token(
-        config: &crate::config::models::AppConfig,
-        user_id: Option<&str>,
-        audience: Option<&str>,
-        tool_name: Option<&str>,
-        args: Option<&serde_json::Value>,
-    ) -> Result<String> {
-        let uid = user_id
-            .map(|s| s.to_string())
-            .unwrap_or_else(Self::get_local_identity);
+    pub fn generate_token(tool_name: Option<&str>) -> Result<String> {
+        Self::ensure_keys()?;
+        let dir = Self::get_key_dir("self", "me");
+
+        let sub = format!(
+            "{}@{}",
+            std::env::var("USER").unwrap_or_else(|_| "unknown".into()),
+            hostname::get()?.to_string_lossy()
+        );
+
         let now = Utc::now().timestamp();
-
-        let mut payload = json!({
-            "iss": "llm-cli-client",
-            "sub": uid,
-            "iat": now,
-            "exp": now + 600,
-            "jti": Uuid::new_v4().to_string(),
-            "pqc": true,
-            "pqc_kem_pub": general_purpose::STANDARD.encode(Self::get_kem_public_key()?),
-        });
-
-        if let Some(tool) = tool_name {
-            payload["tool"] = json!(tool);
-        }
-        if let Some(aud) = audience {
-            payload["aud"] = json!(aud);
-        }
-
-        let variant = if let Some(tool) = tool_name {
-            PQCAgilityManager::get_required_level(config, tool, args, "standard")
-        } else {
-            MldsaVariant::Mldsa65
+        let claims = IdentityClaims {
+            iss: "llsc-client".to_string(),
+            sub,
+            iat: now,
+            exp: now + 600,
+            jti: Uuid::new_v4().to_string(),
+            tool: tool_name.map(|s| s.to_string()),
+            workspace: format!("{:?}", std::env::current_dir()?),
         };
 
-        let classical_priv = Self::get_classical_private_key_pem()?;
-        let pqc_priv = Self::get_pqc_private_key(variant)?;
+        // Serialize claims to CBOR for the COSE payload
+        let mut payload = Vec::new();
+        ciborium::into_writer(&claims, &mut payload)?;
 
-        let cose_token_bytes =
-            HybridSigner::create_hybrid_token(&payload, &classical_priv, &pqc_priv, variant)?;
+        // Read private keys
+        let ed_sk = fs::read(dir.join("id_ed25519"))?;
+        let pqc_sk = fs::read(dir.join("id_mldsa65"))?;
 
-        Ok(general_purpose::URL_SAFE_NO_PAD.encode(cose_token_bytes))
+        // Create Hybrid COSE Token
+        let cose_token =
+            HybridSigner::create_hybrid_token(&payload, &ed_sk, &pqc_sk, PQCVariant::MLDSA65)?;
+
+        // Base64url encode for transport
+        Ok(base64::Engine::encode(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+            cose_token,
+        ))
     }
 }

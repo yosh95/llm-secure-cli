@@ -1,4 +1,4 @@
-use crate::consts::{CONFIG_FILE_PATH, LLM_CLI_BASE_DIR};
+use crate::consts::{config_file_path, get_base_dir};
 use crate::security::identity::IdentityManager;
 use crate::security::pqc::{MldsaVariant, PqcProvider};
 use anyhow::{Result, anyhow};
@@ -26,7 +26,7 @@ pub struct IntegrityVerifier {
 
 impl IntegrityVerifier {
     pub fn new() -> Self {
-        let mut manifest_path = LLM_CLI_BASE_DIR.clone();
+        let mut manifest_path = get_base_dir().clone();
         manifest_path.push("integrity_manifest.json");
         Self { manifest_path }
     }
@@ -59,10 +59,11 @@ impl IntegrityVerifier {
 
     /// Calculates the SHA-256 hash of the configuration file.
     fn calculate_config_hash(&self) -> Result<String> {
-        if !CONFIG_FILE_PATH.exists() {
+        let c_path = config_file_path();
+        if !c_path.exists() {
             return Ok("MISSING".to_string());
         }
-        let mut file = fs::File::open(&*CONFIG_FILE_PATH)?;
+        let mut file = fs::File::open(&c_path)?;
         let mut hasher = Sha256::new();
 
         let mut buffer = [0u8; 8192];
@@ -88,10 +89,10 @@ impl IntegrityVerifier {
         let json_data = serde_json::to_string(&data_to_sign)?;
 
         // 1. Sign with PQC (ML-DSA)
-        let sk_pqc = IdentityManager::get_pqc_private_key(MldsaVariant::Mldsa65)
+        let sk_pqc = IdentityManager::get_pqc_private_key(MldsaVariant::MLDSA65)
             .map_err(|_| anyhow!("Identity keys not found. Run 'keygen' first."))?;
         let pqc_sig =
-            PqcProvider::sign_mldsa(json_data.as_bytes(), &sk_pqc, MldsaVariant::Mldsa65)?;
+            PqcProvider::sign_mldsa(json_data.as_bytes(), &sk_pqc, MldsaVariant::MLDSA65)?;
 
         // 2. Sign with Ed25519 (Classical)
         let classical_priv_pem = IdentityManager::get_classical_private_key_pem()?;
@@ -133,21 +134,21 @@ impl IntegrityVerifier {
         data_to_verify.insert("config_hash", &manifest.config_hash);
         let json_data = serde_json::to_string(&data_to_verify)?;
 
-        let pk_pqc = IdentityManager::get_pqc_public_key(MldsaVariant::Mldsa65)?;
+        let pk_pqc = IdentityManager::get_pqc_public_key(MldsaVariant::MLDSA65)?;
         let signature_pqc = general_purpose::STANDARD.decode(&manifest.pqc_signature)?;
 
         if !PqcProvider::verify_mldsa(
             json_data.as_bytes(),
             &signature_pqc,
             &pk_pqc,
-            MldsaVariant::Mldsa65,
+            MldsaVariant::MLDSA65,
         ) {
             return Ok(false);
         }
 
         // 2. Verify Classical Signature (Ed25519)
         if let Some(classical_sig_b64) = &manifest.classical_signature {
-            let classical_pub_path = crate::consts::KEY_DIR.join("id_ed25519.pub");
+            let classical_pub_path = crate::consts::key_dir().join("id_ed25519.pub");
             let classical_pub_pem = fs::read_to_string(classical_pub_path)?;
             let verifying_key = VerifyingKey::from_public_key_pem(&classical_pub_pem)
                 .map_err(|e| anyhow!("Failed to load Ed25519 public key: {}", e))?;

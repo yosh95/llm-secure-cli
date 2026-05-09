@@ -1,18 +1,18 @@
 use llm_secure_cli::security::pqc::{
-    MldsaVariant, MlkemVariant, PqcProvider, ResponseSigner, SecureStorage,
+    MldsaVariant, PQCVariant, PqcProvider, ResponseSigner, SecureStorage,
 };
 
 #[test]
 fn test_mldsa_sign_verify_all_variants() {
     let variants = [
-        MldsaVariant::Mldsa44,
-        MldsaVariant::Mldsa65,
-        MldsaVariant::Mldsa87,
+        MldsaVariant::MLDSA44,
+        MldsaVariant::MLDSA65,
+        MldsaVariant::MLDSA87,
     ];
     let message = b"Post-quantum security is essential for 2026.";
 
     for variant in variants {
-        let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant).expect("Key generation failed");
+        let (pk, sk) = PqcProvider::generate_keypair(variant).expect("Key generation failed");
         let sig = PqcProvider::sign_mldsa(message, &sk, variant).expect("Signing failed");
 
         assert!(
@@ -42,40 +42,38 @@ fn test_mldsa_sign_verify_all_variants() {
 }
 
 #[test]
-fn test_mlkem_encaps_decaps_all_variants() {
-    let variants = [
-        MlkemVariant::Mlkem512,
-        MlkemVariant::Mlkem768,
-        MlkemVariant::Mlkem1024,
-    ];
+fn test_mlkem_encaps_decaps() {
+    // We use the provider's specific ML-KEM-768 implementation
+    let v = saorsa_pqc::api::MlKemVariant::MlKem768;
 
-    for variant in variants {
-        let (pk, sk) = PqcProvider::generate_mlkem_keypair(variant).expect("Key generation failed");
-        let (ss_enc, ct) =
-            PqcProvider::encapsulate_mlkem(&pk, variant).expect("Encapsulation failed");
-        let ss_dec =
-            PqcProvider::decapsulate_mlkem(&ct, &sk, variant).expect("Decapsulation failed");
+    // We need the secret key as bytes for the provider
+    let (pk_gen, sk_gen) = saorsa_pqc::api::MlKem::new(v)
+        .generate_keypair()
+        .expect("keygen failed");
+    let pk_bytes = pk_gen.to_bytes();
+    let sk_bytes = sk_gen.to_bytes();
 
-        assert_eq!(
-            ss_enc, ss_dec,
-            "Shared secret mismatch for variant {:?}",
-            variant
-        );
-        assert!(
-            !ss_enc.iter().all(|&b| b == 0),
-            "Shared secret should not be all zeros"
-        );
-    }
+    let (ss_enc, ct) = PqcProvider::encapsulate_mlkem768(&pk_bytes).expect("Encapsulation failed");
+    let ss_dec = PqcProvider::decapsulate_mlkem768(&ct, &sk_bytes).expect("Decapsulation failed");
+
+    assert_eq!(ss_enc, ss_dec, "Shared secret mismatch");
+    assert!(
+        !ss_enc.iter().all(|&b| b == 0),
+        "Shared secret should not be all zeros"
+    );
 }
 
 #[test]
 fn test_secure_storage_hybrid_encryption() {
-    let (pk, sk) =
-        PqcProvider::generate_mlkem_keypair(MlkemVariant::Mlkem768).expect("KEM keygen failed");
+    let v = saorsa_pqc::api::MlKemVariant::MlKem768;
+    let (pk, sk) = saorsa_pqc::api::MlKem::new(v)
+        .generate_keypair()
+        .expect("KEM keygen failed");
     let original_data = b"Sensitive post-quantum data content";
 
-    let packet = SecureStorage::encrypt(original_data, &pk).expect("Encryption failed");
-    let decrypted_data = SecureStorage::decrypt(&packet, &sk).expect("Decryption failed");
+    let packet = SecureStorage::encrypt(original_data, &pk.to_bytes()).expect("Encryption failed");
+    let decrypted_data =
+        SecureStorage::decrypt(&packet, &sk.to_bytes()).expect("Decryption failed");
 
     assert_eq!(
         original_data.to_vec(),
@@ -87,20 +85,26 @@ fn test_secure_storage_hybrid_encryption() {
 
 #[test]
 fn test_response_signer() {
-    let variant = MldsaVariant::Mldsa65;
-    let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant).expect("Keygen failed");
+    let variant = MldsaVariant::MLDSA65;
+    let (pk, sk) = PqcProvider::generate_keypair(variant).expect("Keygen failed");
     let response_text = "The quick brown fox jumps over the lazy dog";
     let verification_id = "test-v-id-123";
 
     let signed = ResponseSigner::sign_response(response_text, verification_id, &sk, variant)
         .expect("Response signing failed");
 
-    assert_eq!(signed.result, response_text);
-    assert_eq!(signed.verification_id, verification_id);
-    assert_eq!(signed.algorithm, variant.to_str());
+    assert_eq!(signed["result"], response_text);
+    assert_eq!(signed["verification_id"], verification_id);
+    assert_eq!(signed["algorithm"], variant.to_str());
+
+    // Manual verification since verify_response was missing
+    let msg = format!("{}:{}", verification_id, response_text);
+    let sig_b64 = signed["pqc_signature"].as_str().unwrap();
+    let sig =
+        base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, sig_b64).unwrap();
 
     assert!(
-        ResponseSigner::verify_response(&signed, &pk),
+        PqcProvider::verify(variant, &pk, msg.as_bytes(), &sig).is_ok(),
         "Response verification failed"
     );
 }
@@ -111,7 +115,6 @@ fn test_merkle_session_verification_logic() {
     use llm_secure_cli::security::merkle::MerkleTree;
     use sha2::{Digest, Sha256};
 
-    // Simulate entry creation
     let mut entry = AuditEntry {
         timestamp: "2026-04-22T10:00:00Z".to_string(),
         trace_id: "test-session".to_string(),
@@ -136,7 +139,6 @@ fn test_merkle_session_verification_logic() {
         cli_version: "0.1.0".to_string(),
     };
 
-    // Calculate hash exactly like log_audit
     let entry_json = serde_json::to_string(&entry).unwrap();
     let mut hasher = Sha256::new();
     hasher.update(entry_json.as_bytes());
@@ -146,7 +148,6 @@ fn test_merkle_session_verification_logic() {
     let tree = MerkleTree::new(leaf_hashes.clone());
     let root = tree.root_hex.clone();
 
-    // Verification logic simulation (what I fixed)
     let mut entry_to_verify: AuditEntry =
         serde_json::from_value(serde_json::to_value(&entry).unwrap()).unwrap();
     entry_to_verify.hash = String::new();
@@ -170,12 +171,10 @@ fn test_merkle_session_verification_logic() {
 #[test]
 fn test_pqc_agility_manager() {
     use llm_secure_cli::config::ConfigManager;
-    use llm_secure_cli::security::pqc::MldsaVariant;
     use llm_secure_cli::security::pqc::PQCAgilityManager;
 
     let config_manager = ConfigManager::new();
 
-    // Use set_config instead of writing to disk and reloading
     {
         let mut config = (*config_manager.get_config().expect("Failed to get config")).clone();
         config.security.security_level = "standard".to_string();
@@ -188,41 +187,38 @@ fn test_pqc_agility_manager() {
     let config = config_manager.get_config().expect("Failed to get config");
 
     // Normal tool, low risk
-    let level = PQCAgilityManager::get_required_level(&config, "ls", None, "low");
-    assert!(matches!(level, MldsaVariant::Mldsa44));
+    let level = PQCAgilityManager::get_required_level(&config, "ls", None);
+    assert!(matches!(level, PQCVariant::MLDSA44));
 
     // High risk tool
-    let level = PQCAgilityManager::get_required_level(&config, "execute_command", None, "low");
-    assert_eq!(level, MldsaVariant::Mldsa87);
+    let level = PQCAgilityManager::get_required_level(&config, "execute_command", None);
+    assert_eq!(level, PQCVariant::MLDSA87);
 
-    // High environment risk
-    let level = PQCAgilityManager::get_required_level(&config, "ls", None, "high");
-    // Implementation currently ignores environment_risk string, uses config.security_level
-    assert_eq!(level, MldsaVariant::Mldsa44);
-
-    // Sensitive context (contains scaling patterns)
+    // Sensitive context
     let args = serde_json::json!({"path": "/etc/shadow"});
-    let level = PQCAgilityManager::get_required_level(&config, "read_file", Some(&args), "low");
-    assert_eq!(level, MldsaVariant::Mldsa87);
+    let level = PQCAgilityManager::get_required_level(&config, "read_file", Some(&args));
+    assert_eq!(level, PQCVariant::MLDSA87);
 }
 
 #[test]
 fn test_hybrid_cose_signer() {
-    use llm_secure_cli::consts::KEY_DIR;
-    use llm_secure_cli::security::identity::IdentityManager;
+    use ed25519_dalek::SigningKey;
     use llm_secure_cli::security::pqc_cose::HybridSigner;
-    use std::fs;
+    use rand::rngs::OsRng;
 
-    let variant = MldsaVariant::Mldsa65;
+    let variant = MldsaVariant::MLDSA65;
 
-    // Generate temporary keys
-    let _ = IdentityManager::ensure_keys(true);
-    let classical_priv = IdentityManager::get_classical_private_key_pem().unwrap();
-    let classical_pub = fs::read_to_string(KEY_DIR.join("id_ed25519.pub")).unwrap();
-    let pqc_priv = IdentityManager::get_pqc_private_key(variant).unwrap();
-    let pqc_pub = IdentityManager::get_pqc_public_key(variant).unwrap();
+    // Generate keys in memory for the test to avoid filesystem side effects
+    let mut rng = OsRng;
+    let classical_signing_key = SigningKey::generate(&mut rng);
+    let classical_priv = classical_signing_key.to_bytes().to_vec();
+    let classical_pub = classical_signing_key.verifying_key().to_bytes().to_vec();
 
-    let payload = serde_json::json!({"msg": "Hybrid security token", "exp": 1776824283});
+    let (pqc_pub, pqc_priv) = PqcProvider::generate_keypair(variant).unwrap();
+
+    let payload_val = serde_json::json!({"msg": "Hybrid security token", "exp": 1776824283});
+    let mut payload = Vec::new();
+    ciborium::into_writer(&payload_val, &mut payload).unwrap();
 
     let token = HybridSigner::create_hybrid_token(&payload, &classical_priv, &pqc_priv, variant)
         .expect("Failed to create token");

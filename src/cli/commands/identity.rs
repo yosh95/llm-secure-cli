@@ -1,5 +1,5 @@
 use crate::cli::ui;
-use crate::consts::KEY_DIR;
+use crate::consts::{audit_log_path, key_dir};
 use crate::security::identity::IdentityManager;
 use crate::security::integrity::IntegrityVerifier;
 use crate::security::merkle_anchor::SessionAnchorManager;
@@ -8,11 +8,11 @@ use std::fs;
 pub fn run_keygen() {
     ui::report_success("Generating Secure Identity Keys (RSA + Post-Quantum)...");
 
-    match IdentityManager::ensure_keys(true) {
+    match IdentityManager::ensure_keys() {
         Ok(_) => {
             println!(
                 "Keys successfully generated and stored in {}",
-                KEY_DIR.display()
+                key_dir().display()
             );
             println!("- RSA (3072-bit)");
             println!("- ML-DSA-44, 65, 87 (Post-Quantum Signatures)");
@@ -82,7 +82,7 @@ pub fn run_verify_session(trace_id: &str) {
 pub fn list_anchors() {
     ui::report_success("Available Sessions (PQC-Anchored):");
 
-    let anchor_dir = match crate::consts::AUDIT_LOG_PATH.parent() {
+    let anchor_dir = match audit_log_path().parent() {
         Some(p) => p.join("anchors"),
         None => {
             println!("No audit log parent directory found.");

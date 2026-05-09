@@ -89,7 +89,7 @@ pub async fn initialize_app() -> anyhow::Result<Arc<AppContext>> {
     crate::security::permissions::setup_permissions();
 
     // 2. Ensure configuration exists
-    if !crate::consts::CONFIG_FILE_PATH.exists() {
+    if !crate::consts::config_file_path().exists() {
         crate::config::init::init_config();
     }
 
@@ -129,7 +129,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
         .await
         .unwrap_or(false)
     {
-        if let Err(e) = IdentityManager::ensure_keys(true) {
+        if let Err(e) = IdentityManager::ensure_keys() {
             ui::report_error(&format!("Failed to generate keys: {}", e));
         } else {
             ui::report_success("Identity keys generated.");

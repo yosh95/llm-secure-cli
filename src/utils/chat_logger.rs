@@ -1,5 +1,5 @@
 use crate::config::ConfigManager;
-use crate::consts::CHAT_LOG_PATH;
+use crate::consts::chat_log_path;
 use crate::llm::models::Role;
 use chrono::Utc;
 use std::fs::{self, OpenOptions};
@@ -11,7 +11,8 @@ pub fn log_chat(
     content: &str,
     model_name: Option<&str>,
 ) {
-    let path = &*CHAT_LOG_PATH;
+    let path_val = chat_log_path();
+    let path = &path_val;
     let config = match config_manager.get_config() {
         Ok(c) => c,
         Err(_) => return,

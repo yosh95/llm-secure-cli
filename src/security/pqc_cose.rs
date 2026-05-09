@@ -1,234 +1,207 @@
-use crate::security::pqc::{MldsaVariant, PqcProvider};
+use crate::security::pqc::{PQCVariant, PqcProvider};
+use anyhow::Result;
 use ciborium::Value;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use pkcs8::{DecodePrivateKey, DecodePublicKey};
-use serde_json::Value as JsonValue;
-use std::collections::HashMap;
-
-// COSE constants
-const COSE_ALG_EDDSA: i64 = -8;
-const COSE_ALG_MLDSA: i64 = -48;
-const COSE_HEADER_ALG: i64 = 1;
-const COSE_SIGN_TAG: u64 = 98;
 
 pub struct HybridSigner;
 
 impl HybridSigner {
     pub fn create_hybrid_token(
-        payload: &JsonValue,
-        classical_private_key_pem: &str,
-        pqc_private_key: &[u8],
-        variant: MldsaVariant,
-    ) -> anyhow::Result<Vec<u8>> {
-        let payload_bytes = serde_json::to_vec(payload)?;
-        let body_protected = Self::encode_header_map(HashMap::new())?;
+        payload: &[u8],
+        ed25519_sk: &[u8],
+        pqc_sk: &[u8],
+        variant: PQCVariant,
+    ) -> Result<Vec<u8>> {
+        let signing_key = SigningKey::from_bytes(ed25519_sk.try_into()?);
 
-        // --- Signer 0: Ed25519 (Classical) ---
-        let mut ed_header = HashMap::new();
-        ed_header.insert(COSE_HEADER_ALG, Value::Integer(COSE_ALG_EDDSA.into()));
-        let ed_sign_protected = Self::encode_header_map(ed_header)?;
+        // 1. Define Headers
+        // body_protected: Empty map {}
+        let body_protected = Self::encode_map(vec![])?;
 
-        let ed_tbs =
-            Self::build_sig_structure(&body_protected, &ed_sign_protected, &payload_bytes)?;
-        let signing_key = SigningKey::from_pkcs8_pem(classical_private_key_pem)
-            .map_err(|e| anyhow::anyhow!("Failed to load Ed25519 private key: {}", e))?;
+        // 2. Signer 0: Ed25519
+        // EdDSA = -8, alg label = 1
+        let ed_header = vec![(Value::Integer(1.into()), Value::Integer((-8).into()))];
+        let ed_sign_protected = Self::encode_map(ed_header)?;
 
-        let ed_sig = signing_key.sign(&ed_tbs);
+        let ed_tbs = Self::build_sig_structure(&body_protected, &ed_sign_protected, payload)?;
+        let ed_sig = signing_key.sign(&ed_tbs).to_bytes().to_vec();
 
         let classical_signature_entry = Value::Array(vec![
             Value::Bytes(ed_sign_protected),
-            Value::Map(vec![]),
-            Value::Bytes(ed_sig.to_vec()),
+            Value::Map(vec![]), // unprotected
+            Value::Bytes(ed_sig),
         ]);
 
-        // --- Signer 1: ML-DSA ---
-        let mut pqc_header = HashMap::new();
-        pqc_header.insert(COSE_HEADER_ALG, Value::Integer(COSE_ALG_MLDSA.into()));
-        let pqc_sign_protected = Self::encode_header_map(pqc_header)?;
+        // 3. Signer 1: ML-DSA
+        let pqc_alg_id = match variant {
+            PQCVariant::MLDSA44 => -44,
+            PQCVariant::MLDSA65 => -65,
+            PQCVariant::MLDSA87 => -87,
+        };
+        let pqc_header = vec![(Value::Integer(1.into()), Value::Integer(pqc_alg_id.into()))];
+        let pqc_sign_protected = Self::encode_map(pqc_header)?;
 
-        let pqc_uhdr = vec![(
-            Value::Integer(4.into()),
-            Value::Bytes(variant.to_str().as_bytes().to_vec()),
-        )];
-
-        let pqc_tbs =
-            Self::build_sig_structure(&body_protected, &pqc_sign_protected, &payload_bytes)?;
-        let pqc_sig =
-            PqcProvider::sign_mldsa(&pqc_tbs, pqc_private_key, variant).unwrap_or_default();
+        let pqc_tbs = Self::build_sig_structure(&body_protected, &pqc_sign_protected, payload)?;
+        let pqc_sig = PqcProvider::sign(variant, pqc_sk, &pqc_tbs)?;
 
         let pqc_signature_entry = Value::Array(vec![
             Value::Bytes(pqc_sign_protected),
-            Value::Map(pqc_uhdr),
+            Value::Map(vec![]), // unprotected
             Value::Bytes(pqc_sig),
         ]);
 
-        // --- Assemble COSE_Sign ---
-        let cose_sign_value = Value::Array(vec![
+        // 4. Assemble COSE_Sign structure: [protected, unprotected, payload, [sig1, sig2]]
+        let cose_sign_array = Value::Array(vec![
             Value::Bytes(body_protected),
             Value::Map(vec![]),
-            Value::Bytes(payload_bytes),
+            Value::Bytes(payload.to_vec()),
             Value::Array(vec![classical_signature_entry, pqc_signature_entry]),
         ]);
 
+        // 5. Wrap in Tag 98 and serialize
         let mut encoded = Vec::new();
-        ciborium::ser::into_writer(
-            &Value::Tag(COSE_SIGN_TAG, Box::new(cose_sign_value)),
-            &mut encoded,
-        )
-        .map_err(|e| anyhow::anyhow!("CBOR encoding failed: {}", e))?;
+        ciborium::into_writer(&Value::Tag(98, Box::new(cose_sign_array)), &mut encoded)?;
         Ok(encoded)
     }
 
-    pub fn verify_hybrid_token(
-        cose_token: &[u8],
-        classical_public_key_pem: &str,
-        pqc_public_key_provider: impl Fn(MldsaVariant) -> Vec<u8>,
-    ) -> Option<JsonValue> {
-        let value: Value = ciborium::de::from_reader(cose_token).ok()?;
-        let (tag, structure) = match value {
-            Value::Tag(tag, box_val) => (tag, *box_val),
-            _ => {
+    pub fn verify_hybrid_token<F>(
+        token: &[u8],
+        classical_pub: &[u8],
+        pqc_pub_fetcher: F,
+    ) -> Option<serde_json::Value>
+    where
+        F: FnOnce(PQCVariant) -> Vec<u8>,
+    {
+        let value: Value = ciborium::from_reader(token).ok()?;
+        let (body_protected_bytes, payload, signatures) = if let Value::Tag(98, inner) = value {
+            if let Value::Array(arr) = *inner {
+                if arr.len() < 4 {
+                    return None;
+                }
+                let p = if let Value::Bytes(ref b) = arr[0] {
+                    b.clone()
+                } else {
+                    return None;
+                };
+                let payload = if let Value::Bytes(ref b) = arr[2] {
+                    b.clone()
+                } else {
+                    return None;
+                };
+                let sigs = if let Value::Array(ref s) = arr[3] {
+                    s.clone()
+                } else {
+                    return None;
+                };
+                (p, payload, sigs)
+            } else {
                 return None;
             }
+        } else {
+            return None;
         };
 
-        if tag != COSE_SIGN_TAG {
+        // 1. Verify Classical Ed25519
+        if signatures.is_empty() {
             return None;
         }
-
-        let elements = match structure {
-            Value::Array(arr) => arr,
-            _ => return None,
+        let classical_entry = if let Value::Array(ref sig_arr) = signatures[0] {
+            sig_arr
+        } else {
+            return None;
         };
-
-        if elements.len() != 4 {
+        if classical_entry.len() < 3 {
             return None;
         }
-
-        let body_protected = match &elements[0] {
-            Value::Bytes(b) => b,
-            _ => return None,
+        let ed_protected = if let Value::Bytes(ref b) = classical_entry[0] {
+            b
+        } else {
+            return None;
         };
-        let payload_bytes = match &elements[2] {
-            Value::Bytes(b) => b,
-            _ => return None,
-        };
-        let signatures = match &elements[3] {
-            Value::Array(arr) => arr,
-            _ => return None,
+        let ed_sig_bytes = if let Value::Bytes(ref b) = classical_entry[2] {
+            b
+        } else {
+            return None;
         };
 
+        let ed_tbs =
+            Self::build_sig_structure(&body_protected_bytes, ed_protected, &payload).ok()?;
+        let vk_bytes: [u8; 32] = classical_pub.try_into().ok()?;
+        let vk = VerifyingKey::from_bytes(&vk_bytes).ok()?;
+        let sig = Signature::from_slice(ed_sig_bytes).ok()?;
+        vk.verify(&ed_tbs, &sig).ok()?;
+
+        // 2. Verify PQC
         if signatures.len() < 2 {
             return None;
         }
-
-        // Signer 0: Ed25519 (Classical)
-        let classical_entry = match &signatures[0] {
-            Value::Array(arr) if arr.len() == 3 => arr,
-            _ => return None,
+        let pqc_entry = if let Value::Array(ref sig_arr) = signatures[1] {
+            sig_arr
+        } else {
+            return None;
         };
-        let classical_sign_protected = match &classical_entry[0] {
-            Value::Bytes(b) => b,
-            _ => return None,
-        };
-        let classical_sig_bytes = match &classical_entry[2] {
-            Value::Bytes(b) => b,
-            _ => return None,
-        };
-
-        let classical_phdr: Value =
-            ciborium::de::from_reader(classical_sign_protected.as_slice()).ok()?;
-        let classical_alg = match classical_phdr {
-            Value::Map(m) => m
-                .into_iter()
-                .find(|(k, _)| k == &Value::Integer(COSE_HEADER_ALG.into()))
-                .map(|(_, v)| v),
-            _ => None,
-        };
-        if classical_alg != Some(Value::Integer(COSE_ALG_EDDSA.into())) {
+        if pqc_entry.len() < 3 {
             return None;
         }
-
-        let classical_tbs =
-            Self::build_sig_structure(body_protected, classical_sign_protected, payload_bytes)
-                .ok()?;
-        let verifying_key = VerifyingKey::from_public_key_pem(classical_public_key_pem).ok()?;
-        let classical_sig = Signature::from_slice(classical_sig_bytes).ok()?;
-
-        if let Err(_e) = verifying_key.verify(&classical_tbs, &classical_sig) {
+        let pqc_protected_bytes = if let Value::Bytes(ref b) = pqc_entry[0] {
+            b
+        } else {
             return None;
-        }
-
-        // Signer 1: ML-DSA
-        let pqc_entry = match &signatures[1] {
-            Value::Array(arr) if arr.len() == 3 => arr,
-            _ => return None,
         };
-        let pqc_sign_protected = match &pqc_entry[0] {
-            Value::Bytes(b) => b,
-            _ => return None,
-        };
-        let pqc_uhdr = match &pqc_entry[1] {
-            Value::Map(m) => m,
-            _ => return None,
-        };
-        let pqc_sig = match &pqc_entry[2] {
-            Value::Bytes(b) => b,
-            _ => return None,
-        };
-
-        let pqc_phdr: Value = ciborium::de::from_reader(pqc_sign_protected.as_slice()).ok()?;
-        let pqc_alg = match pqc_phdr {
-            Value::Map(m) => m
-                .into_iter()
-                .find(|(k, _)| k == &Value::Integer(COSE_HEADER_ALG.into()))
-                .map(|(_, v)| v),
-            _ => None,
-        };
-        if pqc_alg != Some(Value::Integer(COSE_ALG_MLDSA.into())) {
+        let pqc_sig_bytes = if let Value::Bytes(ref b) = pqc_entry[2] {
+            b
+        } else {
             return None;
-        }
+        };
 
-        let variant_str = pqc_uhdr
-            .iter()
-            .find(|(k, _)| k == &Value::Integer(4.into()))
-            .and_then(|(_, v)| match v {
-                Value::Bytes(b) => String::from_utf8(b.clone()).ok(),
-                Value::Text(t) => Some(t.clone()),
-                _ => None,
-            })
-            .unwrap_or_else(|| "ML-DSA-65".to_string());
+        let pqc_protected: Value = ciborium::from_reader(&pqc_protected_bytes[..]).ok()?;
+        let pqc_alg_id: i64 = if let Value::Map(m) = pqc_protected {
+            m.into_iter()
+                .find(|(k, _)| k == &Value::Integer(1.into()))
+                .and_then(|(_, v)| {
+                    if let Value::Integer(i) = v {
+                        i.try_into().ok()
+                    } else {
+                        None
+                    }
+                })?
+        } else {
+            return None;
+        };
 
-        use std::str::FromStr;
-        let variant = MldsaVariant::from_str(&variant_str).unwrap_or(MldsaVariant::Mldsa65);
-        let pqc_pub = pqc_public_key_provider(variant);
+        let variant = match pqc_alg_id {
+            -44 => PQCVariant::MLDSA44,
+            -65 => PQCVariant::MLDSA65,
+            -87 => PQCVariant::MLDSA87,
+            _ => return None,
+        };
 
+        let pqc_pub = pqc_pub_fetcher(variant);
         let pqc_tbs =
-            Self::build_sig_structure(body_protected, pqc_sign_protected, payload_bytes).ok()?;
-        if !PqcProvider::verify_mldsa(&pqc_tbs, pqc_sig, &pqc_pub, variant) {
-            return None;
-        }
+            Self::build_sig_structure(&body_protected_bytes, pqc_protected_bytes, &payload).ok()?;
 
-        serde_json::from_slice(payload_bytes).ok()
+        PqcProvider::verify(variant, &pqc_pub, &pqc_tbs, pqc_sig_bytes).ok()?;
+
+        match ciborium::from_reader::<serde_json::Value, _>(&payload[..]) {
+            Ok(v) => Some(v),
+            Err(_) => {
+                // Fallback to plain JSON if it's not CBOR
+                serde_json::from_slice(&payload).ok()
+            }
+        }
     }
 
-    fn encode_header_map(map: HashMap<i64, Value>) -> anyhow::Result<Vec<u8>> {
-        let mut v = Vec::new();
-        let map_val = Value::Map(
-            map.into_iter()
-                .map(|(k, v)| (Value::Integer(k.into()), v))
-                .collect(),
-        );
-        ciborium::ser::into_writer(&map_val, &mut v)
-            .map_err(|e| anyhow::anyhow!("CBOR encoding failed: {}", e))?;
-        Ok(v)
+    fn encode_map(entries: Vec<(Value, Value)>) -> Result<Vec<u8>> {
+        let mut bytes = Vec::new();
+        ciborium::into_writer(&Value::Map(entries), &mut bytes)?;
+        Ok(bytes)
     }
 
     fn build_sig_structure(
         body_protected: &[u8],
         sign_protected: &[u8],
         payload: &[u8],
-    ) -> anyhow::Result<Vec<u8>> {
+    ) -> Result<Vec<u8>> {
         let structure = Value::Array(vec![
             Value::Text("Signature".to_string()),
             Value::Bytes(body_protected.to_vec()),
@@ -237,8 +210,7 @@ impl HybridSigner {
             Value::Bytes(payload.to_vec()),
         ]);
         let mut v = Vec::new();
-        ciborium::ser::into_writer(&structure, &mut v)
-            .map_err(|e| anyhow::anyhow!("CBOR encoding failed: {}", e))?;
+        ciborium::into_writer(&structure, &mut v)?;
         Ok(v)
     }
 }

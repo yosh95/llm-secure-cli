@@ -1,6 +1,6 @@
 use crate::cli::interactive::completion::ChatCompleter;
 use crate::cli::ui;
-use crate::consts::HISTORY_LOG_PATH;
+use crate::consts::history_log_path;
 use crate::core::session::ActiveSession;
 use crate::llm::models::DataSource;
 use colored::*;
@@ -119,10 +119,11 @@ impl ActiveSession {
             Cmd::Move(rustyline::Movement::EndOfBuffer),
         );
 
-        if let Some(parent) = HISTORY_LOG_PATH.parent() {
+        let h_path = history_log_path();
+        if let Some(parent) = h_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let _ = rl.load_history(&*HISTORY_LOG_PATH);
+        let _ = rl.load_history(&h_path);
 
         let mut next_initial_text: Option<String> = None;
 
@@ -155,7 +156,7 @@ impl ActiveSession {
                         .await
                     {
                         crate::cli::interactive::dispatcher::CommandResult::Exit => {
-                            let _ = rl.save_history(&*HISTORY_LOG_PATH);
+                            let _ = rl.save_history(&history_log_path());
                             // Drop rustyline editor and return to let
                             // ChatSession Drop run naturally (saves Merkle anchor).
                             drop(rl);
@@ -163,7 +164,7 @@ impl ActiveSession {
                         }
                         crate::cli::interactive::dispatcher::CommandResult::Handled => {
                             let _ = rl.add_history_entry(&final_trimmed);
-                            let _ = rl.save_history(&*HISTORY_LOG_PATH);
+                            let _ = rl.save_history(&history_log_path());
                             continue;
                         }
                         crate::cli::interactive::dispatcher::CommandResult::NotACommand => {}
@@ -192,7 +193,7 @@ impl ActiveSession {
                     // SIGKILL / OOM kills on Android where the process
                     // may be terminated before the deferred save_history
                     // on normal exit can run.
-                    let _ = rl.save_history(&*HISTORY_LOG_PATH);
+                    let _ = rl.save_history(&history_log_path());
 
                     let mut data = std::mem::take(&mut self.pending_data);
                     data.push(DataSource {
@@ -223,7 +224,7 @@ impl ActiveSession {
                 }
                 Err(ReadlineError::Eof) => {
                     println!("CTRL-D");
-                    let _ = rl.save_history(&*HISTORY_LOG_PATH);
+                    let _ = rl.save_history(&history_log_path());
                     drop(rl);
                     // Return to let ChatSession Drop run naturally
                     // (saves Merkle anchor and cleanup).
@@ -235,6 +236,6 @@ impl ActiveSession {
                 }
             }
         }
-        let _ = rl.save_history(&*HISTORY_LOG_PATH);
+        let _ = rl.save_history(&history_log_path());
     }
 }

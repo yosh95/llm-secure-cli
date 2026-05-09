@@ -1,4 +1,4 @@
-use crate::consts::LLM_CLI_BASE_DIR;
+use crate::consts::get_base_dir;
 use std::fs;
 use std::path::Path;
 
@@ -6,9 +6,10 @@ use std::path::Path;
 /// Platform-specific permission bit manipulation (chmod) is minimized
 /// to ensure cross-platform compatibility (Windows/Unix).
 pub fn setup_permissions() {
+    let base_dir = get_base_dir();
     // Ensure base directory exists.
-    if !LLM_CLI_BASE_DIR.exists()
-        && let Err(_e) = fs::create_dir_all(&*LLM_CLI_BASE_DIR)
+    if !base_dir.exists()
+        && let Err(_e) = fs::create_dir_all(base_dir)
     {
         return;
     }
@@ -33,5 +34,5 @@ pub fn fix_all_permissions() {
         }
     }
 
-    visit_dirs(&LLM_CLI_BASE_DIR);
+    visit_dirs(get_base_dir());
 }

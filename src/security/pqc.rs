@@ -2,283 +2,172 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
     aead::{Aead, KeyInit},
 };
-use base64::{Engine as _, engine::general_purpose};
+use anyhow::{Result, anyhow};
+use rand::RngCore;
 use saorsa_pqc::api::{
     MlDsa, MlDsaPublicKey, MlDsaSecretKey, MlDsaSignature, MlDsaVariant as SaorsaMldsaVariant,
     MlKem, MlKemCiphertext, MlKemPublicKey, MlKemSecretKey, MlKemVariant as SaorsaMlkemVariant,
 };
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MldsaVariant {
-    Mldsa44,
-    Mldsa65,
-    Mldsa87,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PQCVariant {
+    MLDSA44,
+    MLDSA65,
+    MLDSA87,
 }
 
-impl FromStr for MldsaVariant {
+impl PQCVariant {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            PQCVariant::MLDSA44 => "ML-DSA-44",
+            PQCVariant::MLDSA65 => "ML-DSA-65",
+            PQCVariant::MLDSA87 => "ML-DSA-87",
+        }
+    }
+}
+
+impl FromStr for PQCVariant {
     type Err = anyhow::Error;
-
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_uppercase().as_str() {
-            "ML-DSA-44" => Ok(MldsaVariant::Mldsa44),
-            "ML-DSA-65" => Ok(MldsaVariant::Mldsa65),
-            "ML-DSA-87" => Ok(MldsaVariant::Mldsa87),
-            _ => Err(anyhow::anyhow!("Invalid ML-DSA variant: {}", s)),
+        match s.to_uppercase().replace('_', "-").as_str() {
+            "ML-DSA-44" | "MLDSA44" => Ok(PQCVariant::MLDSA44),
+            "ML-DSA-65" | "MLDSA65" => Ok(PQCVariant::MLDSA65),
+            "ML-DSA-87" | "MLDSA87" => Ok(PQCVariant::MLDSA87),
+            _ => Err(anyhow!("Unknown PQC variant: {}", s)),
         }
     }
 }
 
-impl MldsaVariant {
-    pub fn to_str(&self) -> &'static str {
-        match self {
-            MldsaVariant::Mldsa44 => "ML-DSA-44",
-            MldsaVariant::Mldsa65 => "ML-DSA-65",
-            MldsaVariant::Mldsa87 => "ML-DSA-87",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MlkemVariant {
-    Mlkem512,
-    Mlkem768,
-    Mlkem1024,
-}
-
-impl MlkemVariant {
-    pub fn to_str(&self) -> &'static str {
-        match self {
-            MlkemVariant::Mlkem512 => "ML-KEM-512",
-            MlkemVariant::Mlkem768 => "ML-KEM-768",
-            MlkemVariant::Mlkem1024 => "ML-KEM-1024",
-        }
-    }
-}
+pub type MldsaVariant = PQCVariant;
 
 pub struct PqcProvider;
 
 impl PqcProvider {
-    fn ensure_init() {
-        static INIT: std::sync::Once = std::sync::Once::new();
-        INIT.call_once(|| {
-            let _ = saorsa_pqc::api::init();
-        });
-    }
-
-    fn map_mldsa_variant(variant: MldsaVariant) -> SaorsaMldsaVariant {
-        match variant {
-            MldsaVariant::Mldsa44 => SaorsaMldsaVariant::MlDsa44,
-            MldsaVariant::Mldsa65 => SaorsaMldsaVariant::MlDsa65,
-            MldsaVariant::Mldsa87 => SaorsaMldsaVariant::MlDsa87,
+    fn map_mldsa_variant(v: PQCVariant) -> SaorsaMldsaVariant {
+        match v {
+            PQCVariant::MLDSA44 => SaorsaMldsaVariant::MlDsa44,
+            PQCVariant::MLDSA65 => SaorsaMldsaVariant::MlDsa65,
+            PQCVariant::MLDSA87 => SaorsaMldsaVariant::MlDsa87,
         }
     }
 
-    fn map_mlkem_variant(variant: MlkemVariant) -> SaorsaMlkemVariant {
-        match variant {
-            MlkemVariant::Mlkem512 => SaorsaMlkemVariant::MlKem512,
-            MlkemVariant::Mlkem768 => SaorsaMlkemVariant::MlKem768,
-            MlkemVariant::Mlkem1024 => SaorsaMlkemVariant::MlKem1024,
-        }
-    }
-
-    pub fn generate_mldsa_keypair(variant: MldsaVariant) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
-        Self::ensure_init();
-        let saorsa_variant = Self::map_mldsa_variant(variant);
-        let ops = MlDsa::new(saorsa_variant);
+    pub fn generate_keypair(variant: PQCVariant) -> Result<(Vec<u8>, Vec<u8>)> {
+        let v = Self::map_mldsa_variant(variant);
+        let ops = MlDsa::new(v);
         let (pk, sk) = ops
             .generate_keypair()
-            .map_err(|_| anyhow::anyhow!("PQC keygen failed"))?;
+            .map_err(|_| anyhow!("PQC keygen failed"))?;
         Ok((pk.to_bytes(), sk.to_bytes()))
     }
 
-    pub fn sign_mldsa(
-        message: &[u8],
-        sk_bytes: &[u8],
-        variant: MldsaVariant,
-    ) -> anyhow::Result<Vec<u8>> {
-        if sk_bytes.is_empty() {
-            return Err(anyhow::anyhow!("PQC Secret Key is empty"));
-        }
-        Self::ensure_init();
-        let saorsa_variant = Self::map_mldsa_variant(variant);
-        let ops = MlDsa::new(saorsa_variant);
-        let sk = MlDsaSecretKey::from_bytes(saorsa_variant, sk_bytes)
-            .map_err(|_| anyhow::anyhow!("Invalid PQC secret key"))?;
+    pub fn sign(variant: PQCVariant, sk_bytes: &[u8], message: &[u8]) -> Result<Vec<u8>> {
+        let v = Self::map_mldsa_variant(variant);
+        let ops = MlDsa::new(v);
+        let sk = MlDsaSecretKey::from_bytes(v, sk_bytes).map_err(|_| anyhow!("Invalid PQC sk"))?;
         let sig = ops
             .sign(&sk, message)
-            .map_err(|_| anyhow::anyhow!("PQC sign failed"))?;
+            .map_err(|_| anyhow!("PQC sign failed"))?;
         Ok(sig.to_bytes())
+    }
+
+    pub fn verify(
+        variant: PQCVariant,
+        pk_bytes: &[u8],
+        message: &[u8],
+        sig_bytes: &[u8],
+    ) -> Result<()> {
+        let v = Self::map_mldsa_variant(variant);
+        let ops = MlDsa::new(v);
+        let pk = MlDsaPublicKey::from_bytes(v, pk_bytes).map_err(|_| anyhow!("Invalid PQC pk"))?;
+        let sig =
+            MlDsaSignature::from_bytes(v, sig_bytes).map_err(|_| anyhow!("Invalid PQC sig"))?;
+        if ops.verify(&pk, message, &sig).unwrap_or(false) {
+            Ok(())
+        } else {
+            Err(anyhow!("PQC Verification failed"))
+        }
+    }
+
+    // Existing code fallback
+    pub fn sign_mldsa(message: &[u8], sk_bytes: &[u8], variant: PQCVariant) -> Result<Vec<u8>> {
+        Self::sign(variant, sk_bytes, message)
     }
 
     pub fn verify_mldsa(
         message: &[u8],
         sig_bytes: &[u8],
         pk_bytes: &[u8],
-        variant: MldsaVariant,
+        variant: PQCVariant,
     ) -> bool {
-        if sig_bytes.is_empty() || pk_bytes.is_empty() {
-            return false;
-        }
-        Self::ensure_init();
-        let saorsa_variant = Self::map_mldsa_variant(variant);
-        let ops = MlDsa::new(saorsa_variant);
-        let pk = match MlDsaPublicKey::from_bytes(saorsa_variant, pk_bytes) {
-            Ok(pk) => pk,
-            Err(_) => {
-                return false;
-            }
-        };
-        let sig = match MlDsaSignature::from_bytes(saorsa_variant, sig_bytes) {
-            Ok(sig) => sig,
-            Err(_) => {
-                return false;
-            }
-        };
-
-        ops.verify(&pk, message, &sig).unwrap_or_default()
+        Self::verify(variant, pk_bytes, message, sig_bytes).is_ok()
     }
 
-    pub fn generate_mlkem_keypair(variant: MlkemVariant) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
-        Self::ensure_init();
-        let saorsa_variant = Self::map_mlkem_variant(variant);
-        let ops = MlKem::new(saorsa_variant);
-        let (pk, sk) = ops
-            .generate_keypair()
-            .map_err(|_| anyhow::anyhow!("PQC keygen failed"))?;
-        Ok((pk.to_bytes(), sk.to_bytes()))
-    }
-
-    pub fn encapsulate_mlkem(
-        pk_bytes: &[u8],
-        variant: MlkemVariant,
-    ) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
-        if pk_bytes.is_empty() {
-            return Err(anyhow::anyhow!(
-                "PQC encapsulation failed: Public key is empty"
-            ));
-        }
-        Self::ensure_init();
-        let saorsa_variant = Self::map_mlkem_variant(variant);
-        let ops = MlKem::new(saorsa_variant);
-        let pk = MlKemPublicKey::from_bytes(saorsa_variant, pk_bytes)
-            .map_err(|_| anyhow::anyhow!("Invalid PQC public key"))?;
+    pub fn encapsulate_mlkem768(pk_bytes: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
+        let v = SaorsaMlkemVariant::MlKem768;
+        let ops = MlKem::new(v);
+        let pk = MlKemPublicKey::from_bytes(v, pk_bytes).map_err(|_| anyhow!("Invalid PQC pk"))?;
         let (ss, ct) = ops
             .encapsulate(&pk)
-            .map_err(|_| anyhow::anyhow!("PQC encapsulate failed"))?;
+            .map_err(|_| anyhow!("PQC encapsulate failed"))?;
         Ok((ss.to_bytes().to_vec(), ct.to_bytes().to_vec()))
     }
 
-    pub fn decapsulate_mlkem(
-        ct_bytes: &[u8],
-        sk_bytes: &[u8],
-        variant: MlkemVariant,
-    ) -> anyhow::Result<Vec<u8>> {
-        if sk_bytes.is_empty() {
-            return Err(anyhow::anyhow!(
-                "PQC decapsulation failed: Secret key is empty"
-            ));
-        }
-        Self::ensure_init();
-        let saorsa_variant = Self::map_mlkem_variant(variant);
-        let ops = MlKem::new(saorsa_variant);
-        let sk = MlKemSecretKey::from_bytes(saorsa_variant, sk_bytes)
-            .map_err(|_| anyhow::anyhow!("Invalid PQC secret key"))?;
-        let ct = MlKemCiphertext::from_bytes(saorsa_variant, ct_bytes)
-            .map_err(|_| anyhow::anyhow!("Invalid PQC ciphertext"))?;
+    pub fn decapsulate_mlkem768(ct_bytes: &[u8], sk_bytes: &[u8]) -> Result<Vec<u8>> {
+        let v = SaorsaMlkemVariant::MlKem768;
+        let ops = MlKem::new(v);
+        let sk = MlKemSecretKey::from_bytes(v, sk_bytes).map_err(|_| anyhow!("Invalid PQC sk"))?;
+        let ct = MlKemCiphertext::from_bytes(v, ct_bytes).map_err(|_| anyhow!("Invalid PQC ct"))?;
         let ss = ops
             .decapsulate(&sk, &ct)
-            .map_err(|_| anyhow::anyhow!("PQC decapsulate failed"))?;
+            .map_err(|_| anyhow!("PQC decapsulate failed"))?;
         Ok(ss.to_bytes().to_vec())
     }
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct EncryptedPacket {
-    pub kem_ct: String,
-    pub aes_ct: String,
-    pub nonce: String,
-    pub tag: String,
+    pub kem_ct: Vec<u8>,
+    pub aes_ct: Vec<u8>,
+    pub nonce: Vec<u8>,
+    pub tag: Vec<u8>,
     pub algo: String,
 }
 
 pub struct SecureStorage;
 
 impl SecureStorage {
-    pub fn encrypt(data: &[u8], recipient_public_key: &[u8]) -> anyhow::Result<EncryptedPacket> {
-        let (shared_secret, kem_ct) =
-            PqcProvider::encapsulate_mlkem(recipient_public_key, MlkemVariant::Mlkem768)?;
-
-        // Use first 32 bytes of shared secret for AES-256
+    pub fn encrypt(data: &[u8], recipient_public_key: &[u8]) -> Result<EncryptedPacket> {
+        let (shared_secret, kem_ct) = PqcProvider::encapsulate_mlkem768(recipient_public_key)?;
         let key = &shared_secret[..32];
-        let cipher = Aes256Gcm::new_from_slice(key)
-            .map_err(|_| anyhow::anyhow!("Failed to initialize AES-GCM"))?;
-
-        use rand::RngCore;
+        let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| anyhow!("AES init failed"))?;
         let mut nonce_bytes = [0u8; 12];
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from(nonce_bytes);
-
         let ciphertext_with_tag = cipher
             .encrypt(&nonce, data)
-            .map_err(|e| anyhow::anyhow!("AES encryption failure: {}", e))?;
-
-        if ciphertext_with_tag.len() < 16 {
-            return Err(anyhow::anyhow!("Encryption failed: Ciphertext too short"));
-        }
-
-        let tag_start = ciphertext_with_tag.len() - 16;
-        let aes_ct = &ciphertext_with_tag[..tag_start];
-        let tag = &ciphertext_with_tag[tag_start..];
-
+            .map_err(|e| anyhow!("Enc failed: {}", e))?;
+        let (aes_ct, tag) = ciphertext_with_tag.split_at(ciphertext_with_tag.len() - 16);
         Ok(EncryptedPacket {
-            kem_ct: general_purpose::STANDARD.encode(kem_ct),
-            aes_ct: general_purpose::STANDARD.encode(aes_ct),
-            nonce: general_purpose::STANDARD.encode(nonce_bytes),
-            tag: general_purpose::STANDARD.encode(tag),
+            kem_ct,
+            aes_ct: aes_ct.to_vec(),
+            nonce: nonce_bytes.to_vec(),
+            tag: tag.to_vec(),
             algo: "ML-KEM-768/AES-256-GCM".to_string(),
         })
     }
 
-    pub fn decrypt(packet: &EncryptedPacket, private_key: &[u8]) -> anyhow::Result<Vec<u8>> {
-        let kem_ct = general_purpose::STANDARD
-            .decode(&packet.kem_ct)
-            .map_err(|e| anyhow::anyhow!("Invalid KEM ciphertext encoding: {}", e))?;
-
-        let shared_secret =
-            PqcProvider::decapsulate_mlkem(&kem_ct, private_key, MlkemVariant::Mlkem768)?;
-
-        let key = &shared_secret[..32];
-        let cipher = Aes256Gcm::new_from_slice(key)
-            .map_err(|_| anyhow::anyhow!("Failed to initialize AES-GCM"))?;
-
-        let nonce_bytes = general_purpose::STANDARD
-            .decode(&packet.nonce)
-            .map_err(|e| anyhow::anyhow!("Invalid nonce encoding: {}", e))?;
-
-        let nonce = Nonce::from(
-            <[u8; 12]>::try_from(nonce_bytes)
-                .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?,
-        );
-
-        let aes_ct = general_purpose::STANDARD
-            .decode(&packet.aes_ct)
-            .map_err(|e| anyhow::anyhow!("Invalid AES ciphertext encoding: {}", e))?;
-
-        let tag = general_purpose::STANDARD
-            .decode(&packet.tag)
-            .map_err(|e| anyhow::anyhow!("Invalid tag encoding: {}", e))?;
-
-        let mut combined = aes_ct;
-        combined.extend_from_slice(&tag);
-
-        let decrypted = cipher
-            .decrypt(&nonce, combined.as_slice())
-            .map_err(|e| anyhow::anyhow!("AES decryption failure: {}", e))?;
-
-        Ok(decrypted)
+    pub fn decrypt(packet: &EncryptedPacket, private_key: &[u8]) -> Result<Vec<u8>> {
+        let ss = PqcProvider::decapsulate_mlkem768(&packet.kem_ct, private_key)?;
+        let key = &ss[..32];
+        let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| anyhow!("AES init failed"))?;
+        let nonce = Nonce::from_slice(&packet.nonce);
+        let mut encrypted = packet.aes_ct.clone();
+        encrypted.extend_from_slice(&packet.tag);
+        cipher
+            .decrypt(nonce, encrypted.as_slice())
+            .map_err(|e| anyhow!("Dec failed: {}", e))
     }
 }
 
@@ -289,68 +178,32 @@ impl PQCAgilityManager {
         config: &crate::config::models::AppConfig,
         tool_name: &str,
         args: Option<&serde_json::Value>,
-        _environment_risk: &str,
-    ) -> MldsaVariant {
+    ) -> PQCVariant {
         use crate::security::cass::{CASS_ORCHESTRATOR, RiskLevel};
-
-        // Use the integrated risk assessment from CASS
         let risk = CASS_ORCHESTRATOR.evaluate_risk(tool_name, args, &config.security);
-
         match risk {
-            RiskLevel::Critical | RiskLevel::High => MldsaVariant::Mldsa87,
-            RiskLevel::Medium => MldsaVariant::Mldsa65,
-            RiskLevel::Low => MldsaVariant::Mldsa44,
+            RiskLevel::Critical | RiskLevel::High => PQCVariant::MLDSA87,
+            RiskLevel::Medium => PQCVariant::MLDSA65,
+            _ => PQCVariant::MLDSA44,
         }
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct SignedResponse {
-    pub result: String,
-    pub verification_id: String,
-    pub pqc_signature: String,
-    pub algorithm: String,
-}
-
 pub struct ResponseSigner;
-
 impl ResponseSigner {
     pub fn sign_response(
-        response_text: &str,
-        verification_id: &str,
-        sk_bytes: &[u8],
-        variant: MldsaVariant,
-    ) -> anyhow::Result<SignedResponse> {
-        let message = format!("{}:{}", verification_id, response_text);
-        let sig = PqcProvider::sign_mldsa(message.as_bytes(), sk_bytes, variant)?;
-
-        Ok(SignedResponse {
-            result: response_text.to_string(),
-            verification_id: verification_id.to_string(),
-            pqc_signature: general_purpose::URL_SAFE_NO_PAD.encode(sig),
-            algorithm: variant.to_str().to_string(),
-        })
+        text: &str,
+        id: &str,
+        sk: &[u8],
+        v: PQCVariant,
+    ) -> Result<serde_json::Value> {
+        let msg = format!("{}:{}", id, text);
+        let sig = PqcProvider::sign(v, sk, msg.as_bytes())?;
+        Ok(serde_json::json!({
+            "result": text,
+            "verification_id": id,
+            "pqc_signature": base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, sig),
+            "algorithm": v.to_str()
+        }))
     }
-
-    pub fn verify_response(signed: &SignedResponse, pk_bytes: &[u8]) -> bool {
-        let variant = MldsaVariant::from_str(&signed.algorithm).unwrap_or(MldsaVariant::Mldsa65);
-        let message = format!("{}:{}", signed.verification_id, signed.result);
-        let sig = general_purpose::URL_SAFE_NO_PAD
-            .decode(&signed.pqc_signature)
-            .unwrap_or_default();
-        PqcProvider::verify_mldsa(message.as_bytes(), &sig, pk_bytes, variant)
-    }
-}
-
-use crate::security::identity::IdentityManager;
-
-pub fn sign_tool_result(
-    result_text: &str,
-    variant: MldsaVariant,
-) -> anyhow::Result<SignedResponse> {
-    let verification_id = Uuid::new_v4().to_string();
-
-    let sk = IdentityManager::get_pqc_private_key(variant)?;
-
-    ResponseSigner::sign_response(result_text, &verification_id, &sk, variant)
 }

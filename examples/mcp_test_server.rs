@@ -77,7 +77,7 @@ fn main() -> io::Result<()> {
         };
 
         // Output as a single JSON line
-        writeln!(stdout, "{}", response.to_string())?;
+        writeln!(stdout, "{}", response)?;
         stdout.flush()?;
     }
     Ok(())

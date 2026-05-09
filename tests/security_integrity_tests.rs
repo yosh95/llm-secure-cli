@@ -21,8 +21,10 @@ fn test_path_validator_traversal_and_links() {
     fs::write(&sensitive_file, "private_key").unwrap();
 
     // Mock config
-    let mut config = SecurityConfig::default();
-    config.allowed_paths = vec![safe_dir.to_string_lossy().to_string()];
+    let config = SecurityConfig {
+        allowed_paths: vec![safe_dir.to_string_lossy().to_string()],
+        ..SecurityConfig::default()
+    };
 
     // 1. Basic valid path
     assert!(validate_path(&safe_file.to_string_lossy(), &config).is_ok());
@@ -80,8 +82,10 @@ fn test_cass_risk_scaling() {
     assert_eq!(level_crit, RiskLevel::Critical);
 
     // 3. Test Argument-based escalation
-    let mut config_with_patterns = SecurityConfig::default();
-    config_with_patterns.scaling_patterns = vec!["/etc/shadow".to_string()];
+    let config_with_patterns = SecurityConfig {
+        scaling_patterns: vec!["/etc/shadow".to_string()],
+        ..SecurityConfig::default()
+    };
 
     let sensitive_read = CASS_ORCHESTRATOR.evaluate_risk(
         "read_file",

@@ -8,6 +8,18 @@ use llm_secure_cli::llm::models::{
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Once;
+
+static INIT: Once = Once::new();
+
+fn setup_test_env() {
+    INIT.call_once(|| {
+        let tmp = tempfile::tempdir()
+            .expect("Failed to create temp dir")
+            .keep();
+        llm_secure_cli::consts::init_base_dir(Some(tmp));
+    });
+}
 
 type MockResponse = (Option<String>, Option<String>, Option<Vec<MessagePart>>);
 
@@ -97,6 +109,7 @@ impl LlmClient for MockProcessorClient {
 
 #[tokio::test]
 async fn test_processor_tool_execution_flow() {
+    setup_test_env();
     // 1. Setup Config for Auto-approval
     let ctx = AppContext::new();
     let mut config = (*ctx
@@ -104,6 +117,7 @@ async fn test_processor_tool_execution_flow() {
         .get_config()
         .expect("Failed to get config"))
     .clone();
+    config.security.security_level = "standard".to_string();
     config.security.auto_approval_level = Some("low".to_string());
     config.security.low_risk_tools = vec!["list_files_in_directory".to_string()];
     config.security.dual_llm_verification = Some(true);
@@ -186,5 +200,66 @@ async fn test_processor_tool_execution_flow() {
             .audit_entries
             .iter()
             .any(|e| e.tool == "list_files_in_directory")
+    );
+}
+
+#[tokio::test]
+async fn test_processor_pqc_blocking_in_high_security() {
+    setup_test_env();
+    // 1. Setup Config with High Security Level
+    let ctx = AppContext::new();
+    let mut config = (*ctx
+        .config_manager
+        .get_config()
+        .expect("Failed to get config"))
+    .clone();
+    config.security.security_level = "high".to_string();
+    config.security.auto_approval_level = Some("low".to_string());
+    config.security.low_risk_tools = vec!["list_files_in_directory".to_string()];
+    let _ = ctx.config_manager.set_config(config);
+    let ctx = Arc::new(ctx);
+
+    // 2. Setup Mock Client with a tool call
+    let mut fc_map = HashMap::new();
+    fc_map.insert("name".to_string(), json!("list_files_in_directory"));
+    fc_map.insert("arguments".to_string(), json!({"directory": "."}));
+    fc_map.insert("id".to_string(), json!("call_456"));
+
+    let tool_call_part = MessagePart::Part(Box::new(ContentPart {
+        function_call: Some(fc_map),
+        is_diagnostic: false,
+        ..Default::default()
+    }));
+
+    let mock_client = MockProcessorClient {
+        state: ClientState {
+            model: "mock-model".to_string(),
+            provider: "mock".to_string(),
+            conversation: Vec::new(),
+            tools_enabled: true,
+            system_prompt_enabled: false,
+            system_prompt: None,
+            stdout: false, // Suppress output to keep test logs clean
+            render_markdown: false,
+        },
+        responses: vec![
+            (None, None, Some(vec![tool_call_part])),
+            (Some("Done".to_string()), None, None),
+        ],
+        call_count: 0,
+    };
+
+    let mut session =
+        ActiveSession::new(Box::new(mock_client), ctx).expect("Failed to create session");
+    session.intent = "test-high-security".to_string();
+
+    // 3. Execute - This should trigger the PQC Error
+    let _ = session.process_and_print(vec![]).await;
+
+    // 4. Verify - In High Security mode without a key, audit log writing is blocked
+    // and returns None in src/security/audit.rs, so session.audit_entries remains empty.
+    assert!(
+        session.audit_entries.is_empty(),
+        "Audit entries should be empty because PQC signature failed in high-security mode"
     );
 }

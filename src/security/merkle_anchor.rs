@@ -1,8 +1,8 @@
-use crate::consts::AUDIT_LOG_PATH;
+use crate::consts::audit_log_path;
 use crate::security::audit::AuditEntry;
 use crate::security::identity::IdentityManager;
 use crate::security::merkle::MerkleTree;
-use crate::security::pqc::{MldsaVariant, PqcProvider};
+use crate::security::pqc::{MldsaVariant, PQCVariant, PqcProvider};
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
@@ -11,16 +11,15 @@ use sha2::Digest;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use std::sync::LazyLock;
 
-static ANCHOR_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
-    let mut p = AUDIT_LOG_PATH.to_path_buf();
+fn anchor_dir() -> PathBuf {
+    let mut p = audit_log_path();
     if p.pop() {
         p.join("anchors")
     } else {
         PathBuf::from("anchors")
     }
-});
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SessionAnchor {
@@ -42,7 +41,7 @@ pub struct SessionAnchorManager;
 impl SessionAnchorManager {
     pub fn get_session_entries(trace_id: &str) -> Vec<Value> {
         let mut entries = Vec::new();
-        let log_path = &*AUDIT_LOG_PATH;
+        let log_path = audit_log_path();
 
         let mut log_files = Vec::new();
 
@@ -65,7 +64,7 @@ impl SessionAnchorManager {
             }
         }
         log_files.sort();
-        log_files.push(log_path.to_path_buf());
+        log_files.push(log_path);
 
         for path in log_files {
             if !path.exists() {
@@ -112,7 +111,7 @@ impl SessionAnchorManager {
         let tree = MerkleTree::new(leaf_hashes.clone());
         let root_hex = tree.root_hex.clone();
 
-        let mtime = AUDIT_LOG_PATH
+        let mtime = audit_log_path()
             .metadata()
             .ok()
             .and_then(|m| m.modified().ok())
@@ -137,22 +136,23 @@ impl SessionAnchorManager {
         };
 
         // Sign with PQC
-        let variant = MldsaVariant::Mldsa65;
+        let variant = PQCVariant::MLDSA65;
         if let Ok(sk) = IdentityManager::get_pqc_private_key(variant) {
             let message = serde_json::to_string(&anchor)?;
-            let sig = PqcProvider::sign_mldsa(message.as_bytes(), &sk, variant)?;
+            let sig = PqcProvider::sign(variant, &sk, message.as_bytes())?;
             anchor.pqc_signature = Some(general_purpose::STANDARD.encode(sig));
             anchor.pqc_algorithm = Some(variant.to_str().to_string());
         }
 
-        fs::create_dir_all(&*ANCHOR_DIR)?;
+        let a_dir = anchor_dir();
+        fs::create_dir_all(&a_dir)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&*ANCHOR_DIR, fs::Permissions::from_mode(0o700))?;
+            fs::set_permissions(&a_dir, fs::Permissions::from_mode(0o700))?;
         }
 
-        let anchor_path = ANCHOR_DIR.join(format!("{}.anchor.json", trace_id));
+        let anchor_path = a_dir.join(format!("{}.anchor.json", trace_id));
 
         let mut options = std::fs::OpenOptions::new();
         options.create(true).write(true).truncate(true);
@@ -169,7 +169,7 @@ impl SessionAnchorManager {
     }
 
     pub fn verify_session(trace_id: &str) -> Result<bool> {
-        let anchor_path = ANCHOR_DIR.join(format!("{}.anchor.json", trace_id));
+        let anchor_path = anchor_dir().join(format!("{}.anchor.json", trace_id));
         if !anchor_path.exists() {
             return Ok(false);
         }
@@ -180,7 +180,7 @@ impl SessionAnchorManager {
         // 1. Verify PQC Signature
         if let (Some(sig_b64), Some(algo_str)) = (&anchor.pqc_signature, &anchor.pqc_algorithm) {
             use std::str::FromStr;
-            let variant = MldsaVariant::from_str(algo_str).unwrap_or(MldsaVariant::Mldsa65);
+            let variant = MldsaVariant::from_str(algo_str).unwrap_or(MldsaVariant::MLDSA65);
             let pk = IdentityManager::get_pqc_public_key(variant)?;
 
             let mut anchor_copy = anchor.clone();

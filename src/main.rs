@@ -35,9 +35,17 @@ struct Args {
     #[clap(long)]
     mcp_server: bool,
 
+    /// Run as a Zero Trust MCP server (requires PQC signature and key registration)
+    #[clap(long)]
+    mcp_server_zt: bool,
+
     /// Load a saved session JSON file on startup
     #[clap(long)]
     session: Option<String>,
+
+    /// Override the base directory for config and logs (default: ~/.llm_secure_cli)
+    #[clap(short = 'D', long)]
+    base_dir: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -96,6 +104,9 @@ enum IdentityCommands {
 async fn main() {
     let args = Args::parse();
 
+    // Initialize the base directory for config and logs.
+    llm_secure_cli::consts::init_base_dir(args.base_dir.as_ref().map(std::path::PathBuf::from));
+
     // Initialize logging
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -117,8 +128,12 @@ async fn main() {
         return;
     }
 
-    if args.mcp_server {
-        if let Err(e) = llm_secure_cli::cli::commands::mcp_server::run_mcp_server(ctx.clone()).await
+    if args.mcp_server || args.mcp_server_zt {
+        if let Err(e) = llm_secure_cli::cli::commands::mcp_server::run_mcp_server(
+            ctx.clone(),
+            args.mcp_server_zt,
+        )
+        .await
         {
             ui::report_error(&format!("MCP Server Error: {}", e));
             process::exit(1);

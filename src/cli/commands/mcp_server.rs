@@ -6,11 +6,15 @@ use std::collections::HashMap;
 use crate::core::context::AppContext;
 use std::sync::Arc;
 
-pub async fn run_mcp_server(ctx: Arc<AppContext>) -> Result<()> {
+pub async fn run_mcp_server(ctx: Arc<AppContext>, zero_trust: bool) -> Result<()> {
     let config = ctx.config_manager.get_config()?;
-    ui::report_success("Starting LLM-SECURE-CLI MCP Server (stdio mode)...");
+    if zero_trust {
+        ui::report_success("Starting LLM-SECURE-CLI MCP Server (stdio mode) with ZERO TRUST...");
+    } else {
+        ui::report_success("Starting LLM-SECURE-CLI MCP Server (stdio mode)...");
+    }
 
-    let mut mcp = FastMcp::new("llm-secure-cli-server");
+    let mut mcp = FastMcp::new("llm-secure-cli-server", zero_trust);
 
     // Register all tools from the registry
     {
