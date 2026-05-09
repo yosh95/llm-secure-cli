@@ -50,11 +50,16 @@ pub async fn execute_command(
         ));
     }
 
+    let cwd = args.get("cwd").and_then(|v| v.as_str());
+
     // 2. Execution with Timeout
     let timeout_secs = config.general.command_timeout;
 
     let mut cmd = Command::new(program);
     cmd.args(&cmd_args);
+    if let Some(c) = cwd {
+        cmd.current_dir(c);
+    }
 
     // Structural Isolation: By using Command::new directly, we avoid shell-injection
     // vulnerabilities regardless of the operating system.

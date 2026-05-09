@@ -1,4 +1,5 @@
 use crate::config::models::AppConfig;
+use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
@@ -6,7 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 /// Edit a file by replacing a specific block of text.
-/// First tries an exact match. If that fails, tries a fuzzy match (ignoring leading/trailing whitespace on each line).
+/// Tries multiple strategies: exact, flexible (indentation-aware), and regex (whitespace-insensitive).
 pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow::Result<Value> {
     let path_str = args
         .get("path")
@@ -22,6 +23,11 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
         .get("replace")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("'replace' is required"))?;
+
+    let allow_multiple = args
+        .get("allow_multiple")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     let dry_run = args
         .get("dry_run")
@@ -39,110 +45,66 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
     let original =
         fs::read_to_string(&path).map_err(|e| anyhow::anyhow!("Cannot read file: {}", e))?;
 
-    // 1. Try exact match
-    if original.contains(search_str) {
-        let new_content = original.replacen(search_str, replace_str, 1);
-        return finalize_edit(&path, &original, &new_content, dry_run, path_str, "exact");
-    }
-
-    // 2. Try fuzzy match (line-by-line, ignoring leading/trailing whitespace)
-    let search_lines: Vec<&str> = search_str.lines().map(|l| l.trim()).collect();
-    if search_lines.is_empty() {
-        // If search_str is just whitespace/newlines, we don't want to fuzzy match it
+    if search_str.is_empty() {
         return Err(anyhow::anyhow!(
-            "Search string not found (exact). Fuzzy match skipped because search string is empty or only whitespace."
+            "Search string cannot be empty. To create or overwrite a file, use create_or_overwrite_file tool or provide a non-empty search string."
         ));
     }
 
-    let file_lines_raw: Vec<&str> = original.lines().collect();
-    let mut matches = Vec::new();
-
-    if file_lines_raw.len() >= search_lines.len() {
-        for i in 0..=(file_lines_raw.len() - search_lines.len()) {
-            let mut matched = true;
-            for j in 0..search_lines.len() {
-                if file_lines_raw[i + j].trim() != search_lines[j] {
-                    matched = false;
-                    break;
-                }
-            }
-            if matched {
-                matches.push(i);
-            }
-        }
+    // Strategy 1: Exact match
+    if let Some((new_content, count)) =
+        try_exact_edit(&original, search_str, replace_str, allow_multiple)
+    {
+        return finalize_edit(
+            &path,
+            &original,
+            &new_content,
+            dry_run,
+            path_str,
+            "exact",
+            count,
+        );
     }
 
-    if matches.len() == 1 {
-        let start_line_idx = matches[0];
-
-        // Find byte offsets for the matched lines to preserve everything else
-        let mut start_byte = 0;
-        let mut current_line = 0;
-        let mut it = original.char_indices();
-
-        if start_line_idx > 0 {
-            for (idx, c) in it.by_ref() {
-                if c == '\n' {
-                    current_line += 1;
-                    if current_line == start_line_idx {
-                        start_byte = idx + 1;
-                        break;
-                    }
-                }
-            }
-        }
-
-        let mut end_byte = original.len();
-        let mut lines_in_match = 0;
-        // it continues from where it left off
-        for (idx, c) in it {
-            if c == '\n' {
-                lines_in_match += 1;
-                if lines_in_match == search_lines.len() {
-                    end_byte = idx + 1;
-                    break;
-                }
-            }
-        }
-        // If we reached the end of search lines but not the end of file and no trailing \n in matched block
-        if lines_in_match < search_lines.len()
-            && start_line_idx + search_lines.len() == file_lines_raw.len()
-        {
-            end_byte = original.len();
-        }
-
-        let mut new_content = String::with_capacity(original.len() + replace_str.len());
-        new_content.push_str(&original[..start_byte]);
-        new_content.push_str(replace_str);
-
-        // If we replaced a block that ended with a newline but replace_str doesn't,
-        // and it wasn't the very end of the file, we might want to keep the newline.
-        // However, usually the agent provides the intended structure.
-        // To be safe and minimize "indentation collapse" or "formatting loss",
-        // we'll just stick to replacing the exact line range found.
-
-        new_content.push_str(&original[end_byte..]);
-
-        return finalize_edit(&path, &original, &new_content, dry_run, path_str, "fuzzy");
+    // Strategy 2: Flexible match (indentation-aware, line-by-line trim match)
+    if let Some((new_content, count)) =
+        try_flexible_edit(&original, search_str, replace_str, allow_multiple)
+    {
+        return finalize_edit(
+            &path,
+            &original,
+            &new_content,
+            dry_run,
+            path_str,
+            "flexible",
+            count,
+        );
     }
 
-    if matches.len() > 1 {
-        return Err(anyhow::anyhow!(
-            "Multiple fuzzy matches found ({}) for the search string. Please provide more context to make it unique.",
-            matches.len()
-        ));
+    // Strategy 3: Regex match (whitespace-insensitive)
+    if let Some((new_content, count)) =
+        try_regex_edit(&original, search_str, replace_str, allow_multiple)
+    {
+        return finalize_edit(
+            &path,
+            &original,
+            &new_content,
+            dry_run,
+            path_str,
+            "regex",
+            count,
+        );
     }
 
     let mut error_msg = format!(
-        "Search string not found in file (tried exact and fuzzy match).\n\
+        "Search string not found in file (tried exact, flexible, and regex match).\n\
          File: {}\n\
          Search (first 200 chars): {}",
         path_str,
         search_str
             .char_indices()
-            .map(|(i, _)| i)
             .nth(200)
-            .map(|i| &search_str[..i])
+            .map(|(i, _)| &search_str[..i])
             .unwrap_or(search_str)
     );
 
@@ -154,6 +116,180 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
     Err(anyhow::anyhow!(error_msg))
 }
 
+fn try_exact_edit(
+    original: &str,
+    search: &str,
+    replace: &str,
+    allow_multiple: bool,
+) -> Option<(String, usize)> {
+    let count = original.matches(search).count();
+    if count == 0 {
+        return None;
+    }
+    if !allow_multiple && count > 1 {
+        // We found it but it's not unique. We return None so it can fail later or we could error here.
+        // But for consistency with gemini-cli, we might want to report multiple matches if it's the only issue.
+        // For now, let's just say if we can't do it uniquely, we don't do it with this strategy.
+        return None;
+    }
+
+    let new_content = if allow_multiple {
+        original.replace(search, replace)
+    } else {
+        original.replacen(search, replace, 1)
+    };
+
+    Some((new_content, count))
+}
+
+fn try_flexible_edit(
+    original: &str,
+    search: &str,
+    replace: &str,
+    allow_multiple: bool,
+) -> Option<(String, usize)> {
+    let source_lines: Vec<&str> = original.lines().collect();
+    let search_lines: Vec<&str> = search.lines().map(|l| l.trim()).collect();
+    if search_lines.is_empty() {
+        return None;
+    }
+
+    let replace_lines: Vec<&str> = replace.lines().collect();
+    let mut occurrences = 0;
+    let mut new_lines = Vec::new();
+    let mut i = 0;
+
+    while i < source_lines.len() {
+        if i + search_lines.len() <= source_lines.len() {
+            let mut matched = true;
+            for j in 0..search_lines.len() {
+                if source_lines[i + j].trim() != search_lines[j] {
+                    matched = false;
+                    break;
+                }
+            }
+
+            if matched {
+                occurrences += 1;
+                if allow_multiple || occurrences == 1 {
+                    let first_line = source_lines[i];
+                    let indentation: String = first_line
+                        .chars()
+                        .take_while(|c| c.is_whitespace())
+                        .collect();
+                    let indented_replace = apply_indentation(&replace_lines, &indentation);
+                    for line in indented_replace {
+                        new_lines.push(line);
+                    }
+                    i += search_lines.len();
+                    continue;
+                }
+            }
+        }
+        new_lines.push(source_lines[i].to_string());
+        i += 1;
+    }
+
+    if occurrences == 0 || (!allow_multiple && occurrences > 1) {
+        return None;
+    }
+
+    let mut result = new_lines.join("\n");
+    result = restore_trailing_newline(original, &result);
+    Some((result, occurrences))
+}
+
+fn try_regex_edit(
+    original: &str,
+    search: &str,
+    replace: &str,
+    allow_multiple: bool,
+) -> Option<(String, usize)> {
+    let delimiters = [
+        '(', ')', ':', '[', ']', '{', '}', '>', '<', '=', '.', ',', ';',
+    ];
+    let mut processed_search = search.to_string();
+    for delim in delimiters {
+        processed_search = processed_search.replace(delim, &format!(" {} ", delim));
+    }
+
+    let tokens: Vec<&str> = processed_search.split_whitespace().collect();
+    if tokens.is_empty() {
+        return None;
+    }
+
+    let escaped_tokens: Vec<String> = tokens.iter().map(|t| regex::escape(t)).collect();
+    let pattern_str = escaped_tokens.join(r"\s*");
+    let final_pattern = format!(r"(?m)^([ \t]*){}", pattern_str);
+
+    let re = Regex::new(&final_pattern).ok()?;
+    let matches: Vec<_> = re.find_iter(original).collect();
+
+    if matches.is_empty() || (!allow_multiple && matches.len() > 1) {
+        return None;
+    }
+
+    let replace_lines: Vec<&str> = replace.lines().collect();
+    let mut last_end = 0;
+    let mut result = String::new();
+
+    for mat in &matches {
+        result.push_str(&original[last_end..mat.start()]);
+
+        let indentation = re
+            .captures(mat.as_str())
+            .and_then(|caps| caps.get(1))
+            .map(|m| m.as_str())
+            .unwrap_or("");
+
+        let indented_replace = apply_indentation(&replace_lines, indentation);
+        result.push_str(&indented_replace.join("\n"));
+
+        last_end = mat.end();
+    }
+    result.push_str(&original[last_end..]);
+
+    let result = restore_trailing_newline(original, &result);
+    Some((result, matches.len()))
+}
+
+fn apply_indentation(lines: &[&str], target_indentation: &str) -> Vec<String> {
+    if lines.is_empty() {
+        return Vec::new();
+    }
+
+    let reference_line = lines[0];
+    let ref_indent: String = reference_line
+        .chars()
+        .take_while(|c| c.is_whitespace())
+        .collect();
+
+    lines
+        .iter()
+        .map(|line| {
+            if line.trim().is_empty() {
+                String::new()
+            } else if line.starts_with(&ref_indent) {
+                format!("{}{}", target_indentation, &line[ref_indent.len()..])
+            } else {
+                format!("{}{}", target_indentation, line.trim_start())
+            }
+        })
+        .collect()
+}
+
+fn restore_trailing_newline(original: &str, modified: &str) -> String {
+    let had_trailing = original.ends_with('\n');
+    let has_trailing = modified.ends_with('\n');
+    if had_trailing && !has_trailing {
+        format!("{}\n", modified)
+    } else if !had_trailing && has_trailing {
+        modified.trim_end_matches('\n').to_string()
+    } else {
+        modified.to_string()
+    }
+}
+
 fn finalize_edit(
     path: &Path,
     original: &str,
@@ -161,6 +297,7 @@ fn finalize_edit(
     dry_run: bool,
     path_str: &str,
     match_type: &str,
+    count: usize,
 ) -> anyhow::Result<Value> {
     if dry_run {
         let diff = generate_diff(original, new_content);
@@ -169,7 +306,8 @@ fn finalize_edit(
             "dry_run": true,
             "diff": truncated_diff,
             "match_type": match_type,
-            "message": format!("Dry run complete ({} match). No changes written.", match_type)
+            "replacement_count": count,
+            "message": format!("Dry run complete ({} match, {} replacements). No changes written.", match_type, count)
         }));
     }
 
@@ -183,7 +321,8 @@ fn finalize_edit(
         "path": path_str,
         "diff": truncated_diff,
         "match_type": match_type,
-        "message": format!("File edited successfully ({} match).", match_type)
+        "replacement_count": count,
+        "message": format!("File edited successfully ({} match, {} replacements).", match_type, count)
     }))
 }
 

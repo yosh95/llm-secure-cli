@@ -252,6 +252,22 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
 
     maybe_register(
         r,
+        "read_many_files",
+        "Read multiple files in a single turn. Ideal for token efficiency.",
+        json!({
+            "type": "object",
+            "properties": {
+                "paths": {"type": "array", "items": {"type": "string"}, "description": "List of file paths to read."}
+            },
+            "required": ["paths"]
+        }),
+        Arc::new(|args, config| {
+            Box::pin(async move { crate::tools::builtin::file_ops::read_many_files(args, config) })
+        }),
+    );
+
+    maybe_register(
+        r,
         "grep_files",
         "Search for a regex pattern in files.",
         json!({
@@ -299,6 +315,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
                 "path": {"type": "string", "description": "File path."},
                 "search": {"type": "string", "description": "The exact block of text to search for. Use raw newlines, not '\\n'. Do NOT use ellipsis (...)."},
                 "replace": {"type": "string", "description": "The block of text to replace it with. Use raw newlines, not '\\n'. Do NOT use ellipsis (...)."},
+                "allow_multiple": {"type": "boolean", "description": "If true, replace all occurrences. Default is false.", "default": false},
                 "dry_run": {"type": "boolean", "default": false}
             },
             "required": ["path", "search", "replace"]
@@ -379,24 +396,17 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
     maybe_register(
         r,
         "execute_command",
-        "Execute a system command directly without invoking a shell. \
-         IMPORTANT CONSTRAINTS: This uses exec() directly — shell features are NOT available: \
-         no pipes (|), no redirections (> >> 2>&1), no command chaining (&& || ;), \
-         no subshells ($()), no glob expansion (* ?), no environment variable expansion ($VAR). \
-         Each argument must be a separate item in 'args'. \
-         DO NOT include the command name in the 'args' array. \
-         PREFER BUILT-IN TOOLS for common operations: \
-         use 'grep_files' instead of grep, 'search_files' instead of find, \
-         'read_file_content' instead of cat, 'list_files_in_directory' instead of ls. \
-         Use this tool ONLY for commands that have no built-in equivalent (e.g. git, cargo, python3, npm). \
-         EXAMPLE 1 (git) — Correct: command='git', args=['log','--oneline','-10'] \
-         EXAMPLE 2 (ls) — Wrong: command='ls', args=['ls', '-l'] | Correct: command='ls', args=['-l'] \
-         EXAMPLE 3 (sh) — Wrong: command='sh', args=['-c','git log | head'] (shell features not supported)",
+        "Executes a system command directly without a shell. \
+         IMPORTANT: Shell features (pipes, redirections, chaining, globbing) are NOT supported. \
+         The 'args' array must NOT include the command name. \
+         Prefer built-in tools (grep_files, search_files, read_file_content) when possible. \
+         Example: command='git', args=['log', '--oneline'].",
         json!({
             "type": "object",
             "properties": {
-                "command": {"type": "string", "description": "A single executable name (e.g. 'git', 'cargo', 'python3'). NOT a shell command string. If you need pipes or redirections, use built-in tools instead."},
-                "args": {"type": "array", "items": { "type": "string" }, "description": "Arguments to pass to the command, one per element. Do NOT include the command name here. Shell operators (|, >, >>, 2>&1, &&, ||, ;, $()) are NOT interpreted — they will be passed as literal strings."}
+                "command": {"type": "string", "description": "Executable name (e.g., 'git', 'cargo')."},
+                "args": {"type": "array", "items": { "type": "string" }, "description": "Arguments to pass (one per element). Do NOT include the command name."},
+                "cwd": {"type": "string", "description": "Current working directory for the command."}
             },
             "required": ["command", "args"]
         }),
@@ -404,6 +414,25 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
             Box::pin(
                 async move { crate::tools::builtin::shell::execute_command(args, config).await },
             )
+        }),
+    );
+
+    maybe_register(
+        r,
+        "update_topic",
+        "Update the current topic or strategic intent to keep the user informed. \
+         Use this when starting a new logical phase of a complex task (e.g., 'Researching X', 'Implementing Y').",
+        json!({
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Short title of the new phase."},
+                "strategic_intent": {"type": "string", "description": "Mandatory one-sentence statement of immediate intent."},
+                "summary": {"type": "string", "description": "Detailed summary (3-5 sentences) of work completed and next steps."}
+            },
+            "required": ["strategic_intent"]
+        }),
+        Arc::new(|args, config| {
+            Box::pin(async move { crate::tools::builtin::topic::update_topic(args, config) })
         }),
     );
 }

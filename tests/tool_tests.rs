@@ -233,7 +233,7 @@ fn test_file_modification_tools() {
 
     let res = edit_file(args, config.clone()).expect("Fuzzy match should now succeed");
     assert!(res["success"].as_bool().unwrap());
-    assert_eq!(res["match_type"].as_str().unwrap(), "fuzzy");
+    assert_eq!(res["match_type"].as_str().unwrap(), "flexible");
     assert_eq!(
         fs::read_to_string(&file_path).unwrap(),
         "line1\nline2 modified\nline3 modified"

@@ -51,11 +51,13 @@ high_risk_tools = [
 ]
 medium_risk_tools = [
     "read_file_content",
+    "read_many_files",
     "grep_files",
 ]
 low_risk_tools = [
     "list_files_in_directory",
     "search_files",
+    "update_topic",
 ]
 
 # Dual LLM Verification (AI-native ABAC / Semantic Firewall)

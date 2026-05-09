@@ -404,6 +404,35 @@ pub fn print_panel(
     println!("{}", "─".repeat(width).color(border_color));
 }
 
+pub fn print_topic(title: &str, summary: Option<&str>, strategic_intent: Option<&str>) {
+    let color = "magenta";
+    let term = Term::stdout();
+    let (_, width) = term.size();
+    let width = (width as usize).min(140);
+
+    println!();
+    println!("{}", "═".repeat(width).color(color));
+    println!(
+        " {} {}",
+        "CHAPTER:".bold().color(color),
+        title.bold().white()
+    );
+
+    if let Some(intent) = strategic_intent {
+        println!(" {} {}", "INTENT:".bold().color(color), intent.italic());
+    }
+
+    if let Some(summ) = summary {
+        println!();
+        let options = textwrap::Options::new(width.saturating_sub(4)).break_words(false);
+        for line in textwrap::wrap(summ, &options) {
+            println!("  {}", line);
+        }
+    }
+    println!("{}", "═".repeat(width).color(color));
+    println!();
+}
+
 pub fn report_error(message: &str) {
     eprintln!("{} {}", "NG".red().bold(), message.red());
 }

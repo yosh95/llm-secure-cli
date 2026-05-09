@@ -96,6 +96,8 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 - **High-Assurance via Dual LLM**: Every high-risk tool call is verified by a secondary LLM (via an OpenAI-compatible endpoint) to ensure intent alignment, balancing flexibility and security.
 - **Config-free Execution**: Start using immediately by just providing an environment variable.
 - **MCP (Model Context Protocol) Support**: Connect to remote resources or services via custom servers configured in `config.toml`.
+- **Batch File Reading**: Efficiently read multiple files in a single turn with `read_many_files`.
+- **Progress Tracking**: Real-time task status updates via `update_topic` (Chapter/Intent visualization).
 - **Multimodal capabilities**: Support for Images, PDFs, Audio, and Video (as supported by the underlying OpenAI-compatible model).
 - **Operational Stability**: A clean, flicker-free UI designed for long-term "Deep Work" sessions and SSH-based environments.
 - **Human-in-the-Loop**: All critical actions (file edits, code execution) require explicit human approval by default (configurable via `auto_approval_level`).
