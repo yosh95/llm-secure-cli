@@ -540,6 +540,10 @@ pub async fn handle_vmodel_cmd(session: &mut ActiveSession, args: &str) {
     if let Err(e) = session.ctx.config_manager.set_config(new_config) {
         ui::report_error(&format!("Failed to update config: {}", e));
     } else {
+        let _ = session
+            .ctx
+            .config_manager
+            .update_v_state(current_provider, args);
         ui::report_success(&format!("Verifier model set to: {}", args));
     }
 }
@@ -573,6 +577,7 @@ pub async fn handle_vprovider_cmd(session: &mut ActiveSession, args: &str) {
     if let Err(e) = session.ctx.config_manager.set_config(new_config) {
         ui::report_error(&format!("Failed to update config: {}", e));
     } else {
+        let _ = session.ctx.config_manager.update_v_state(args, "");
         ui::report_success(&format!(
             "Verifier provider set to: {}. Please set a model with /vmodel.",
             args

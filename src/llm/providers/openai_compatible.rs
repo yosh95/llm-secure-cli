@@ -532,30 +532,31 @@ impl LlmClient for OpenAiCompatibleClient {
                         .or_else(|| part.as_str()); // Sometimes it's just a string array
 
                     if let Some(url) = url
-                        && url.starts_with("data:") {
-                            let content_parts: Vec<&str> = url.splitn(2, ',').collect();
-                            if content_parts.len() == 2 {
-                                let mime = content_parts[0]
-                                    .trim_start_matches("data:")
-                                    .split(';')
-                                    .next()
-                                    .unwrap_or(match field {
-                                        "videos" => "video/mp4",
-                                        "audios" => "audio/mpeg",
-                                        _ => "image/png",
-                                    });
-                                let b64 = content_parts[1];
-                                let mut id = HashMap::new();
-                                id.insert("mimeType".to_string(), json!(mime));
-                                id.insert("data".to_string(), json!(b64));
-                                message_parts.push(MessagePart::Part(Box::new(
-                                    crate::llm::models::ContentPart {
-                                        inline_data: Some(id),
-                                        ..Default::default()
-                                    },
-                                )));
-                            }
+                        && url.starts_with("data:")
+                    {
+                        let content_parts: Vec<&str> = url.splitn(2, ',').collect();
+                        if content_parts.len() == 2 {
+                            let mime = content_parts[0]
+                                .trim_start_matches("data:")
+                                .split(';')
+                                .next()
+                                .unwrap_or(match field {
+                                    "videos" => "video/mp4",
+                                    "audios" => "audio/mpeg",
+                                    _ => "image/png",
+                                });
+                            let b64 = content_parts[1];
+                            let mut id = HashMap::new();
+                            id.insert("mimeType".to_string(), json!(mime));
+                            id.insert("data".to_string(), json!(b64));
+                            message_parts.push(MessagePart::Part(Box::new(
+                                crate::llm::models::ContentPart {
+                                    inline_data: Some(id),
+                                    ..Default::default()
+                                },
+                            )));
                         }
+                    }
                 }
             }
         }
