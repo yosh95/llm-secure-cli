@@ -149,10 +149,50 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             handle_summarize(session).await;
             CommandResult::Handled
         }
+        "alias" => {
+            handle_alias_cmd(session, args).await;
+            CommandResult::Handled
+        }
         _ => {
             ui::report_error(&format!("Unknown command: /{}", cmd));
             CommandResult::Handled
         }
+    }
+}
+
+pub async fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
+    if args.is_empty() {
+        match session.ctx.config_manager.get_state() {
+            Ok(state) => {
+                if state.model_aliases.is_empty() {
+                    ui::report_info("No aliases configured.");
+                } else {
+                    ui::print_rule(Some("Configured Model Aliases"), Some("cyan"));
+                    let mut aliases: Vec<_> = state.model_aliases.iter().collect();
+                    aliases.sort_by_key(|(k, _)| *k);
+                    for (name, alias) in aliases {
+                        println!("  {: <15} -> {}", name.bold().cyan(), alias.target);
+                    }
+                    ui::print_rule(None, Some("cyan"));
+                }
+            }
+            Err(e) => ui::report_error(&format!("Failed to load aliases: {}", e)),
+        }
+        return;
+    }
+
+    let parts: Vec<&str> = args.split_whitespace().collect();
+    if parts.len() != 2 {
+        ui::report_error("Usage: /alias <name> <target>");
+        return;
+    }
+
+    let alias_name = parts[0];
+    let target = parts[1];
+
+    match session.ctx.config_manager.set_alias(alias_name, target) {
+        Ok(_) => ui::report_success(&format!("Alias '{}' set to '{}'", alias_name, target)),
+        Err(e) => ui::report_error(&format!("Failed to set alias: {}", e)),
     }
 }
 

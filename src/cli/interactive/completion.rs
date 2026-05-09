@@ -50,6 +50,7 @@ impl ChatCompleter {
                 "/s",
                 "/edit_history",
                 "/eh",
+                "/alias",
             ],
             current_provider,
             ctx,
@@ -176,6 +177,43 @@ impl Completer for ChatCompleter {
                             }
                         }
                         return Ok((start, matches));
+                    }
+                    "/alias" => {
+                        let parts: Vec<&str> = arg_prefix.split_whitespace().collect();
+                        // Only complete the target (second argument), e.g., "/alias name [target]"
+                        if parts.len() == 1 && arg_prefix.ends_with(' ') {
+                            let models_map = self.ctx.config_manager.get_cached_models_sync();
+                            let mut matches = Vec::new();
+                            for (p, models) in models_map {
+                                for m in models {
+                                    let full = format!("{}:{}", p, m);
+                                    matches.push(Pair {
+                                        display: full.clone(),
+                                        replacement: full,
+                                    });
+                                }
+                            }
+                            matches.sort_by(|a, b| a.display.cmp(&b.display));
+                            return Ok((pos, matches));
+                        } else if parts.len() == 2 {
+                            let target_prefix = parts[1];
+                            let start_of_target = pos - target_prefix.len();
+                            let models_map = self.ctx.config_manager.get_cached_models_sync();
+                            let mut matches = Vec::new();
+                            for (p, models) in models_map {
+                                for m in models {
+                                    let full = format!("{}:{}", p, m);
+                                    if full.starts_with(target_prefix) {
+                                        matches.push(Pair {
+                                            display: full.clone(),
+                                            replacement: full,
+                                        });
+                                    }
+                                }
+                            }
+                            matches.sort_by(|a, b| a.display.cmp(&b.display));
+                            return Ok((start_of_target, matches));
+                        }
                     }
                     _ => {}
                 }

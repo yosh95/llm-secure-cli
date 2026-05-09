@@ -149,7 +149,7 @@ llsc "query"                         # One-shot query
 ### Subcommands
 ```bash
 llsc models [provider]               # List available models (optionally for a specific provider)
-llsc models models <provider> -v     # Verbose model listing
+llsc models <provider> -v            # Verbose model listing
 llsc identity keygen                 # Generate Ed25519 and PQC (ML-DSA/ML-KEM) key pairs
 llsc identity manifest               # Rebuild integrity manifest for system verification
 llsc identity verify                 # Run full integrity verification
@@ -172,6 +172,7 @@ Inside the `llsc` interactive session:
 - `/attach <path/URL>`: Add a file or website content to the context.
 - `/tools [on|off]`: Show or toggle autonomous tool use status.
 - `/model`, `/m [<alias>]`: Switch or list models for current provider.
+- `/alias [<name> <target>]`: List, create, or update model aliases (e.g., `/alias mygpt openai:gpt-4o`).
 - `/provider`, `/p [<name>]`: Switch or list providers.
 - `/summarize`, `/s`: Summarize history and clear it (context preservation).
 
