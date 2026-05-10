@@ -47,10 +47,11 @@ The accompanying [Technical Report](paper/comprehensive_framework/paper.pdf) det
     # Generic provider name support
     # ANYNAME_API_KEY can be used if you define [ANYNAME] in config.toml
     ```
-3.  **Chat**: Type `llsc` to start an interactive session.
+### 3. **Chat**: Type `llsc` to start an interactive session.
     *   **Automatic Initialization**: On the first run, `~/.llm_secure_cli/config.toml` is automatically created.
     *   **Model Setup**: By default, no model is selected. Use `/model <model_name>` (e.g., `/model llama3`) to set one before your first request.
     *   **Brave Search**: Built-in support for the Brave Search API is available for comprehensive searching across all providers (requires `BRAVE_API_KEY`).
+    *   **File/URL Attachment**: Use `/attach <path|URL>` to quickly add local files or web content to your conversation.
 4.  **Configure (Optional)**: Ollama is the default provider. To use OpenRouter or others, edit the configuration file:
     ```bash
     # Edit ~/.llm_secure_cli/config.toml
@@ -89,21 +90,23 @@ llsc -p openrouter -m google/gemini-2.0-flash-001 "Explain quantum computing"
 llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 ```
 
-## Core Features
+## Core Features & Tools
 
-- **Unified Provider Access**: Seamlessly switch between any OpenAI-compatible APIs, such as **OpenRouter, OpenAI, Ollama, and LiteLLM**.
-- **Autonomous Agent**: Let the AI manage files and search the web using **Brave Search**.
-- **High-Assurance via Dual LLM**: Every high-risk tool call is verified by a secondary LLM (via an OpenAI-compatible endpoint) to ensure intent alignment, balancing flexibility and security.
-- **Config-free Execution**: Start using immediately by just providing an environment variable.
-- **MCP (Model Context Protocol) Support**: Connect to remote resources or services via custom servers configured in `config.toml`.
-- **Batch File Reading**: Efficiently read multiple files in a single turn with `read_many_files`.
+- **Unified Provider Access**: Seamlessly switch between any OpenAI-compatible APIs (**OpenRouter, OpenAI, Ollama, LiteLLM**).
+- **Autonomous Agent**: A powerful set of built-in tools for complex automation:
+    - **File Operations**: `list_files_in_directory`, `read_file_content` (with pagination), `read_many_files`.
+    - **Search**: `grep_files` (regex content search) and `search_files` (filename pattern search).
+    - **Modification**: `edit_file` (precision block replacement with exact/flexible/regex matching) and `create_or_overwrite_file`.
+    - **System & Web**: `execute_command` (secure direct execution) and `read_url_content` (HTML-to-Markdown conversion with SSRF protection).
+    - **Web Search**: `brave_search` using the Brave LLM Context API for grounded, pre-extracted content.
+- **High-Assurance via Dual LLM**: Every high-risk tool call is verified by a secondary LLM to ensure intent alignment.
+- **MCP (Model Context Protocol)**: Connect to remote resources or services via custom servers.
 - **Progress Tracking**: Real-time task status updates via `update_topic` (Chapter/Intent visualization).
-- **Multimodal capabilities**: Support for Images, PDFs, Audio, and Video (as supported by the underlying OpenAI-compatible model).
-- **Operational Stability**: A clean, flicker-free UI designed for long-term "Deep Work" sessions and SSH-based environments.
-- **Human-in-the-Loop**: All critical actions (file edits, code execution) require explicit human approval by default (configurable via `auto_approval_level`).
+- **Operational Stability**: A clean, flicker-free UI designed for long-term "Deep Work" sessions.
+- **Human-in-the-Loop**: Configurable `auto_approval_level` (none/low/medium) to balance speed and safety.
 
-### Autonomous Agent & Tool Use
-The AI agent autonomously uses tools to perform complex tasks, such as file management and web search. Web search is powered by the **Brave Search API** for comprehensive results. To maintain audit integrity and PQC signatures, all external data retrieval is cryptographically signed and logged.
+### Autonomous Agent Capabilities
+The AI agent autonomously selects tools to perform tasks. For example, it can search for a bug using `grep_files`, read the relevant code with `read_file_content`, and apply a fix with `edit_file`. All actions are logged with cryptographic signatures for auditability.
 
 ---
 

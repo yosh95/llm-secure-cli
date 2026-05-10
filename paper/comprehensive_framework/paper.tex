@@ -91,11 +91,19 @@ To prevent "Living-off-the-Land" attacks where the agent's own source code is mo
 Each agent instance is assigned a unique key pair. Every MCP tool call is accompanied by a signed \textbf{Identity Token} in \textbf{COSE} format \cite{rfc9052}, containing \textbf{ABAC} claims. We implement a \textbf{Distributed Trust Model} where identities are resolved via a \textit{Trust Resolver}. This allows for both local filesystem-based verification and integration with enterprise-grade \textbf{Key Management Systems (KMS)}, ensuring that agents can only interact with trusted servers and preventing lateral movement.
 
 \subsection{Intent Verification (Dual LLM) \& Confidence-Awareness}
-To mitigate sophisticated Indirect Prompt Injection attacks, we implement a \textbf{Dual LLM Verification} pattern. For tools classified as high-risk by CASS, the system invokes a separate, lightweight LLM (e.g., Gemini 3.1 Flash-Lite) to verify the proposed action against the user's original, untainted prompt. 
+To mitigate sophisticated Indirect Prompt Injection attacks, we implement a \textbf{Dual LLM Verification} pattern. For tools classified as high-risk by CASS, the system invokes a separate, lightweight LLM (e.g., Gemini 2.0 Flash) to verify the proposed action against the user's original, untainted prompt. 
 
-This verifier implements \textbf{Confidence-Aware Verification}: the secondary LLM provides a confidence score (0.0--1.0) along with its verdict. If the confidence falls below a set threshold (e.g., 0.7), the system treats the verdict as "Uncertain" and automatically escalates to a Human-in-the-Loop (HITL) review. The score is used only as a heuristic routing signal, not as a calibrated probability of safety; threshold selection is therefore deployment-specific and should be validated against local workloads.
+This verifier facilitates autonomous navigation through a comprehensive toolset including:
+\begin{itemize}
+    \item \textbf{Search \& Discovery:} \texttt{grep\_files} (regex-based content search) and \texttt{search\_files} (filename pattern discovery).
+    \item \textbf{Precision Modification:} \texttt{edit\_file} (indentation-aware block replacement) and \texttt{create\_or\_overwrite\_file}.
+    \item \textbf{Observation \& Context:} \texttt{read\_url\_content} (SSRF-protected web crawling) and \texttt{read\_many\_files} (batch context loading).
+    \item \textbf{System Agency:} \texttt{execute\_command} (direct binary execution).
+\end{itemize}
 
-The verifier also implements \textbf{Context-Aware Verification} by receiving the output of the immediately preceding tool call (\texttt{last\_tool\_result}) alongside the current request. This allows the secondary LLM to distinguish between genuinely suspicious actions and legitimate corrective steps (e.g., an agent editing a file to fix an error reported by a linter in the previous turn), significantly reducing false positives in multi-step agentic workflows. Because the previous tool result can itself contain attacker-controlled text, the verifier prompt treats this field as untrusted evidence and asks for intent--action consistency rather than instruction following.
+This verifier implements \textbf{Confidence-Aware Verification}: the secondary LLM provides a confidence score (0.0--1.0) along with its verdict. It is important to note that these scores represent the model's self-reported certainty and may not be perfectly calibrated to actual safety probabilities. Therefore, the system treats the verdict as "Uncertain" and automatically escalates to a Human-in-the-Loop (HITL) review if the score falls below a set threshold (e.g., 0.7). This threshold selection is deployment-specific and should be validated against local workloads to balance security and usability.
+
+The verifier also implements \textbf{Context-Aware Verification} by receiving the output of the immediately preceding tool call (\texttt{last\_tool\_result}) alongside the current request. This allow the secondary LLM to distinguish between genuinely suspicious actions and legitimate corrective steps (e.g., an agent editing a file to fix an error reported by a linter in the previous turn). However, because the previous tool result can itself contain attacker-controlled text, the verifier prompt is designed to treat this field as untrusted evidence rather than absolute truth.
 
 The \textbf{Soft-Failure} path distinguishes two failure modes: (1) \textit{Infrastructure failures}, where the verifier is unreachable or misconfigured (e.g., missing API key, unknown provider), and (2) \textit{Uncertain verdicts}, where the confidence score falls below the threshold. Both are treated as soft failures and route to HITL review rather than a hard block, ensuring the system degrades gracefully. Only an \textit{active rejection} (high-confidence \texttt{safe=false}) constitutes a Hard Block. This three-way distinction---Verified / Uncertain (HITL) / Rejected---ensures that the system remains safe even when the verifier model itself is ambiguous or temporarily unavailable.
 
@@ -133,7 +141,7 @@ To improve the long-term integrity and confidentiality of agent history, we impl
     \item \textbf{Stage 2: Merkle Tree (Session Anchoring):} Upon session completion, the framework automatically computes a binary \textbf{Merkle Tree} from the hashes of all log entries belonging to that session (identified by a \texttt{trace\_id}). The resulting PQC-signed Merkle Root is persisted to disk as a \textit{session anchor file}, enabling compact, externally verifiable proof of session integrity long after the session ends.
 \end{itemize}
 
-A practical performance challenge arises in startup-time integrity verification: re-verifying PQC signatures for every historical log entry is an $O(N)$ post-quantum cryptographic operation that grows unboundedly. To address this, we implement a \textbf{Tail-Window PQC Verification} strategy. On startup, hash-chain continuity is verified for \textit{all} entries (a lightweight SHA-256 operation), while PQC signature verification is applied only to the most recent $k$ entries (default: $k=50$). This is a performance optimization rather than a complete substitute for full signature verification: the hash chain efficiently detects post-hoc modification of earlier entries once a trusted tail is established, but it does not by itself prove that every historical entry was originally signed by the expected key. Full $O(N)$ PQC re-verification of the entire log history remains available via the \texttt{llsc verify} command for forensic, migration, or compliance use cases.
+A practical performance challenge arises in startup-time integrity verification: re-verifying PQC signatures for every historical log entry is an $O(N)$ post-quantum cryptographic operation that grows unboundedly. To address this, we implement a \textbf{Tail-Window PQC Verification} strategy. On startup, hash-chain continuity is verified for \textit{all} entries (a lightweight SHA-256 operation), while PQC signature verification is applied only to the most recent $k$ entries (default: $k=50$). This is a performance optimization: while the hash chain efficiently detects post-hoc modification once a trusted tail is established, complete forensic verification requires a full $O(N)$ re-evaluation of the entire signature chain. Future work should investigate more efficient cryptographic accumulators for long-term audit proof.
 
 \section{System Architecture and Integration}
 \label{sec:arch}
@@ -155,8 +163,8 @@ CASS determines the required security posture by mapping the requested tool and 
 A simplified policy fragment is shown below to make the orchestration model concrete. The production implementation reads equivalent fields from the application configuration and environment overrides:
 \begin{lstlisting}[language={},caption={Example CASS policy fragment},label={lst:cass_policy}]
 [security]
-high_risk_tools = ["edit_file", "write_file"]
-medium_risk_tools = ["read_file_content"]
+high_risk_tools = ["edit_file", "execute_command"]
+medium_risk_tools = ["read_file_content", "grep_files", "read_url_content"]
 blocked_paths = ["/etc/shadow", "~/.ssh", ".env"]
 scaling_patterns = ["private_key", "secret", "token"]
 dual_llm_verification = true
