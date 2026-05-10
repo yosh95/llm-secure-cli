@@ -4,7 +4,7 @@ use crate::security::pqc::{MldsaVariant, PqcProvider};
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use pkcs8::{DecodePrivateKey, DecodePublicKey};
+use pkcs8::DecodePrivateKey;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -148,10 +148,13 @@ impl IntegrityVerifier {
 
         // 2. Verify Classical Signature (Ed25519)
         if let Some(classical_sig_b64) = &manifest.classical_signature {
-            let classical_pub_path = crate::consts::key_dir().join("id_ed25519.pub");
-            let classical_pub_pem = fs::read_to_string(classical_pub_path)?;
-            let verifying_key = VerifyingKey::from_public_key_pem(&classical_pub_pem)
-                .map_err(|e| anyhow!("Failed to load Ed25519 public key: {}", e))?;
+            let classical_pub_bytes = IdentityManager::get_classical_public_key()?;
+            let verifying_key = VerifyingKey::from_bytes(
+                &classical_pub_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid Ed25519 public key length"))?,
+            )
+            .map_err(|e| anyhow!("Failed to load Ed25519 public key: {}", e))?;
             let classical_sig_bytes = general_purpose::STANDARD.decode(classical_sig_b64)?;
             let classical_sig = Signature::from_slice(&classical_sig_bytes)
                 .map_err(|e| anyhow!("Invalid Ed25519 signature format: {}", e))?;
