@@ -16,7 +16,7 @@ max_chat_archives = 5
 # =============================================================================
 [security]
 # IMPORTANT: API Keys are NOT checked in this file for security reasons.
-# You MUST set them as environment variables (e.g., in ~/.bashrc, ~/.zshrc, or .env):
+# You MUST set them as environment variables (e.g., in ~/.bashrc, ~/.zshrc, or ~/.llm_secure_cli/.env):
 #   - OpenRouter:   OPENROUTER_API_KEY
 #   - OpenAI:       OPENAI_API_KEY
 #   - Ollama:       No API key required for local usage by default.
@@ -46,13 +46,13 @@ high_risk_tools = [
     "execute_command",
     "edit_file",
     "create_or_overwrite_file",
-    "read_url_content",
-    "brave_search",
 ]
 medium_risk_tools = [
     "read_file_content",
     "read_many_files",
     "grep_files",
+    "read_url_content",
+    "brave_search",
 ]
 low_risk_tools = [
     "list_files_in_directory",
