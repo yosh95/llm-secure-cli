@@ -232,37 +232,21 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
     maybe_register(
         r,
         "read_file_content",
-        "Read content from a text file or PDF.",
+        "Read content from a text file or PDF. Supports reading multiple files at once.",
         json!({
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "File path."},
+                "path": {"type": "string", "description": "Single file path."},
+                "paths": {"type": "array", "items": {"type": "string"}, "description": "Multiple file paths to read in one call."},
                 "start_line": {"type": "integer", "default": 1},
                 "end_line": {"type": "integer"},
                 "with_line_numbers": {"type": "boolean", "default": false}
-            },
-            "required": ["path"]
+            }
         }),
         Arc::new(|args, config| {
             Box::pin(
                 async move { crate::tools::builtin::file_ops::read_file_content(args, config) },
             )
-        }),
-    );
-
-    maybe_register(
-        r,
-        "read_many_files",
-        "Read multiple files in a single turn. Ideal for token efficiency.",
-        json!({
-            "type": "object",
-            "properties": {
-                "paths": {"type": "array", "items": {"type": "string"}, "description": "List of file paths to read."}
-            },
-            "required": ["paths"]
-        }),
-        Arc::new(|args, config| {
-            Box::pin(async move { crate::tools::builtin::file_ops::read_many_files(args, config) })
         }),
     );
 
@@ -414,25 +398,6 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
             Box::pin(
                 async move { crate::tools::builtin::shell::execute_command(args, config).await },
             )
-        }),
-    );
-
-    maybe_register(
-        r,
-        "update_topic",
-        "Update the current topic or strategic intent to keep the user informed. \
-         Use this when starting a new logical phase of a complex task (e.g., 'Researching X', 'Implementing Y').",
-        json!({
-            "type": "object",
-            "properties": {
-                "title": {"type": "string", "description": "Short title of the new phase."},
-                "strategic_intent": {"type": "string", "description": "Mandatory one-sentence statement of immediate intent."},
-                "summary": {"type": "string", "description": "Detailed summary (3-5 sentences) of work completed and next steps."}
-            },
-            "required": ["strategic_intent"]
-        }),
-        Arc::new(|args, config| {
-            Box::pin(async move { crate::tools::builtin::topic::update_topic(args, config) })
         }),
     );
 }

@@ -380,9 +380,9 @@ auto_approval_level = "none"
 
 # Tool whitelist
 allowed_tools = [
-    "list_files_in_directory", "read_file_content", "read_many_files",
-    "grep_files", "search_files", "edit_file", "create_or_overwrite_file",
-    "read_url_content", "brave_search", "execute_command", "update_topic"
+    "list_files_in_directory", "read_file_content", "grep_files", "search_files",
+    "edit_file", "create_or_overwrite_file", "read_url_content", "brave_search",
+    "execute_command"
 ]
 
 # Risk classification

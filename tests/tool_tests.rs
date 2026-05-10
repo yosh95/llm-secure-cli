@@ -131,7 +131,9 @@ fn test_read_file_content_options() {
     args.insert("with_line_numbers".to_string(), json!(true));
 
     let res = read_file_content(args, config).unwrap();
-    let content = res.as_str().unwrap();
+    let content = res["content"]
+        .as_str()
+        .expect("Output should contain 'content' field");
     assert!(content.contains("   2 | line2"));
     assert!(content.contains("   3 | line3"));
     assert!(!content.contains("line1"));
@@ -271,6 +273,8 @@ fn test_read_file_content_range_panic_fix() {
 
     let res = read_file_content(args, config)
         .expect("read_file_content should return Ok even with invalid range");
-    let error_msg = res.as_str().unwrap();
-    assert!(error_msg.contains("Error: start_line (8) is greater than end_line (3)"));
+    let error_msg = res["error"]
+        .as_str()
+        .expect("Output should contain 'error' field");
+    assert!(error_msg.contains("start_line (8) is greater than end_line (3)"));
 }

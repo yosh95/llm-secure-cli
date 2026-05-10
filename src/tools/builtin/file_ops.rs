@@ -151,10 +151,22 @@ pub fn read_file_content(
     args: HashMap<String, Value>,
     config: Arc<AppConfig>,
 ) -> anyhow::Result<Value> {
-    let path_str = args
-        .get("path")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("Missing 'path' argument"))?;
+    let mut path_strs = Vec::new();
+
+    if let Some(p) = args.get("path").and_then(|v| v.as_str()) {
+        path_strs.push(p.to_string());
+    } else if let Some(paths) = args.get("paths").and_then(|v| v.as_array()) {
+        for v in paths {
+            if let Some(p) = v.as_str() {
+                path_strs.push(p.to_string());
+            }
+        }
+    }
+
+    if path_strs.is_empty() {
+        return Err(anyhow::anyhow!("Missing 'path' or 'paths' argument"));
+    }
+
     let start_line = args.get("start_line").and_then(|v| v.as_i64()).unwrap_or(1) as usize;
     let end_line = args
         .get("end_line")
@@ -165,140 +177,112 @@ pub fn read_file_content(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let path = match crate::security::path_validator::validate_path(path_str, &config.security) {
-        Ok(p) => p,
-        Err(e) => return Err(anyhow::anyhow!("Security Error: {}", e)),
-    };
-    if !path.is_file() {
-        return Ok(json!(format!("Error: '{}' is not a file.", path_str)));
-    }
-
-    let metadata = fs::metadata(&path)?;
-    if metadata.len() > MAX_FILE_READ_SIZE {
-        return Ok(json!(format!(
-            "Error: File '{}' is too large ({}) to read directly. Max is 5MB.",
-            path_str,
-            format_size(metadata.len())
-        )));
-    }
-
-    let content = match fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => {
-            return Ok(json!(format!(
-                "Error: '{}' appears to be a binary file.",
-                path_str
-            )));
-        }
-    };
-
-    let lines: Vec<&str> = content.lines().collect();
-    let total_lines = lines.len();
-    let start = (start_line.saturating_sub(1)).min(total_lines);
-    let end = end_line.map(|e| e.min(total_lines)).unwrap_or(total_lines);
-
-    if start > end {
-        return Ok(json!(format!(
-            "Error: start_line ({}) is greater than end_line ({}).",
-            start_line,
-            end_line.unwrap_or(0)
-        )));
-    }
-
-    let selected = &lines[start..end];
-    let is_truncated = selected.len() > MAX_OUTPUT_LINES;
-    let limited: Vec<&str> = selected.iter().take(MAX_OUTPUT_LINES).cloned().collect();
-
-    let mut output = if with_line_numbers {
-        limited
-            .iter()
-            .enumerate()
-            .map(|(i, line)| format!("{:4} | {}", start + i + 1, line))
-            .collect::<Vec<_>>()
-            .join("\n")
-    } else {
-        limited.join("\n")
-    };
-
-    if is_truncated {
-        let shown_end = start + limited.len();
-        output = format!(
-            "\nIMPORTANT: The file content has been truncated.\n\
-             Status: Showing lines {}-{} of {} total lines.\n\
-             Action: To read more of the file, use 'start_line' and 'end_line' in a subsequent call. \
-             For example, use start_line: {}.\n\n\
-             --- FILE CONTENT (truncated) ---\n{}",
-            start + 1,
-            shown_end,
-            total_lines,
-            shown_end + 1,
-            output
-        );
-    }
-
-    // Truncate by chars if needed
-    if output.len() > MAX_OUTPUT_CHARS {
-        let truncated: String = output.chars().take(MAX_OUTPUT_CHARS).collect();
-        Ok(json!(truncated))
-    } else {
-        Ok(json!(output))
-    }
-}
-
-pub fn read_many_files(
-    args: HashMap<String, Value>,
-    config: Arc<AppConfig>,
-) -> anyhow::Result<Value> {
-    let paths = args
-        .get("paths")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| anyhow::anyhow!("Missing 'paths' argument"))?;
-
     let mut results = Vec::new();
 
-    for path_val in paths {
-        let path_str = path_val.as_str().unwrap_or("");
-        if path_str.is_empty() {
-            continue;
-        }
-
+    for path_str in &path_strs {
         let path = match crate::security::path_validator::validate_path(path_str, &config.security)
         {
             Ok(p) => p,
             Err(e) => {
-                results.push(json!({
-                    "path": path_str,
-                    "error": format!("Security Error: {}", e)
-                }));
+                results
+                    .push(json!({ "path": path_str, "error": format!("Security Error: {}", e) }));
                 continue;
             }
         };
 
         if !path.is_file() {
+            results.push(
+                json!({ "path": path_str, "error": format!("'{}' is not a file.", path_str) }),
+            );
+            continue;
+        }
+
+        let metadata = match fs::metadata(&path) {
+            Ok(m) => m,
+            Err(e) => {
+                results
+                    .push(json!({ "path": path_str, "error": format!("Metadata error: {}", e) }));
+                continue;
+            }
+        };
+
+        if metadata.len() > MAX_FILE_READ_SIZE {
             results.push(json!({
                 "path": path_str,
-                "error": "Not a file or does not exist."
+                "error": format!("File too large ({}) to read directly. Max is 5MB.", format_size(metadata.len()))
             }));
             continue;
         }
 
-        match fs::read_to_string(&path) {
-            Ok(content) => {
-                results.push(json!({
-                    "path": path_str,
-                    "content": content
-                }));
+        let content = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => {
+                results.push(json!({ "path": path_str, "error": "Appears to be a binary file or unreadable." }));
+                continue;
             }
-            Err(e) => {
-                results.push(json!({
-                    "path": path_str,
-                    "error": format!("Read error: {}", e)
-                }));
-            }
+        };
+
+        let lines: Vec<&str> = content.lines().collect();
+        let total_lines = lines.len();
+        let start = (start_line.saturating_sub(1)).min(total_lines);
+        let end = end_line.map(|e| e.min(total_lines)).unwrap_or(total_lines);
+
+        if start > end {
+            results.push(json!({
+                "path": path_str,
+                "error": format!("start_line ({}) is greater than end_line ({}).", start_line, end_line.unwrap_or(0))
+            }));
+            continue;
         }
+
+        let selected = &lines[start..end];
+        let is_truncated = selected.len() > MAX_OUTPUT_LINES;
+        let limited: Vec<&str> = selected.iter().take(MAX_OUTPUT_LINES).cloned().collect();
+
+        let mut output = if with_line_numbers {
+            limited
+                .iter()
+                .enumerate()
+                .map(|(i, line)| format!("{:4} | {}", start + i + 1, line))
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            limited.join("\n")
+        };
+
+        if is_truncated {
+            let shown_end = start + limited.len();
+            output = format!(
+                "\nIMPORTANT: The file content has been truncated.\n\
+                 Status: Showing lines {}-{} of {} total lines.\n\
+                 Action: To read more of the file, use 'start_line' and 'end_line' in a subsequent call. \
+                 For example, use start_line: {}.\n\n\
+                 --- FILE CONTENT (truncated) ---\n{}",
+                start + 1,
+                shown_end,
+                total_lines,
+                shown_end + 1,
+                output
+            );
+        }
+
+        // Truncate by chars if needed
+        if output.len() > MAX_OUTPUT_CHARS {
+            output = output.chars().take(MAX_OUTPUT_CHARS).collect();
+        }
+
+        results.push(json!({
+            "path": path_str,
+            "content": output,
+            "total_lines": total_lines
+        }));
     }
 
-    Ok(json!({ "results": results }))
+    if results.len() == 1 && args.contains_key("path") {
+        Ok(results.remove(0))
+    } else {
+        Ok(json!({ "results": results }))
+    }
 }
 
 pub fn grep_files(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow::Result<Value> {
