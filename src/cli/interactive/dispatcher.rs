@@ -483,7 +483,7 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
             }
         } else {
             println!(
-                "  No models cached for {}. Try running the provider to fetch models.",
+                "  No models cached for {}. Try running 'llsc models --update' outside of the chat to fetch models.",
                 provider
             );
         }
