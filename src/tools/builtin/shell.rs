@@ -77,7 +77,7 @@ pub async fn execute_command(
 
     for arg in &cmd_args {
         for (pattern, description) in shell_patterns {
-            if arg.contains(pattern) {
+            if arg == *pattern {
                 return Err(anyhow::anyhow!(
                     "Shell operator '{}' ({}) found in args: '{}'. \
                      This tool executes commands directly without a shell, so shell operators \

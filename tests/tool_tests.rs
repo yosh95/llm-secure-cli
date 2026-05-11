@@ -278,3 +278,54 @@ fn test_read_file_content_range_panic_fix() {
         .expect("Output should contain 'error' field");
     assert!(error_msg.contains("start_line (8) is greater than end_line (3)"));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_shell_operator_standalone_blocked() {
+    // Standalone shell operators as separate args should be blocked
+    let mut args = HashMap::new();
+    args.insert("command".to_string(), json!("echo"));
+    args.insert("args".to_string(), json!(["hello", ";", "rm", "-rf", "/"]));
+    let config = Arc::new(AppConfig::default());
+    let res = execute_command(args, config).await;
+    assert!(
+        res.is_err(),
+        "Standalone shell operator ';' should be blocked"
+    );
+    let msg = res.unwrap_err().to_string();
+    assert!(
+        msg.contains("Shell operator"),
+        "Error should mention shell operator: {}",
+        msg
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_shell_operator_embedded_allowed() {
+    // Shell operators embedded within a larger argument value (like ffmpeg filter graphs)
+    // should NOT be blocked, since they are not standalone shell operators.
+    let mut args = HashMap::new();
+    args.insert("command".to_string(), json!("ffmpeg"));
+    args.insert(
+        "args".to_string(),
+        json!([
+            "-i",
+            "input.mp4",
+            "-filter_complex",
+            "fps=10,scale=640:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+            "-y",
+            "output.gif"
+        ]),
+    );
+    let config = Arc::new(AppConfig::default());
+    // Should not error on the embedded semicolons
+    // (ffmpeg itself may not exist, so we only check it doesn't fail with shell operator error)
+    let res = execute_command(args, config).await;
+    if let Err(e) = res {
+        let msg = e.to_string();
+        assert!(
+            !msg.contains("Shell operator"),
+            "Embedded shell operators should not be blocked: {}",
+            msg
+        );
+    }
+}
