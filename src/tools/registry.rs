@@ -232,16 +232,16 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
     maybe_register(
         r,
         "read_file_content",
-        "Read content from a text file or PDF. Supports reading multiple files at once.",
+        "Read content from a text file or PDF.",
         json!({
             "type": "object",
             "properties": {
                 "path": {"type": "string", "description": "Single file path."},
-                "paths": {"type": "array", "items": {"type": "string"}, "description": "Multiple file paths to read in one call."},
                 "start_line": {"type": "integer", "default": 1},
                 "end_line": {"type": "integer"},
                 "with_line_numbers": {"type": "boolean", "default": false}
-            }
+            },
+            "required": ["path"]
         }),
         Arc::new(|args, config| {
             Box::pin(
