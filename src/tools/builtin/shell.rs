@@ -21,7 +21,23 @@ pub async fn execute_command(
             .iter()
             .filter_map(|v| v.as_str().map(|s| s.to_string()))
             .collect(),
-        _ => Vec::new(),
+        Some(other) => {
+            return Err(anyhow::anyhow!(
+                "Invalid type for 'args': expected an array of strings, got {}. \
+                 If you have a single argument, wrap it in an array: \
+                 e.g. {{\"args\": [\"{}\"]}} instead of {{\"args\": \"{}\"}}.",
+                other,
+                match other {
+                    Value::String(s) => s.clone(),
+                    v => v.to_string(),
+                },
+                match other {
+                    Value::String(s) => s.clone(),
+                    v => v.to_string(),
+                },
+            ));
+        }
+        None => Vec::new(),
     };
 
     // Validation: Ensure the command name is NOT included in args.
@@ -38,6 +54,44 @@ pub async fn execute_command(
             program,
             &cmd_args[1..]
         ));
+    }
+
+    // Validation: Detect shell metacharacters / operators in args.
+    // This tool executes commands directly (no shell), so shell syntax like
+    // redirections or pipes is silently passed as literal arguments, causing
+    // confusing errors. LLMs cannot easily diagnose the root cause from those
+    // downstream errors, so we fail fast with a clear explanation here.
+    let shell_patterns: &[(&str, &str)] = &[
+        ("2>&1", "redirect stderr to stdout"),
+        ("1>&2", "redirect stdout to stderr"),
+        ("2>", "redirect stderr to file"),
+        (">>", "append output to file"),
+        (">", "redirect output to file"),
+        ("<", "redirect input from file"),
+        ("|", "pipe output to another command"),
+        ("&&", "run next command on success"),
+        ("||", "run next command on failure"),
+        (";", "command separator"),
+        ("&", "run in background (shell operator)"),
+    ];
+
+    for arg in &cmd_args {
+        for (pattern, description) in shell_patterns {
+            if arg.contains(pattern) {
+                return Err(anyhow::anyhow!(
+                    "Shell operator '{}' ({}) found in args: '{}'. \
+                     This tool executes commands directly without a shell, so shell operators \
+                     have no effect and are passed as literal arguments. \
+                     Remove '{}' from args. \
+                     Note: stdout and stderr are already captured separately in the result, \
+                     so redirection is not needed.",
+                    pattern,
+                    description,
+                    arg,
+                    pattern,
+                ));
+            }
+        }
     }
 
     // 1. Static Analysis (Minimalist/Semantic focus)
