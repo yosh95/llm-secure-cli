@@ -7,6 +7,8 @@ pub struct ToolResultStats {
     pub line_count: usize,
     pub file_count: Option<usize>,
     pub stderr: Option<String>,
+    pub stderr_byte_count: usize,
+    pub stderr_line_count: usize,
 }
 
 pub fn get_tool_result_stats(result: &Value) -> ToolResultStats {
@@ -14,6 +16,8 @@ pub fn get_tool_result_stats(result: &Value) -> ToolResultStats {
     let mut line_count = 0;
     let mut file_count = None;
     let mut stderr = None;
+    let mut stderr_byte_count = 0;
+    let mut stderr_line_count = 0;
 
     if let Some(s) = result.as_str() {
         byte_count = s.len();
@@ -37,6 +41,8 @@ pub fn get_tool_result_stats(result: &Value) -> ToolResultStats {
             && !se.is_empty()
         {
             stderr = Some(se.to_string());
+            stderr_byte_count = se.len();
+            stderr_line_count = se.lines().count();
         }
 
         // Special handling for file lists
@@ -58,6 +64,8 @@ pub fn get_tool_result_stats(result: &Value) -> ToolResultStats {
         line_count,
         file_count,
         stderr,
+        stderr_byte_count,
+        stderr_line_count,
     }
 }
 
@@ -67,6 +75,13 @@ pub fn print_tool_stats(stats: &ToolResultStats) {
         parts.push(format!("{} files", fc));
     } else {
         parts.push(format!("{} lines", stats.line_count));
+    }
+
+    if stats.stderr_byte_count > 0 {
+        parts.push(format!(
+            "stderr: {} bytes / {} lines",
+            stats.stderr_byte_count, stats.stderr_line_count
+        ));
     }
 
     println!("{}", parts.join(" / ").dimmed());
