@@ -159,10 +159,8 @@ async fn fetch_url(url: &str) -> anyhow::Result<String> {
 
     if content_type == "application/pdf" {
         let bytes = res.bytes().await?;
-        return Ok(format!(
-            "[PDF content: {} bytes. PDF text extraction not supported in this tool; download the file and use read_file_content instead.]",
-            bytes.len()
-        ));
+        return pdf_extract::extract_text_from_mem(&bytes)
+            .map_err(|e| anyhow::anyhow!("Failed to extract text from PDF: {}", e));
     }
 
     let body = res.text().await?;
