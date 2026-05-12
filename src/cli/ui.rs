@@ -192,7 +192,7 @@ pub fn print_tool_result(result: &str) {
         }
 
         // Special handling for command execution results
-        if let (Some(stdout), Some(stderr), Some(exit_code)) = (
+        if let (Some(_stdout), Some(_stderr), Some(exit_code)) = (
             v.get("stdout").and_then(|v| v.as_str()),
             v.get("stderr").and_then(|v| v.as_str()),
             v.get("exit_code").and_then(|v| v.as_i64()),
@@ -208,19 +208,6 @@ pub fn print_tool_result(result: &str) {
                 exit_code.to_string().color(status_color)
             );
 
-            if !stdout.is_empty() {
-                println!("    {}", "STDOUT:".bold().cyan());
-                for line in stdout.lines() {
-                    println!("      {}", line.dimmed());
-                }
-            }
-
-            if !stderr.is_empty() {
-                println!("    {}", "STDERR:".bold().red());
-                for line in stderr.lines() {
-                    println!("      {}", line.red());
-                }
-            }
             return;
         }
 

@@ -146,7 +146,9 @@ impl Completer for ChatCompleter {
                         let mut matches = Vec::new();
                         let (v_p, _) = self.ctx.config_manager.get_dual_llm_settings();
 
-                        if !v_p.is_empty() && let Some(models) = models_map.get(&v_p) {
+                        if !v_p.is_empty()
+                            && let Some(models) = models_map.get(&v_p)
+                        {
                             for model in models {
                                 if model.starts_with(arg_prefix) {
                                     matches.push(Pair {

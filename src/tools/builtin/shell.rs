@@ -1,8 +1,10 @@
 use crate::config::models::AppConfig;
+use colored::Colorize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 /// Executes a system command directly without a shell.
@@ -117,7 +119,7 @@ pub async fn execute_command(
 
     // Structural Isolation: By using Command::new directly, we avoid shell-injection
     // vulnerabilities regardless of the operating system.
-    let child = match cmd
+    let mut child = match cmd
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -132,16 +134,61 @@ pub async fn execute_command(
         Err(e) => return Err(anyhow::anyhow!("Failed to start process: {}", e)),
     };
 
-    match tokio::time::timeout(Duration::from_secs(timeout_secs), child.wait_with_output()).await {
-        Ok(Ok(output)) => Ok(json!({
-            "stdout": crate::tools::executor_utils::truncate_output(&String::from_utf8_lossy(&output.stdout)),
-            "stderr": crate::tools::executor_utils::truncate_output(&String::from_utf8_lossy(&output.stderr)),
-            "exit_code": output.status.code().unwrap_or(-1)
+    let mut stdout_reader =
+        BufReader::new(child.stdout.take().expect("Failed to open stdout")).lines();
+    let mut stderr_reader =
+        BufReader::new(child.stderr.take().expect("Failed to open stderr")).lines();
+
+    let mut stdout_res = String::new();
+    let mut stderr_res = String::new();
+
+    let timeout_duration = Duration::from_secs(timeout_secs);
+    let sleep = tokio::time::sleep(timeout_duration);
+    tokio::pin!(sleep);
+
+    let mut stdout_done = false;
+    let mut stderr_done = false;
+
+    while !stdout_done || !stderr_done {
+        tokio::select! {
+            line = stdout_reader.next_line(), if !stdout_done => {
+                match line {
+                    Ok(Some(l)) => {
+                        eprintln!("      {}", l.dimmed());
+                        stdout_res.push_str(&l);
+                        stdout_res.push('\n');
+                    }
+                    Ok(None) => stdout_done = true,
+                    Err(_) => stdout_done = true,
+                }
+            }
+            line = stderr_reader.next_line(), if !stderr_done => {
+                match line {
+                    Ok(Some(l)) => {
+                        eprintln!("      {}", l.red());
+                        stderr_res.push_str(&l);
+                        stderr_res.push('\n');
+                    }
+                    Ok(None) => stderr_done = true,
+                    Err(_) => stderr_done = true,
+                }
+            }
+            _ = &mut sleep => {
+                let _ = child.kill().await;
+                return Err(anyhow::anyhow!(
+                    "Command timed out after {} seconds",
+                    timeout_secs
+                ));
+            }
+        }
+    }
+
+    match child.wait().await {
+        Ok(status) => Ok(json!({
+            "stdout": crate::tools::executor_utils::truncate_output(&stdout_res),
+            "stderr": crate::tools::executor_utils::truncate_output(&stderr_res),
+            "exit_code": status.code().unwrap_or(-1)
         })),
-        Ok(Err(e)) => Err(anyhow::anyhow!("Execution error: {}", e)),
-        Err(_) => Err(anyhow::anyhow!(
-            "Command timed out after {} seconds",
-            timeout_secs
-        )),
+        Err(e) => Err(anyhow::anyhow!("Execution error: {}", e)),
     }
 }
