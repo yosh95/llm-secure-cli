@@ -49,7 +49,9 @@ pub async fn fetch_url_content(
 /// Convert HTML to Markdown using html-to-markdown-rs.
 /// Strips common navigation/header/footer elements to produce cleaner content for LLM consumption.
 pub fn html_to_text(html: &str) -> anyhow::Result<String> {
-    use html_to_markdown_rs::{ConversionOptions, PreprocessingOptions, PreprocessingPreset, convert};
+    use html_to_markdown_rs::{
+        ConversionOptions, PreprocessingOptions, PreprocessingPreset, convert,
+    };
 
     let options = ConversionOptions::builder()
         // Exclude HTML elements that are typically navigation or boilerplate,
