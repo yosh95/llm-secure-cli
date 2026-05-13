@@ -448,35 +448,46 @@ fn format_size_brief(bytes: u64) -> String {
     }
 }
 
-/// Ask the user a Yes/No confirmation question.
+#[derive(Debug, PartialEq)]
+pub enum ConfirmResult {
+    Yes,
+    No,
+    Feedback(String),
+}
+
+/// Ask the user a Yes/No confirmation question with optional feedback.
 ///
 /// This function uses a simple stdin/stdout approach instead of dialoguer::Select
 /// to avoid terminal raw-mode issues when running under SSH/tmux.
 ///
-/// Key differences from dialoguer::Select:
-/// - Does NOT put the terminal into raw mode
-/// - Reads a simple line from stdin (works correctly in SSH/tmux)
-/// - Supports "y", "yes", "n", "no" (case-insensitive), Enter = Yes (default)
-/// - Returns None on EOF or I/O error (treated as abort/cancel)
-pub fn ask_confirm(prompt: &str) -> Option<bool> {
-    let y_n = format!("{} [Y/n] ", prompt);
+/// Supports "y", "yes", "n", "no" (case-insensitive, including full-width),
+/// Enter = Yes (default), and anything else is treated as feedback.
+pub fn ask_confirm(prompt: &str) -> Option<ConfirmResult> {
+    let y_n = format!("{} [Y/n or feedback] ", prompt);
     match get_user_input(&y_n) {
         Some(input) => {
-            let trimmed = input.trim().to_lowercase();
-            if trimmed.is_empty() || trimmed == "y" || trimmed == "yes" {
-                Some(true)
-            } else if trimmed == "n" || trimmed == "no" {
-                Some(false)
+            let trimmed = input.trim();
+            let lower = trimmed.to_lowercase();
+            if lower.is_empty()
+                || lower == "y"
+                || lower == "yes"
+                || lower == "ｙ"
+                || lower == "ｙｅｓ"
+            {
+                Some(ConfirmResult::Yes)
+            } else if lower == "n" || lower == "no" || lower == "ｎ" || lower == "ｎｏ" {
+                Some(ConfirmResult::No)
             } else {
-                // Unrecognized input: default to No for safety
-                Some(false)
+                // Dimmed feedback display
+                println!("  {}", format!("Feedback: {}", trimmed).dimmed());
+                Some(ConfirmResult::Feedback(trimmed.to_string()))
             }
         }
         None => None, // Interrupted or EOF
     }
 }
 
-pub async fn ask_confirm_async(prompt: &str) -> Option<bool> {
+pub async fn ask_confirm_async(prompt: &str) -> Option<ConfirmResult> {
     let p = prompt.to_string();
     tokio::task::spawn_blocking(move || ask_confirm(&p))
         .await

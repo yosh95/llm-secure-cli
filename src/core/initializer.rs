@@ -127,7 +127,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
             "Identity keys not found. Generate new PQC keypair for this agent?",
         )
         .await
-        .unwrap_or(false)
+            == Some(ui::ConfirmResult::Yes)
     {
         if let Err(e) = IdentityManager::ensure_keys() {
             ui::report_error(&format!("Failed to generate keys: {}", e));
@@ -151,9 +151,8 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
 
         ui::report_warning(msg);
         if is_atty
-            && ui::ask_confirm_async("Generate and sign integrity manifest now?")
-                .await
-                .unwrap_or(false)
+            && ui::ask_confirm_async("Generate and sign integrity manifest now?").await
+                == Some(ui::ConfirmResult::Yes)
         {
             if let Err(e) = verifier.rebuild_manifest() {
                 ui::report_error(&format!("Failed to build manifest: {}", e));
@@ -190,7 +189,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
                         "Would you like to re-authorize (re-sign) the current system state?",
                     )
                     .await
-                    .unwrap_or(false)
+                        == Some(ui::ConfirmResult::Yes)
                 {
                     if let Err(e) = verifier.rebuild_manifest() {
                         ui::report_error(&format!("Failed to rebuild manifest: {}", e));

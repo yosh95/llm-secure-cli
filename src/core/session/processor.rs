@@ -268,11 +268,29 @@ impl ActiveSession {
         }
 
         // Request Human Approval if not auto-approved
-        if !approved && ui::ask_confirm_async(&format!("Execute {}", name)).await != Some(true) {
-            if let Some(h) = verifier_handle {
-                h.abort();
+        if !approved {
+            match ui::ask_confirm_async(&format!("Execute {}", name)).await {
+                Some(ui::ConfirmResult::Yes) => {
+                    // Continue to verifier or execution
+                }
+                Some(res) => {
+                    if let Some(h) = verifier_handle {
+                        h.abort();
+                    }
+                    let feedback = match res {
+                        ui::ConfirmResult::Feedback(f) => Some(f),
+                        _ => None,
+                    };
+                    return self.handle_rejection_feedback(feedback).map(|v| (v, false));
+                }
+                None => {
+                    if let Some(h) = verifier_handle {
+                        h.abort();
+                    }
+                    self.handle_interruption();
+                    return Err(anyhow::anyhow!("Interrupted"));
+                }
             }
-            return self.handle_rejection_feedback().map(|v| (v, false));
         }
 
         // 3. Resolve Dual LLM Verification
@@ -490,16 +508,35 @@ impl ActiveSession {
             }
             _ => {
                 ui::report_warning(&format!("⚠ Verifier unavailable: {}", reason));
-                ui::ask_confirm_async(&format!("Execute {} (Manual confirmation required)", name))
-                    .await
-                    .unwrap_or(false)
+                matches!(
+                    ui::ask_confirm_async(&format!(
+                        "Execute {} (Manual confirmation required)",
+                        name
+                    ))
+                    .await,
+                    Some(ui::ConfirmResult::Yes)
+                )
             }
         }
     }
 
-    fn handle_rejection_feedback(&mut self) -> anyhow::Result<Value> {
+    fn handle_rejection_feedback(&mut self, feedback: Option<String>) -> anyhow::Result<Value> {
         ui::report_warning("Execution cancelled by user.");
-        match ui::get_user_input("Provide feedback (optional): ") {
+        let feedback = match feedback {
+            Some(f) => Some(f),
+            None => {
+                let f = ui::get_user_input("Provide feedback (optional): ");
+                if let Some(ref content) = f
+                    && !content.trim().is_empty()
+                {
+                    use colored::*;
+                    println!("  {}", format!("Feedback: {}", content).dimmed());
+                }
+                f
+            }
+        };
+
+        match feedback {
             Some(f) if !f.trim().is_empty() => Ok(Value::String(format!(
                 "Error: Cancelled by user. Feedback: {}",
                 f
