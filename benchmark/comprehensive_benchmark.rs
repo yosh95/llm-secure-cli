@@ -37,7 +37,7 @@ where
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let ctx = Arc::new(AppContext::new());
+    let ctx = Arc::new(AppContext::default());
 
     // Register clients
     {
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &p_name,
                 Arc::new(move |model, stdout, raw, config_manager| {
                     let api_url = config_manager
-                        .get_config()
+                        .get_config()?
                         .providers
                         .get(&closure_p_name)
                         .and_then(|p| p.api_url.clone())
@@ -99,15 +99,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Phase 2
     section("Phase 2: Behavioral & Identity Assurance (Behavior)");
-    IdentityManager::ensure_keys(false)?;
+    IdentityManager::ensure_keys()?;
     let (gen_mean, gen_std) = timeit(
         || {
             IdentityManager::generate_token(
-                &ctx.config_manager.get_config(),
-                None,
-                None,
                 Some("ls"),
-                Some(&json!({})),
             )
             .unwrap()
         },
@@ -127,16 +123,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  {:-<12}-+-{:-<12}-+-{:-<12}-+-{:-<12}", "", "", "", "");
 
     for variant in [
-        MldsaVariant::Mldsa44,
-        MldsaVariant::Mldsa65,
-        MldsaVariant::Mldsa87,
+        MldsaVariant::MLDSA44,
+        MldsaVariant::MLDSA65,
+        MldsaVariant::MLDSA87,
     ] {
-        let (kg_mean, _) = timeit(|| PqcProvider::generate_mldsa_keypair(variant).unwrap(), 10);
-        let (pk, sk) = PqcProvider::generate_mldsa_keypair(variant).unwrap();
+        let (kg_mean, _) = timeit(|| PqcProvider::generate_keypair(variant).unwrap(), 10);
+        let (pk, sk) = PqcProvider::generate_keypair(variant).unwrap();
         let msg = b"Verify Tool Execution Claim";
-        let (s_mean, _) = timeit(|| PqcProvider::sign_mldsa(msg, &sk, variant).unwrap(), 100);
-        let sig = PqcProvider::sign_mldsa(msg, &sk, variant).unwrap();
-        let (v_mean, _) = timeit(|| PqcProvider::verify_mldsa(msg, &sig, &pk, variant), 100);
+        let (s_mean, _) = timeit(|| PqcProvider::sign(variant, &sk, msg).unwrap(), 100);
+        let sig = PqcProvider::sign(variant, &sk, msg).unwrap();
+        let (v_mean, _) = timeit(|| PqcProvider::verify(variant, &pk, msg, &sig), 100);
         println!(
             "  {:<12} | {:<12.2} | {:<12.2} | {:<12.2}",
             variant.to_str(),
@@ -152,15 +148,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("  {:-<12}-+-{:-<12}-+-{:-<12}-+-{:-<12}", "", "", "", "");
     for variant in [
-        MlkemVariant::Mlkem512,
-        MlkemVariant::Mlkem768,
-        MlkemVariant::Mlkem1024,
+        MlkemVariant::MLKEM512,
+        MlkemVariant::MLKEM768,
+        MlkemVariant::MLKEM1024,
     ] {
-        let (kg_mean, _) = timeit(|| PqcProvider::generate_mlkem_keypair(variant).unwrap(), 10);
-        let (pk, sk) = PqcProvider::generate_mlkem_keypair(variant).unwrap();
-        let (e_mean, _) = timeit(|| PqcProvider::encapsulate_mlkem(&pk, variant).unwrap(), 100);
-        let (_ss, ct) = PqcProvider::encapsulate_mlkem(&pk, variant).unwrap();
-        let (d_mean, _) = timeit(|| PqcProvider::decapsulate_mlkem(&ct, &sk, variant).unwrap(), 100);
+        let (kg_mean, _) = timeit(|| PqcProvider::generate_kem_keypair(variant).unwrap(), 10);
+        let (pk, sk) = PqcProvider::generate_kem_keypair(variant).unwrap();
+        let (e_mean, _) = timeit(|| PqcProvider::encapsulate(variant, &pk).unwrap(), 100);
+        let (_ss, ct) = PqcProvider::encapsulate(variant, &pk).unwrap();
+        let (d_mean, _) = timeit(|| PqcProvider::decapsulate(variant, &ct, &sk).unwrap(), 100);
         println!(
             "  {:<12} | {:<12.2} | {:<12.2} | {:<12.2}",
             variant.to_str(),

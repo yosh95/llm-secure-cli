@@ -142,10 +142,11 @@ async fn main() -> anyhow::Result<()> {
                 model: Some(p_model.to_string()),
             })
             .await;
-            let (safe, reason) = match &outcome {
-                VerificationOutcome::Allowed(r) => (true, r.clone()),
-                VerificationOutcome::Rejected(r) => (false, r.clone()),
-                VerificationOutcome::FallbackRequired(r) => (false, r.clone()),
+            let (safe, reason) = match outcome {
+                VerificationOutcome::Allowed(r) => (true, r),
+                VerificationOutcome::Modified(_, r) => (true, r),
+                VerificationOutcome::Rejected(r) => (false, r),
+                VerificationOutcome::FallbackRequired(r) => (false, r),
             };
             let elapsed = start.elapsed().as_millis();
             total_time += elapsed;
