@@ -70,17 +70,24 @@ pub fn get_tool_result_stats(result: &Value) -> ToolResultStats {
 }
 
 pub fn print_tool_stats(stats: &ToolResultStats) {
-    let mut parts = vec![format!("  {} bytes", stats.byte_count)];
+    let mut parts = vec![format!(
+        "  {} bytes",
+        crate::utils::format_number(stats.byte_count)
+    )];
     if let Some(fc) = stats.file_count {
-        parts.push(format!("{} files", fc));
+        parts.push(format!("{} files", crate::utils::format_number(fc)));
     } else {
-        parts.push(format!("{} lines", stats.line_count));
+        parts.push(format!(
+            "{} lines",
+            crate::utils::format_number(stats.line_count)
+        ));
     }
 
     if stats.stderr_byte_count > 0 {
         parts.push(format!(
             "stderr: {} bytes / {} lines",
-            stats.stderr_byte_count, stats.stderr_line_count
+            crate::utils::format_number(stats.stderr_byte_count),
+            crate::utils::format_number(stats.stderr_line_count)
         ));
     }
 

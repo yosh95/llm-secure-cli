@@ -22,7 +22,10 @@ pub fn truncate_output(res_str: &str) -> String {
 
         joined.push_str(&format!(
             "\n\n... (Output truncated. Shown {} of {} lines, {} of {} chars.)",
-            shown_lines_count, original_lines_count, shown_chars, original_len
+            crate::utils::format_number(shown_lines_count),
+            crate::utils::format_number(original_lines_count),
+            crate::utils::format_number(shown_chars),
+            crate::utils::format_number(original_len)
         ));
         joined
     } else {
@@ -84,7 +87,10 @@ pub fn humanize_tool_result(name: &str, v: &serde_json::Value) -> String {
                     .unwrap_or("No matches found.")
                     .to_string();
             }
-            let mut output = format!("Found {} matches:\n", matches.len());
+            let mut output = format!(
+                "Found {} matches:\n",
+                crate::utils::format_number(matches.len())
+            );
             for m in matches {
                 if let (Some(file), Some(line), Some(text)) = (
                     m.get("file").and_then(|v| v.as_str()),
@@ -114,7 +120,10 @@ pub fn humanize_tool_result(name: &str, v: &serde_json::Value) -> String {
                         .unwrap_or("No items found.")
                         .to_string();
                 }
-                let mut output = format!("Found {} items:\n", items.len());
+                let mut output = format!(
+                    "Found {} items:\n",
+                    crate::utils::format_number(items.len())
+                );
                 for item in items {
                     if let Some(path) = item.get("path").and_then(|v| v.as_str()) {
                         let kind = item.get("type").and_then(|v| v.as_str()).unwrap_or("file");

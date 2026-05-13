@@ -259,14 +259,20 @@ pub fn handle_info(session: &ActiveSession) {
         "Usage (Session)",
         &format!(
             "{} prompt / {} completion / {} total tokens",
-            session.total_usage.prompt_tokens,
-            session.total_usage.completion_tokens,
-            session.total_usage.total_tokens
+            crate::utils::format_number(session.total_usage.prompt_tokens),
+            crate::utils::format_number(session.total_usage.completion_tokens),
+            crate::utils::format_number(session.total_usage.total_tokens)
         ),
     );
 
     ui::print_rule(Some("Status"), Some("cyan"));
-    ui::print_key_value("History", &format!("{} messages", state.conversation.len()));
+    ui::print_key_value(
+        "History",
+        &format!(
+            "{} messages",
+            crate::utils::format_number(state.conversation.len())
+        ),
+    );
     ui::print_key_value(
         "Tools",
         if state.tools_enabled {
