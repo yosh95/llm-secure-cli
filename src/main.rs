@@ -218,8 +218,8 @@ async fn start_chat_session(
     is_atty: bool,
 ) {
     let cm = &ctx.config_manager;
-    let mut config_struct = match cm.get_config() {
-        Ok(c) => (*c).clone(),
+    let _config = match cm.get_config() {
+        Ok(c) => c,
         Err(e) => {
             ctx.ui
                 .report_error(&format!("Failed to load config: {}", e));
@@ -227,15 +227,6 @@ async fn start_chat_session(
         }
     };
     let state = cm.get_state().unwrap_or_default();
-
-    // Restore validator state if present
-    if let Some(v_p) = state.last_used_v_provider {
-        config_struct.security.dual_llm_provider = v_p;
-    }
-    if let Some(v_m) = state.last_used_v_model {
-        config_struct.security.dual_llm_model = v_m;
-    }
-    let _ = cm.set_config(config_struct);
 
     let active_providers = cm.get_active_providers();
 

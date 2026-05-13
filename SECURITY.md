@@ -153,8 +153,8 @@ Risk-level classification in `defaults.toml`:
 
 ```toml
 [security]
-high_risk_tools   = ["execute_command", "edit_file", "create_or_overwrite_file", "read_url_content", "brave_search"]
-medium_risk_tools = ["read_file_content", "grep_files"]
+high_risk_tools   = ["execute_command", "edit_file", "create_or_overwrite_file", "read_url_content"]
+medium_risk_tools = ["read_file_content", "grep_files", "brave_search"]
 # Low-risk tools → list_files_in_directory, search_files, update_topic
 # Critical risk → execute_command when Dual LLM is disabled
 ```

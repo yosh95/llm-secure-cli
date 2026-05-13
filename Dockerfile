@@ -2,10 +2,23 @@
 FROM rust:slim-trixie AS builder
 
 WORKDIR /app
-# Copy the entire project
-COPY . .
-# Build the 'llsc' binary in release mode
-RUN cargo build --release
+
+# 1. Copy only manifest files
+COPY Cargo.toml Cargo.lock ./
+
+# 2. Create a dummy project to build dependencies
+RUN mkdir src && \
+    echo "fn main() {}" > src/main.rs && \
+    touch src/lib.rs && \
+    cargo build --release && \
+    rm -rf src
+
+# 3. Copy the actual source code
+COPY src ./src
+
+# 4. Build the final binary
+# We touch the main file to ensure cargo rebuilds it
+RUN touch src/main.rs && cargo build --release
 
 # --- Runtime Stage (Sandbox Environment) ---
 FROM debian:trixie-slim

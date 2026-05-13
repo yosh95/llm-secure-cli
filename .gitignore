@@ -35,3 +35,14 @@ desktop.ini
 
 # Logs
 *.log
+audit.jsonl
+security.log
+history.log
+chat.log
+
+# Benchmarks
+benchmark_result.json
+
+# Local env
+.env
+.env.local

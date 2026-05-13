@@ -6,25 +6,27 @@ static BASE_DIR_INNER: OnceLock<PathBuf> = OnceLock::new();
 pub fn init_base_dir(custom_path: Option<PathBuf>) {
     let base_dir = if let Some(path) = custom_path {
         path
-    } else if let Some(home) = dirs::home_dir() {
-        home.join(".llm_secure_cli")
     } else {
-        panic!(
-            "Could not find home directory. \
-             Please set $HOME or use --base-dir."
-        );
+        default_base_dir()
     };
-    let _ = BASE_DIR_INNER.set(base_dir);
+    if let Err(existing) = BASE_DIR_INNER.set(base_dir)
+        && BASE_DIR_INNER.get() != Some(&existing)
+    {
+        // This should only happen if init is called twice with different paths
+        eprintln!("Warning: Attempted to re-initialize base_dir to a different path.");
+    }
 }
 
 pub fn get_base_dir() -> &'static PathBuf {
-    BASE_DIR_INNER.get_or_init(|| {
-        if let Some(home) = dirs::home_dir() {
-            home.join(".llm_secure_cli")
-        } else {
-            PathBuf::from(".llm_secure_cli")
-        }
-    })
+    BASE_DIR_INNER.get_or_init(default_base_dir)
+}
+
+fn default_base_dir() -> PathBuf {
+    if let Some(home) = dirs::home_dir() {
+        home.join(".llm_secure_cli")
+    } else {
+        PathBuf::from(".llm_secure_cli")
+    }
 }
 
 pub static LLM_CLI_BASE_DIR: &OnceLock<PathBuf> = &BASE_DIR_INNER;

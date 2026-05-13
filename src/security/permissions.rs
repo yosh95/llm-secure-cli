@@ -20,19 +20,51 @@ pub fn setup_permissions() {
 }
 
 pub fn fix_all_permissions() {
-    // Simplified: ensure directories exist.
-    // We no longer use Unix-specific 'mode' bits in the core logic
-    // to maintain a clean, platform-agnostic code base.
-    fn visit_dirs(dir: &Path) {
-        if let Ok(entries) = fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    visit_dirs(&path);
-                }
-            }
+    let base_dir = get_base_dir();
+
+    // 1. Set 600 for .env files in root and base_dir
+    let dotenv_paths = [Path::new(".env").to_owned(), base_dir.join(".env")];
+    for path in dotenv_paths {
+        if path.exists() {
+            let _ = set_private_permissions(&path);
         }
     }
 
-    visit_dirs(get_base_dir());
+    // 2. Recursively set permissions for base_dir
+    if base_dir.exists() {
+        let _ = set_dir_private_permissions(base_dir);
+        recursive_set_permissions(base_dir);
+    }
+}
+
+fn recursive_set_permissions(dir: &Path) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let _ = set_dir_private_permissions(&path);
+                recursive_set_permissions(&path);
+            } else {
+                let _ = set_private_permissions(&path);
+            }
+        }
+    }
+}
+
+fn set_private_permissions(_path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(_path, fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
+fn set_dir_private_permissions(_path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(_path, fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
 }
