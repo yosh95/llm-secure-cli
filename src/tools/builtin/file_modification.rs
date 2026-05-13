@@ -626,7 +626,7 @@ mod tests {
         let input = "\\\"hello\\\"";
         let fixed = fix_llm_escapes(input);
         assert!(fixed.is_some());
-        assert_eq!(fixed.unwrap(), "\"hello\"");
+        assert_eq!(fixed.expect("Expected Some"), "\"hello\"");
     }
 
     #[test]
@@ -635,7 +635,10 @@ mod tests {
         let input = "fn main() { println!(\\\"test\\\"); }";
         let fixed = fix_llm_escapes(input);
         assert!(fixed.is_some());
-        assert_eq!(fixed.unwrap(), "fn main() { println!(\"test\"); }");
+        assert_eq!(
+            fixed.expect("Expected Some"),
+            "fn main() { println!(\"test\"); }"
+        );
     }
 
     #[test]
@@ -644,7 +647,7 @@ mod tests {
         let input = "line1\\nline2";
         let fixed = fix_llm_escapes(input);
         assert!(fixed.is_some());
-        assert_eq!(fixed.unwrap(), "line1\nline2");
+        assert_eq!(fixed.expect("Expected Some"), "line1\nline2");
     }
 
     #[test]
@@ -685,7 +688,7 @@ mod tests {
         let input = "col1\\tcol2";
         let fixed = fix_llm_escapes(input);
         assert!(fixed.is_some());
-        assert_eq!(fixed.unwrap(), "col1\tcol2");
+        assert_eq!(fixed.expect("Expected Some"), "col1\tcol2");
     }
 
     #[test]
@@ -694,6 +697,6 @@ mod tests {
         let input = "{\\\"key\\\": \\\"value\\\"}";
         let fixed = fix_llm_escapes(input);
         assert!(fixed.is_some());
-        assert_eq!(fixed.unwrap(), "{\"key\": \"value\"}");
+        assert_eq!(fixed.expect("Expected Some"), "{\"key\": \"value\"}");
     }
 }

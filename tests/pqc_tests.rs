@@ -53,8 +53,17 @@ fn test_mlkem_encaps_decaps() {
     let pk_bytes = pk_gen.to_bytes();
     let sk_bytes = sk_gen.to_bytes();
 
-    let (ss_enc, ct) = PqcProvider::encapsulate_mlkem768(&pk_bytes).expect("Encapsulation failed");
-    let ss_dec = PqcProvider::decapsulate_mlkem768(&ct, &sk_bytes).expect("Decapsulation failed");
+    let (ss_enc, ct) = PqcProvider::encapsulate(
+        llm_secure_cli::security::pqc::KEMVariant::MLKEM768,
+        &pk_bytes,
+    )
+    .expect("Encapsulation failed");
+    let ss_dec = PqcProvider::decapsulate(
+        llm_secure_cli::security::pqc::KEMVariant::MLKEM768,
+        &ct,
+        &sk_bytes,
+    )
+    .expect("Decapsulation failed");
 
     assert_eq!(ss_enc, ss_dec, "Shared secret mismatch");
     assert!(

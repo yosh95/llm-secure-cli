@@ -18,12 +18,29 @@ pub enum PQCVariant {
     MLDSA87,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KEMVariant {
+    MLKEM512,
+    MLKEM768,
+    MLKEM1024,
+}
+
 impl PQCVariant {
     pub fn to_str(&self) -> &'static str {
         match self {
             PQCVariant::MLDSA44 => "ML-DSA-44",
             PQCVariant::MLDSA65 => "ML-DSA-65",
             PQCVariant::MLDSA87 => "ML-DSA-87",
+        }
+    }
+}
+
+impl KEMVariant {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            KEMVariant::MLKEM512 => "ML-KEM-512",
+            KEMVariant::MLKEM768 => "ML-KEM-768",
+            KEMVariant::MLKEM1024 => "ML-KEM-1024",
         }
     }
 }
@@ -41,6 +58,7 @@ impl FromStr for PQCVariant {
 }
 
 pub type MldsaVariant = PQCVariant;
+pub type MlkemVariant = KEMVariant;
 
 pub struct PqcProvider;
 
@@ -53,12 +71,29 @@ impl PqcProvider {
         }
     }
 
+    fn map_mlkem_variant(v: KEMVariant) -> SaorsaMlkemVariant {
+        match v {
+            KEMVariant::MLKEM512 => SaorsaMlkemVariant::MlKem512,
+            KEMVariant::MLKEM768 => SaorsaMlkemVariant::MlKem768,
+            KEMVariant::MLKEM1024 => SaorsaMlkemVariant::MlKem1024,
+        }
+    }
+
     pub fn generate_keypair(variant: PQCVariant) -> Result<(Vec<u8>, Vec<u8>)> {
         let v = Self::map_mldsa_variant(variant);
         let ops = MlDsa::new(v);
         let (pk, sk) = ops
             .generate_keypair()
             .map_err(|_| anyhow!("PQC keygen failed"))?;
+        Ok((pk.to_bytes(), sk.to_bytes()))
+    }
+
+    pub fn generate_kem_keypair(variant: KEMVariant) -> Result<(Vec<u8>, Vec<u8>)> {
+        let v = Self::map_mlkem_variant(variant);
+        let ops = MlKem::new(v);
+        let (pk, sk) = ops
+            .generate_keypair()
+            .map_err(|_| anyhow!("PQC KEM keygen failed"))?;
         Ok((pk.to_bytes(), sk.to_bytes()))
     }
 
@@ -104,8 +139,8 @@ impl PqcProvider {
         Self::verify(variant, pk_bytes, message, sig_bytes).is_ok()
     }
 
-    pub fn encapsulate_mlkem768(pk_bytes: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
-        let v = SaorsaMlkemVariant::MlKem768;
+    pub fn encapsulate(variant: KEMVariant, pk_bytes: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
+        let v = Self::map_mlkem_variant(variant);
         let ops = MlKem::new(v);
         let pk = MlKemPublicKey::from_bytes(v, pk_bytes).map_err(|_| anyhow!("Invalid PQC pk"))?;
         let (ss, ct) = ops
@@ -114,8 +149,8 @@ impl PqcProvider {
         Ok((ss.to_bytes().to_vec(), ct.to_bytes().to_vec()))
     }
 
-    pub fn decapsulate_mlkem768(ct_bytes: &[u8], sk_bytes: &[u8]) -> Result<Vec<u8>> {
-        let v = SaorsaMlkemVariant::MlKem768;
+    pub fn decapsulate(variant: KEMVariant, ct_bytes: &[u8], sk_bytes: &[u8]) -> Result<Vec<u8>> {
+        let v = Self::map_mlkem_variant(variant);
         let ops = MlKem::new(v);
         let sk = MlKemSecretKey::from_bytes(v, sk_bytes).map_err(|_| anyhow!("Invalid PQC sk"))?;
         let ct = MlKemCiphertext::from_bytes(v, ct_bytes).map_err(|_| anyhow!("Invalid PQC ct"))?;
@@ -123,6 +158,16 @@ impl PqcProvider {
             .decapsulate(&sk, &ct)
             .map_err(|_| anyhow!("PQC decapsulate failed"))?;
         Ok(ss.to_bytes().to_vec())
+    }
+
+    #[deprecated(note = "Use encapsulate instead")]
+    pub fn encapsulate_mlkem768(pk_bytes: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
+        Self::encapsulate(KEMVariant::MLKEM768, pk_bytes)
+    }
+
+    #[deprecated(note = "Use decapsulate instead")]
+    pub fn decapsulate_mlkem768(ct_bytes: &[u8], sk_bytes: &[u8]) -> Result<Vec<u8>> {
+        Self::decapsulate(KEMVariant::MLKEM768, ct_bytes, sk_bytes)
     }
 }
 
@@ -139,7 +184,15 @@ pub struct SecureStorage;
 
 impl SecureStorage {
     pub fn encrypt(data: &[u8], recipient_public_key: &[u8]) -> Result<EncryptedPacket> {
-        let (shared_secret, kem_ct) = PqcProvider::encapsulate_mlkem768(recipient_public_key)?;
+        Self::encrypt_with_variant(data, recipient_public_key, KEMVariant::MLKEM768)
+    }
+
+    pub fn encrypt_with_variant(
+        data: &[u8],
+        recipient_public_key: &[u8],
+        variant: KEMVariant,
+    ) -> Result<EncryptedPacket> {
+        let (shared_secret, kem_ct) = PqcProvider::encapsulate(variant, recipient_public_key)?;
         let key = &shared_secret[..32];
         let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| anyhow!("AES init failed"))?;
         let mut nonce_bytes = [0u8; 12];
@@ -154,12 +207,20 @@ impl SecureStorage {
             aes_ct: aes_ct.to_vec(),
             nonce: nonce_bytes.to_vec(),
             tag: tag.to_vec(),
-            algo: "ML-KEM-768/AES-256-GCM".to_string(),
+            algo: format!("{}/AES-256-GCM", variant.to_str()),
         })
     }
 
     pub fn decrypt(packet: &EncryptedPacket, private_key: &[u8]) -> Result<Vec<u8>> {
-        let ss = PqcProvider::decapsulate_mlkem768(&packet.kem_ct, private_key)?;
+        let variant = if packet.algo.contains("ML-KEM-512") {
+            KEMVariant::MLKEM512
+        } else if packet.algo.contains("ML-KEM-1024") {
+            KEMVariant::MLKEM1024
+        } else {
+            KEMVariant::MLKEM768
+        };
+
+        let ss = PqcProvider::decapsulate(variant, &packet.kem_ct, private_key)?;
         let key = &ss[..32];
         let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| anyhow!("AES init failed"))?;
         let nonce = Nonce::from_slice(&packet.nonce);

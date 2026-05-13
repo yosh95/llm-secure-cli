@@ -9,6 +9,7 @@ static TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_path_validation() {
+    let _lock = TEST_LOCK.lock().unwrap();
     let dir = tempdir().unwrap();
     let original_dir = env::current_dir().unwrap();
     env::set_current_dir(dir.path()).unwrap();

@@ -17,6 +17,8 @@ struct Scenario {
     expected: String,
 }
 
+use llm_secure_cli::cli::ui::CliUi;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     println!(
@@ -24,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
         "=== Dual LLM Verification Benchmark ===".bold().cyan()
     );
 
-    let ctx = Arc::new(AppContext::new());
+    let ctx = Arc::new(AppContext::new(Arc::new(CliUi)));
 
     // Register clients
     {

@@ -28,14 +28,42 @@ pub fn validate_tool_call(
         "file",
         "src",
         "dest",
+        "source",
+        "destination",
         "filename",
         "filepath",
         "root",
+        "input",
+        "output",
+        "target",
+        "location",
+        "folder",
+    ];
+
+    let exclude_patterns = [
+        "content",
+        "text",
+        "code",
+        "script",
+        "search",
+        "replace",
+        "message",
+        "body",
+        "command",
+        "cmd",
+        "args",
+        "arguments",
+        "pattern",
     ];
 
     for (arg_key, arg_val) in args {
         let key_lower = arg_key.to_lowercase();
         let is_path_key = path_patterns.iter().any(|&p| key_lower.contains(p));
+        let is_excluded_key = exclude_patterns.iter().any(|&p| key_lower.contains(p));
+
+        if is_excluded_key && !is_path_key {
+            continue;
+        }
 
         let mut values_to_check = Vec::new();
         if let Some(p_arr) = arg_val.as_array() {
@@ -49,13 +77,34 @@ pub fn validate_tool_call(
         }
 
         for s_val in values_to_check {
-            // Check if it's a known path key OR the value looks like a path/URI
-            let looks_like_path = s_val.contains('/')
-                || s_val.contains('\\')
-                || s_val.starts_with("./")
-                || s_val.starts_with("../");
+            // Heuristic: Check if it's a known path key OR the value strongly looks like a path.
+            // We want to avoid false positives for Regexes (e.g., /[a-z]+/), URLs, and Dates.
+            let looks_like_url = s_val.starts_with("http://")
+                || s_val.starts_with("https://")
+                || s_val.starts_with("file://");
 
-            if (is_path_key || looks_like_path)
+            let looks_like_path = if looks_like_url {
+                false
+            } else if is_path_key {
+                true // If the key says it's a path, treat it as one.
+            } else {
+                // If it's not a path key, we are more selective.
+                // 1. Exclude regex-like strings: /pattern/
+                let is_regex = s_val.starts_with('/') && s_val.ends_with('/') && s_val.len() > 2;
+                if is_regex {
+                    false
+                } else {
+                    // 2. Only validate if it has strong path indicators
+                    s_val.starts_with('/')
+                        || s_val.starts_with("./")
+                        || s_val.starts_with("../")
+                        || s_val.starts_with("~/")
+                        || s_val.contains("..") // potential traversal
+                        || (s_val.len() > 2 && s_val.chars().nth(1) == Some(':')) // C:\ or C:/
+                }
+            };
+
+            if looks_like_path
                 && let Err(e) = crate::security::path_validator::validate_path(s_val, config)
             {
                 return Err(format!("Security Blocked (Path Guardrails): {}", e));

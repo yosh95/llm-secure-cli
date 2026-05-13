@@ -1,4 +1,4 @@
-use llm_secure_cli::security::pqc::{MldsaVariant, PqcProvider};
+use llm_secure_cli::security::pqc::{KEMVariant, MldsaVariant, PqcProvider};
 use llm_secure_cli::security::static_analyzer::StaticAnalyzer;
 use std::time::Instant;
 
@@ -53,17 +53,17 @@ fn main() -> anyhow::Result<()> {
     // Encaps
     let start = Instant::now();
     for _ in 0..1000 {
-        let _ = PqcProvider::encapsulate_mlkem768(&pk_dummy);
+        let _ = PqcProvider::encapsulate(KEMVariant::MLKEM768, &pk_dummy);
     }
     let elapsed = start.elapsed();
-    let (_ss, ct) = PqcProvider::encapsulate_mlkem768(&pk_dummy)?;
+    let (_ss, ct) = PqcProvider::encapsulate(KEMVariant::MLKEM768, &pk_dummy)?;
     println!("ML-KEM-768 Encaps (1000 runs): {:?}", elapsed);
     println!("ML-KEM-768 Encaps (avg): {:?} per run", elapsed / 1000);
 
     // Decaps
     let start = Instant::now();
     for _ in 0..1000 {
-        let _ = PqcProvider::decapsulate_mlkem768(&ct, &sk_dummy);
+        let _ = PqcProvider::decapsulate(KEMVariant::MLKEM768, &ct, &sk_dummy);
     }
     let elapsed = start.elapsed();
     println!("ML-KEM-768 Decaps (1000 runs): {:?}", elapsed);

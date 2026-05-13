@@ -32,7 +32,13 @@ pub fn validate_path(
 ) -> Result<PathBuf, PathValidationError> {
     let path_str = path_str.trim().trim_matches('\'').trim_matches('"').trim();
 
-    // 1. Basic construction
+    // Early exit: If the string contains newlines or looks like code/long text,
+    // it's likely not a path and should be rejected but not necessarily as a "denied path".
+    if path_str.contains('\n') || path_str.len() > 1024 {
+        return Err(PathValidationError(
+            "Invalid path format: string too long or contains newlines".to_string(),
+        ));
+    }
     let mut path = if let Some(after_tilde) = path_str.strip_prefix('~') {
         if let Some(home) = dirs::home_dir() {
             home.join(after_tilde.trim_start_matches(['/', '\\']))
