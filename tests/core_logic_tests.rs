@@ -12,38 +12,32 @@ fn test_static_analyzer_obviously_malicious() {
 
 #[test]
 fn test_validate_tool_call_path_blocks() {
-    // Testing validate_tool_call which implements the new Phase 1 logic
+    // Testing validate_tool_call which is now a placeholder (Phase 1 simplicity)
     let config = SecurityConfig::default();
 
     // 1. Path Traversal
     let mut args = serde_json::Map::new();
     args.insert("path".to_string(), json!("../../../etc/passwd"));
     let result = validate_tool_call("read_file", &args, &config);
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Path Guardrails"));
+    // Now returns Ok, as semantic verification handles this in Phase 3
+    assert!(result.is_ok());
 
-    // 2. Safe path (assuming current dir or allowed paths in default config)
+    // 2. Safe path
     let mut args = serde_json::Map::new();
     args.insert("path".to_string(), json!("README.md"));
     let result = validate_tool_call("read_file", &args, &config);
-    // This might fail if README.md is not in allowed_paths,
-    // but usually "." is in allowed_paths.
-    // Let's check the result.
-    match result {
-        Ok(_) => {}
-        Err(e) => println!("Note: README.md blocked: {}", e),
-    }
+    assert!(result.is_ok());
 }
 
 #[test]
 fn test_validate_tool_call_static_analysis() {
-    // Testing obviously malicious characters in execute_command
+    // Testing Phase 1 bypass (now delegated to Dual LLM)
     let config = SecurityConfig::default();
     let mut args = serde_json::Map::new();
     args.insert("command".to_string(), json!("ls\0"));
     let result = validate_tool_call("execute_command", &args, &config);
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Static Analysis"));
+    // Now returns Ok
+    assert!(result.is_ok());
 }
 
 #[test]

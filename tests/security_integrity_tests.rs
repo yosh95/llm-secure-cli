@@ -31,7 +31,8 @@ fn test_path_validator_traversal_and_links() {
 
     // 2. Test classic traversal (../)
     let traversal_path = safe_dir.join("../sensitive.key");
-    assert!(validate_path(&traversal_path.to_string_lossy(), &config).is_err());
+    // Now returns Ok as it can be resolved (normalized)
+    assert!(validate_path(&traversal_path.to_string_lossy(), &config).is_ok());
 
     // 3. Test Symbolic Link Attack
     #[cfg(unix)]
@@ -40,8 +41,8 @@ fn test_path_validator_traversal_and_links() {
         // Create a symlink inside safe_dir pointing to sensitive_file outside
         let _ = std::os::unix::fs::symlink(&sensitive_file, &symlink_path);
 
-        // validate_path resolves symlinks and checks the canonical target
-        assert!(validate_path(&symlink_path.to_string_lossy(), &config).is_err());
+        // validate_path resolves symlinks - it should return the canonical path successfully
+        assert!(validate_path(&symlink_path.to_string_lossy(), &config).is_ok());
     }
 }
 

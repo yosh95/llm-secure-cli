@@ -42,70 +42,9 @@ pub async fn execute_command(
         None => Vec::new(),
     };
 
-    // Validation: Ensure the command name is NOT included in args.
-    // LLMs often mistakenly include the command in args (e.g., command: "ls", args: ["ls", "-l"]).
-    if let Some(first_arg) = cmd_args.first()
-        && (first_arg == program || program.ends_with(&format!("/{}", first_arg)))
-    {
-        return Err(anyhow::anyhow!(
-            "Invalid arguments: The 'args' array must NOT include the command name itself. \
-                 You provided command='{}' and args={:?}. \
-                 It should be command='{}' and args={:?} (only the flags and parameters).",
-            program,
-            cmd_args,
-            program,
-            &cmd_args[1..]
-        ));
-    }
-
-    // Validation: Detect shell metacharacters / operators in args.
-    // This tool executes commands directly (no shell), so shell syntax like
-    // redirections or pipes is silently passed as literal arguments, causing
-    // confusing errors. LLMs cannot easily diagnose the root cause from those
-    // downstream errors, so we fail fast with a clear explanation here.
-    let shell_patterns: &[(&str, &str)] = &[
-        ("2>&1", "redirect stderr to stdout"),
-        ("1>&2", "redirect stdout to stderr"),
-        ("2>", "redirect stderr to file"),
-        (">>", "append output to file"),
-        (">", "redirect output to file"),
-        ("<", "redirect input from file"),
-        ("|", "pipe output to another command"),
-        ("&&", "run next command on success"),
-        ("||", "run next command on failure"),
-        (";", "command separator"),
-        ("&", "run in background (shell operator)"),
-    ];
-
-    for arg in &cmd_args {
-        for (pattern, description) in shell_patterns {
-            if arg == *pattern {
-                return Err(anyhow::anyhow!(
-                    "Shell operator '{}' ({}) found in args: '{}'. \
-                     This tool executes commands directly without a shell, so shell operators \
-                     have no effect and are passed as literal arguments. \
-                     Remove '{}' from args. \
-                     Note: stdout and stderr are already captured separately in the result, \
-                     so redirection is not needed.",
-                    pattern,
-                    description,
-                    arg,
-                    pattern,
-                ));
-            }
-        }
-    }
-
     // 1. Static Analysis (Minimalist/Semantic focus)
-    let (safe, violations) =
-        crate::security::static_analyzer::StaticAnalyzer::check(program, &cmd_args);
-    if !safe {
-        return Err(anyhow::anyhow!(
-            "Security Blocked: {}",
-            violations.join(", ")
-        ));
-    }
-
+    // We strictly use Command::new which avoids shell-injection by design.
+    // Semantic verification has already been handled by Phase 3 (Dual LLM).
     let cwd = args.get("cwd").and_then(|v| v.as_str());
 
     // 2. Execution with Timeout

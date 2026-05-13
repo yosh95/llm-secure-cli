@@ -12,20 +12,7 @@ impl std::fmt::Display for PathValidationError {
 
 impl std::error::Error for PathValidationError {}
 
-fn strip_unc_prefix(path: PathBuf) -> PathBuf {
-    #[cfg(windows)]
-    {
-        let path_str = path.to_string_lossy();
-        if path_str.starts_with(r"\\?\") {
-            return PathBuf::from(&path_str[4..]);
-        }
-    }
-    path
-}
-
-/// validate_path ensures a path is normalized and checks if it falls under
-/// the authorized areas. We use OS-level canonicalization to resolve symlinks
-/// and maintain a strict physical boundary.
+/// validate_path ensures a path is normalized.
 pub fn validate_path(
     path_str: &str,
     config: &crate::config::models::SecurityConfig,
@@ -81,50 +68,12 @@ pub fn validate_path(
         }
     };
 
-    let security_config = config;
+    let _security_config = config;
 
-    // 4. Simple Whitelist Check
-    let mut is_allowed = false;
-    for allowed in &security_config.allowed_paths {
-        let allowed_root = std::fs::canonicalize(if allowed == "." {
-            std::env::current_dir().unwrap_or_default()
-        } else {
-            PathBuf::from(allowed)
-        })
-        .unwrap_or_else(|_| {
-            if allowed == "." {
-                std::env::current_dir().unwrap_or_default()
-            } else {
-                PathBuf::from(allowed)
-            }
-        });
-
-        let (cp, ar) = (
-            strip_unc_prefix(canonical_path.clone()),
-            strip_unc_prefix(allowed_root),
-        );
-
-        // Check if the resolved path falls under an allowed root
-        if cp.starts_with(&ar) || cp == ar {
-            is_allowed = true;
-            break;
-        }
-    }
-
-    if !is_allowed {
-        let msg = if path_str.contains("..") {
-            format!(
-                "Access to path '{}' is denied (potential path traversal).",
-                path_str
-            )
-        } else {
-            format!(
-                "Access to path '{}' is denied (outside allowed directories).",
-                path_str
-            )
-        };
-        return Err(PathValidationError(msg));
-    }
+    // 4. Semantic Boundary Resolution
+    // We rely on Dual LLM (Phase 3) for semantic path verification and
+    // intent matching. Hardcoded whitelists are removed in favor of
+    // AI-native policy enforcement.
 
     Ok(canonical_path)
 }

@@ -219,13 +219,13 @@ impl ActiveSession {
     ) -> anyhow::Result<(Value, bool)> {
         let config = self.ctx.config_manager.get_config()?;
 
-        // 1. Phase 1: Static Checks (Path, Syntax)
+        // 1. Phase 1: Static Checks (Simplified Safety Net)
         if let Err(e) = crate::security::validate_tool_call(name, args, &config.security) {
             self.ctx.ui.report_error(&e);
             return Ok((Value::String(e), false));
         }
 
-        // 2. Phase 2 & Human-in-the-loop preparation
+        // 2. Human-in-the-loop preparation
         let risk_level = crate::security::cass::CASS_ORCHESTRATOR.evaluate_risk(
             name,
             Some(&serde_json::json!(args)),
@@ -311,6 +311,8 @@ impl ActiveSession {
             }
         }
 
+        let mut effective_args = args.clone();
+
         // 3. Resolve Dual LLM Verification
         if let Some(handle) = verifier_handle {
             let outcome = self.resolve_verifier_outcome(handle).await?;
@@ -319,6 +321,14 @@ impl ActiveSession {
                     self.ctx
                         .ui
                         .report_success(&format!("Intent Verified: {}", reason));
+                }
+                VerificationOutcome::Modified(fixed_args, reason) => {
+                    self.ctx
+                        .ui
+                        .report_success(&format!("Intent Verified & Corrected: {}", reason));
+                    if let Some(obj) = fixed_args.as_object() {
+                        effective_args = obj.clone();
+                    }
                 }
                 VerificationOutcome::Rejected(reason) => {
                     let msg = format!("Security Policy Violation: {}", reason);
@@ -338,7 +348,7 @@ impl ActiveSession {
 
         // 4. Execution & Audit
         let result = self
-            .execute_and_audit_tool(name, args, risk_level, approved)
+            .execute_and_audit_tool(name, &effective_args, risk_level, approved)
             .await;
         Ok((result, approved))
     }

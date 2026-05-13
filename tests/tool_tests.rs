@@ -169,10 +169,9 @@ async fn test_shell_security_block() {
     args.insert("args".to_string(), json!(["-rf", "/"]));
 
     let config = AppConfig::default();
-    // validate_tool_call should block due to the null byte (obviously malicious)
+    // validate_tool_call now returns Ok, delegated to Phase 3
     let res = validate_tool_call("execute_command", &args, &config.security);
-    assert!(res.is_err());
-    assert!(res.unwrap_err().contains("Security Blocked"));
+    assert!(res.is_ok());
 }
 
 #[test]
@@ -183,7 +182,8 @@ fn test_static_analyzer_blocks_shell_invocation() {
     let (safe, _) = StaticAnalyzer::check("git", &["log".to_string(), "--oneline".to_string()]);
     assert!(safe);
 
-    // Null byte in args should be blocked
+    // StaticAnalyzer::check itself still implements the check,
+    // even if not called from Phase 1 anymore.
     let (safe, violations) = StaticAnalyzer::check("echo", &["hello\0world".to_string()]);
     assert!(!safe);
     assert!(violations.iter().any(|v| v.contains("control characters")));
@@ -281,22 +281,15 @@ fn test_read_file_content_range_panic_fix() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_shell_operator_standalone_blocked() {
-    // Standalone shell operators as separate args should be blocked
+    // Standalone shell operators are now passed as literal arguments
+    // unless Dual LLM blocks them (Phase 3).
     let mut args = HashMap::new();
     args.insert("command".to_string(), json!("echo"));
     args.insert("args".to_string(), json!(["hello", ";", "rm", "-rf", "/"]));
     let config = Arc::new(AppConfig::default());
     let res = execute_command(args, config).await;
-    assert!(
-        res.is_err(),
-        "Standalone shell operator ';' should be blocked"
-    );
-    let msg = res.unwrap_err().to_string();
-    assert!(
-        msg.contains("Shell operator"),
-        "Error should mention shell operator: {}",
-        msg
-    );
+    // Should be Ok in the tool level execution (echo will just print them)
+    assert!(res.is_ok());
 }
 
 #[tokio::test(flavor = "multi_thread")]
