@@ -169,9 +169,13 @@ async fn test_shell_security_block() {
     args.insert("args".to_string(), json!(["-rf", "/"]));
 
     let config = AppConfig::default();
-    // validate_tool_call now returns Ok, delegated to Phase 3
+    // Phase 1 (StaticAnalyzer) now actively blocks null bytes in the command name.
     let res = validate_tool_call("execute_command", &args, &config.security);
-    assert!(res.is_ok());
+    assert!(res.is_err());
+    assert!(
+        res.unwrap_err()
+            .contains("control characters or null bytes")
+    );
 }
 
 #[test]

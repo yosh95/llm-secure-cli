@@ -31,13 +31,19 @@ fn test_validate_tool_call_path_blocks() {
 
 #[test]
 fn test_validate_tool_call_static_analysis() {
-    // Testing Phase 1 bypass (now delegated to Dual LLM)
+    // Phase 1 now actively calls StaticAnalyzer::check.
+    // A command name containing a null byte must be rejected immediately.
     let config = SecurityConfig::default();
     let mut args = serde_json::Map::new();
     args.insert("command".to_string(), json!("ls\0"));
     let result = validate_tool_call("execute_command", &args, &config);
-    // Now returns Ok
-    assert!(result.is_ok());
+    // StaticAnalyzer detects the null byte → Phase 1 blocks the call.
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .contains("control characters or null bytes")
+    );
 }
 
 #[test]

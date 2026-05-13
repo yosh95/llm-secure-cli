@@ -245,19 +245,21 @@ async fn register_clients(ctx: &Arc<AppContext>) {
                     .get_api_key(&closure_p_name)
                     .unwrap_or_else(|| "".to_string());
 
-                let api_url = if let Ok(config) = config_manager.get_config() {
-                    config
-                        .providers
-                        .get(&closure_p_name)
+                // Read api_url and the optional formatter hint from config in one pass.
+                let (api_url, formatter_hint) = if let Ok(config) = config_manager.get_config() {
+                    let p_cfg = config.providers.get(&closure_p_name);
+                    let url = p_cfg
                         .and_then(|p| p.api_url.clone())
                         .unwrap_or_else(|| match closure_p_name.as_str() {
                             "openai" => "https://api.openai.com/v1".to_string(),
                             "ollama" => "http://localhost:11434/v1".to_string(),
                             "openrouter" => "https://openrouter.ai/api/v1".to_string(),
                             _ => "".to_string(),
-                        })
+                        });
+                    let hint = p_cfg.and_then(|p| p.formatter.clone());
+                    (url, hint)
                 } else {
-                    "".to_string()
+                    ("".to_string(), None)
                 };
 
                 let client: Box<dyn LlmClient> = match closure_p_name.as_str() {
@@ -280,9 +282,22 @@ async fn register_clients(ctx: &Arc<AppContext>) {
                         raw,
                     )?),
                     _ => {
-                        let m_lower = model.to_lowercase();
-                        let is_high_feature = m_lower.contains("claude") || m_lower.contains("anthropic") || m_lower.contains("gemini") || m_lower.contains("google");
-                        let formatter: Box<dyn crate::llm::providers::openai_compatible::PayloadFormatter> = if is_high_feature {
+                        // Formatter selection priority:
+                        //   1. Explicit `formatter` field in config.toml  ← new, preferred
+                        //   2. Legacy model-name heuristic                ← backwards compat
+                        let use_high_feature = match formatter_hint.as_deref() {
+                            Some("high_feature") => true,
+                            Some("generic") => false,
+                            // Fallback: infer from well-known model name fragments.
+                            _ => {
+                                let m_lower = model.to_lowercase();
+                                m_lower.contains("claude")
+                                    || m_lower.contains("anthropic")
+                                    || m_lower.contains("gemini")
+                                    || m_lower.contains("google")
+                            }
+                        };
+                        let formatter: Box<dyn crate::llm::providers::openai_compatible::PayloadFormatter> = if use_high_feature {
                             Box::new(crate::llm::providers::openai_compatible::HighFeaturePayloadFormatter { is_anthropic_gemini: true })
                         } else {
                             Box::new(crate::llm::providers::openai_compatible::GenericPayloadFormatter)

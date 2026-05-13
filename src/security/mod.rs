@@ -13,13 +13,56 @@ pub mod pqc_cose;
 pub mod static_analyzer;
 
 /// Validates a tool call using Phase 1 security checks.
-/// Simplified as Dual LLM handles intent and correctness.
+///
+/// Phase 1 performs fast, deterministic checks for physical anomalies
+/// (null bytes, control characters) that could destabilize the execution
+/// engine or corrupt audit logs, regardless of semantic intent.
+///
+/// Complex intent judgment and risk assessment are delegated to
+/// Phase 2 (CASS) and Phase 3 (Dual LLM Verifier).
 pub fn validate_tool_call(
-    _name: &str,
-    _args: &serde_json::Map<String, serde_json::Value>,
+    name: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
     _config: &crate::config::models::SecurityConfig,
 ) -> Result<(), String> {
-    // Phase 1 is now a no-op placeholder.
-    // Core security is managed by Phase 2 (CASS) and Phase 3 (Dual LLM).
+    use crate::security::static_analyzer::StaticAnalyzer;
+
+    // Extract command string and its arguments for execute_command tool.
+    // For all other tools, check every string value in args for anomalies.
+    if name == "execute_command" {
+        let command = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
+
+        let cmd_args: Vec<String> = args
+            .get("args")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let (ok, violations) = StaticAnalyzer::check(command, &cmd_args);
+        if !ok {
+            return Err(format!(
+                "Phase 1 Static Analysis blocked '{}': {}",
+                name,
+                violations.join("; ")
+            ));
+        }
+    } else {
+        // For all other tools, scan every string value in args.
+        for (key, value) in args {
+            if let Some(s) = value.as_str()
+                && StaticAnalyzer::is_obviously_malicious(s) {
+                    return Err(format!(
+                        "Phase 1 Static Analysis blocked '{}': argument '{}' contains \
+                         control characters or null bytes.",
+                        name, key
+                    ));
+                }
+        }
+    }
+
     Ok(())
 }

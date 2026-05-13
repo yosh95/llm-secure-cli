@@ -73,6 +73,14 @@ impl Default for GeneralConfig {
 pub struct ProviderConfig {
     pub api_key: Option<String>,
     pub api_url: Option<String>,
+    /// Payload formatter hint for OpenAI-compatible providers.
+    ///
+    /// - `"high_feature"` — Use the Anthropic/Gemini-compatible formatter
+    ///   (native PDF documents, extended vision support).
+    /// - `"generic"`      — Use the standard OpenAI-compatible formatter.
+    /// - `None` (omitted) — Auto-detect from the model name (legacy behaviour,
+    ///   kept as a fallback for backwards compatibility).
+    pub formatter: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]

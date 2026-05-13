@@ -187,7 +187,23 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                 final_args = serde_json::to_value(packet).unwrap_or_else(|_| params.args.clone());
                 pqc_encrypted = true;
             }
-            Err(_e) => {}
+            Err(e) => {
+                // Encryption failure in high-security mode is a critical integrity event.
+                // Block the audit write entirely rather than persisting plaintext args.
+                if params.config.security.security_level == "high" {
+                    crate::cli::ui::report_error(&format!(
+                        "CRITICAL SECURITY ERROR: PQC audit encryption failed in high-security mode: {}",
+                        e
+                    ));
+                    return None;
+                }
+                // In standard mode, log a warning and fall back to plaintext args.
+                tracing::warn!(
+                    tool = params.tool_name,
+                    error = %e,
+                    "PQC audit encryption failed; storing plaintext args (standard mode)"
+                );
+            }
         }
     }
 
@@ -366,42 +382,41 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
         return;
     }
 
-    let file = match fs::File::open(path) {
-        Ok(f) => f,
-        Err(_) => return,
-    };
-    let reader = std::io::BufReader::new(file);
     use std::io::BufRead;
 
-    // 1. First pass: count lines
-    let total_lines = reader.lines().count();
+    // Single-pass: read all lines into memory at once.
+    // This avoids the TOCTOU race that arose from opening the file twice
+    // (count pass → skip pass), where a concurrent writer could append
+    // lines between the two opens and shift the skip index.
+    let all_lines: Vec<String> = {
+        let file = match fs::File::open(path) {
+            Ok(f) => f,
+            Err(_) => return,
+        };
+        std::io::BufReader::new(file)
+            .lines()
+            .map_while(Result::ok)
+            .collect()
+    };
+
+    let total_lines = all_lines.len();
     if total_lines <= max_lines {
         return;
     }
 
-    // 2. Second pass: keep only the last max_lines
-    let file = match fs::File::open(path) {
-        Ok(f) => f,
-        Err(_) => return,
-    };
-    let mut reader = std::io::BufReader::new(file);
     let skip_count = total_lines - max_lines;
 
-    let mut last_removed_hash = "0".repeat(64);
-    for (i, line) in (&mut reader).lines().enumerate() {
-        if i == skip_count - 1 {
-            if let Ok(l) = line
-                && let Ok(v) = serde_json::from_str::<serde_json::Value>(&l)
-            {
-                last_removed_hash = v
-                    .get("hash")
-                    .and_then(|h| h.as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "0".repeat(64));
-            }
-            break;
-        }
-    }
+    // Capture the hash of the last line that will be discarded so the
+    // continuity marker can chain the hash log correctly.
+    let last_removed_hash = all_lines
+        .get(skip_count - 1)
+        .and_then(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .and_then(|v| {
+            v.get("hash")
+                .and_then(|h| h.as_str())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| "0".repeat(64));
 
     let hostname = hostname::get()
         .ok()
@@ -411,7 +426,7 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
     let arch = std::env::consts::ARCH.to_string();
     let cli_version = env!("CARGO_PKG_VERSION").to_string();
 
-    // Create temp file for the trimmed content
+    // Write the trimmed content to a temp file, then atomically rename.
     let temp_path = path.with_extension("tmp");
     if let Ok(mut temp_file) = fs::File::create(&temp_path) {
         let continuity_marker = serde_json::json!({
@@ -435,7 +450,7 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
         });
         let _ = writeln!(temp_file, "{}", continuity_marker);
 
-        for l in reader.lines().map_while(Result::ok) {
+        for l in all_lines.into_iter().skip(skip_count) {
             let _ = writeln!(temp_file, "{}", l);
         }
 
