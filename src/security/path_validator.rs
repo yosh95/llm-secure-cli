@@ -68,12 +68,39 @@ pub fn validate_path(
         }
     };
 
-    let _security_config = config;
+    // 4. Physical Boundary Resolution
+    // Verify that the path resides within one of the allowed base directories.
+    let mut is_allowed = false;
+    for allowed_str in &config.allowed_paths {
+        let allowed_base = if let Some(after_tilde) = allowed_str.strip_prefix('~') {
+            if let Some(home) = dirs::home_dir() {
+                home.join(after_tilde.trim_start_matches(['/', '\\']))
+            } else {
+                PathBuf::from(allowed_str)
+            }
+        } else {
+            PathBuf::from(allowed_str)
+        };
 
-    // 4. Semantic Boundary Resolution
-    // We rely on Dual LLM (Phase 3) for semantic path verification and
-    // intent matching. Hardcoded whitelists are removed in favor of
-    // AI-native policy enforcement.
+        let resolved_allowed =
+            std::fs::canonicalize(&allowed_base).unwrap_or_else(|_| allowed_base.clean());
+
+        if canonical_path.starts_with(&resolved_allowed) {
+            is_allowed = true;
+            break;
+        }
+    }
+
+    if !is_allowed {
+        return Err(PathValidationError(format!(
+            "Access denied: Path '{:?}' is outside of allowed directories: {:?}",
+            canonical_path, config.allowed_paths
+        )));
+    }
+
+    // 5. Semantic Boundary Resolution
+    // We also rely on Dual LLM (Phase 3) for semantic path verification and
+    // intent matching.
 
     Ok(canonical_path)
 }

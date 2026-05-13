@@ -277,8 +277,9 @@ pub fn grep_files(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyho
         Err(e) => return Ok(json!(format!("Error: Invalid regex pattern: {}", e))),
     };
 
-    let mut results = Vec::new();
+    let results = Arc::new(std::sync::Mutex::new(Vec::new()));
     let start_time = std::time::Instant::now();
+    let is_truncated = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let mut walker = WalkBuilder::new(&base_path);
     walker.git_ignore(true).require_git(false).hidden(true);
@@ -291,47 +292,79 @@ pub fn grep_files(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyho
         }
     }
 
-    for result in walker.build() {
-        if start_time.elapsed().as_secs() > SEARCH_TIMEOUT_SECS {
-            break;
-        }
+    let walker_parallel = walker.build_parallel();
+    let results_clone = results.clone();
+    let is_truncated_clone = is_truncated.clone();
+    let base_path_clone = base_path.clone();
+    let regex_clone = regex.clone();
 
-        if let Ok(entry) = result
-            && entry.file_type().map(|ft| ft.is_file()).unwrap_or(false)
-        {
-            let path = entry.path();
+    walker_parallel.run(|| {
+        let results = results_clone.clone();
+        let is_truncated = is_truncated_clone.clone();
+        let base_path = base_path_clone.clone();
+        let regex = regex_clone.clone();
 
-            // Skip large files
-            if let Ok(meta) = path.metadata()
-                && meta.len() > MAX_FILE_READ_SIZE
-            {
-                continue;
+        Box::new(move |result| {
+            if start_time.elapsed().as_secs() > SEARCH_TIMEOUT_SECS {
+                is_truncated.store(true, std::sync::atomic::Ordering::Relaxed);
+                return ignore::WalkState::Quit;
             }
 
-            if let Ok(content) = fs::read_to_string(path) {
-                for (line_no, line) in content.lines().enumerate() {
-                    if regex.is_match(line) {
-                        let rel = path.strip_prefix(&base_path).unwrap_or(path);
-                        results.push(json!({
-                            "file": rel.to_string_lossy().replace('\\', "/"),
-                            "line": line_no + 1,
-                            "text": line.trim().to_string()
-                        }));
-                        if results.len() >= MAX_SEARCH_RESULTS {
-                            break;
+            if let Ok(entry) = result
+                && entry.file_type().map(|ft| ft.is_file()).unwrap_or(false)
+            {
+                let path = entry.path();
+
+                // Skip large files
+                if let Ok(meta) = path.metadata()
+                    && meta.len() > MAX_FILE_READ_SIZE
+                {
+                    return ignore::WalkState::Continue;
+                }
+
+                if let Ok(content) = fs::read_to_string(path) {
+                    let mut local_matches = Vec::new();
+                    for (line_no, line) in content.lines().enumerate() {
+                        if regex.is_match(line) {
+                            let rel = path.strip_prefix(&base_path).unwrap_or(path);
+                            local_matches.push(json!({
+                                "file": rel.to_string_lossy().replace('\\', "/"),
+                                "line": line_no + 1,
+                                "text": line.trim().to_string()
+                            }));
+                        }
+                    }
+
+                    if !local_matches.is_empty() {
+                        let mut res = results.lock().expect("mutex poisoned");
+                        if res.len() >= MAX_SEARCH_RESULTS {
+                            is_truncated.store(true, std::sync::atomic::Ordering::Relaxed);
+                            return ignore::WalkState::Quit;
+                        }
+                        res.extend(local_matches);
+                        if res.len() >= MAX_SEARCH_RESULTS {
+                            is_truncated.store(true, std::sync::atomic::Ordering::Relaxed);
+                            return ignore::WalkState::Quit;
                         }
                     }
                 }
             }
-        }
-        if results.len() >= MAX_SEARCH_RESULTS {
-            break;
-        }
+            ignore::WalkState::Continue
+        })
+    });
+
+    let mut final_results = results.lock().expect("mutex poisoned").clone();
+
+    let truncated = is_truncated.load(std::sync::atomic::Ordering::Relaxed)
+        || final_results.len() >= MAX_SEARCH_RESULTS;
+
+    if final_results.len() > MAX_SEARCH_RESULTS {
+        final_results.truncate(MAX_SEARCH_RESULTS);
     }
 
     Ok(json!({
-        "matches": results,
-        "truncated": results.len() >= MAX_SEARCH_RESULTS || start_time.elapsed().as_secs() > SEARCH_TIMEOUT_SECS,
+        "matches": final_results,
+        "truncated": truncated,
     }))
 }
 

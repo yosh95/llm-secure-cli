@@ -435,9 +435,7 @@ fn fix_llm_escapes(s: &str) -> Option<String> {
     }
 
     if changed {
-        // SAFETY: we only produced valid UTF-8 sequences (single ASCII bytes or
-        // passed through existing multi-byte UTF-8 unchanged)
-        Some(unsafe { String::from_utf8_unchecked(result) })
+        String::from_utf8(result).ok()
     } else {
         None
     }

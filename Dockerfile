@@ -34,17 +34,18 @@ RUN apt-get update && apt-get install -y \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
+# Create a non-privileged user
+RUN useradd -m -u 1000 agent
+USER agent
+WORKDIR /home/agent
+
 # Copy the binary from the builder stage
-COPY --from=builder /app/target/release/llsc /usr/local/bin/llsc
+COPY --from=builder --chown=agent:agent /app/target/release/llsc /usr/local/bin/llsc
 
 # Ensure the config directory exists
-RUN mkdir -p /root/.llm_secure_cli
-
-# Set the working directory
-WORKDIR /workspace
+RUN mkdir -p /home/agent/.llm_secure_cli
 
 # Default security level
-# In 'high' mode, llsc will refuse to start if the binary or manifest is tampered with.
 ENV LLM_CLI_SECURITY_LEVEL=high
 
 # Set the binary as the entry point

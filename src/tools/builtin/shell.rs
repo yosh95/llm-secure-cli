@@ -8,7 +8,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 /// Executes a system command directly without a shell.
-/// Architecturally, we rely on Phase 2 (Dual LLM) for intent verification.
+/// Architecturally, we rely on Phase 3 (Dual LLM) for intent verification.
 pub async fn execute_command(
     args: HashMap<String, Value>,
     config: Arc<AppConfig>,
@@ -73,10 +73,20 @@ pub async fn execute_command(
         Err(e) => return Err(anyhow::anyhow!("Failed to start process: {}", e)),
     };
 
-    let mut stdout_reader =
-        BufReader::new(child.stdout.take().expect("Failed to open stdout")).lines();
-    let mut stderr_reader =
-        BufReader::new(child.stderr.take().expect("Failed to open stderr")).lines();
+    let mut stdout_reader = BufReader::new(
+        child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to open stdout"))?,
+    )
+    .lines();
+    let mut stderr_reader = BufReader::new(
+        child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to open stderr"))?,
+    )
+    .lines();
 
     let mut stdout_res = String::new();
     let mut stderr_res = String::new();

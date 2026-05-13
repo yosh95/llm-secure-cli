@@ -27,14 +27,15 @@ fn test_path_validation() {
         res.err()
     );
 
-    // 2. Traversal path (now normalized in Phase 1)
+    // 2. Traversal path (normalized and then checked against allowed_paths)
     let res = validate_path("../outside.txt", &config);
-    // Normalized result is expected, but is_ok() instead of is_err()
-    assert!(res.is_ok());
+    // Should now return Err because it resolves to a path outside current directory
+    assert!(res.is_err());
 
-    // 3. Absolute path (now normalized in Phase 1)
+    // 3. Absolute path
     let res = validate_path("/etc/passwd", &config);
-    assert!(res.is_ok());
+    // Should now return Err because it's not within "." (current directory)
+    assert!(res.is_err());
 
     // 4. Normalization
     let res = validate_path("  'sub/dir/'  ", &config);
