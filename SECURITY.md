@@ -164,9 +164,10 @@ Implementation: `src/security/cass.rs`.
 ### Dual LLM Verification (Dynamic Intent Check)
 
 To prevent sophisticated Prompt Injection (especially indirect injection),
-`llm-secure-cli` implements a **Dual LLM Verification** pattern. When a high-risk tool
-is requested, the system intercepts the execution and consults a separate,
-lightweight "Verifier" model.
+`llm-secure-cli` implements a **Dual LLM Verification** pattern. Whenever a 
+tool execution requires manual approval (based on the `auto_approval_level`), 
+the system intercepts the execution and consults a separate, lightweight 
+"Verifier" model.
 
 The Verifier is provided only with the **User's Original Prompt** and the
 **Proposed Tool Call** (excluding potentially tainted intermediate reasoning
@@ -175,10 +176,10 @@ user's intent.
 
 | Feature | Implementation |
 |---|---|
-| Trigger | High-risk and Critical-risk tools (e.g., `execute_command`, `edit_file`) |
+| Trigger | Any tool call requiring manual approval (Configurable via `auto_approval_level`) |
 | Isolation | Verifier is stateless and has no tool access (function calling OFF, except verdict tool) |
 | Models | Configurable via `dual_llm_provider` and `dual_llm_model` in `defaults.toml` |
-| Verdict | Structured ALLOW/BLOCK with reason |
+| Verdict | Structured ALLOW/BLOCK/MODIFY with reason |
 | Fallback | When verifier is unavailable: `require_approval` (default) or `block` |
 
 Implementation: `src/security/dual_llm_verifier.rs`.

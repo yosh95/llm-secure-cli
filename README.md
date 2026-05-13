@@ -99,7 +99,7 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
     - **Modification**: `edit_file` (precision block replacement with exact/flexible/regex matching) and `create_or_overwrite_file`.
     - **System & Web**: `execute_command` (secure direct execution) and `read_url_content` (HTML-to-Markdown conversion with SSRF protection).
     - **Web Search**: `brave_search` using the Brave LLM Context API for grounded, pre-extracted content.
-- **High-Assurance via Dual LLM**: Every high-risk tool call is verified by a secondary LLM to ensure intent alignment.
+- **High-Assurance via Dual LLM**: Every non-auto-approved tool call is verified by a secondary LLM as a Semantic Firewall to ensure intent alignment.
 - **MCP (Model Context Protocol)**: Connect to remote resources or services via custom servers.
 - **Progress Tracking**: Real-time task status updates via `update_topic` (Chapter/Intent visualization).
 - **Operational Stability**: A clean, flicker-free UI designed for long-term "Deep Work" sessions.
@@ -119,7 +119,7 @@ As a tool designed with **CISSP/CISA/CCSP** principles in mind, `llm-secure-cli`
 - **AI-native Policy Engine (Dual LLM)**: Replaces complex regex blocklists with a hardcoded **Security Constitution**. The system automatically gathers context (OS, User, Directory, Git status) and uses a secondary LLM to judge risks semantically using structured verdicts (ALLOW/BLOCK). This avoids the quagmire of platform-dependent static rules.
 - **Path Guardrails (Physical Boundary)**: Paths are recursively normalized and validated against a whitelist. Even for new files, the system resolves the physical parent directory to prevent symlink-based escapes.
 - **Risk-based Scaling (CASS)**: Security requirements (PQC signature level, audit encryption) automatically scale based on the tool's risk level (CRITICAL/HIGH/MEDIUM/LOW) via the **CASS (Context-Adaptive Security Scaling)** orchestrator.
-- **Intent Verification**: Every high-risk action is cross-verified by a separate, lightweight "Verifier" LLM to ensure the proposed tool call aligns with the user's original intent.
+- **Intent Verification**: Every action requiring human-in-the-loop (non-auto-approved) is cross-verified by a separate, lightweight "Verifier" LLM. This acts as a **Semantic Firewall**, ensuring the proposed tool call aligns with the user's original intent and providing corrected arguments if small discrepancies are detected.
 - **Minimalist Fast-fail**: A lightweight syntactic check still blocks obviously malicious characters and shell invocation patterns in **nanoseconds**, while the heavy lifting of security judgment is shifted to the Dual LLM.
 - **Verifier Fallback Policy**: When the dual LLM verifier is unavailable (network error, API failure), the behavior is controlled by `verifier_fallback`: `require_approval` (default, forces human approval) or `block` (blocks all tool calls).
 - **Auto-Approval Levels**: The `auto_approval_level` setting controls which tool calls can proceed without human intervention: `none` (default, all require approval), `low` (auto-approve low-risk), `medium` (auto-approve low and medium-risk).
