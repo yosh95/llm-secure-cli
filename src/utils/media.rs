@@ -47,9 +47,40 @@ pub async fn fetch_url_content(
 }
 
 /// Convert HTML to Markdown using html-to-markdown-rs.
+/// Strips common navigation/header/footer elements to produce cleaner content for LLM consumption.
 pub fn html_to_text(html: &str) -> anyhow::Result<String> {
-    use html_to_markdown_rs::convert;
-    let result = convert(html, None)?;
+    use html_to_markdown_rs::{ConversionOptions, PreprocessingOptions, PreprocessingPreset, convert};
+
+    let options = ConversionOptions::builder()
+        // Exclude HTML elements that are typically navigation or boilerplate,
+        // not useful for LLM content extraction:
+        // - <head>: HTML metadata, stylesheets, scripts (should not appear in body anyway)
+        // - <header>: Page header/banner
+        // - <nav>: Navigation menus
+        // - <footer>: Page footer
+        // - [role="banner"]: ARIA banner landmark
+        // - [role="navigation"]: ARIA navigation landmark
+        // - [role="contentinfo"]: ARIA contentinfo landmark (typically footer info)
+        .exclude_selectors(vec![
+            "head".into(),
+            "header".into(),
+            "nav".into(),
+            "footer".into(),
+            "[role='banner']".into(),
+            "[role='navigation']".into(),
+            "[role='contentinfo']".into(),
+        ])
+        .default_title(false)
+        .extract_metadata(false)
+        .preprocessing(PreprocessingOptions {
+            enabled: true,
+            preset: PreprocessingPreset::Standard,
+            remove_navigation: true,
+            remove_forms: false,
+        })
+        .build();
+
+    let result = convert(html, Some(options))?;
     match result.content {
         Some(content) => Ok(content),
         None => Ok(String::new()),
