@@ -12,6 +12,38 @@ use std::sync::Once;
 
 static INIT: Once = Once::new();
 
+use llm_secure_cli::cli::ui::{ConfirmResult, UserInterface};
+
+struct MockUi {
+    pub confirmed: bool,
+}
+
+#[async_trait]
+impl UserInterface for MockUi {
+    fn print_block(&self, _content: &str, _title: Option<&str>, _style: Option<&str>) {}
+    fn print_rule(&self, _title: Option<&str>, _style: Option<&str>) {}
+    fn print_tool_call(&self, _name: &str, _args: &serde_json::Value) {}
+    fn print_tool_result(&self, _result: &str) {}
+    fn report_error(&self, _message: &str) {}
+    fn report_info(&self, _message: &str) {}
+    fn report_warning(&self, _message: &str) {}
+    fn report_success(&self, _message: &str) {}
+    async fn ask_confirm(&self, _prompt: &str) -> Option<ConfirmResult> {
+        if self.confirmed {
+            Some(ConfirmResult::Yes)
+        } else {
+            Some(ConfirmResult::No)
+        }
+    }
+    async fn ask_confirm_simple(&self, _prompt: &str) -> Option<ConfirmResult> {
+        if self.confirmed {
+            Some(ConfirmResult::Yes)
+        } else {
+            Some(ConfirmResult::No)
+        }
+    }
+}
+
 fn setup_test_env() {
     INIT.call_once(|| {
         let tmp = tempfile::tempdir()
@@ -111,14 +143,15 @@ impl LlmClient for MockProcessorClient {
 async fn test_processor_tool_execution_flow() {
     setup_test_env();
     // 1. Setup Config for Auto-approval
-    let ctx = AppContext::new();
+    let ui = Arc::new(MockUi { confirmed: true });
+    let ctx = AppContext::new(ui);
     let mut config = (*ctx
         .config_manager
         .get_config()
         .expect("Failed to get config"))
     .clone();
     config.security.security_level = "standard".to_string();
-    config.security.auto_approval_level = Some("low".to_string());
+    config.security.auto_approval_level = Some("medium".to_string());
     config.security.low_risk_tools = vec!["list_files_in_directory".to_string()];
     config.security.dual_llm_verification = Some(true);
     config.security.dual_llm_provider = "mock".to_string();
@@ -207,7 +240,8 @@ async fn test_processor_tool_execution_flow() {
 async fn test_processor_pqc_blocking_in_high_security() {
     setup_test_env();
     // 1. Setup Config with High Security Level
-    let ctx = AppContext::new();
+    let ui = Arc::new(MockUi { confirmed: true });
+    let ctx = AppContext::new(ui);
     let mut config = (*ctx
         .config_manager
         .get_config()

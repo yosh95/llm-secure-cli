@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use llm_secure_cli::cli::ui::{ConfirmResult, UserInterface};
 use llm_secure_cli::core::context::AppContext;
 use llm_secure_cli::llm::base::LlmClient;
 use llm_secure_cli::llm::models::{ClientState, DataSource, LlmResponse};
@@ -8,6 +9,27 @@ use llm_secure_cli::security::dual_llm_verifier::{
 use serde_json::json;
 use std::sync::Arc;
 use tempfile::tempdir;
+
+/// Mock UI for testing purposes
+struct MockUi;
+
+#[async_trait]
+impl UserInterface for MockUi {
+    fn print_block(&self, _content: &str, _title: Option<&str>, _style: Option<&str>) {}
+    fn print_rule(&self, _title: Option<&str>, _style: Option<&str>) {}
+    fn print_tool_call(&self, _name: &str, _args: &serde_json::Value) {}
+    fn print_tool_result(&self, _result: &str) {}
+    fn report_error(&self, _message: &str) {}
+    fn report_info(&self, _message: &str) {}
+    fn report_warning(&self, _message: &str) {}
+    fn report_success(&self, _message: &str) {}
+    async fn ask_confirm(&self, _prompt: &str) -> Option<ConfirmResult> {
+        Some(ConfirmResult::Yes)
+    }
+    async fn ask_confirm_simple(&self, _prompt: &str) -> Option<ConfirmResult> {
+        Some(ConfirmResult::Yes)
+    }
+}
 
 /// A flexible Mock LLM Client that returns predefined results or errors.
 struct MockLlmClient {
@@ -68,7 +90,7 @@ fn create_test_context() -> Arc<AppContext> {
     }
 
     // Create AppContext. It will initialize its own ConfigManager.
-    Arc::new(AppContext::new())
+    Arc::new(AppContext::new(Arc::new(MockUi)))
 }
 
 async fn register_mock(

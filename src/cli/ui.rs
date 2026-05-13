@@ -3,6 +3,58 @@ use colored::*;
 use console::Term;
 use std::io::{Read, Write};
 
+use async_trait::async_trait;
+
+#[async_trait]
+pub trait UserInterface: Send + Sync {
+    fn print_block(&self, content: &str, title: Option<&str>, style: Option<&str>);
+    fn print_rule(&self, title: Option<&str>, style: Option<&str>);
+    fn print_tool_call(&self, name: &str, args: &serde_json::Value);
+    fn print_tool_result(&self, result: &str);
+    fn report_error(&self, message: &str);
+    fn report_info(&self, message: &str);
+    fn report_warning(&self, message: &str);
+    fn report_success(&self, message: &str);
+    async fn ask_confirm(&self, prompt: &str) -> Option<ConfirmResult>;
+    async fn ask_confirm_simple(&self, prompt: &str) -> Option<ConfirmResult>;
+}
+
+pub struct CliUi;
+
+#[async_trait]
+impl UserInterface for CliUi {
+    fn print_block(&self, content: &str, title: Option<&str>, style: Option<&str>) {
+        print_block(content, title, style);
+    }
+    fn print_rule(&self, title: Option<&str>, style: Option<&str>) {
+        print_rule(title, style);
+    }
+    fn print_tool_call(&self, name: &str, args: &serde_json::Value) {
+        print_tool_call(name, args);
+    }
+    fn print_tool_result(&self, result: &str) {
+        print_tool_result(result);
+    }
+    fn report_error(&self, message: &str) {
+        report_error(message);
+    }
+    fn report_info(&self, message: &str) {
+        report_info(message);
+    }
+    fn report_warning(&self, message: &str) {
+        report_warning(message);
+    }
+    fn report_success(&self, message: &str) {
+        report_success(message);
+    }
+    async fn ask_confirm(&self, prompt: &str) -> Option<ConfirmResult> {
+        ask_confirm_async(prompt).await
+    }
+    async fn ask_confirm_simple(&self, prompt: &str) -> Option<ConfirmResult> {
+        ask_confirm_simple_async(prompt).await
+    }
+}
+
 pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
     let term = Term::stdout();
     let (_, width) = term.size();
@@ -544,6 +596,12 @@ pub async fn ask_confirm_simple_async(prompt: &str) -> Option<ConfirmResult> {
 }
 
 pub fn get_user_input(prompt: &str) -> Option<String> {
+    // 2. Check for environment override ONLY during tests to prevent accidental production bypass
+    #[cfg(test)]
+    if std::env::var("LLM_SECURE_TEST_AUTO_APPROVE").is_ok() {
+        return Some("y".to_string());
+    }
+
     use rustyline::DefaultEditor;
     use rustyline::error::ReadlineError;
 

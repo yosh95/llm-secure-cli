@@ -194,7 +194,7 @@ fn test_pqc_agility_manager() {
     let level = PQCAgilityManager::get_required_level(&config, "execute_command", None);
     assert_eq!(level, PQCVariant::MLDSA87);
 
-    // Sensitive context
+    // Sensitive context (Escalates to High)
     let args = serde_json::json!({"path": "/etc/shadow"});
     let level = PQCAgilityManager::get_required_level(&config, "read_file", Some(&args));
     assert_eq!(level, PQCVariant::MLDSA87);

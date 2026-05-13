@@ -32,23 +32,33 @@ pub fn validate_tool_call(
         "filepath",
         "root",
     ];
+
     for (arg_key, arg_val) in args {
         let key_lower = arg_key.to_lowercase();
-        if path_patterns.iter().any(|&p| key_lower.contains(p)) {
-            if let Some(p_val) = arg_val.as_str() {
-                if let Err(e) = crate::security::path_validator::validate_path(p_val, config) {
-                    return Err(format!("Security Blocked (Path Guardrails): {}", e));
+        let is_path_key = path_patterns.iter().any(|&p| key_lower.contains(p));
+
+        let mut values_to_check = Vec::new();
+        if let Some(p_arr) = arg_val.as_array() {
+            for item in p_arr {
+                if let Some(s) = item.as_str() {
+                    values_to_check.push(s);
                 }
-            } else if let Some(p_arr) = arg_val.as_array() {
-                // Handle tools that take multiple paths
-                for p_item in p_arr {
-                    if let Some(p_str) = p_item.as_str()
-                        && let Err(e) =
-                            crate::security::path_validator::validate_path(p_str, config)
-                    {
-                        return Err(format!("Security Blocked (Path Guardrails): {}", e));
-                    }
-                }
+            }
+        } else if let Some(s) = arg_val.as_str() {
+            values_to_check.push(s);
+        }
+
+        for s_val in values_to_check {
+            // Check if it's a known path key OR the value looks like a path/URI
+            let looks_like_path = s_val.contains('/')
+                || s_val.contains('\\')
+                || s_val.starts_with("./")
+                || s_val.starts_with("../");
+
+            if (is_path_key || looks_like_path)
+                && let Err(e) = crate::security::path_validator::validate_path(s_val, config)
+            {
+                return Err(format!("Security Blocked (Path Guardrails): {}", e));
             }
         }
     }

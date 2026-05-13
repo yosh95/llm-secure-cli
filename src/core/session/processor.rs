@@ -104,9 +104,11 @@ impl ActiveSession {
         if let Some(t) = thought
             && !t.trim().is_empty()
         {
-            ui::print_rule(Some("Thought"), Some("bright_black"));
-            ui::print_block(&t, None, Some("bright_black"));
-            ui::print_rule(None, Some("bright_black"));
+            self.ctx
+                .ui
+                .print_rule(Some("Thought"), Some("bright_black"));
+            self.ctx.ui.print_block(&t, None, Some("bright_black"));
+            self.ctx.ui.print_rule(None, Some("bright_black"));
         }
 
         if let Some(text) = text
@@ -116,7 +118,9 @@ impl ActiveSession {
                 self.client.get_display_name(),
                 self.client.get_state().model.clone(),
             );
-            ui::print_block(&text, Some(&display_name), Some("cyan"));
+            self.ctx
+                .ui
+                .print_block(&text, Some(&display_name), Some("cyan"));
             crate::utils::chat_logger::log_chat(
                 &self.ctx.config_manager,
                 &Role::Assistant,
@@ -152,8 +156,14 @@ impl ActiveSession {
                             mime_type,
                             &config.general.image_save_path,
                         ) {
-                            Ok(path) => ui::report_success(&format!("Media saved to: {}", path)),
-                            Err(e) => ui::report_error(&format!("Failed to save media: {}", e)),
+                            Ok(path) => self
+                                .ctx
+                                .ui
+                                .report_success(&format!("Media saved to: {}", path)),
+                            Err(e) => self
+                                .ctx
+                                .ui
+                                .report_error(&format!("Failed to save media: {}", e)),
                         }
                     }
                 }
@@ -211,7 +221,7 @@ impl ActiveSession {
 
         // 1. Phase 1: Static Checks (Path, Syntax)
         if let Err(e) = crate::security::validate_tool_call(name, args, &config.security) {
-            ui::report_error(&e);
+            self.ctx.ui.report_error(&e);
             return Ok((Value::String(e), false));
         }
 
@@ -230,7 +240,7 @@ impl ActiveSession {
                 && mcp_config.zero_trust
             {
                 force_manual = true;
-                ui::report_info(&format!(
+                self.ctx.ui.report_info(&format!(
                     "Zero Trust Policy enabled for server '{}'.",
                     server_name
                 ));
@@ -243,12 +253,18 @@ impl ActiveSession {
             self.is_auto_approved(name, risk_level)
         };
 
-        ui::print_tool_call(name, &serde_json::json!(args));
+        self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
 
         if force_manual {
             match crate::security::identity::IdentityManager::generate_token(Some(name)) {
-                Ok(_token) => ui::report_success("Identity Verified (Hybrid PQC Token generated)"),
-                Err(e) => ui::report_warning(&format!("Identity Verification failed: {}", e)),
+                Ok(_token) => self
+                    .ctx
+                    .ui
+                    .report_success("Identity Verified (Hybrid PQC Token generated)"),
+                Err(e) => self
+                    .ctx
+                    .ui
+                    .report_warning(&format!("Identity Verification failed: {}", e)),
             }
         }
 
@@ -258,10 +274,12 @@ impl ActiveSession {
             let (v_provider, v_model) = self.ctx.config_manager.get_dual_llm_settings();
 
             if v_provider.is_empty() || v_model.is_empty() {
-                ui::report_warning(
+                self.ctx.ui.report_warning(
                     "Dual LLM verification is enabled, but provider/model is not set. Falling back to manual approval.",
                 );
-                ui::report_info("Hint: Use /vp and /vm to set the verifier LLM.");
+                self.ctx
+                    .ui
+                    .report_info("Hint: Use /vp and /vm to set the verifier LLM.");
             } else {
                 verifier_handle = Some(self.spawn_verifier_task(name, args, v_provider, v_model));
             }
@@ -269,8 +287,8 @@ impl ActiveSession {
 
         // Request Human Approval if not auto-approved
         if !approved {
-            match ui::ask_confirm_async(&format!("Execute {}", name)).await {
-                Some(ui::ConfirmResult::Yes) => {
+            match self.ctx.ui.ask_confirm(&format!("Execute {}", name)).await {
+                Some(crate::cli::ui::ConfirmResult::Yes) => {
                     // Continue to verifier or execution
                 }
                 Some(res) => {
@@ -278,7 +296,7 @@ impl ActiveSession {
                         h.abort();
                     }
                     let feedback = match res {
-                        ui::ConfirmResult::Feedback(f) => Some(f),
+                        crate::cli::ui::ConfirmResult::Feedback(f) => Some(f),
                         _ => None,
                     };
                     return self.handle_rejection_feedback(feedback).map(|v| (v, false));
@@ -298,11 +316,13 @@ impl ActiveSession {
             let outcome = self.resolve_verifier_outcome(handle).await?;
             match outcome {
                 VerificationOutcome::Allowed(reason) => {
-                    ui::report_success(&format!("Intent Verified: {}", reason));
+                    self.ctx
+                        .ui
+                        .report_success(&format!("Intent Verified: {}", reason));
                 }
                 VerificationOutcome::Rejected(reason) => {
                     let msg = format!("Security Policy Violation: {}", reason);
-                    ui::report_error(&msg);
+                    self.ctx.ui.report_error(&msg);
                     return Ok((Value::String(msg), false));
                 }
                 VerificationOutcome::FallbackRequired(reason) => {
@@ -456,7 +476,9 @@ impl ActiveSession {
         // This ensures that auto-approved successful calls don't clutter the UI with output (like stdout),
         // but failures are always shown. The tool call itself is always printed above.
         if !approved || is_error {
-            ui::print_tool_result(final_v.as_str().unwrap_or(&final_v.to_string()));
+            self.ctx
+                .ui
+                .print_tool_result(final_v.as_str().unwrap_or(&final_v.to_string()));
 
             // If we already printed common tool result UI, we don't want to re-print stderr in stats
             let mut quiet_stats = stats.clone();
@@ -485,11 +507,11 @@ impl ActiveSession {
 
         match policy {
             "low" if risk == RiskLevel::Low => {
-                ui::report_success("Auto-approved (Low Risk)");
+                self.ctx.ui.report_success("Auto-approved (Low Risk)");
                 true
             }
             "medium" if risk == RiskLevel::Low || risk == RiskLevel::Medium => {
-                ui::report_success("Auto-approved (Medium Risk)");
+                self.ctx.ui.report_success("Auto-approved (Medium Risk)");
                 true
             }
             _ => false,
@@ -503,29 +525,32 @@ impl ActiveSession {
         };
         match config.security.verifier_fallback.as_str() {
             "block" => {
-                ui::report_error(&format!("Verifier unavailable — blocked: {}", reason));
+                self.ctx
+                    .ui
+                    .report_error(&format!("Verifier unavailable — blocked: {}", reason));
                 false
             }
             _ => {
-                ui::report_warning(&format!("⚠ Verifier unavailable: {}", reason));
+                self.ctx
+                    .ui
+                    .report_warning(&format!("⚠ Verifier unavailable: {}", reason));
                 matches!(
-                    ui::ask_confirm_async(&format!(
-                        "Execute {} (Manual confirmation required)",
-                        name
-                    ))
-                    .await,
-                    Some(ui::ConfirmResult::Yes)
+                    self.ctx
+                        .ui
+                        .ask_confirm(&format!("Execute {} (Manual confirmation required)", name))
+                        .await,
+                    Some(crate::cli::ui::ConfirmResult::Yes)
                 )
             }
         }
     }
 
     fn handle_rejection_feedback(&mut self, feedback: Option<String>) -> anyhow::Result<Value> {
-        ui::report_warning("Execution cancelled by user.");
+        self.ctx.ui.report_warning("Execution cancelled by user.");
         let feedback = match feedback {
             Some(f) => Some(f),
             None => {
-                let f = ui::get_user_input("Provide feedback (optional): ");
+                let f = crate::cli::ui::get_user_input("Provide feedback (optional): ");
                 if let Some(ref content) = f
                     && !content.trim().is_empty()
                 {

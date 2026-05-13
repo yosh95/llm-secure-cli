@@ -1,4 +1,4 @@
-use crate::cli::ui;
+use crate::cli::ui::{self, UserInterface};
 use crate::core::context::AppContext;
 use crate::core::session::ActiveSession;
 use crate::llm::base::LlmClient;
@@ -11,6 +11,7 @@ pub async fn switch_model(
     stdout: bool,
     render_markdown: bool,
 ) -> anyhow::Result<()> {
+    // ... (keep current switch_model implementation)
     // 1. Resolve alias if it exists
     let (target_model, target_provider) = {
         let state = session.ctx.config_manager.get_state()?;
@@ -81,8 +82,8 @@ pub async fn switch_provider(session: &mut ActiveSession, provider: &str) -> any
     }
 }
 
-pub async fn initialize_app() -> anyhow::Result<Arc<AppContext>> {
-    let ctx = Arc::new(AppContext::new());
+pub async fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<AppContext>> {
+    let ctx = Arc::new(AppContext::new(ui));
     let is_atty = stdin().is_terminal();
 
     // 1. Setup permissions and directories
@@ -123,16 +124,17 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
     // 1. Ensure Identity Keys
     if !IdentityManager::has_keys()
         && is_atty
-        && ui::ask_confirm_simple_async(
-            "Identity keys not found. Generate new PQC keypair for this agent?",
-        )
-        .await
+        && ctx
+            .ui
+            .ask_confirm_simple("Identity keys not found. Generate new PQC keypair for this agent?")
+            .await
             == Some(ui::ConfirmResult::Yes)
     {
         if let Err(e) = IdentityManager::ensure_keys() {
-            ui::report_error(&format!("Failed to generate keys: {}", e));
+            ctx.ui
+                .report_error(&format!("Failed to generate keys: {}", e));
         } else {
-            ui::report_success("Identity keys generated.");
+            ctx.ui.report_success("Identity keys generated.");
         }
     }
 
@@ -149,13 +151,17 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
             "Integrity manifest not found. This protects your binary and config from unauthorized changes."
         };
 
-        ui::report_warning(msg);
+        ctx.ui.report_warning(msg);
         if is_atty
-            && ui::ask_confirm_simple_async("Generate and sign integrity manifest now?").await
+            && ctx
+                .ui
+                .ask_confirm_simple("Generate and sign integrity manifest now?")
+                .await
                 == Some(ui::ConfirmResult::Yes)
         {
             if let Err(e) = verifier.rebuild_manifest() {
-                ui::report_error(&format!("Failed to build manifest: {}", e));
+                ctx.ui
+                    .report_error(&format!("Failed to build manifest: {}", e));
                 if security_level == "high" {
                     return Err(anyhow::anyhow!(
                         "Integrity manifest build failed in 'high' security mode: {}",
@@ -163,7 +169,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
                     ));
                 }
             } else {
-                ui::report_success("Integrity manifest generated.");
+                ctx.ui.report_success("Integrity manifest generated.");
             }
         } else if security_level == "high" {
             return Err(anyhow::anyhow!(
@@ -176,23 +182,26 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
                 // Integrity OK
             }
             Ok(false) => {
-                ui::report_warning("CRITICAL: SYSTEM INTEGRITY MISMATCH");
-                ui::report_warning(
+                ctx.ui.report_warning("CRITICAL: SYSTEM INTEGRITY MISMATCH");
+                ctx.ui.report_warning(
                     "The binary or configuration has changed since the last manifest update.",
                 );
-                ui::report_warning(
+                ctx.ui.report_warning(
                     "(This occurs after 'cargo install' or manual configuration edits)",
                 );
 
                 if is_atty
-                    && ui::ask_confirm_simple_async(
-                        "Would you like to re-authorize (re-sign) the current system state?",
-                    )
-                    .await
+                    && ctx
+                        .ui
+                        .ask_confirm_simple(
+                            "Would you like to re-authorize (re-sign) the current system state?",
+                        )
+                        .await
                         == Some(ui::ConfirmResult::Yes)
                 {
                     if let Err(e) = verifier.rebuild_manifest() {
-                        ui::report_error(&format!("Failed to rebuild manifest: {}", e));
+                        ctx.ui
+                            .report_error(&format!("Failed to rebuild manifest: {}", e));
                         if security_level == "high" {
                             return Err(anyhow::anyhow!(
                                 "Integrity manifest rebuild failed in 'high' security mode: {}",
@@ -200,10 +209,10 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
                             ));
                         }
                     } else {
-                        ui::report_success("Integrity manifest updated.");
+                        ctx.ui.report_success("Integrity manifest updated.");
                     }
                 } else if security_level == "high" {
-                    ui::report_error(
+                    ctx.ui.report_error(
                         "Execution aborted due to integrity failure in 'high' security mode.",
                     );
                     return Err(anyhow::anyhow!(

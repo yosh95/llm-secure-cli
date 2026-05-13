@@ -27,16 +27,10 @@ impl CASSOrchestrator {
         args: Option<&serde_json::Value>,
         config: &SecurityConfig,
     ) -> RiskLevel {
-        let dual_llm_enabled = config.dual_llm_verification.unwrap_or(false);
-
-        // 1. Baseline risk by tool definition
-        let mut level = if tool_name == "execute_command" {
-            if !dual_llm_enabled {
-                RiskLevel::Critical
-            } else {
-                RiskLevel::High
-            }
-        } else if config.high_risk_tools.iter().any(|t| t == tool_name) {
+        // 1. Baseline risk by tool definition (Static classification)
+        let mut level = if tool_name == "execute_command"
+            || config.high_risk_tools.iter().any(|t| t == tool_name)
+        {
             RiskLevel::High
         } else if config.medium_risk_tools.iter().any(|t| t == tool_name) {
             RiskLevel::Medium
@@ -44,7 +38,7 @@ impl CASSOrchestrator {
             RiskLevel::Low
         };
 
-        // 2. Dynamic escalation based on argument context (Former AgilityManager logic)
+        // 2. Dynamic escalation based on argument context
         if let Some(args_val) = args {
             let args_str = args_val.to_string().to_lowercase();
 
@@ -62,10 +56,15 @@ impl CASSOrchestrator {
             }
         }
 
-        // 3. Environment-based risk escalation (Global security level)
-        if config.security_level == "high" && level < RiskLevel::Medium {
-            // Optional: You could escalate Low to Medium in 'high' mode
-            // level = RiskLevel::Medium;
+        // 3. Environment-based risk escalation
+        if config.security_level == "high" && level == RiskLevel::Low {
+            level = RiskLevel::Medium;
+        }
+
+        // 4. Critical transition: High-risk tool WITHOUT dual-LLM verification
+        let dual_llm_enabled = config.dual_llm_verification.unwrap_or(false);
+        if level >= RiskLevel::High && !dual_llm_enabled {
+            level = RiskLevel::Critical;
         }
 
         level
@@ -78,28 +77,34 @@ impl CASSOrchestrator {
         config: &SecurityConfig,
     ) -> SecurityPosture {
         let risk_level = self.evaluate_risk(tool_name, args, config);
-        let dual_llm_enabled = config.dual_llm_verification.unwrap_or(false);
 
         match risk_level {
-            RiskLevel::Critical | RiskLevel::High => SecurityPosture {
+            RiskLevel::Critical => SecurityPosture {
+                require_pqc_signature: true,
+                pqc_variant: "ML-DSA-87".to_string(), // NIST Level 5
+                require_pqc_audit_encryption: true,
+                ast_strictness: "strict".to_string(),
+                require_dual_llm_verification: true,
+            },
+            RiskLevel::High => SecurityPosture {
                 require_pqc_signature: true,
                 pqc_variant: "ML-DSA-87".to_string(),
                 require_pqc_audit_encryption: true,
                 ast_strictness: "strict".to_string(),
-                require_dual_llm_verification: dual_llm_enabled,
+                require_dual_llm_verification: config.dual_llm_verification.unwrap_or(false),
             },
             RiskLevel::Medium => SecurityPosture {
                 require_pqc_signature: true,
-                pqc_variant: "ML-DSA-65".to_string(),
+                pqc_variant: "ML-DSA-65".to_string(), // NIST Level 3
                 require_pqc_audit_encryption: false,
-                ast_strictness: "restricted".to_string(),
+                ast_strictness: "standard".to_string(),
                 require_dual_llm_verification: false,
             },
             RiskLevel::Low => SecurityPosture {
                 require_pqc_signature: true,
-                pqc_variant: "ML-DSA-44".to_string(),
+                pqc_variant: "ML-DSA-44".to_string(), // NIST Level 2
                 require_pqc_audit_encryption: false,
-                ast_strictness: "basic".to_string(),
+                ast_strictness: "relaxed".to_string(),
                 require_dual_llm_verification: false,
             },
         }

@@ -1,3 +1,4 @@
+use crate::cli::ui::UserInterface;
 use crate::config::ConfigManager;
 use crate::llm::registry::ClientRegistry;
 use crate::tools::mcp::manager::McpManager;
@@ -10,21 +11,23 @@ pub struct AppContext {
     pub tool_registry: Arc<Mutex<ToolRegistry>>,
     pub client_registry: Arc<Mutex<ClientRegistry>>,
     pub mcp_manager: McpManager,
+    pub ui: Arc<dyn UserInterface>,
 }
 
 impl AppContext {
-    pub fn new() -> Self {
+    pub fn new(ui: Arc<dyn UserInterface>) -> Self {
         Self {
             config_manager: ConfigManager::new(),
             tool_registry: Arc::new(Mutex::new(ToolRegistry::new())),
             client_registry: Arc::new(Mutex::new(ClientRegistry::new())),
             mcp_manager: McpManager::new(),
+            ui,
         }
     }
 }
 
 impl Default for AppContext {
     fn default() -> Self {
-        Self::new()
+        Self::new(Arc::new(crate::cli::ui::CliUi))
     }
 }

@@ -1,7 +1,6 @@
 #![warn(clippy::unwrap_used)]
 
 use clap::{Parser, Subcommand};
-use llm_secure_cli::cli::ui;
 use llm_secure_cli::core::session::ActiveSession;
 use std::io::{IsTerminal, stdin};
 use std::process;
@@ -114,11 +113,12 @@ async fn main() {
         .init();
 
     let is_atty = stdin().is_terminal();
+    let ui = std::sync::Arc::new(llm_secure_cli::cli::ui::CliUi);
 
-    let ctx = match llm_secure_cli::core::initializer::initialize_app().await {
+    let ctx = match llm_secure_cli::core::initializer::initialize_app(ui.clone()).await {
         Ok(c) => c,
         Err(e) => {
-            ui::report_error(&format!("Critical Initialization Error: {}", e));
+            llm_secure_cli::cli::ui::report_error(&format!("Critical Initialization Error: {}", e));
             process::exit(1);
         }
     };
@@ -135,7 +135,7 @@ async fn main() {
         )
         .await
         {
-            ui::report_error(&format!("MCP Server Error: {}", e));
+            ctx.ui.report_error(&format!("MCP Server Error: {}", e));
             process::exit(1);
         }
         return;
@@ -221,7 +221,8 @@ async fn start_chat_session(
     let mut config_struct = match cm.get_config() {
         Ok(c) => (*c).clone(),
         Err(e) => {
-            ui::report_error(&format!("Failed to load config: {}", e));
+            ctx.ui
+                .report_error(&format!("Failed to load config: {}", e));
             process::exit(1);
         }
     };
@@ -251,7 +252,7 @@ async fn start_chat_session(
         } else if !active_providers.is_empty() {
             provider = active_providers[0].clone();
         } else {
-            ui::report_error("No active LLM providers found.");
+            ctx.ui.report_error("No active LLM providers found.");
             process::exit(1);
         }
     }
@@ -266,11 +267,11 @@ async fn start_chat_session(
     };
 
     if model.is_empty() {
-        ui::report_warning(
+        ctx.ui.report_warning(
             "No model configured. Use /m <model> to set a model before sending requests.",
         );
     } else if is_first_launch {
-        ui::report_warning(
+        ctx.ui.report_warning(
             "No provider/model configured. Use /m <model> or /p <provider> to configure.",
         );
     }
@@ -279,14 +280,16 @@ async fn start_chat_session(
         if let Some(session_path) = args.session
             && let Err(e) = client.load_session(&session_path)
         {
-            ui::report_error(&format!("Failed to load session: {}", e));
+            ctx.ui
+                .report_error(&format!("Failed to load session: {}", e));
         }
 
         let pdf_as_base64 = client.should_send_pdf_as_base64();
         let mut session = match ActiveSession::new(client, ctx.clone()) {
             Ok(s) => s,
             Err(e) => {
-                ui::report_error(&format!("Failed to initialize session: {}", e));
+                ctx.ui
+                    .report_error(&format!("Failed to initialize session: {}", e));
                 process::exit(1);
             }
         };
@@ -310,7 +313,7 @@ async fn start_chat_session(
         };
         session.run(sources, None).await;
     } else {
-        ui::report_error(&format!(
+        ctx.ui.report_error(&format!(
             "Provider '{}' not found or not configured.",
             provider
         ));

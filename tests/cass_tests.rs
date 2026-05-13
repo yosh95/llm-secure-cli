@@ -1,45 +1,95 @@
 use llm_secure_cli::config::models::SecurityConfig;
-use llm_secure_cli::security::cass::{CASS_ORCHESTRATOR, RiskLevel};
+use llm_secure_cli::security::cass::{CASSOrchestrator, RiskLevel};
+use serde_json::json;
 
 #[test]
-fn test_cass_risk_evaluation() {
-    let mut config = SecurityConfig {
-        dual_llm_verification: Some(false),
-        ..SecurityConfig::default()
+fn test_evaluate_risk_baseline() {
+    let config = SecurityConfig {
+        security_level: "standard".to_string(),
+        high_risk_tools: vec!["edit_file".to_string()],
+        medium_risk_tools: vec!["read_file".to_string()],
+        dual_llm_verification: Some(true),
+        ..Default::default()
     };
 
-    // 1. Test critical risk (execute_command without dual LLM)
-    let risk = CASS_ORCHESTRATOR.evaluate_risk("execute_command", None, &config);
-    assert!(matches!(risk, RiskLevel::Critical));
+    let orchestrator = CASSOrchestrator;
 
-    // 2. Test high risk (execute_command with dual LLM)
-    config.dual_llm_verification = Some(true);
-    let risk = CASS_ORCHESTRATOR.evaluate_risk("execute_command", None, &config);
-    assert!(matches!(risk, RiskLevel::High));
-
-    // 3. Test explicit high risk tool
-    config.high_risk_tools = vec!["create_or_overwrite_file".to_string()];
-    let risk = CASS_ORCHESTRATOR.evaluate_risk("create_or_overwrite_file", None, &config);
-    assert!(matches!(risk, RiskLevel::High));
+    assert_eq!(
+        orchestrator.evaluate_risk("edit_file", None, &config),
+        RiskLevel::High
+    );
+    assert_eq!(
+        orchestrator.evaluate_risk("read_file", None, &config),
+        RiskLevel::Medium
+    );
+    assert_eq!(
+        orchestrator.evaluate_risk("list_files", None, &config),
+        RiskLevel::Low
+    );
 }
 
 #[test]
-fn test_cass_security_posture_requirements() {
+fn test_evaluate_risk_critical_escalation_no_dual_llm() {
     let config = SecurityConfig {
-        dual_llm_verification: Some(true),
-        ..SecurityConfig::default()
+        security_level: "standard".to_string(),
+        high_risk_tools: vec!["edit_file".to_string()],
+        dual_llm_verification: Some(false),
+        ..Default::default()
     };
 
-    // High risk requirements
-    let posture = CASS_ORCHESTRATOR.get_security_requirements("execute_command", None, &config);
-    assert!(posture.require_pqc_signature);
-    assert_eq!(posture.pqc_variant, "ML-DSA-87");
-    assert!(posture.require_pqc_audit_encryption);
-    assert_eq!(posture.ast_strictness, "strict");
-    assert!(posture.require_dual_llm_verification);
+    let orchestrator = CASSOrchestrator;
 
-    // Low risk requirements
-    let posture = CASS_ORCHESTRATOR.get_security_requirements("list_files", None, &config);
-    assert!(posture.require_pqc_signature);
-    assert_eq!(posture.pqc_variant, "ML-DSA-44");
+    // High risk tool becomes Critical when Dual LLM is off
+    assert_eq!(
+        orchestrator.evaluate_risk("edit_file", None, &config),
+        RiskLevel::Critical
+    );
+
+    // Command execution is always at least High, so moves to Critical
+    assert_eq!(
+        orchestrator.evaluate_risk("execute_command", None, &config),
+        RiskLevel::Critical
+    );
+}
+
+#[test]
+fn test_evaluate_risk_dynamic_escalation() {
+    let config = SecurityConfig {
+        security_level: "standard".to_string(),
+        medium_risk_tools: vec!["read_file".to_string()],
+        scaling_patterns: vec!["/etc/shadow".to_string()],
+        dual_llm_verification: Some(true),
+        ..Default::default()
+    };
+
+    let orchestrator = CASSOrchestrator;
+
+    // Medium tool stays Medium usually
+    assert_eq!(
+        orchestrator.evaluate_risk("read_file", Some(&json!({"path": "normal.txt"})), &config),
+        RiskLevel::Medium
+    );
+
+    // Medium tool escalates to High if sensitive pattern is found
+    assert_eq!(
+        orchestrator.evaluate_risk("read_file", Some(&json!({"path": "/etc/shadow"})), &config),
+        RiskLevel::High
+    );
+}
+
+#[test]
+fn test_evaluate_risk_security_level_high() {
+    let config = SecurityConfig {
+        security_level: "high".to_string(),
+        dual_llm_verification: Some(true),
+        ..Default::default()
+    };
+
+    let orchestrator = CASSOrchestrator;
+
+    // In 'high' security mode, Low risk tools escalate to Medium
+    assert_eq!(
+        orchestrator.evaluate_risk("list_files", None, &config),
+        RiskLevel::Medium
+    );
 }

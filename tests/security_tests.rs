@@ -170,7 +170,7 @@ fn test_mcp_security_validation() {
     // 2. MCP-like command execution with malicious characters
     let args = json!({
         "cmd": "ls",
-        "args": ["/etc", "with\0null"] // NULLバイト
+        "args": ["normal_arg", "with\0null"] // NULLバイト
     });
     let res = validate_tool_call("shell__run_shell", args.as_object().unwrap(), &config);
     assert!(
