@@ -62,7 +62,7 @@ low_risk_tools = [
 # Validates tool calls using a secondary LLM with a hardcoded Security Constitution.
 dual_llm_verification = true
 dual_llm_provider = "ollama"
-dual_llm_model = "gemma2:2b"
+dual_llm_model = "gemma4:e2b"
 dual_llm_confidence_threshold = 0.7
 
 # Verifier Fallback Policy
