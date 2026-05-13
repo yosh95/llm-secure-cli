@@ -123,7 +123,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
     // 1. Ensure Identity Keys
     if !IdentityManager::has_keys()
         && is_atty
-        && ui::ask_confirm_async(
+        && ui::ask_confirm_simple_async(
             "Identity keys not found. Generate new PQC keypair for this agent?",
         )
         .await
@@ -151,7 +151,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
 
         ui::report_warning(msg);
         if is_atty
-            && ui::ask_confirm_async("Generate and sign integrity manifest now?").await
+            && ui::ask_confirm_simple_async("Generate and sign integrity manifest now?").await
                 == Some(ui::ConfirmResult::Yes)
         {
             if let Err(e) = verifier.rebuild_manifest() {
@@ -185,7 +185,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
                 );
 
                 if is_atty
-                    && ui::ask_confirm_async(
+                    && ui::ask_confirm_simple_async(
                         "Would you like to re-authorize (re-sign) the current system state?",
                     )
                     .await

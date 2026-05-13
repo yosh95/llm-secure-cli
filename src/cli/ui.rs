@@ -455,15 +455,30 @@ pub enum ConfirmResult {
     Feedback(String),
 }
 
-/// Ask the user a Yes/No confirmation question with optional feedback.
+/// Whether a confirmation prompt accepts free-text feedback or is Yes/No only.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PromptMode {
+    /// Input other than Y/N is treated as free-text feedback (for LLM chat sessions).
+    WithFeedback,
+    /// Only Y/N is accepted; anything else re-prompts.
+    YesNoOnly,
+}
+
+/// Ask the user a Yes/No confirmation question with configurable prompt mode.
 ///
 /// This function uses a simple stdin/stdout approach instead of dialoguer::Select
 /// to avoid terminal raw-mode issues when running under SSH/tmux.
 ///
 /// Supports "y", "yes", "n", "no" (case-insensitive, including full-width),
-/// Enter = Yes (default), and anything else is treated as feedback.
-pub fn ask_confirm(prompt: &str) -> Option<ConfirmResult> {
-    let y_n = format!("{} [Y/n or feedback] ", prompt);
+/// Enter = Yes (default).
+/// In `WithFeedback` mode, any other input is treated as feedback.
+/// In `YesNoOnly` mode, any other input causes a re-prompt.
+fn ask_confirm_with_mode(prompt: &str, mode: PromptMode) -> Option<ConfirmResult> {
+    let suffix = match mode {
+        PromptMode::WithFeedback => " [Y/n or feedback] ",
+        PromptMode::YesNoOnly => " [Y/n] ",
+    };
+    let y_n = format!("{}{}", prompt, suffix);
     match get_user_input(&y_n) {
         Some(input) => {
             let trimmed = input.trim();
@@ -478,18 +493,52 @@ pub fn ask_confirm(prompt: &str) -> Option<ConfirmResult> {
             } else if lower == "n" || lower == "no" || lower == "ｎ" || lower == "ｎｏ" {
                 Some(ConfirmResult::No)
             } else {
-                // Dimmed feedback display
-                println!("  {}", format!("Feedback: {}", trimmed).dimmed());
-                Some(ConfirmResult::Feedback(trimmed.to_string()))
+                match mode {
+                    PromptMode::WithFeedback => {
+                        // Dimmed feedback display
+                        println!("  {}", format!("Feedback: {}", trimmed).dimmed());
+                        Some(ConfirmResult::Feedback(trimmed.to_string()))
+                    }
+                    PromptMode::YesNoOnly => {
+                        report_warning(&format!(
+                            "Unrecognized input '{}'. Please answer Y(es) or N(o).",
+                            trimmed
+                        ));
+                        ask_confirm_with_mode(prompt, mode)
+                    }
+                }
             }
         }
         None => None, // Interrupted or EOF
     }
 }
 
+/// Ask a Yes/No confirmation question that also accepts free-text feedback.
+///
+/// Use this in LLM chat sessions where the user can provide natural-language
+/// feedback as an alternative to a simple Y/N.
+pub fn ask_confirm(prompt: &str) -> Option<ConfirmResult> {
+    ask_confirm_with_mode(prompt, PromptMode::WithFeedback)
+}
+
+/// Ask a Yes/No-only confirmation question (no feedback).
+///
+/// Use this outside of LLM chat sessions (e.g. startup / initialization)
+/// where free-text feedback would be meaningless.
+pub fn ask_confirm_simple(prompt: &str) -> Option<ConfirmResult> {
+    ask_confirm_with_mode(prompt, PromptMode::YesNoOnly)
+}
+
 pub async fn ask_confirm_async(prompt: &str) -> Option<ConfirmResult> {
     let p = prompt.to_string();
     tokio::task::spawn_blocking(move || ask_confirm(&p))
+        .await
+        .unwrap_or(None)
+}
+
+pub async fn ask_confirm_simple_async(prompt: &str) -> Option<ConfirmResult> {
+    let p = prompt.to_string();
+    tokio::task::spawn_blocking(move || ask_confirm_simple(&p))
         .await
         .unwrap_or(None)
 }
