@@ -54,13 +54,14 @@ pub fn validate_tool_call(
         // For all other tools, scan every string value in args.
         for (key, value) in args {
             if let Some(s) = value.as_str()
-                && StaticAnalyzer::is_obviously_malicious(s) {
-                    return Err(format!(
-                        "Phase 1 Static Analysis blocked '{}': argument '{}' contains \
+                && StaticAnalyzer::is_obviously_malicious(s)
+            {
+                return Err(format!(
+                    "Phase 1 Static Analysis blocked '{}': argument '{}' contains \
                          control characters or null bytes.",
-                        name, key
-                    ));
-                }
+                    name, key
+                ));
+            }
         }
     }
 

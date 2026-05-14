@@ -139,7 +139,7 @@ impl LlmClient for MockProcessorClient {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_processor_tool_execution_flow() {
     setup_test_env();
     // 1. Setup Config for Auto-approval
@@ -236,7 +236,7 @@ async fn test_processor_tool_execution_flow() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_processor_pqc_blocking_in_high_security() {
     setup_test_env();
     // 1. Setup Config with High Security Level

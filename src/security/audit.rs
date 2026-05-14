@@ -298,10 +298,33 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         options.mode(0o600);
     }
 
-    if let Ok(mut file) = options.open(path)
-        && let Ok(line) = serde_json::to_string(&log_entry)
-    {
-        let _ = writeln!(file, "{}", line);
+    match options.open(path) {
+        Err(e) => {
+            tracing::error!(path = %path.display(), error = %e, "audit log open failed");
+            if params.config.security.security_level == "high" {
+                crate::cli::ui::report_error(&format!("CRITICAL: Audit log unavailable: {}", e));
+            }
+            return None;
+        }
+        Ok(mut file) => {
+            let line = match serde_json::to_string(&log_entry) {
+                Ok(l) => l,
+                Err(e) => {
+                    tracing::error!(error = %e, "audit log serialization failed");
+                    return None;
+                }
+            };
+            if let Err(e) = writeln!(file, "{}", line) {
+                tracing::error!(path = %path.display(), error = %e, "audit log write failed");
+                if params.config.security.security_level == "high" {
+                    crate::cli::ui::report_error(&format!(
+                        "CRITICAL: Audit log write failed: {}",
+                        e
+                    ));
+                }
+                return None;
+            }
+        }
     }
 
     if let Ok(metadata) = fs::metadata(path) {

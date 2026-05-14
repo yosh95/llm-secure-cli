@@ -393,8 +393,17 @@ impl ActiveSession {
         print!("Finalizing intent verification... ");
         std::io::stdout().flush().ok();
 
+        const VERIFIER_TIMEOUT_SECS: u64 = 60;
+
         let res = tokio::select! {
             res = handle => res.unwrap_or(VerificationOutcome::FallbackRequired("Task Panicked".into())),
+            _ = tokio::time::sleep(std::time::Duration::from_secs(VERIFIER_TIMEOUT_SECS)) => {
+                println!("\nVerifier timed out after {}s.", VERIFIER_TIMEOUT_SECS);
+                VerificationOutcome::FallbackRequired(format!(
+                    "Verifier timed out after {}s",
+                    VERIFIER_TIMEOUT_SECS
+                ))
+            }
             _ = tokio::signal::ctrl_c() => {
                 println!("\n^C - Interrupted.");
                 self.handle_interruption();
@@ -438,19 +447,22 @@ impl ActiveSession {
         let mut is_error = false;
         let mut final_v = match result {
             Ok(v) => {
-                if let Some(entry) = crate::security::audit::log_audit_and_return(
-                    crate::security::audit::AuditParams {
-                        event_type: "tool_call",
-                        tool_name: name,
-                        args: serde_json::json!(args),
-                        output: v.as_str(),
-                        exit_code: Some(0),
-                        error: None,
-                        context: Some(&audit_ctx),
-                        config: &config,
-                    },
-                    None,
-                ) {
+                let entry = tokio::task::block_in_place(|| {
+                    crate::security::audit::log_audit_and_return(
+                        crate::security::audit::AuditParams {
+                            event_type: "tool_call",
+                            tool_name: name,
+                            args: serde_json::json!(args),
+                            output: v.as_str(),
+                            exit_code: Some(0),
+                            error: None,
+                            context: Some(&audit_ctx),
+                            config: &config,
+                        },
+                        None,
+                    )
+                });
+                if let Some(entry) = entry {
                     self.audit_entries.push(entry);
                 }
                 v
@@ -458,19 +470,22 @@ impl ActiveSession {
             Err(e) => {
                 is_error = true;
                 let err_msg = e.to_string();
-                if let Some(entry) = crate::security::audit::log_audit_and_return(
-                    crate::security::audit::AuditParams {
-                        event_type: "tool_call",
-                        tool_name: name,
-                        args: serde_json::json!(args),
-                        output: None,
-                        exit_code: Some(1),
-                        error: Some(&err_msg),
-                        context: Some(&audit_ctx),
-                        config: &config,
-                    },
-                    None,
-                ) {
+                let entry = tokio::task::block_in_place(|| {
+                    crate::security::audit::log_audit_and_return(
+                        crate::security::audit::AuditParams {
+                            event_type: "tool_call",
+                            tool_name: name,
+                            args: serde_json::json!(args),
+                            output: None,
+                            exit_code: Some(1),
+                            error: Some(&err_msg),
+                            context: Some(&audit_ctx),
+                            config: &config,
+                        },
+                        None,
+                    )
+                });
+                if let Some(entry) = entry {
                     self.audit_entries.push(entry);
                 }
                 Value::String(format!("Error: {}", err_msg))
