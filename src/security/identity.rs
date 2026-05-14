@@ -1,3 +1,4 @@
+use crate::security::key_storage;
 use crate::security::pqc::{PQCVariant, PqcProvider};
 use crate::security::pqc_cose::HybridSigner;
 use anyhow::{Result, anyhow};
@@ -31,54 +32,110 @@ impl IdentityManager {
         Self::get_base_dir().join(entity_type).join(name)
     }
 
+    // ── Private key path helpers ──
+
+    fn ed25519_path() -> PathBuf {
+        Self::get_key_dir("self", "me").join("id_ed25519")
+    }
+
+    fn pqc_path(variant: PQCVariant) -> PathBuf {
+        let filename = match variant {
+            PQCVariant::MLDSA44 => "id_mldsa44",
+            PQCVariant::MLDSA65 => "id_mldsa65",
+            PQCVariant::MLDSA87 => "id_mldsa87",
+        };
+        Self::get_key_dir("self", "me").join(filename)
+    }
+
+    fn kem_path() -> PathBuf {
+        Self::get_key_dir("self", "me").join("id_kem768")
+    }
+
+    // ── Key existence check ──
+
+    pub fn has_keys() -> bool {
+        // Accept both raw and LKEF-magic encrypted key files.
+        let dir = Self::get_key_dir("self", "me");
+        (dir.join("id_ed25519").exists()) && (dir.join("id_mldsa65").exists())
+    }
+
+    /// Returns true if all essential key files already exist on disk.
+    fn all_keys_exist() -> bool {
+        let dir = Self::get_key_dir("self", "me");
+        dir.join("id_ed25519").exists() && dir.join("id_mldsa65").exists()
+    }
+
+    // ── Key generation ──
+
+    /// Generate all identity keys. Prompts for an optional passphrase
+    /// (interactive only) which, if provided, encrypts all private keys
+    /// with AES-256-GCM (Argon2id KDF).
     pub fn ensure_keys() -> Result<()> {
         let dir = Self::get_key_dir("self", "me");
         if !dir.exists() {
             fs::create_dir_all(&dir)?;
         }
 
-        let ed_path = dir.join("id_ed25519");
+        // If keys already exist, do nothing.
+        if Self::all_keys_exist() {
+            return Ok(());
+        }
+
+        // Acquire passphrase (may be None for no encryption)
+        let passphrase = key_storage::read_optional_passphrase()?;
+
+        // Ed25519
+        let ed_path = Self::ed25519_path();
         if !ed_path.exists() {
             let mut rng = OsRng;
             let signing_key = SigningKey::generate(&mut rng);
             let priv_bytes = signing_key.to_bytes();
             let pub_bytes = signing_key.verifying_key().to_bytes();
-            fs::write(&ed_path, priv_bytes)?;
+
+            key_storage::save_key(&ed_path, &priv_bytes, passphrase.as_deref())?;
             fs::write(dir.join("id_ed25519.pub"), pub_bytes)?;
         }
 
+        // ML-DSA variants
         let pqc_variants = [
             PQCVariant::MLDSA44,
             PQCVariant::MLDSA65,
             PQCVariant::MLDSA87,
         ];
         for variant in pqc_variants {
-            let filename = match variant {
-                PQCVariant::MLDSA44 => "id_mldsa44",
-                PQCVariant::MLDSA65 => "id_mldsa65",
-                PQCVariant::MLDSA87 => "id_mldsa87",
-            };
-            let pqc_path = dir.join(filename);
+            let pqc_path = Self::pqc_path(variant);
             if !pqc_path.exists() {
                 let (pk, sk) = PqcProvider::generate_keypair(variant)?;
-                fs::write(&pqc_path, sk)?;
-                fs::write(dir.join(format!("{}.pub", filename)), pk)?;
+                key_storage::save_key(&pqc_path, &sk, passphrase.as_deref())?;
+
+                let pub_filename = format!(
+                    "id_mldsa{}.pub",
+                    match variant {
+                        PQCVariant::MLDSA44 => "44",
+                        PQCVariant::MLDSA65 => "65",
+                        PQCVariant::MLDSA87 => "87",
+                    }
+                );
+                fs::write(dir.join(pub_filename), pk)?;
             }
         }
 
-        let kem_path = dir.join("id_kem768");
+        // ML-KEM
+        let kem_path = Self::kem_path();
         if !kem_path.exists() {
             let v = saorsa_pqc::api::MlKemVariant::MlKem768;
             let ops = saorsa_pqc::api::MlKem::new(v);
             let (pk, sk) = ops
                 .generate_keypair()
                 .map_err(|_| anyhow!("KEM keygen failed"))?;
-            fs::write(&kem_path, sk.to_bytes())?;
+            key_storage::save_key(&kem_path, &sk.to_bytes(), passphrase.as_deref())?;
             fs::write(dir.join("id_kem768.pub"), pk.to_bytes())?;
         }
 
         Ok(())
     }
+
+    // ── Public key reads (unchanged — public keys are never encrypted) ──
 
     pub fn get_public_key_for(entity_type: &str, name: &str, filename: &str) -> Result<Vec<u8>> {
         let path = Self::get_key_dir(entity_type, name).join(filename);
@@ -88,30 +145,8 @@ impl IdentityManager {
         Ok(fs::read(path)?)
     }
 
-    pub fn has_keys() -> bool {
-        let dir = Self::get_key_dir("self", "me");
-        dir.join("id_ed25519").exists() && dir.join("id_mldsa65").exists()
-    }
-
-    pub fn get_classical_private_key_pem() -> Result<String> {
-        let path = Self::get_key_dir("self", "me").join("id_ed25519");
-        let bytes = fs::read(path)?;
-        let key = SigningKey::from_bytes(bytes.as_slice().try_into()?);
-        use pkcs8::EncodePrivateKey;
-        Ok(key.to_pkcs8_pem(pkcs8::LineEnding::LF)?.to_string())
-    }
-
     pub fn get_classical_public_key() -> Result<Vec<u8>> {
         Self::get_public_key_for("self", "me", "id_ed25519.pub")
-    }
-
-    pub fn get_pqc_private_key(variant: PQCVariant) -> Result<Vec<u8>> {
-        let filename = match variant {
-            PQCVariant::MLDSA44 => "id_mldsa44",
-            PQCVariant::MLDSA65 => "id_mldsa65",
-            PQCVariant::MLDSA87 => "id_mldsa87",
-        };
-        Ok(fs::read(Self::get_key_dir("self", "me").join(filename))?)
     }
 
     pub fn get_pqc_public_key(variant: PQCVariant) -> Result<Vec<u8>> {
@@ -120,11 +155,7 @@ impl IdentityManager {
             PQCVariant::MLDSA65 => "id_mldsa65.pub",
             PQCVariant::MLDSA87 => "id_mldsa87.pub",
         };
-        Ok(fs::read(Self::get_key_dir("self", "me").join(filename))?)
-    }
-
-    pub fn get_kem_private_key() -> Result<Vec<u8>> {
-        Ok(fs::read(Self::get_key_dir("self", "me").join("id_kem768"))?)
+        Self::get_public_key_for("self", "me", filename)
     }
 
     pub fn get_kem_public_key() -> Result<Vec<u8>> {
@@ -133,9 +164,33 @@ impl IdentityManager {
         )?)
     }
 
+    // ── Private key reads — routed through key_storage::load_key ──
+
+    /// Load the Ed25519 private key (raw or encrypted), returned as PKCS#8 PEM.
+    pub fn get_classical_private_key_pem() -> Result<String> {
+        let path = Self::ed25519_path();
+        let bytes = key_storage::load_key(&path)?;
+        let key = SigningKey::from_bytes(bytes.as_slice().try_into()?);
+        use pkcs8::EncodePrivateKey;
+        Ok(key.to_pkcs8_pem(pkcs8::LineEnding::LF)?.to_string())
+    }
+
+    /// Load an ML-DSA private key (raw or encrypted).
+    pub fn get_pqc_private_key(variant: PQCVariant) -> Result<Vec<u8>> {
+        let path = Self::pqc_path(variant);
+        key_storage::load_key(&path)
+    }
+
+    /// Load the ML-KEM-768 private key (raw or encrypted).
+    pub fn get_kem_private_key() -> Result<Vec<u8>> {
+        let path = Self::kem_path();
+        key_storage::load_key(&path)
+    }
+
+    // ── Token generation ──
+
     pub fn generate_token(tool_name: Option<&str>) -> Result<String> {
         Self::ensure_keys()?;
-        let dir = Self::get_key_dir("self", "me");
 
         let sub = format!(
             "{}@{}",
@@ -158,9 +213,9 @@ impl IdentityManager {
         let mut payload = Vec::new();
         ciborium::into_writer(&claims, &mut payload)?;
 
-        // Read private keys
-        let ed_sk = fs::read(dir.join("id_ed25519"))?;
-        let pqc_sk = fs::read(dir.join("id_mldsa65"))?;
+        // Read private keys via key_storage (handles encryption transparently)
+        let ed_sk = key_storage::load_key(&Self::ed25519_path())?;
+        let pqc_sk = key_storage::load_key(&Self::pqc_path(PQCVariant::MLDSA65))?;
 
         // Create Hybrid COSE Token
         let cose_token =
