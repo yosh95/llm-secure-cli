@@ -58,7 +58,7 @@ impl ActiveSession {
         std::io::stdout().flush().ok();
 
         let tool_schemas = if self.client.get_state().tools_enabled {
-            self.ctx.tool_registry.lock().await.get_tool_schemas()
+            self.ctx.tool_registry.read().await.get_tool_schemas()
         } else {
             Vec::new()
         };
@@ -428,8 +428,10 @@ impl ActiveSession {
         };
         let user_id = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
 
+        let args_map: HashMap<String, Value> =
+            args.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         let result = tokio::select! {
-            res = self.execute_tool(name, args.clone().into_iter().collect()) => res,
+            res = self.execute_tool(name, &args_map) => res,
             _ = tokio::signal::ctrl_c() => {
                 println!("\n^C - Interrupted.");
                 // We return an error string to the LLM

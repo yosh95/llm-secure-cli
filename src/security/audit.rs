@@ -337,15 +337,19 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
     Some(log_entry)
 }
 
+/// Sentinel hash used when no previous log entry exists (genesis of the hash chain).
+/// This is intentionally NOT all-zeros to distinguish "genesis" from "corrupted/missing".
+const GENESIS_HASH: &str = "GENESIS_AUDIT_CHAIN_000000000000000000000000000000000000000000000000";
+
 fn get_last_log_hash(path: &Path) -> String {
     if !path.exists() {
-        return "0".repeat(64);
+        return GENESIS_HASH.to_string();
     }
 
     if let Ok(mut file) = fs::File::open(path) {
         let size = file.metadata().map(|m| m.len()).unwrap_or(0);
         if size == 0 {
-            return "0".repeat(64);
+            return GENESIS_HASH.to_string();
         }
 
         // Scan backwards from end of file to find the last valid JSON entry
@@ -397,7 +401,13 @@ fn get_last_log_hash(path: &Path) -> String {
         }
     }
 
-    "0".repeat(64)
+    // If we couldn't find the last hash (corrupt log, empty, etc.),
+    // return the sentinel genesis hash to indicate the chain is broken.
+    tracing::warn!(
+        path = %path.display(),
+        "Could not find last hash in audit log; chain may be broken — starting new genesis"
+    );
+    GENESIS_HASH.to_string()
 }
 
 fn trim_log_file(path: &std::path::Path, max_lines: usize) {
@@ -439,7 +449,7 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
                 .and_then(|h| h.as_str())
                 .map(|s| s.to_string())
         })
-        .unwrap_or_else(|| "0".repeat(64));
+        .unwrap_or_else(|| GENESIS_HASH.to_string());
 
     let hostname = hostname::get()
         .ok()

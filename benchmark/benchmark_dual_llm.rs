@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
                 Arc::new(move |model, stdout, raw, config_manager| {
                     let api_url = config_manager
                         .get_config()
-                        .unwrap()
+                        .expect("config should be available in benchmark")
                         .providers
                         .get(&closure_p_name)
                         .and_then(|p| p.api_url.clone())
@@ -101,7 +101,12 @@ async fn main() -> anyhow::Result<()> {
 
     let providers = vec![(target_provider.as_str(), target_model.as_str())];
 
-    let security_config = ctx.config_manager.get_config().unwrap().security.clone();
+    let security_config = ctx
+        .config_manager
+        .get_config()
+        .expect("config should be available in benchmark")
+        .security
+        .clone();
 
     for (p_alias, p_model) in providers {
         let api_key = ctx.config_manager.get_api_key(p_alias);

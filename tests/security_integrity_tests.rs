@@ -8,17 +8,20 @@ use tempfile::tempdir;
 
 #[test]
 fn test_path_validator_traversal_and_links() {
-    let tmp = tempdir().unwrap();
-    let base_path = tmp.path().canonicalize().unwrap();
+    let tmp = tempdir().expect("Failed to create temp dir");
+    let base_path = tmp
+        .path()
+        .canonicalize()
+        .expect("Failed to canonicalize path");
 
     // Create physical environment
     let safe_dir = base_path.join("safe");
-    fs::create_dir(&safe_dir).unwrap();
+    fs::create_dir(&safe_dir).expect("Failed to create safe dir");
     let safe_file = safe_dir.join("data.txt");
-    fs::write(&safe_file, "secret").unwrap();
+    fs::write(&safe_file, "secret").expect("Failed to write safe file");
 
     let sensitive_file = base_path.join("sensitive.key");
-    fs::write(&sensitive_file, "private_key").unwrap();
+    fs::write(&sensitive_file, "private_key").expect("Failed to write sensitive file");
 
     // Mock config
     let config = SecurityConfig {

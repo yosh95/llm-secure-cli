@@ -6,7 +6,7 @@ impl ActiveSession {
     pub(crate) async fn execute_tool(
         &mut self,
         name: &str,
-        args: HashMap<String, serde_json::Value>,
+        args: &HashMap<String, serde_json::Value>,
     ) -> anyhow::Result<serde_json::Value> {
         // Remote MCP tools: execute asynchronously via MCP manager directly
         // to avoid tokio::task::block_in_place in the registry closure.
@@ -29,11 +29,11 @@ impl ActiveSession {
         // Local built-in tools: asynchronous execution
         let fut = {
             let config = self.ctx.config_manager.get_config()?;
-            let registry = self.ctx.tool_registry.lock().await;
+            let registry = self.ctx.tool_registry.read().await;
             registry
                 .tools
                 .get(name)
-                .map(|tool| (tool.func)(args, config))
+                .map(|tool| (tool.func)(args.clone(), config))
         };
 
         if let Some(fut) = fut {

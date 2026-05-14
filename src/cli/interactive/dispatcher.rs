@@ -451,7 +451,7 @@ pub async fn handle_tools(session: &mut ActiveSession, args: &str) {
                 "DISABLED"
             };
             println!("Tools Status: {}", status);
-            let registry = session.ctx.tool_registry.lock().await;
+            let registry = session.ctx.tool_registry.read().await;
             println!("Available Tools:");
             for name in registry.tools.keys() {
                 println!(" - {}", name);

@@ -108,9 +108,11 @@ fn test_response_signer() {
 
     // Manual verification since verify_response was missing
     let msg = format!("{}:{}", verification_id, response_text);
-    let sig_b64 = signed["pqc_signature"].as_str().unwrap();
-    let sig =
-        base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, sig_b64).unwrap();
+    let sig_b64 = signed["pqc_signature"]
+        .as_str()
+        .expect("pqc_signature should be a string");
+    let sig = base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, sig_b64)
+        .expect("Base64 decode should succeed");
 
     assert!(
         PqcProvider::verify(variant, &pk, msg.as_bytes(), &sig).is_ok(),
@@ -148,7 +150,7 @@ fn test_merkle_session_verification_logic() {
         cli_version: "0.1.0".to_string(),
     };
 
-    let entry_json = serde_json::to_string(&entry).unwrap();
+    let entry_json = serde_json::to_string(&entry).expect("entry serialization should succeed");
     let mut hasher = Sha256::new();
     hasher.update(entry_json.as_bytes());
     entry.hash = llm_secure_cli::utils::hex_encode(hasher.finalize());
@@ -157,13 +159,16 @@ fn test_merkle_session_verification_logic() {
     let tree = MerkleTree::new(leaf_hashes.clone());
     let root = tree.root_hex.clone();
 
-    let mut entry_to_verify: AuditEntry =
-        serde_json::from_value(serde_json::to_value(&entry).unwrap()).unwrap();
+    let mut entry_to_verify: AuditEntry = serde_json::from_value(
+        serde_json::to_value(&entry).expect("entry to_value should succeed"),
+    )
+    .expect("entry from_value should succeed");
     entry_to_verify.hash = String::new();
     entry_to_verify.pqc_signature = None;
     entry_to_verify.pqc_algorithm = None;
 
-    let verify_json = serde_json::to_string(&entry_to_verify).unwrap();
+    let verify_json = serde_json::to_string(&entry_to_verify)
+        .expect("entry_to_verify serialization should succeed");
     let mut verify_hasher = Sha256::new();
     verify_hasher.update(verify_json.as_bytes());
     let recalculated_hash = llm_secure_cli::utils::hex_encode(verify_hasher.finalize());
@@ -223,11 +228,12 @@ fn test_hybrid_cose_signer() {
     let classical_priv = classical_signing_key.to_bytes().to_vec();
     let classical_pub = classical_signing_key.verifying_key().to_bytes().to_vec();
 
-    let (pqc_pub, pqc_priv) = PqcProvider::generate_keypair(variant).unwrap();
+    let (pqc_pub, pqc_priv) =
+        PqcProvider::generate_keypair(variant).expect("PQC keypair generation should succeed");
 
     let payload_val = serde_json::json!({"msg": "Hybrid security token", "exp": 1776824283});
     let mut payload = Vec::new();
-    ciborium::into_writer(&payload_val, &mut payload).unwrap();
+    ciborium::into_writer(&payload_val, &mut payload).expect("CBOR encoding should succeed");
 
     let token = HybridSigner::create_hybrid_token(&payload, &classical_priv, &pqc_priv, variant)
         .expect("Failed to create token");
@@ -237,5 +243,8 @@ fn test_hybrid_cose_signer() {
         HybridSigner::verify_hybrid_token(&token, &classical_pub, |_| pqc_pub.clone());
 
     assert!(verified_payload.is_some());
-    assert_eq!(verified_payload.unwrap()["msg"], "Hybrid security token");
+    assert_eq!(
+        verified_payload.expect("verified_payload should be Some")["msg"],
+        "Hybrid security token"
+    );
 }

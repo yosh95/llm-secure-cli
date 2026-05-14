@@ -12,7 +12,7 @@ use tempfile::tempdir;
 
 #[test]
 fn test_file_ops_list_and_search() {
-    let dir = tempdir().unwrap();
+    let dir = tempdir().expect("Failed to create temp dir");
     let root = dir.path();
 
     // Setup allowed paths for test
@@ -28,23 +28,25 @@ fn test_file_ops_list_and_search() {
     //   subdir/
     //     file2.rs
     //     .hidden_file
-    fs::write(root.join("file1.txt"), "hello world").unwrap();
-    fs::create_dir(root.join("subdir")).unwrap();
+    fs::write(root.join("file1.txt"), "hello world").expect("Failed to write file1.txt");
+    fs::create_dir(root.join("subdir")).expect("Failed to create subdir");
     fs::write(
         root.join("subdir").join("file2.rs"),
         "fn main() { println!(\"test\"); }",
     )
-    .unwrap();
-    fs::write(root.join("subdir").join(".hidden_file"), "secret").unwrap();
+    .expect("Failed to write file2.rs");
+    fs::write(root.join("subdir").join(".hidden_file"), "secret")
+        .expect("Failed to write .hidden_file");
 
-    let root_str = root.to_str().unwrap();
+    let root_str = root.to_str().expect("root path should be valid UTF-8");
 
     // 1. Test list_files_in_directory (depth 1)
     let mut args = HashMap::new();
     args.insert("directory".to_string(), json!(root_str));
     args.insert("depth".to_string(), json!(1));
-    let res = list_files_in_directory(args, config.clone()).unwrap();
-    let files = res["files"].as_array().unwrap();
+    let res = list_files_in_directory(args, config.clone())
+        .expect("list_files_in_directory should succeed");
+    let files = res["files"].as_array().expect("files should be an array");
     assert!(files.iter().any(|f| f["path"] == "file1.txt"));
     assert!(files.iter().any(|f| f["path"] == "subdir"));
     assert!(!files.iter().any(|f| f["path"] == "subdir/file2.rs")); // depth 1
@@ -53,8 +55,9 @@ fn test_file_ops_list_and_search() {
     let mut args = HashMap::new();
     args.insert("directory".to_string(), json!(root_str));
     args.insert("depth".to_string(), json!(2));
-    let res = list_files_in_directory(args, config.clone()).unwrap();
-    let files = res["files"].as_array().unwrap();
+    let res = list_files_in_directory(args, config.clone())
+        .expect("list_files_in_directory (recursive) should succeed");
+    let files = res["files"].as_array().expect("files should be an array");
     assert!(files.iter().any(|f| f["path"] == "subdir/file2.rs"));
     assert!(!files.iter().any(|f| f["path"] == "subdir/.hidden_file")); // hidden excluded by default
 
@@ -63,45 +66,53 @@ fn test_file_ops_list_and_search() {
     args.insert("directory".to_string(), json!(root_str));
     args.insert("depth".to_string(), json!(2));
     args.insert("include_hidden".to_string(), json!(true));
-    let res = list_files_in_directory(args, config.clone()).unwrap();
-    let files = res["files"].as_array().unwrap();
+    let res = list_files_in_directory(args, config.clone())
+        .expect("list_files_in_directory (include_hidden) should succeed");
+    let files = res["files"].as_array().expect("files should be an array");
     assert!(files.iter().any(|f| f["path"] == "subdir/.hidden_file"));
 
     // 4. Test search_files
     let mut args = HashMap::new();
     args.insert("directory".to_string(), json!(root_str));
     args.insert("pattern".to_string(), json!("*.rs"));
-    let res = search_files(args.clone(), config.clone()).unwrap();
-    let results = res["results"].as_array().unwrap();
+    let res = search_files(args.clone(), config.clone()).expect("search_files should succeed");
+    let results = res["results"]
+        .as_array()
+        .expect("results should be an array");
     assert!(results.iter().any(|r| r["path"] == "subdir/file2.rs"));
 
     // 5. Test search_files with *middle* pattern
     let mut args = HashMap::new();
     args.insert("directory".to_string(), json!(root_str));
     args.insert("pattern".to_string(), json!("*file*"));
-    let res = search_files(args, config.clone()).unwrap();
-    let results = res["results"].as_array().unwrap();
+    let res = search_files(args, config.clone()).expect("search_files should succeed");
+    let results = res["results"]
+        .as_array()
+        .expect("results should be an array");
     assert!(results.iter().any(|r| r["path"] == "file1.txt"));
     assert!(results.iter().any(|r| r["path"] == "subdir/file2.rs"));
 }
 
 #[test]
 fn test_file_ops_grep() {
-    let dir = tempdir().unwrap();
+    let dir = tempdir().expect("Failed to create temp dir");
     let root = dir.path();
-    let root_str = root.to_str().unwrap();
+    let root_str = root.to_str().expect("root path should be valid UTF-8");
 
     let mut config_raw = AppConfig::default();
     config_raw.security.allowed_paths = vec![".".to_string(), root_str.to_string()];
     let config = Arc::new(config_raw);
 
-    fs::write(root.join("test.txt"), "line one\ntarget line\nline three").unwrap();
+    fs::write(root.join("test.txt"), "line one\ntarget line\nline three")
+        .expect("Failed to write test file");
 
     let mut args = HashMap::new();
     args.insert("directory".to_string(), json!(root_str));
     args.insert("query".to_string(), json!("target"));
-    let res = grep_files(args, config).unwrap();
-    let matches = res["matches"].as_array().unwrap();
+    let res = grep_files(args, config).expect("grep_files should succeed");
+    let matches = res["matches"]
+        .as_array()
+        .expect("matches should be an array");
     assert_eq!(matches.len(), 1);
     assert_eq!(matches[0]["file"], "test.txt");
     assert_eq!(matches[0]["line"], 2);
@@ -110,9 +121,9 @@ fn test_file_ops_grep() {
 
 #[test]
 fn test_read_file_content_options() {
-    let dir = tempdir().unwrap();
+    let dir = tempdir().expect("Failed to create temp dir");
     let file_path = dir.path().join("test.txt");
-    let path_str = file_path.to_str().unwrap();
+    let path_str = file_path.to_str().expect("file path should be valid UTF-8");
 
     let mut config_raw = AppConfig::default();
     // Canonicalize the allowed path to match validator behavior
@@ -121,7 +132,7 @@ fn test_read_file_content_options() {
         vec![".".to_string(), canon_path.to_string_lossy().to_string()];
     let config = Arc::new(config_raw);
 
-    fs::write(&file_path, "line1\nline2\nline3\nline4").unwrap();
+    fs::write(&file_path, "line1\nline2\nline3\nline4").expect("Failed to write test file");
 
     // Test with line numbers
     let mut args = HashMap::new();
@@ -130,7 +141,7 @@ fn test_read_file_content_options() {
     args.insert("end_line".to_string(), json!(3));
     args.insert("with_line_numbers".to_string(), json!(true));
 
-    let res = read_file_content(args, config).unwrap();
+    let res = read_file_content(args, config).expect("read_file_content should succeed");
     let content = res["content"]
         .as_str()
         .expect("Output should contain 'content' field");
@@ -156,9 +167,22 @@ async fn test_shell_execute_command() {
     }
 
     let config = Arc::new(AppConfig::default());
-    let res = execute_command(args, config).await.unwrap();
-    assert_eq!(res["stdout"].as_str().unwrap().trim(), "hello world");
-    assert_eq!(res["exit_code"].as_i64().unwrap(), 0);
+    let res = execute_command(args, config)
+        .await
+        .expect("execute_command should succeed");
+    assert_eq!(
+        res["stdout"]
+            .as_str()
+            .expect("stdout should be a string")
+            .trim(),
+        "hello world"
+    );
+    assert_eq!(
+        res["exit_code"]
+            .as_i64()
+            .expect("exit_code should be an i64"),
+        0
+    );
 }
 #[tokio::test(flavor = "multi_thread")]
 async fn test_shell_security_block() {
@@ -173,7 +197,7 @@ async fn test_shell_security_block() {
     let res = validate_tool_call("execute_command", &args, &config.security);
     assert!(res.is_err());
     assert!(
-        res.unwrap_err()
+        res.expect_err("should be Err")
             .contains("control characters or null bytes")
     );
 }
@@ -195,9 +219,9 @@ fn test_static_analyzer_blocks_shell_invocation() {
 
 #[test]
 fn test_file_modification_tools() {
-    let dir = tempdir().unwrap();
+    let dir = tempdir().expect("Failed to create temp dir");
     let file_path = dir.path().join("test.txt");
-    let path_str = file_path.to_str().unwrap();
+    let path_str = file_path.to_str().expect("file path should be valid UTF-8");
 
     let mut config_raw = AppConfig::default();
     let canon_path = std::fs::canonicalize(dir.path()).unwrap_or_else(|_| dir.path().to_path_buf());
@@ -212,9 +236,9 @@ fn test_file_modification_tools() {
 
     let res =
         create_or_overwrite_file(args, config.clone()).expect("create_or_overwrite_file failed");
-    assert!(res["success"].as_bool().unwrap());
+    assert!(res["success"].as_bool().expect("success should be a bool"));
     assert_eq!(
-        fs::read_to_string(&file_path).unwrap(),
+        fs::read_to_string(&file_path).expect("Failed to read file"),
         "line1\nline2\nline3"
     );
 
@@ -225,9 +249,9 @@ fn test_file_modification_tools() {
     args.insert("replace".to_string(), json!("line2 modified"));
 
     let res = edit_file(args, config.clone()).expect("edit_file failed");
-    assert!(res["success"].as_bool().unwrap());
+    assert!(res["success"].as_bool().expect("success should be a bool"));
     assert_eq!(
-        fs::read_to_string(&file_path).unwrap(),
+        fs::read_to_string(&file_path).expect("Failed to read file"),
         "line1\nline2 modified\nline3"
     );
 
@@ -238,10 +262,15 @@ fn test_file_modification_tools() {
     args.insert("replace".to_string(), json!("line3 modified"));
 
     let res = edit_file(args, config.clone()).expect("Fuzzy match should now succeed");
-    assert!(res["success"].as_bool().unwrap());
-    assert_eq!(res["match_type"].as_str().unwrap(), "flexible");
+    assert!(res["success"].as_bool().expect("success should be a bool"));
     assert_eq!(
-        fs::read_to_string(&file_path).unwrap(),
+        res["match_type"]
+            .as_str()
+            .expect("match_type should be a string"),
+        "flexible"
+    );
+    assert_eq!(
+        fs::read_to_string(&file_path).expect("Failed to read file"),
         "line1\nline2 modified\nline3 modified"
     );
 }
@@ -260,15 +289,15 @@ fn test_edit_file_not_found() {
 
 #[test]
 fn test_read_file_content_range_panic_fix() {
-    let dir = tempdir().unwrap();
+    let dir = tempdir().expect("Failed to create temp dir");
     let file_path = dir.path().join("test_read.txt");
-    let path_str = file_path.to_str().unwrap();
+    let path_str = file_path.to_str().expect("file path should be valid UTF-8");
 
     let mut config_raw = AppConfig::default();
     config_raw.security.allowed_paths = vec![".".to_string(), path_str.to_string()];
     let config = Arc::new(config_raw);
 
-    fs::write(&file_path, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10").unwrap();
+    fs::write(&file_path, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10").expect("Failed to write test file");
 
     let mut args = HashMap::new();
     args.insert("path".to_string(), json!(path_str));

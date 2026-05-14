@@ -226,7 +226,14 @@ async fn start_chat_session(
             process::exit(1);
         }
     };
-    let state = cm.get_state().unwrap_or_default();
+    let state = match cm.get_state() {
+        Ok(s) => s,
+        Err(e) => {
+            ctx.ui
+                .report_warning(&format!("Failed to load app state: {}. Using defaults.", e));
+            Default::default()
+        }
+    };
 
     let active_providers = cm.get_active_providers();
 

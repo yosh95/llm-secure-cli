@@ -46,8 +46,28 @@ impl ConfigManager {
 
         let s_path = state_file_path();
         let state = if s_path.exists() {
-            let content = fs::read_to_string(&s_path).unwrap_or_default();
-            toml::from_str(&content).unwrap_or_default()
+            let content = match fs::read_to_string(&s_path) {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::warn!(
+                        path = %s_path.display(),
+                        error = %e,
+                        "Failed to read state file; falling back to defaults"
+                    );
+                    String::new()
+                }
+            };
+            match toml::from_str(&content) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!(
+                        path = %s_path.display(),
+                        error = %e,
+                        "Failed to parse state file; falling back to defaults"
+                    );
+                    AppState::default()
+                }
+            }
         } else {
             AppState::default()
         };
@@ -117,8 +137,28 @@ impl ConfigManager {
             return self.update_models_cache().await;
         }
 
-        let content = fs::read_to_string(&c_path).unwrap_or_default();
-        serde_json::from_str(&content).unwrap_or_default()
+        let content = match fs::read_to_string(&c_path) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    path = %c_path.display(),
+                    error = %e,
+                    "Failed to read models cache; falling back to empty cache"
+                );
+                String::new()
+            }
+        };
+        match serde_json::from_str(&content) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    path = %c_path.display(),
+                    error = %e,
+                    "Failed to parse models cache; falling back to empty cache"
+                );
+                HashMap::new()
+            }
+        }
     }
 
     pub fn get_cached_models_sync(&self) -> HashMap<String, Vec<String>> {
@@ -127,8 +167,28 @@ impl ConfigManager {
             return HashMap::new();
         }
 
-        let content = fs::read_to_string(&c_path).unwrap_or_default();
-        serde_json::from_str(&content).unwrap_or_default()
+        let content = match fs::read_to_string(&c_path) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    path = %c_path.display(),
+                    error = %e,
+                    "Failed to read models cache (sync); falling back to empty cache"
+                );
+                String::new()
+            }
+        };
+        match serde_json::from_str(&content) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    path = %c_path.display(),
+                    error = %e,
+                    "Failed to parse models cache (sync); falling back to empty cache"
+                );
+                HashMap::new()
+            }
+        }
     }
 
     pub async fn update_models_cache(&self) -> HashMap<String, Vec<String>> {

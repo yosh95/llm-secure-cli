@@ -336,7 +336,15 @@ pub fn grep_files(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyho
                     }
 
                     if !local_matches.is_empty() {
-                        let mut res = results.lock().expect("mutex poisoned");
+                        let mut res = match results.lock() {
+                            Ok(guard) => guard,
+                            Err(_) => {
+                                tracing::error!(
+                                    "Mutex poisoned in grep_files walker; skipping entry"
+                                );
+                                return ignore::WalkState::Skip;
+                            }
+                        };
                         if res.len() >= MAX_SEARCH_RESULTS {
                             is_truncated.store(true, std::sync::atomic::Ordering::Relaxed);
                             return ignore::WalkState::Quit;
@@ -353,7 +361,16 @@ pub fn grep_files(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyho
         })
     });
 
-    let mut final_results = results.lock().expect("mutex poisoned").clone();
+    let mut final_results = match results.lock() {
+        Ok(guard) => guard.clone(),
+        Err(_) => {
+            tracing::error!("Mutex poisoned in grep_files final results; returning empty results");
+            return Ok(json!({
+                "matches": [],
+                "error": "Internal error: mutex poisoned while collecting search results"
+            }));
+        }
+    };
 
     let truncated = is_truncated.load(std::sync::atomic::Ordering::Relaxed)
         || final_results.len() >= MAX_SEARCH_RESULTS;

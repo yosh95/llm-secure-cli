@@ -99,7 +99,7 @@ pub async fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<Ap
 
     // 4. Register Tools
     {
-        let mut registry = ctx.tool_registry.lock().await;
+        let mut registry = ctx.tool_registry.write().await;
         crate::tools::registry::register_builtin_tools(&mut registry, &ctx.config_manager);
     }
 

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 pub type ToolFuture = Pin<Box<dyn Future<Output = anyhow::Result<Value>> + Send>>;
 pub type ToolFunc = Arc<dyn Fn(HashMap<String, Value>, Arc<AppConfig>) -> ToolFuture + Send + Sync>;
@@ -146,7 +146,7 @@ impl ToolRegistry {
 }
 
 pub async fn initialize_remote_tools(
-    registry: Arc<Mutex<ToolRegistry>>,
+    registry: Arc<RwLock<ToolRegistry>>,
     config_manager: &crate::config::ConfigManager,
     mcp_manager: &crate::tools::mcp::manager::McpManager,
 ) -> anyhow::Result<()> {
@@ -155,7 +155,7 @@ pub async fn initialize_remote_tools(
     let config = config_manager.get_config()?;
     let allowed_tools = config.security.allowed_tools.as_ref();
 
-    let mut registry = registry.lock().await;
+    let mut registry = registry.write().await;
     for tool in tools {
         if let Some(allowed) = allowed_tools {
             let name = tool["name"].as_str().unwrap_or("");

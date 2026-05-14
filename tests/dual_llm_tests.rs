@@ -137,7 +137,11 @@ async fn test_dual_llm_allow_scenario() {
         tool_name: "ls",
         tool_args: &json!({}),
         context: None,
-        config: &ctx.config_manager.get_config().unwrap().security,
+        config: &ctx
+            .config_manager
+            .get_config()
+            .expect("config should be available")
+            .security,
         provider: Some("mock_ok".to_string()),
         model: Some("mock-model".to_string()),
     };
@@ -162,7 +166,11 @@ async fn test_dual_llm_block_scenario() {
         tool_name: "rm",
         tool_args: &json!({"path": "/"}),
         context: None,
-        config: &ctx.config_manager.get_config().unwrap().security,
+        config: &ctx
+            .config_manager
+            .get_config()
+            .expect("config should be available")
+            .security,
         provider: Some("mock_danger".to_string()),
         model: Some("mock-model".to_string()),
     };
@@ -192,7 +200,11 @@ async fn test_dual_llm_malformed_response() {
         tool_name: "weather",
         tool_args: &json!({}),
         context: None,
-        config: &ctx.config_manager.get_config().unwrap().security,
+        config: &ctx
+            .config_manager
+            .get_config()
+            .expect("config should be available")
+            .security,
         provider: Some("mock_weird".to_string()),
         model: Some("mock-model".to_string()),
     };
@@ -221,7 +233,11 @@ async fn test_dual_llm_api_error_fallback() {
         tool_name: "ls",
         tool_args: &json!({}),
         context: None,
-        config: &ctx.config_manager.get_config().unwrap().security,
+        config: &ctx
+            .config_manager
+            .get_config()
+            .expect("config should be available")
+            .security,
         provider: Some("mock_error".to_string()),
         model: Some("mock-model".to_string()),
     };
@@ -252,7 +268,11 @@ async fn test_dual_llm_tricky_response() {
         tool_name: "shell",
         tool_args: &json!({"cmd": "whoami"}),
         context: None,
-        config: &ctx.config_manager.get_config().unwrap().security,
+        config: &ctx
+            .config_manager
+            .get_config()
+            .expect("config should be available")
+            .security,
         provider: Some("mock_tricky".to_string()),
         model: Some("mock-model".to_string()),
     };

@@ -9,10 +9,10 @@ static TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_path_validation() {
-    let _lock = TEST_LOCK.lock().unwrap();
-    let dir = tempdir().unwrap();
-    let original_dir = env::current_dir().unwrap();
-    env::set_current_dir(dir.path()).unwrap();
+    let _lock = TEST_LOCK.lock().expect("Failed to acquire test lock");
+    let dir = tempdir().expect("Failed to create temp dir");
+    let original_dir = env::current_dir().expect("Failed to get current dir");
+    env::set_current_dir(dir.path()).expect("Failed to set current dir");
 
     let config = SecurityConfig {
         allowed_paths: vec![".".to_string()],
@@ -40,10 +40,14 @@ fn test_path_validation() {
     // 4. Normalization
     let res = validate_path("  'sub/dir/'  ", &config);
     assert!(res.is_ok());
-    let path_str = res.unwrap().to_str().unwrap().replace("\\", "/");
+    let path_str = res
+        .expect("path should be valid")
+        .to_str()
+        .expect("path should be valid UTF-8")
+        .replace("\\", "/");
     assert!(path_str.contains("sub/dir"));
 
-    env::set_current_dir(original_dir).unwrap();
+    env::set_current_dir(original_dir).expect("Failed to restore current dir");
 }
 
 #[test]
@@ -74,18 +78,18 @@ fn test_audit_entry_serialization() {
         cli_version: "0.1.0".to_string(),
     };
 
-    let json = serde_json::to_string(&entry).unwrap();
-    assert!(json.contains("\"trace_id\":\"test-trace\""));
-    assert!(json.contains("\"hash\":\"hash1\""));
+    let json = serde_json::to_string(&entry).expect("Serialization should succeed");
+    assert!(json.contains(r#""trace_id":"test-trace""#));
+    assert!(json.contains(r#""hash":"hash1""#));
 }
 
 #[test]
 fn test_audit_hash_chaining() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = TEST_LOCK.lock().expect("Failed to acquire test lock");
     use llm_secure_cli::config::models::AppConfig;
     use llm_secure_cli::security::audit::log_audit_and_return;
 
-    let dir = tempdir().unwrap();
+    let dir = tempdir().expect("Failed to create temp dir");
     let path = dir.path().join("audit_test.jsonl");
     let config = AppConfig::default();
 
@@ -124,11 +128,21 @@ fn test_audit_hash_chaining() {
     let lines: Vec<&str> = content.lines().collect();
 
     if lines.len() >= 2 {
-        let entry1: serde_json::Value = serde_json::from_str(lines[lines.len() - 2]).unwrap();
-        let entry2: serde_json::Value = serde_json::from_str(lines[lines.len() - 1]).unwrap();
+        let entry1: serde_json::Value =
+            serde_json::from_str(lines[lines.len() - 2]).expect("Failed to parse entry1");
+        let entry2: serde_json::Value =
+            serde_json::from_str(lines[lines.len() - 1]).expect("Failed to parse entry2");
 
-        let hash1 = entry1.get("hash").unwrap().as_str().unwrap();
-        let prev_hash2 = entry2.get("prev_hash").unwrap().as_str().unwrap();
+        let hash1 = entry1
+            .get("hash")
+            .expect("entry1 should have hash")
+            .as_str()
+            .expect("hash should be a string");
+        let prev_hash2 = entry2
+            .get("prev_hash")
+            .expect("entry2 should have prev_hash")
+            .as_str()
+            .expect("prev_hash should be a string");
 
         assert_eq!(
             hash1, prev_hash2,
@@ -159,18 +173,26 @@ fn test_mcp_security_validation() {
 
     // 1. MCP-like tool name with path traversal
     let args = json!({
-        "server_root": "/etc/passwd" // root を含む引数名
+        "server_root": "/etc/passwd"
     });
-    let res = validate_tool_call("filesystem__read_file", args.as_object().unwrap(), &config);
+    let res = validate_tool_call(
+        "filesystem__read_file",
+        args.as_object().expect("args should be an object"),
+        &config,
+    );
     // Now returns Ok, delegated to Phase 3 (Dual LLM)
     assert!(res.is_ok());
 
     // 2. MCP-like command execution with malicious characters
     let args = json!({
         "cmd": "ls",
-        "args": ["normal_arg", "with\0null"] // NULLバイト
+        "args": ["normal_arg", "with\0null"]
     });
-    let res = validate_tool_call("shell__run_shell", args.as_object().unwrap(), &config);
+    let res = validate_tool_call(
+        "shell__run_shell",
+        args.as_object().expect("args should be an object"),
+        &config,
+    );
     // Now returns Ok, delegated to Phase 3 (Dual LLM)
     assert!(res.is_ok());
 }
