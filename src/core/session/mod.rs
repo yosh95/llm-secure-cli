@@ -1,9 +1,8 @@
 use crate::llm::base::LlmClient;
-use crate::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
+use crate::llm::models::{DataSource, MessagePart, Role};
 use crate::security::audit::AuditEntry;
 use crate::security::merkle_anchor::SessionAnchorManager;
 use serde_json;
-use std::collections::HashMap;
 use uuid;
 
 use crate::core::context::AppContext;
@@ -106,50 +105,24 @@ impl ActiveSession {
 
     pub(crate) fn handle_interruption(&mut self) {
         let state = self.client.get_state_mut();
-        // ... (rest of interruption logic remains the same, but without Option checks)
-        let last_msg = state.conversation.last().cloned();
-        if let Some(msg) = last_msg
-            && (msg.role == Role::Assistant || msg.role == Role::Model)
-        {
-            let mut has_unanswered_tools = false;
-            for part in &msg.parts {
-                if let MessagePart::Part(cp) = part
-                    && cp.function_call.is_some()
-                {
-                    has_unanswered_tools = true;
-                    break;
-                }
-            }
+        // Remove the last assistant/model message if it contains unanswered tool calls.
+        // Since the tools were never executed, injecting fake error results would
+        // create an inconsistency between the conversation history and the audit log.
+        // Simply removing the unactioned message is the cleanest approach:
+        // the LLM will re-evaluate the conversation state on the next turn.
+        let should_remove = state
+            .conversation
+            .last()
+            .map(|msg| {
+                (msg.role == Role::Assistant || msg.role == Role::Model)
+                    && msg.parts.iter().any(
+                        |part| matches!(part, MessagePart::Part(cp) if cp.function_call.is_some()),
+                    )
+            })
+            .unwrap_or(false);
 
-            if has_unanswered_tools {
-                let mut tool_results = Vec::new();
-                for part in &msg.parts {
-                    if let MessagePart::Part(cp) = part
-                        && let Some(fc) = &cp.function_call
-                    {
-                        let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                        let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
-
-                        let mut fr = HashMap::new();
-                        fr.insert("id".to_string(), serde_json::json!(id));
-                        fr.insert("name".to_string(), serde_json::json!(name));
-                        fr.insert(
-                            "response".to_string(),
-                            serde_json::json!("Error: Interrupted by user."),
-                        );
-
-                        tool_results.push(MessagePart::Part(Box::new(ContentPart {
-                            function_response: Some(fr),
-                            is_diagnostic: false,
-                            ..Default::default()
-                        })));
-                    }
-                }
-                state.conversation.push(Message {
-                    role: Role::Tool,
-                    parts: tool_results,
-                });
-            }
+        if should_remove {
+            state.conversation.pop();
         }
     }
 }

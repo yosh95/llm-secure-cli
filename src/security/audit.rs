@@ -276,6 +276,12 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         crate::cli::ui::report_error(msg);
         log_entry.status = format!("INTEGRITY_FAILURE: {}", msg);
         return None;
+    } else {
+        tracing::warn!(
+            tool = params.tool_name,
+            "PQC private key unavailable; audit entry will be stored without signature"
+        );
+        log_entry.status = "SUCCESS_WITHOUT_SIGNATURE: PQC private key unavailable".to_string();
     }
 
     // Now truncate the output only for storage efficiency
@@ -338,8 +344,9 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
 }
 
 /// Sentinel hash used when no previous log entry exists (genesis of the hash chain).
-/// This is intentionally NOT all-zeros to distinguish "genesis" from "corrupted/missing".
-const GENESIS_HASH: &str = "GENESIS_AUDIT_CHAIN_000000000000000000000000000000000000000000000000";
+/// This is SHA-256 of the empty string — a well-known, deterministic constant
+/// indistinguishable from a real chain hash.
+const GENESIS_HASH: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 fn get_last_log_hash(path: &Path) -> String {
     if !path.exists() {

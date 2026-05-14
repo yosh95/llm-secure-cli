@@ -286,3 +286,120 @@ async fn test_dual_llm_tricky_response() {
         panic!("Expected Rejected for tricky response, got {:?}", outcome);
     }
 }
+
+#[tokio::test]
+async fn test_dual_llm_modify_scenario() {
+    let ctx = create_test_context();
+    // Verifier returns MODIFY with corrected JSON arguments
+    register_mock(
+        &ctx,
+        "mock_modify",
+        Ok(
+            "DECISION: MODIFY\nREASON: Fixed malformed path argument\nFIXED_ARGS: {\"path\": \"/correct/path\"}"
+                .to_string(),
+        ),
+    )
+    .await;
+
+    let params = VerificationParams {
+        ctx_app: ctx.clone(),
+        user_query: "read the config file",
+        tool_name: "read_file",
+        tool_args: &json!({"path": "/wrong//path"}),
+        context: None,
+        config: &ctx
+            .config_manager
+            .get_config()
+            .expect("config should be available")
+            .security,
+        provider: Some("mock_modify".to_string()),
+        model: Some("mock-model".to_string()),
+    };
+
+    let outcome = verify_tool_call_full(params).await;
+    match outcome {
+        VerificationOutcome::Modified(fixed_args, reason) => {
+            assert!(reason.contains("Fixed malformed"));
+            assert_eq!(fixed_args["path"].as_str().unwrap(), "/correct/path");
+        }
+        other => panic!("Expected Modified, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_dual_llm_modify_with_markdown_code_block() {
+    let ctx = create_test_context();
+    // Verifier returns MODIFY with JSON wrapped in a markdown code block
+    register_mock(
+        &ctx,
+        "mock_modify_md",
+        Ok(
+            "DECISION: MODIFY\nREASON: Normalised arguments\nFIXED_ARGS:\n```json\n{\"path\": \"/clean/path\"}\n```"
+                .to_string(),
+        ),
+    )
+    .await;
+
+    let params = VerificationParams {
+        ctx_app: ctx.clone(),
+        user_query: "normalise the path",
+        tool_name: "read_file",
+        tool_args: &json!({"path": "//dirty/path"}),
+        context: None,
+        config: &ctx
+            .config_manager
+            .get_config()
+            .expect("config should be available")
+            .security,
+        provider: Some("mock_modify_md".to_string()),
+        model: Some("mock-model".to_string()),
+    };
+
+    let outcome = verify_tool_call_full(params).await;
+    match outcome {
+        VerificationOutcome::Modified(fixed_args, reason) => {
+            assert!(reason.contains("Normalised arguments"));
+            assert_eq!(fixed_args["path"].as_str().unwrap(), "/clean/path");
+        }
+        other => panic!("Expected Modified with markdown cleanup, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_dual_llm_modify_invalid_json_falls_back_to_rejected() {
+    let ctx = create_test_context();
+    // Verifier tries MODIFY but provides invalid JSON — should be rejected
+    register_mock(
+        &ctx,
+        "mock_modify_badjson",
+        Ok("DECISION: MODIFY\nREASON: Fix args\nFIXED_ARGS: not valid json {{{".to_string()),
+    )
+    .await;
+
+    let params = VerificationParams {
+        ctx_app: ctx.clone(),
+        user_query: "fix this",
+        tool_name: "some_tool",
+        tool_args: &json!({"bad": "args"}),
+        context: None,
+        config: &ctx
+            .config_manager
+            .get_config()
+            .expect("config should be available")
+            .security,
+        provider: Some("mock_modify_badjson".to_string()),
+        model: Some("mock-model".to_string()),
+    };
+
+    let outcome = verify_tool_call_full(params).await;
+    match outcome {
+        VerificationOutcome::Rejected(reason) => {
+            assert!(
+                reason.contains("invalid JSON"),
+                "Should reject on invalid JSON in MODIFY, got: {}",
+                reason
+            );
+        }
+        other => panic!("Expected Rejected for invalid MODIFY JSON, got {:?}", other),
+    }
+}

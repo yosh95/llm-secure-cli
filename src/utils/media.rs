@@ -83,10 +83,40 @@ pub fn html_to_text(html: &str) -> anyhow::Result<String> {
         .build();
 
     let result = convert(html, Some(options))?;
-    match result.content {
-        Some(content) => Ok(content),
-        None => Ok(String::new()),
+    let raw = match result.content {
+        Some(content) => content,
+        None => return Ok(String::new()),
+    };
+
+    // Collapse 3+ consecutive blank lines → 1 blank line,
+    // and strip leading/trailing blank lines.
+    Ok(collapse_blank_lines(&raw))
+}
+
+/// Collapse 3 or more consecutive blank lines into a single blank line,
+/// and trim leading/trailing empty lines.
+fn collapse_blank_lines(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut blank_count = 0u32;
+    let mut first_non_blank = false;
+
+    for line in text.lines() {
+        if line.trim().is_empty() {
+            blank_count += 1;
+        } else {
+            // Flush pending blanks: at most 1 blank line
+            if first_non_blank && blank_count > 0 {
+                out.push('\n');
+            }
+            if first_non_blank {
+                out.push('\n');
+            }
+            out.push_str(line);
+            first_non_blank = true;
+            blank_count = 0;
+        }
     }
+    out
 }
 
 pub fn process_file(path: &Path, pdf_as_base64: bool) -> anyhow::Result<DataSource> {
