@@ -101,7 +101,6 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
     - **Web Search**: `brave_search` using the Brave LLM Context API for grounded, pre-extracted content.
 - **High-Assurance via Dual LLM**: Every non-auto-approved tool call is verified by a secondary LLM as a Semantic Firewall to ensure intent alignment.
 - **MCP (Model Context Protocol)**: Connect to remote resources or services via custom servers.
-- **Progress Tracking**: Real-time task status updates via `update_topic` (Chapter/Intent visualization).
 - **Operational Stability**: A clean, flicker-free UI designed for long-term "Deep Work" sessions.
 - **Human-in-the-Loop**: Configurable `auto_approval_level` (none/low/medium) to balance speed and safety.
 
