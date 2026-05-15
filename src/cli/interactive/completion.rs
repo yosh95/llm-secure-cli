@@ -51,6 +51,8 @@ impl ChatCompleter {
                 "/edit_history",
                 "/eh",
                 "/alias",
+                "/verify",
+                "/verifier",
             ],
             current_provider,
             ctx,
@@ -163,7 +165,7 @@ impl Completer for ChatCompleter {
                         matches.dedup_by(|a, b| a.display == b.display);
                         return Ok((start, matches));
                     }
-                    "/tools" | "/system" => {
+                    "/tools" | "/system" | "/verify" | "/verifier" => {
                         let mut matches = Vec::new();
                         for opt in &["on", "off"] {
                             if opt.starts_with(arg_prefix) {

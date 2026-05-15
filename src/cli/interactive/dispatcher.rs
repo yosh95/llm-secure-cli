@@ -153,6 +153,10 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             handle_alias_cmd(session, args).await;
             CommandResult::Handled
         }
+        "verify" | "verifier" => {
+            handle_verify_cmd(session, args);
+            CommandResult::Handled
+        }
         _ => {
             ui::report_error(&format!("Unknown command: /{}", cmd));
             CommandResult::Handled
@@ -461,6 +465,59 @@ pub async fn handle_tools(session: &mut ActiveSession, args: &str) {
     }
 }
 
+pub fn handle_verify_cmd(session: &mut ActiveSession, args: &str) {
+    let config = match session.ctx.config_manager.get_config() {
+        Ok(c) => c,
+        Err(e) => {
+            ui::report_error(&format!("Failed to load config: {}", e));
+            return;
+        }
+    };
+
+    let current = config.security.dual_llm_verification.unwrap_or(false);
+
+    match args.to_lowercase().as_str() {
+        "on" => {
+            let mut new_config = (*config).clone();
+            new_config.security.dual_llm_verification = Some(true);
+            if let Err(e) = session.ctx.config_manager.set_config(new_config) {
+                ui::report_error(&format!("Failed to update config: {}", e));
+            } else {
+                ui::report_success("Dual LLM Verification enabled.");
+            }
+        }
+        "off" => {
+            let mut new_config = (*config).clone();
+            new_config.security.dual_llm_verification = Some(false);
+            if let Err(e) = session.ctx.config_manager.set_config(new_config) {
+                ui::report_error(&format!("Failed to update config: {}", e));
+            } else {
+                ui::report_success("Dual LLM Verification disabled.");
+            }
+        }
+        "" => {
+            let status = if current {
+                "ENABLED".green()
+            } else {
+                "DISABLED".yellow()
+            };
+            println!("Dual LLM Verification Status: {}", status);
+
+            let (v_provider, v_model) = session.ctx.config_manager.get_dual_llm_settings();
+            if current {
+                if v_provider.is_empty() || v_model.is_empty() {
+                    ui::report_warning(
+                        "Verifier provider/model is not set. Use /vp and /vm to configure.",
+                    );
+                } else {
+                    println!("  Verifier: {}/{}", v_provider, v_model);
+                }
+            }
+        }
+        _ => ui::report_error("Usage: /verify [on|off]"),
+    }
+}
+
 pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
     let (provider, current_model, stdout, raw) = {
         let state = session.get_client().get_state();
@@ -695,6 +752,7 @@ fn print_help() {
     println!("  /p, /provider <n>  Switch LLM provider");
     println!("  /vm, /vmodel <n>   Set model for dual-LLM verification");
     println!("  /vp, /vprovider <n> Set provider for dual-LLM verification");
+    println!("  /verify [on|off]   Toggle or show status of dual-LLM verification");
     println!("  /s, /summarize     Summarize history and clear it");
     println!("  /raw               Show raw conversation history");
     println!("  /dump              Dump conversation history as TOML");
