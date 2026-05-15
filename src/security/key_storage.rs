@@ -6,7 +6,7 @@ use anyhow::{Result, anyhow};
 use argon2::Argon2;
 use rand::RngCore;
 use std::fs;
-use std::io::{IsTerminal, Write, stderr, stdin};
+use std::io::{IsTerminal, stdin};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -117,28 +117,16 @@ pub fn read_optional_passphrase() -> Result<Option<String>> {
 // ─────────────────────────────────────────────
 
 fn read_optional_passphrase_interactive() -> Result<Option<String>> {
-    let tty = open_tty()?;
-    let mut reader = std::io::BufReader::new(tty);
-    let mut stderr = stderr();
-
-    write!(
-        stderr,
-        "Enter passphrase for PQC keys (empty for no passphrase): "
-    )?;
-    stderr.flush()?;
-
-    let pw = read_line_no_echo(&mut reader)?;
+    // rpassword prints prompt to stderr and reads with echo disabled.
+    // For an optional passphrase, empty input means "no passphrase".
+    let pw =
+        rpassword::prompt_password("Enter passphrase for PQC keys (empty for no passphrase): ")?;
 
     if pw.is_empty() {
-        writeln!(stderr)?;
         return Ok(None);
     }
 
-    write!(stderr, "\nConfirm passphrase: ")?;
-    stderr.flush()?;
-
-    let confirm = read_line_no_echo(&mut reader)?;
-    writeln!(stderr)?;
+    let confirm = rpassword::prompt_password("Confirm passphrase: ")?;
 
     if pw != confirm {
         return Err(anyhow!("Passphrases do not match"));
@@ -147,15 +135,7 @@ fn read_optional_passphrase_interactive() -> Result<Option<String>> {
 }
 
 fn read_passphrase_interactive() -> Result<String> {
-    let tty = open_tty()?;
-    let mut reader = std::io::BufReader::new(tty);
-    let mut stderr = stderr();
-
-    write!(stderr, "PQC key passphrase: ")?;
-    stderr.flush()?;
-
-    let pw = read_line_no_echo(&mut reader)?;
-    writeln!(stderr)?;
+    let pw = rpassword::prompt_password("PQC key passphrase: ")?;
 
     if pw.is_empty() {
         return Err(anyhow!("Passphrase cannot be empty for encrypted keys"));
@@ -294,81 +274,6 @@ fn load_encrypted_inner(data: &[u8], passphrase: &str) -> Result<Vec<u8>> {
 // ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
-
-/// Open the controlling terminal for passphrase input.
-///
-/// On Unix, tries `/dev/tty` first (works even when stdin is piped).
-/// Falls back to duplicating stdin's fd.
-/// On non-Unix, returns stdin handle directly.
-#[cfg(unix)]
-fn open_tty() -> Result<std::fs::File> {
-    // Try /dev/tty first (works even when stdin is piped)
-    if let Ok(f) = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open("/dev/tty")
-    {
-        return Ok(f);
-    }
-    // Fallback: duplicate stdin fd
-    use std::os::unix::io::FromRawFd;
-    let fd = unsafe { libc::dup(libc::STDIN_FILENO) };
-    if fd < 0 {
-        return Err(anyhow!("Cannot open terminal for passphrase input"));
-    }
-    Ok(unsafe { std::fs::File::from_raw_fd(fd) })
-}
-
-#[cfg(not(unix))]
-fn open_tty() -> Result<std::fs::File> {
-    // Windows: use stdin. No echo-off support without platform crate.
-    Err(anyhow!(
-        "Passphrase input not supported in non-interactive mode on this platform"
-    ))
-}
-
-/// Read a line without echoing. Unix: uses termios. Non-Unix: falls back to plain read.
-#[cfg(unix)]
-fn read_line_no_echo(reader: &mut std::io::BufReader<std::fs::File>) -> Result<String> {
-    use std::os::unix::io::AsRawFd;
-    let fd = reader.get_ref().as_raw_fd();
-    // Save current termios
-    let saved = {
-        let mut termios = std::mem::MaybeUninit::uninit();
-        if unsafe { libc::tcgetattr(fd, termios.as_mut_ptr()) } != 0 {
-            return Err(anyhow!("tcgetattr failed"));
-        }
-        unsafe { termios.assume_init() }
-    };
-    // Disable echo
-    let mut raw = saved;
-    raw.c_lflag &= !(libc::ECHO | libc::ECHONL);
-    if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &raw) } != 0 {
-        return Err(anyhow!("tcsetattr failed"));
-    }
-
-    let mut pw = String::new();
-    use std::io::BufRead;
-    let result = reader.read_line(&mut pw);
-
-    // Restore terminal
-    unsafe {
-        libc::tcsetattr(fd, libc::TCSANOW, &saved);
-    }
-
-    result?;
-    Ok(pw.trim().to_string())
-}
-
-#[cfg(not(unix))]
-fn read_line_no_echo(reader: &mut std::io::BufReader<std::fs::File>) -> Result<String> {
-    // On non-Unix (Windows), echo cannot easily be disabled without
-    // platform-specific crates. Fall back to reading with echo.
-    let mut pw = String::new();
-    use std::io::BufRead;
-    reader.read_line(&mut pw)?;
-    Ok(pw.trim().to_string())
-}
 
 fn set_permissions(path: &PathBuf) -> Result<()> {
     #[cfg(unix)]

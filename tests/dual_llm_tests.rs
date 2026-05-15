@@ -84,10 +84,8 @@ impl LlmClient for MockLlmClient {
 /// This prevents tests from reading/writing to ~/.llm_secure_cli.
 fn create_test_context() -> Arc<AppContext> {
     let tmp_dir = tempdir().expect("Failed to create temp dir");
-    // Set HOME to tmp_dir for this process (Note: process-wide, but helps in isolation)
-    unsafe {
-        std::env::set_var("HOME", tmp_dir.path());
-    }
+    // Use init_base_dir to redirect config to temp directory (process-wide but safe)
+    llm_secure_cli::consts::init_base_dir(Some(tmp_dir.path().to_path_buf()));
 
     // Create AppContext. It will initialize its own ConfigManager.
     Arc::new(AppContext::new(Arc::new(MockUi)))

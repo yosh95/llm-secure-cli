@@ -13,7 +13,7 @@ pub fn init_base_dir(custom_path: Option<PathBuf>) {
         && BASE_DIR_INNER.get() != Some(&existing)
     {
         // This should only happen if init is called twice with different paths
-        eprintln!("Warning: Attempted to re-initialize base_dir to a different path.");
+        tracing::warn!("Attempted to re-initialize base_dir to a different path.");
     }
 }
 
