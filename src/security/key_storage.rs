@@ -119,19 +119,24 @@ pub fn read_optional_passphrase() -> Result<Option<String>> {
 fn read_optional_passphrase_interactive() -> Result<Option<String>> {
     // rpassword prints prompt to stderr and reads with echo disabled.
     // For an optional passphrase, empty input means "no passphrase".
-    let pw =
-        rpassword::prompt_password("Enter passphrase for PQC keys (empty for no passphrase): ")?;
+    // Loop until passphrases match, or user provides an empty passphrase.
+    loop {
+        let pw = rpassword::prompt_password(
+            "Enter passphrase for PQC keys (empty for no passphrase): ",
+        )?;
 
-    if pw.is_empty() {
-        return Ok(None);
+        if pw.is_empty() {
+            return Ok(None);
+        }
+
+        let confirm = rpassword::prompt_password("Confirm passphrase: ")?;
+
+        if pw == confirm {
+            return Ok(Some(pw));
+        }
+
+        eprintln!("Passphrases do not match. Please try again.");
     }
-
-    let confirm = rpassword::prompt_password("Confirm passphrase: ")?;
-
-    if pw != confirm {
-        return Err(anyhow!("Passphrases do not match"));
-    }
-    Ok(Some(pw))
 }
 
 fn read_passphrase_interactive() -> Result<String> {
