@@ -71,6 +71,14 @@ pub fn html_to_text(html: &str) -> anyhow::Result<String> {
             "[role='banner']".into(),
             "[role='navigation']".into(),
             "[role='contentinfo']".into(),
+            // Exclude inline SVG elements: LLMs cannot interpret SVG markup,
+            // and they waste tokens (can be tens of KB per icon/logo).
+            "svg".into(),
+            // Exclude <img> tags with data URIs (e.g. data:image/svg+xml;base64,...).
+            // These embed the image bytes directly and are useless for LLMs.
+            // Normal image paths (e.g. /img/photo.png) are kept so alt-text and
+            // file context remain available.
+            "img[src^='data:']".into(),
         ])
         .default_title(false)
         .extract_metadata(false)
