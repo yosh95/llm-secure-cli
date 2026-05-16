@@ -391,7 +391,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
             "properties": {
                 "command": {"type": "string", "description": "Executable name (e.g., 'rm', 'git', 'cargo'). This is the program to run."},
                 "args": {"type": "array", "items": { "type": "string" }, "description": "Arguments ONLY — do NOT include the command name. Example: for 'rm hoge', use command='rm', args=['hoge']."},
-                "cwd": {"type": "string", "description": "Current working directory for the command."}
+                "cwd": {"type": "string", "description": "Current working directory for the command. Must be an existing directory path (e.g., '/home/user/project', '.'). Do NOT put command names, shell commands, or URLs here."}
             },
             "required": ["command", "args"]
         }),

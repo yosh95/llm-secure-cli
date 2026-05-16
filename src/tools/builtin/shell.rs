@@ -45,14 +45,35 @@ pub async fn execute_command(
     // 1. Static Analysis (Minimalist/Semantic focus)
     // We strictly use Command::new which avoids shell-injection by design.
     // Semantic verification has already been handled by Phase 3 (Dual LLM).
-    let cwd = args.get("cwd").and_then(|v| v.as_str());
 
-    // 2. Execution with Timeout
+    // 2. Validate cwd (if provided)
+    let cwd = if let Some(cwd_raw) = args.get("cwd").and_then(|v| v.as_str()) {
+        // Reject obviously invalid values LLMs sometimes hallucinate
+        if cwd_raw.len() > 1024 || cwd_raw.contains('\n') || cwd_raw.contains('\0') {
+            return Err(anyhow::anyhow!(
+                "Invalid 'cwd': path contains newlines, null bytes, or is too long (>1024 chars). \
+                'cwd' must be a valid directory path, e.g. \".\" or \"/home/user/project\"."
+            ));
+        }
+        let validated = crate::security::path_validator::validate_path(cwd_raw, &config.security)
+            .map_err(|e| anyhow::anyhow!("Invalid 'cwd': {}", e))?;
+        if !validated.is_dir() {
+            return Err(anyhow::anyhow!(
+                "Invalid 'cwd': path is not an existing directory: {}",
+                validated.display()
+            ));
+        }
+        Some(validated)
+    } else {
+        None
+    };
+
+    // 3. Execution with Timeout
     let timeout_secs = config.general.command_timeout;
 
     let mut cmd = Command::new(program);
     cmd.args(&cmd_args);
-    if let Some(c) = cwd {
+    if let Some(ref c) = cwd {
         cmd.current_dir(c);
     }
 

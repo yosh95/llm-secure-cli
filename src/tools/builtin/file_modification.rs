@@ -455,6 +455,18 @@ fn finalize_edit(
     path_str: &str,
     meta: EditMetadata,
 ) -> anyhow::Result<Value> {
+    // Guard: detect when the edit would produce no actual change.
+    // This catches cases like search == replace, or whitespace-only diffs
+    // that collapse to identical content.
+    if original == new_content {
+        return Err(anyhow::anyhow!(
+            "Edit produced no changes: the search string was found, but the replacement \
+            is identical to the matched text. The file was not modified.\n\
+            File: {}",
+            path_str,
+        ));
+    }
+
     let mut message = if dry_run {
         format!(
             "Dry run complete ({} match, {} replacements). No changes written.",
