@@ -280,11 +280,11 @@ fn load_encrypted_inner(data: &[u8], passphrase: &str) -> Result<Vec<u8>> {
 // Helpers
 // ─────────────────────────────────────────────
 
-fn set_permissions(path: &PathBuf) -> Result<()> {
+fn set_permissions(_path: &std::path::Path) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+        fs::set_permissions(_path, fs::Permissions::from_mode(0o600))?;
     }
     Ok(())
 }
