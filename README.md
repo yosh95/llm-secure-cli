@@ -1,5 +1,9 @@
 # llm-secure-cli: Unified OpenAI-Compatible CLI for AI Agents
 
+[![CI](https://github.com/yosh95/llm-secure-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/yosh95/llm-secure-cli/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.95%2B-orange.svg)](https://www.rust-lang.org)
+
 `llm-secure-cli` (binary name: `llsc`) is a high-assurance command-line tool designed for interacting with Large Language Models (LLMs). It provides a unified, stable interface for any OpenAI-compatible API, including **OpenRouter, OpenAI, Ollama, and LiteLLM**, prioritizing cognitive focus, secure execution, and extensible automation.
 
 ---
@@ -227,6 +231,61 @@ cargo bench --bench benchmark_dual_llm -- ollama llama3
 
 # Or with a custom scenarios JSON file:
 cargo bench --bench benchmark_dual_llm -- <provider> <model> path/to/your_scenarios.json
+```
+
+##  Development
+
+### Prerequisites
+
+- **Rust** 1.95.0 or later (edition 2024)
+- **[just](https://github.com/casey/just)** — a modern command runner (optional, but recommended)
+
+### Quick Checks with `just`
+
+The project includes a `justfile` with common recipes:
+
+```bash
+# Show all available commands
+just
+
+# Format code
+just fmt
+
+# Run clippy with strict lints
+just clippy
+
+# Run all tests
+just test
+
+# Full CI pipeline (format → clippy → test → build-release)
+just ci
+
+# Install the binary locally
+just install
+
+# Run the application
+just run
+```
+
+### CI/CD
+
+CI runs on every push and pull request via [GitHub Actions](.github/workflows/ci.yml):
+
+| Job | Description |
+|-----|-------------|
+| **Format** | `cargo fmt --check` |
+| **Build & Test** | `cargo clippy`, `cargo build --release`, `cargo test` on Ubuntu, macOS, and Windows |
+| **Security Audit** | `cargo audit` for dependency vulnerabilities |
+| **Docs** | `cargo doc` with warnings as errors |
+
+### Running Benchmarks
+
+```bash
+# Local security primitive benchmarks
+just bench-local
+
+# Dual LLM verification benchmarks (requires API keys)
+just bench-dual openrouter amazon/nova-2-lite-v1
 ```
 
 ##  License

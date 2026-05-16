@@ -212,6 +212,7 @@ impl ActiveSession {
     }
 
     /// The Multi-Phase Security Workflow for a single tool call.
+    /// Delegates to four distinct phases for clarity and maintainability.
     async fn verify_and_execute_tool_workflow(
         &mut self,
         name: &str,
@@ -219,34 +220,63 @@ impl ActiveSession {
     ) -> anyhow::Result<(Value, bool)> {
         let config = self.ctx.config_manager.get_config()?;
 
-        // 1. Phase 1: Static Checks (Simplified Safety Net)
+        // Phase 1: Static analysis — fast-fail deterministic checks
+        self.phase1_static_check(name, args, &config)?;
+
+        // Phase 2: Risk assessment, Zero Trust, approval gate
+        let (risk_level, approved, verifier_handle) =
+            self.phase2_risk_and_approval(name, args, &config).await?;
+
+        // Phase 3: Dual LLM semantic verification
+        let effective_args = self
+            .phase3_dual_llm_verification(name, args, verifier_handle)
+            .await?;
+
+        // Phase 4: Execution and audit logging
+        let result = self
+            .phase4_execute_and_audit(name, &effective_args, risk_level, approved)
+            .await;
+        Ok((result, approved))
+    }
+
+    /// Phase 1: Static analysis — deterministic fast-fail for null bytes and control characters.
+    fn phase1_static_check(
+        &self,
+        name: &str,
+        args: &serde_json::Map<String, Value>,
+        config: &crate::config::models::AppConfig,
+    ) -> anyhow::Result<()> {
         if let Err(e) = crate::security::validate_tool_call(name, args, &config.security) {
             self.ctx.ui.report_error(&e);
-            return Ok((Value::String(e), false));
+            return Err(anyhow::anyhow!("Phase 1 blocked: {}", e));
         }
+        Ok(())
+    }
 
-        // 2. Human-in-the-loop preparation
+    /// Phase 2: CASS risk evaluation, Zero Trust check, auto-approval determination,
+    /// and human-in-the-loop approval. Returns the risk level, whether the tool is
+    /// auto-approved, and an optional verifier task handle.
+    async fn phase2_risk_and_approval(
+        &mut self,
+        name: &str,
+        args: &serde_json::Map<String, Value>,
+        config: &crate::config::models::AppConfig,
+    ) -> anyhow::Result<(
+        RiskLevel,
+        bool,
+        Option<tokio::task::JoinHandle<VerificationOutcome>>,
+    )> {
+        // 2a. CASS risk evaluation
         let risk_level = crate::security::cass::CASS_ORCHESTRATOR.evaluate_risk(
             name,
             Some(&serde_json::json!(args)),
             &config.security,
         );
 
-        // Zero Trust Check for MCP Servers
-        let mut force_manual = false;
-        if name.contains("__") {
-            let server_name = name.split("__").next().unwrap_or("");
-            if let Some(mcp_config) = config.mcp_servers.iter().find(|s| s.name == server_name)
-                && mcp_config.zero_trust
-            {
-                force_manual = true;
-                self.ctx.ui.report_info(&format!(
-                    "Zero Trust Policy enabled for server '{}'.",
-                    server_name
-                ));
-            }
-        }
+        // 2b. Zero Trust enforcement for MCP servers
+        let force_manual = self.check_zero_trust(name, &config.mcp_servers);
 
+        // 2c. Determine auto-approval status
         let approved = if force_manual {
             false
         } else {
@@ -255,6 +285,7 @@ impl ActiveSession {
 
         self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
 
+        // 2d. Generate identity token for Zero Trust MCP calls
         if force_manual {
             match crate::security::identity::IdentityManager::generate_token(Some(name)) {
                 Ok(_token) => self
@@ -268,89 +299,161 @@ impl ActiveSession {
             }
         }
 
-        // Start Dual LLM Verifier background task if enabled
-        let mut verifier_handle = None;
-        if !approved && config.security.dual_llm_verification.unwrap_or(false) {
-            let (v_provider, v_model) = self.ctx.config_manager.get_dual_llm_settings();
+        // 2e. Spawn Dual LLM verifier background task if applicable
+        let verifier_handle = if !approved {
+            self.maybe_spawn_verifier(name, args, &config.security)
+        } else {
+            None
+        };
 
-            if v_provider.is_empty() || v_model.is_empty() {
-                self.ctx.ui.report_warning(
-                    "Dual LLM verification is enabled, but provider/model is not set. Falling back to manual approval.",
-                );
+        // 2f. Request human approval if not auto-approved
+        if !approved {
+            self.request_human_approval(name, verifier_handle.as_ref())
+                .await?;
+        }
+
+        Ok((risk_level, approved, verifier_handle))
+    }
+
+    /// Check whether a Zero Trust MCP policy forces manual approval for this tool.
+    fn check_zero_trust(
+        &self,
+        name: &str,
+        mcp_servers: &[crate::config::models::McpServerConfig],
+    ) -> bool {
+        if !name.contains("__") {
+            return false;
+        }
+        let server_name = name.split("__").next().unwrap_or("");
+        if let Some(mcp_config) = mcp_servers.iter().find(|s| s.name == server_name)
+            && mcp_config.zero_trust
+        {
+            self.ctx.ui.report_info(&format!(
+                "Zero Trust Policy enabled for server '{}'.",
+                server_name
+            ));
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Spawn the Dual LLM verifier task if both verification is enabled and a
+    /// provider/model pair is configured. Returns None if verification should
+    /// be skipped (not enabled, not configured, or auto-approved).
+    fn maybe_spawn_verifier(
+        &self,
+        name: &str,
+        args: &serde_json::Map<String, Value>,
+        security: &crate::config::models::SecurityConfig,
+    ) -> Option<tokio::task::JoinHandle<VerificationOutcome>> {
+        if !security.dual_llm_verification.unwrap_or(false) {
+            return None;
+        }
+
+        let (v_provider, v_model) = self.ctx.config_manager.get_dual_llm_settings();
+
+        if v_provider.is_empty() || v_model.is_empty() {
+            self.ctx.ui.report_warning(
+                "Dual LLM verification is enabled, but provider/model is not set. \
+                 Falling back to manual approval.",
+            );
+            self.ctx
+                .ui
+                .report_info("Hint: Use /vp and /vm to set the verifier LLM.");
+            None
+        } else {
+            Some(self.spawn_verifier_task(name, args, v_provider, v_model))
+        }
+    }
+
+    /// Request human approval for a tool call. Returns Ok(()) if approved,
+    /// Err if rejected or interrupted.
+    async fn request_human_approval(
+        &mut self,
+        name: &str,
+        verifier_handle: Option<&tokio::task::JoinHandle<VerificationOutcome>>,
+    ) -> anyhow::Result<()> {
+        match self.ctx.ui.ask_confirm(&format!("Execute {}", name)).await {
+            Some(crate::cli::ui::ConfirmResult::Yes) => Ok(()),
+            Some(res) => {
+                if let Some(h) = verifier_handle {
+                    h.abort();
+                }
+                let feedback = match res {
+                    crate::cli::ui::ConfirmResult::Feedback(f) => Some(f),
+                    _ => None,
+                };
+                self.handle_rejection_feedback(feedback).map(|_| ())
+            }
+            None => {
+                if let Some(h) = verifier_handle {
+                    h.abort();
+                }
+                self.handle_interruption();
+                Err(anyhow::anyhow!("Interrupted"))
+            }
+        }
+    }
+
+    /// Phase 3: Resolve Dual LLM verification outcome. Returns effective
+    /// (possibly corrected) arguments for the tool call.
+    async fn phase3_dual_llm_verification(
+        &mut self,
+        name: &str,
+        args: &serde_json::Map<String, Value>,
+        verifier_handle: Option<tokio::task::JoinHandle<VerificationOutcome>>,
+    ) -> anyhow::Result<serde_json::Map<String, Value>> {
+        let handle = match verifier_handle {
+            Some(h) => h,
+            None => return Ok(args.clone()),
+        };
+
+        let outcome = self.resolve_verifier_outcome(handle).await?;
+        match outcome {
+            VerificationOutcome::Allowed(reason) => {
                 self.ctx
                     .ui
-                    .report_info("Hint: Use /vp and /vm to set the verifier LLM.");
-            } else {
-                verifier_handle = Some(self.spawn_verifier_task(name, args, v_provider, v_model));
+                    .report_success(&format!("Intent Verified: {}", reason));
+                Ok(args.clone())
             }
-        }
-
-        // Request Human Approval if not auto-approved
-        if !approved {
-            match self.ctx.ui.ask_confirm(&format!("Execute {}", name)).await {
-                Some(crate::cli::ui::ConfirmResult::Yes) => {
-                    // Continue to verifier or execution
-                }
-                Some(res) => {
-                    if let Some(h) = verifier_handle {
-                        h.abort();
-                    }
-                    let feedback = match res {
-                        crate::cli::ui::ConfirmResult::Feedback(f) => Some(f),
-                        _ => None,
-                    };
-                    return self.handle_rejection_feedback(feedback).map(|v| (v, false));
-                }
-                None => {
-                    if let Some(h) = verifier_handle {
-                        h.abort();
-                    }
-                    self.handle_interruption();
-                    return Err(anyhow::anyhow!("Interrupted"));
+            VerificationOutcome::Modified(fixed_args, reason) => {
+                self.ctx
+                    .ui
+                    .report_success(&format!("Intent Verified & Corrected: {}", reason));
+                if let Some(obj) = fixed_args.as_object() {
+                    Ok(obj.clone())
+                } else {
+                    Ok(args.clone())
                 }
             }
-        }
-
-        let mut effective_args = args.clone();
-
-        // 3. Resolve Dual LLM Verification
-        if let Some(handle) = verifier_handle {
-            let outcome = self.resolve_verifier_outcome(handle).await?;
-            match outcome {
-                VerificationOutcome::Allowed(reason) => {
-                    self.ctx
-                        .ui
-                        .report_success(&format!("Intent Verified: {}", reason));
+            VerificationOutcome::Rejected(reason) => {
+                let msg = format!("Security Policy Violation: {}", reason);
+                self.ctx.ui.report_error(&msg);
+                Err(anyhow::anyhow!("Phase 3 rejected: {}", msg))
+            }
+            VerificationOutcome::FallbackRequired(reason) => {
+                if !self.handle_verifier_fallback(name, &reason).await {
+                    return Err(anyhow::anyhow!(
+                        "Blocked (Verifier Unavailable): {}",
+                        reason
+                    ));
                 }
-                VerificationOutcome::Modified(fixed_args, reason) => {
-                    self.ctx
-                        .ui
-                        .report_success(&format!("Intent Verified & Corrected: {}", reason));
-                    if let Some(obj) = fixed_args.as_object() {
-                        effective_args = obj.clone();
-                    }
-                }
-                VerificationOutcome::Rejected(reason) => {
-                    let msg = format!("Security Policy Violation: {}", reason);
-                    self.ctx.ui.report_error(&msg);
-                    return Ok((Value::String(msg), false));
-                }
-                VerificationOutcome::FallbackRequired(reason) => {
-                    if !self.handle_verifier_fallback(name, &reason).await {
-                        return Ok((
-                            Value::String(format!("Blocked (Verifier Unavailable): {}", reason)),
-                            false,
-                        ));
-                    }
-                }
+                Ok(args.clone())
             }
         }
+    }
 
-        // 4. Execution & Audit
-        let result = self
-            .execute_and_audit_tool(name, &effective_args, risk_level, approved)
-            .await;
-        Ok((result, approved))
+    /// Phase 4: Tool execution with audit logging and result display.
+    async fn phase4_execute_and_audit(
+        &mut self,
+        name: &str,
+        args: &serde_json::Map<String, Value>,
+        risk_level: RiskLevel,
+        approved: bool,
+    ) -> Value {
+        self.execute_and_audit_tool(name, args, risk_level, approved)
+            .await
     }
 
     /// Spawns the Dual LLM Verification task.
