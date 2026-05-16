@@ -380,16 +380,17 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
     maybe_register(
         r,
         "execute_command",
-        "Executes a system command directly without a shell. \
-         IMPORTANT: Shell features (pipes, redirections, chaining, globbing) are NOT supported. \
-         The 'args' array must NOT include the command name. \
-         Prefer built-in tools (grep_files, search_files, read_file_content) when possible. \
-         Example: command='git', args=['log', '--oneline'].",
+        "Executes a system command directly (no shell). \
+         The 'command' is the program name; 'args' are its arguments ONLY — do NOT repeat the command name in args. \
+         WRONG: command='rm', args=['rm', 'hoge']. CORRECT: command='rm', args=['hoge']. \
+         WRONG: command='git', args=['git', 'status']. CORRECT: command='git', args=['status']. \
+         Shell features (pipes, redirections, chaining, globbing) are NOT supported. \
+         Prefer built-in tools (grep_files, search_files, read_file_content) when possible.",
         json!({
             "type": "object",
             "properties": {
-                "command": {"type": "string", "description": "Executable name (e.g., 'git', 'cargo')."},
-                "args": {"type": "array", "items": { "type": "string" }, "description": "Arguments to pass (one per element). Do NOT include the command name."},
+                "command": {"type": "string", "description": "Executable name (e.g., 'rm', 'git', 'cargo'). This is the program to run."},
+                "args": {"type": "array", "items": { "type": "string" }, "description": "Arguments ONLY — do NOT include the command name. Example: for 'rm hoge', use command='rm', args=['hoge']."},
                 "cwd": {"type": "string", "description": "Current working directory for the command."}
             },
             "required": ["command", "args"]
