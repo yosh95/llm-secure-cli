@@ -129,15 +129,49 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             println!("    {} {}: {}", "•".bright_black(), "path".cyan(), path);
             println!("    {} {}:", "•".bright_black(), "diff".cyan());
 
-            let diff = difflib::unified_diff(
-                &old.lines().collect::<Vec<_>>(),
-                &new.lines().collect::<Vec<_>>(),
-                "old",
-                "new",
-                "",
-                "",
-                3,
-            );
+            // Compute a file-based diff so the confirmation preview matches the
+            // post-execution diff.  We read the file, try an exact-match edit,
+            // and diff the original against the would-be result.  If the file
+            // can't be read or the match fails we fall back to a plain old-vs-new
+            // diff (the LLM's intent is still visible).
+            let diff = match std::fs::read_to_string(path) {
+                Ok(original) => {
+                    if let Some(new_content) = try_exact_edit_for_preview(&original, old, new) {
+                        difflib::unified_diff(
+                            &original.lines().collect::<Vec<_>>(),
+                            &new_content.lines().collect::<Vec<_>>(),
+                            "original",
+                            "modified",
+                            "",
+                            "",
+                            3,
+                        )
+                    } else {
+                        // Fall back: old-vs-new diff (exact match not found in file)
+                        difflib::unified_diff(
+                            &old.lines().collect::<Vec<_>>(),
+                            &new.lines().collect::<Vec<_>>(),
+                            "old",
+                            "new",
+                            "",
+                            "",
+                            3,
+                        )
+                    }
+                }
+                Err(_) => {
+                    // File can't be read (e.g. doesn't exist yet) — fall back
+                    difflib::unified_diff(
+                        &old.lines().collect::<Vec<_>>(),
+                        &new.lines().collect::<Vec<_>>(),
+                        "old",
+                        "new",
+                        "",
+                        "",
+                        3,
+                    )
+                }
+            };
 
             if diff.is_empty() && !old.is_empty() && old == new {
                 println!("        {}", "(no changes)".dimmed());
@@ -147,10 +181,11 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                         println!("        {}", line.cyan());
                     } else if line.starts_with('-') && !line.starts_with("---") {
                         println!("        {}", line.red());
-                    } else if !line.starts_with("@@")
-                        && !line.starts_with("---")
-                        && !line.starts_with("+++")
-                    {
+                    } else if line.starts_with("@@") {
+                        println!("        {}", line.cyan().dimmed());
+                    } else if line.starts_with("---") || line.starts_with("+++") {
+                        println!("        {}", line.bold().dimmed());
+                    } else {
                         println!("        {}", line.dimmed());
                     }
                 }
@@ -627,4 +662,16 @@ pub fn open_external_editor(initial_content: &str) -> anyhow::Result<String> {
     file.read_to_string(&mut content)?;
 
     Ok(content)
+}
+
+/// Exact-match edit helper used by `print_tool_call` to preview the result of
+/// an `edit_file` operation on the actual file content before the real
+/// execution.  Returns the file content after applying the replacement, or
+/// `None` when the `old` string does not appear exactly once in the file.
+fn try_exact_edit_for_preview(original: &str, old: &str, new: &str) -> Option<String> {
+    let count = original.matches(old).count();
+    if count != 1 {
+        return None;
+    }
+    Some(original.replacen(old, new, 1))
 }
