@@ -247,10 +247,7 @@ fn test_validate_normal_strings_pass() {
 fn test_validate_newline_tab_cr_pass() {
     let config = SecurityConfig::default();
     // \n, \r, \t are explicitly allowed
-    let args = make_args(&[(
-        "code",
-        json!("print('line1\nline2\rline3\tindented')"),
-    )]);
+    let args = make_args(&[("code", json!("print('line1\nline2\rline3\tindented')"))]);
     let result = validate_tool_call("execute_python", &args, &config);
     assert!(result.is_ok());
 }

@@ -9,6 +9,10 @@ use crate::core::context::AppContext;
 use std::sync::Arc;
 
 pub mod input_handler;
+pub mod phase1_static;
+pub mod phase2_approval;
+pub mod phase3_verifier;
+pub mod phase4_execution;
 pub mod processor;
 pub mod tool_executor;
 
