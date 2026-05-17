@@ -196,3 +196,102 @@ fn test_mcp_security_validation() {
     // Now returns Ok, delegated to Phase 3 (Dual LLM)
     assert!(res.is_ok());
 }
+
+// =============================================================================
+// Unit tests for validate_tool_call (Phase 1 static analysis)
+// =============================================================================
+
+use llm_secure_cli::security::validate_tool_call;
+use serde_json::{Map, Value, json};
+
+fn make_args(pairs: &[(&str, Value)]) -> Map<String, Value> {
+    pairs
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.clone()))
+        .collect()
+}
+
+#[test]
+fn test_validate_null_byte_in_top_level_string_blocked() {
+    let config = SecurityConfig::default();
+    let args = make_args(&[("path", json!("file\0name.txt"))]);
+    let result = validate_tool_call("read_file", &args, &config);
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .contains("control characters or null bytes")
+    );
+}
+
+#[test]
+fn test_validate_control_char_bell_blocked() {
+    let config = SecurityConfig::default();
+    let args = make_args(&[("content", json!("hello\x07world"))]);
+    let result = validate_tool_call("create_or_overwrite_file", &args, &config);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_validate_normal_strings_pass() {
+    let config = SecurityConfig::default();
+    let args = make_args(&[
+        ("path", json!("file.txt")),
+        ("content", json!("Hello world\nNew line\tTabbed")),
+    ]);
+    let result = validate_tool_call("edit_file", &args, &config);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_validate_newline_tab_cr_pass() {
+    let config = SecurityConfig::default();
+    // \n, \r, \t are explicitly allowed
+    let args = make_args(&[(
+        "code",
+        json!("print('line1\nline2\rline3\tindented')"),
+    )]);
+    let result = validate_tool_call("execute_python", &args, &config);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_validate_non_string_values_pass() {
+    let config = SecurityConfig::default();
+    let args = make_args(&[
+        ("count", json!(42)),
+        ("flag", json!(true)),
+        ("nothing", json!(null)),
+    ]);
+    let result = validate_tool_call("some_tool", &args, &config);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_validate_empty_args_pass() {
+    let config = SecurityConfig::default();
+    let args = Map::new();
+    let result = validate_tool_call("list_files", &args, &config);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_validate_multiple_args_first_malicious_blocks() {
+    let config = SecurityConfig::default();
+    let args = make_args(&[
+        ("safe", json!("normal")),
+        ("bad", json!("null\0here")),
+        ("also_safe", json!("fine")),
+    ]);
+    let result = validate_tool_call("test_tool", &args, &config);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("bad"));
+}
+
+#[test]
+fn test_validate_unicode_text_passes() {
+    let config = SecurityConfig::default();
+    let args = make_args(&[("query", json!("日本語テスト 🦀"))]);
+    let result = validate_tool_call("brave_search", &args, &config);
+    assert!(result.is_ok());
+}

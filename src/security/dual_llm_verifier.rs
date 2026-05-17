@@ -13,7 +13,7 @@ pub struct DualLLMVerifier {
     verifier_llm: Box<dyn LlmClient>,
 }
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum VerificationResult {
     Allowed,
     Modified(Value, String),
@@ -136,6 +136,77 @@ pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> Verificati
     }
 }
 
+/// Parses the raw text response from the verifier LLM into a VerificationResult.
+///
+/// This is a **pure function**, separated from the async LLM call for testability.
+/// It handles:
+/// - ALLOW / BLOCK / MODIFY decisions
+/// - Markdown formatting variations (e.g., `**ALLOW**`, `*ALLOW*`)
+/// - Markdown code blocks wrapping FIXED_ARGS JSON (```json ... ```)
+/// - Invalid or missing JSON in MODIFY decisions → falls back to Rejected
+/// - Ambiguous or malformed responses → defaults to Rejected (safety-first)
+///
+/// The function is deliberately strict: if the verifier cannot produce a
+/// well-formed response, the tool call is rejected rather than allowed.
+pub fn parse_verifier_response(response: &str) -> VerificationResult {
+    // Advanced Regex Parsing for robustness against LLM formatting variations (Markdown, etc.)
+    let decision_re = regex::Regex::new(r"(?i)DECISION:\s*\*?\*?\s*(ALLOW|BLOCK|MODIFY)").ok();
+    let reason_re = regex::Regex::new(r"(?i)REASON:\s*(.*)").ok();
+    let fixed_args_re = regex::Regex::new(r"(?is)FIXED_ARGS:\s*(.*)").ok();
+
+    let decision = decision_re
+        .as_ref()
+        .and_then(|re| re.captures(response))
+        .and_then(|cap| cap.get(1))
+        .map(|m| m.as_str().to_uppercase())
+        .unwrap_or_default();
+
+    let reason = reason_re
+        .as_ref()
+        .and_then(|re| re.captures(response))
+        .and_then(|cap| cap.get(1))
+        .map(|m| m.as_str().trim())
+        .unwrap_or("No reason provided");
+
+    if decision == "ALLOW" {
+        VerificationResult::Allowed
+    } else if decision == "BLOCK" {
+        VerificationResult::Rejected(reason.to_string())
+    } else if decision == "MODIFY" {
+        let fixed_raw = fixed_args_re
+            .as_ref()
+            .and_then(|re| re.captures(response))
+            .and_then(|cap| cap.get(1))
+            .map(|m| m.as_str().trim())
+            .unwrap_or("N/A");
+
+        // Clean up potential markdown code blocks in the response
+        let fixed_raw_clean = if fixed_raw.starts_with("```") {
+            fixed_raw
+                .trim_start_matches('`')
+                .trim_start_matches("json")
+                .trim_end_matches('`')
+                .trim()
+        } else {
+            fixed_raw
+        };
+
+        match serde_json::from_str::<Value>(fixed_raw_clean) {
+            Ok(fixed_val) => VerificationResult::Modified(fixed_val, reason.to_string()),
+            Err(e) => VerificationResult::Rejected(format!(
+                "Verifier attempted modification but provided invalid JSON: {}. Error: {}",
+                reason, e
+            )),
+        }
+    } else {
+        // Could not find a clear ALLOW/BLOCK/MODIFY verdict — default to safety
+        VerificationResult::Rejected(format!(
+            "Invalid verifier response format. Raw: {}",
+            response.lines().next().unwrap_or("Empty")
+        ))
+    }
+}
+
 impl DualLLMVerifier {
     pub fn new(llm: Box<dyn LlmClient>) -> Self {
         Self { verifier_llm: llm }
@@ -194,63 +265,7 @@ impl DualLLMVerifier {
         match self.verifier_llm.send(data, vec![]).await {
             Ok(response_struct) => {
                 let response = response_struct.content.unwrap_or_default();
-
-                // Advanced Regex Parsing for robustness against LLM formatting variations (Markdown, etc.)
-                let decision_re =
-                    regex::Regex::new(r"(?i)DECISION:\s*\*?\*?\s*(ALLOW|BLOCK|MODIFY)").ok();
-                let reason_re = regex::Regex::new(r"(?i)REASON:\s*(.*)").ok();
-                let fixed_args_re = regex::Regex::new(r"(?is)FIXED_ARGS:\s*(.*)").ok();
-
-                let decision = decision_re
-                    .and_then(|re| re.captures(&response))
-                    .and_then(|cap| cap.get(1))
-                    .map(|m| m.as_str().to_uppercase())
-                    .unwrap_or_default();
-
-                let reason = reason_re
-                    .and_then(|re| re.captures(&response))
-                    .and_then(|cap| cap.get(1))
-                    .map(|m| m.as_str().trim())
-                    .unwrap_or("No reason provided");
-
-                if decision == "ALLOW" {
-                    VerificationResult::Allowed
-                } else if decision == "BLOCK" {
-                    VerificationResult::Rejected(reason.to_string())
-                } else if decision == "MODIFY" {
-                    let fixed_raw = fixed_args_re
-                        .and_then(|re| re.captures(&response))
-                        .and_then(|cap| cap.get(1))
-                        .map(|m| m.as_str().trim())
-                        .unwrap_or("N/A");
-
-                    // Clean up potential markdown code blocks in the response
-                    let fixed_raw_clean = if fixed_raw.starts_with("```") {
-                        fixed_raw
-                            .trim_start_matches('`')
-                            .trim_start_matches("json")
-                            .trim_end_matches('`')
-                            .trim()
-                    } else {
-                        fixed_raw
-                    };
-
-                    match serde_json::from_str::<Value>(fixed_raw_clean) {
-                        Ok(fixed_val) => {
-                            VerificationResult::Modified(fixed_val, reason.to_string())
-                        }
-                        Err(e) => VerificationResult::Rejected(format!(
-                            "Verifier attempted modification but provided invalid JSON: {}. Error: {}",
-                            reason, e
-                        )),
-                    }
-                } else {
-                    // Could not find a clear ALLOW/BLOCK/MODIFY verdict - default to safety
-                    VerificationResult::Rejected(format!(
-                        "Invalid verifier response format. Raw: {}",
-                        response.lines().next().unwrap_or("Empty")
-                    ))
-                }
+                parse_verifier_response(&response)
             }
             Err(e) => VerificationResult::Error(format!("Verifier LLM error: {}", e)),
         }

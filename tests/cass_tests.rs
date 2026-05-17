@@ -161,3 +161,182 @@ fn test_evaluate_risk_blocked_paths_escalation() {
         orchestrator.evaluate_risk("read_file", Some(&json!({"path": "/etc/passwd"})), &config);
     assert_eq!(risk, RiskLevel::High);
 }
+
+#[test]
+fn test_evaluate_risk_scaling_patterns_case_insensitive() {
+    let config = SecurityConfig {
+        security_level: "standard".to_string(),
+        scaling_patterns: vec!["/etc/shadow".to_string()],
+        dual_llm_verification: Some(true),
+        ..Default::default()
+    };
+
+    let orchestrator = CASSOrchestrator;
+
+    // Case-insensitive matching via to_lowercase()
+    let risk =
+        orchestrator.evaluate_risk("read_file", Some(&json!({"path": "/ETC/SHADOW"})), &config);
+    assert_eq!(risk, RiskLevel::High);
+}
+
+#[test]
+fn test_evaluate_risk_unknown_tool_defaults_to_low() {
+    let config = SecurityConfig {
+        security_level: "standard".to_string(),
+        dual_llm_verification: Some(true),
+        ..Default::default()
+    };
+
+    let orchestrator = CASSOrchestrator;
+
+    // An unknown tool not in any risk list defaults to Low
+    let risk = orchestrator.evaluate_risk("completely_unknown_tool", None, &config);
+    assert_eq!(risk, RiskLevel::Low);
+}
+
+#[test]
+fn test_evaluate_risk_high_args_existing_high_tool_stays_high() {
+    let config = SecurityConfig {
+        security_level: "standard".to_string(),
+        high_risk_tools: vec!["edit_file".to_string()],
+        blocked_paths: vec!["/etc/shadow".to_string()],
+        dual_llm_verification: Some(true),
+        ..Default::default()
+    };
+
+    let orchestrator = CASSOrchestrator;
+
+    // Already High tool with sensitive args stays High (doesn't overflow)
+    let risk =
+        orchestrator.evaluate_risk("edit_file", Some(&json!({"path": "/etc/shadow"})), &config);
+    assert_eq!(risk, RiskLevel::High);
+}
+
+#[test]
+fn test_evaluate_risk_high_args_on_already_medium_tool() {
+    let config = SecurityConfig {
+        security_level: "standard".to_string(),
+        medium_risk_tools: vec!["read_file".to_string()],
+        scaling_patterns: vec!["/root/".to_string()],
+        dual_llm_verification: Some(true),
+        ..Default::default()
+    };
+
+    let orchestrator = CASSOrchestrator;
+
+    // Medium tool with sensitive pattern → escalates to High
+    let risk = orchestrator.evaluate_risk(
+        "read_file",
+        Some(&json!({"path": "/root/.ssh/id_rsa"})),
+        &config,
+    );
+    assert_eq!(risk, RiskLevel::High);
+}
+
+#[test]
+fn test_evaluate_risk_dual_llm_enabled_prevents_critical() {
+    let config = SecurityConfig {
+        security_level: "standard".to_string(),
+        dual_llm_verification: Some(true),
+        ..Default::default()
+    };
+
+    let orchestrator = CASSOrchestrator;
+
+    // execute_python is always High, and with dual_llm enabled it stays High
+    let risk = orchestrator.evaluate_risk("execute_python", None, &config);
+    assert_eq!(risk, RiskLevel::High);
+}
+
+#[test]
+fn test_evaluate_risk_dual_llm_none_treated_as_disabled() {
+    let config = SecurityConfig {
+        security_level: "standard".to_string(),
+        high_risk_tools: vec!["edit_file".to_string()],
+        dual_llm_verification: None,
+        ..Default::default()
+    };
+
+    let orchestrator = CASSOrchestrator;
+
+    // dual_llm_verification: None → treated as disabled → Critical
+    let risk = orchestrator.evaluate_risk("edit_file", None, &config);
+    assert_eq!(risk, RiskLevel::Critical);
+}
+
+#[test]
+fn test_evaluate_risk_multiple_blocked_paths_match() {
+    let config = SecurityConfig {
+        security_level: "standard".to_string(),
+        blocked_paths: vec![
+            "/etc/passwd".to_string(),
+            "/etc/shadow".to_string(),
+            "/root/.ssh".to_string(),
+        ],
+        dual_llm_verification: Some(true),
+        ..Default::default()
+    };
+
+    let orchestrator = CASSOrchestrator;
+
+    // Any one of the blocked paths triggers escalation
+    let risk = orchestrator.evaluate_risk(
+        "read_file",
+        Some(&json!({"path": "/root/.ssh/authorized_keys"})),
+        &config,
+    );
+    assert_eq!(risk, RiskLevel::High);
+}
+
+#[test]
+fn test_evaluate_risk_complex_nested_args() {
+    let config = SecurityConfig {
+        security_level: "standard".to_string(),
+        scaling_patterns: vec!["DROP TABLE".to_string()],
+        dual_llm_verification: Some(true),
+        ..Default::default()
+    };
+
+    let orchestrator = CASSOrchestrator;
+
+    // The args are nested JSON; to_string() flattens it, and patterns are matched
+    let risk = orchestrator.evaluate_risk(
+        "execute_python",
+        Some(&json!({
+            "code": "import sqlite3; cursor.execute('DROP TABLE users')"
+        })),
+        &config,
+    );
+    // execute_python is already High (hardcoded); pattern check keeps it High
+    assert_eq!(risk, RiskLevel::High);
+}
+
+#[test]
+fn test_evaluate_risk_security_level_high_with_execute_python() {
+    let config = SecurityConfig {
+        security_level: "high".to_string(),
+        dual_llm_verification: Some(true),
+        ..Default::default()
+    };
+
+    let orchestrator = CASSOrchestrator;
+
+    // execute_python is always at least High; security_level=high doesn't escalate beyond
+    let risk = orchestrator.evaluate_risk("execute_python", None, &config);
+    assert!(risk >= RiskLevel::High);
+}
+
+#[test]
+fn test_get_security_requirements_risk_level_ord() {
+    // Verify RiskLevel ordering: Low < Medium < High < Critical
+    assert!(RiskLevel::Low < RiskLevel::Medium);
+    assert!(RiskLevel::Medium < RiskLevel::High);
+    assert!(RiskLevel::High < RiskLevel::Critical);
+}
+
+#[test]
+fn test_cass_orchestrator_is_send_sync() {
+    // CASS_ORCHESTRATOR is a static const; verify it compiles as Send + Sync
+    fn _assert_send_sync<T: Send + Sync>(_: &T) {}
+    _assert_send_sync(&llm_secure_cli::security::cass::CASS_ORCHESTRATOR);
+}

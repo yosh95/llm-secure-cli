@@ -401,3 +401,236 @@ async fn test_dual_llm_modify_invalid_json_falls_back_to_rejected() {
         other => panic!("Expected Rejected for invalid MODIFY JSON, got {:?}", other),
     }
 }
+
+// =============================================================================
+// Unit tests for parse_verifier_response (pure-function, no LLM dependency)
+// =============================================================================
+
+use llm_secure_cli::security::dual_llm_verifier::{VerificationResult, parse_verifier_response};
+
+#[test]
+fn test_parse_allow_plain() {
+    let result =
+        parse_verifier_response("DECISION: ALLOW\nREASON: The tool call aligns with user intent.");
+    assert_eq!(result, VerificationResult::Allowed);
+}
+
+#[test]
+fn test_parse_allow_with_markdown_bold() {
+    // Some LLMs wrap the decision in markdown bold markers
+    let result = parse_verifier_response("DECISION: **ALLOW**\nREASON: Looks safe.");
+    assert_eq!(result, VerificationResult::Allowed);
+}
+
+#[test]
+fn test_parse_allow_with_markdown_italic() {
+    let result = parse_verifier_response("DECISION: *ALLOW*\nREASON: Fine.");
+    assert_eq!(result, VerificationResult::Allowed);
+}
+
+#[test]
+fn test_parse_allow_case_insensitive() {
+    let result = parse_verifier_response("decision: allow\nreason: lowercased.");
+    assert_eq!(result, VerificationResult::Allowed);
+}
+
+#[test]
+fn test_parse_allow_extra_whitespace() {
+    let result = parse_verifier_response("DECISION:   ALLOW   \nREASON: Extra spaces.");
+    assert_eq!(result, VerificationResult::Allowed);
+}
+
+#[test]
+fn test_parse_block_plain() {
+    let result =
+        parse_verifier_response("DECISION: BLOCK\nREASON: Attempts to delete system files.");
+    match result {
+        VerificationResult::Rejected(reason) => {
+            assert!(reason.contains("delete system files"));
+        }
+        other => panic!("Expected Rejected, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_block_with_markdown() {
+    let result = parse_verifier_response("DECISION: **BLOCK**\nREASON: Unsafe operation.");
+    match result {
+        VerificationResult::Rejected(reason) => {
+            assert!(reason.contains("Unsafe operation"));
+        }
+        other => panic!("Expected Rejected, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_modify_plain() {
+    let result = parse_verifier_response(
+        "DECISION: MODIFY\nREASON: Normalized path argument.\nFIXED_ARGS: {\"path\": \"/home/user/correct.txt\"}",
+    );
+    match result {
+        VerificationResult::Modified(args, reason) => {
+            assert!(reason.contains("Normalized path"));
+            assert_eq!(args["path"].as_str().unwrap(), "/home/user/correct.txt");
+        }
+        other => panic!("Expected Modified, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_modify_with_markdown_code_block_json() {
+    let result = parse_verifier_response(
+        "DECISION: MODIFY\nREASON: Fixed escaping.\nFIXED_ARGS:\n```json\n{\"path\": \"/clean/path.txt\"}\n```",
+    );
+    match result {
+        VerificationResult::Modified(args, reason) => {
+            assert!(reason.contains("Fixed escaping"));
+            assert_eq!(args["path"].as_str().unwrap(), "/clean/path.txt");
+        }
+        other => panic!("Expected Modified with markdown cleanup, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_modify_with_markdown_code_block_no_lang() {
+    let result = parse_verifier_response(
+        "DECISION: MODIFY\nREASON: Corrected trailing comma.\nFIXED_ARGS:\n```\n{\"key\": \"value\"}\n```",
+    );
+    match result {
+        VerificationResult::Modified(args, reason) => {
+            assert!(reason.contains("Corrected trailing comma"));
+            assert_eq!(args["key"].as_str().unwrap(), "value");
+        }
+        other => panic!("Expected Modified with markdown (no lang), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_modify_with_complex_json() {
+    let result = parse_verifier_response(
+        "DECISION: MODIFY\nREASON: Fixed nested object.\nFIXED_ARGS: {\"files\": [{\"name\": \"a.txt\", \"size\": 100}, {\"name\": \"b.txt\", \"size\": 200}]}",
+    );
+    match result {
+        VerificationResult::Modified(args, reason) => {
+            assert!(reason.contains("nested"));
+            let files = args["files"].as_array().unwrap();
+            assert_eq!(files.len(), 2);
+            assert_eq!(files[0]["name"].as_str().unwrap(), "a.txt");
+        }
+        other => panic!("Expected Modified with complex JSON, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_modify_invalid_json_rejected() {
+    // The verifier says MODIFY but provides unparseable JSON — safety-first: Rejected
+    let result =
+        parse_verifier_response("DECISION: MODIFY\nREASON: Fix args.\nFIXED_ARGS: not valid {{{");
+    match result {
+        VerificationResult::Rejected(reason) => {
+            assert!(reason.contains("invalid JSON"));
+        }
+        other => panic!("Expected Rejected for invalid JSON, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_modify_missing_fixed_args_rejected() {
+    // Says MODIFY but doesn't provide FIXED_ARGS
+    let result =
+        parse_verifier_response("DECISION: MODIFY\nREASON: I want to modify but forgot args.");
+    match result {
+        VerificationResult::Rejected(reason) => {
+            assert!(reason.contains("invalid JSON"));
+        }
+        other => panic!("Expected Rejected for missing FIXED_ARGS, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_gibberish_defaults_to_rejected() {
+    let result = parse_verifier_response("I'm not sure what to do here, maybe allow?");
+    match result {
+        VerificationResult::Rejected(reason) => {
+            assert!(reason.contains("Invalid verifier response format"));
+        }
+        other => panic!("Expected Rejected for gibberish, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_empty_response_rejected() {
+    let result = parse_verifier_response("");
+    match result {
+        VerificationResult::Rejected(reason) => {
+            assert!(reason.contains("Invalid verifier response format"));
+        }
+        other => panic!("Expected Rejected for empty response, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_malicious_prompt_injection_attempt() {
+    // An adversary tries to inject "ALLOW" into the REASON to confuse the parser.
+    // The regex only matches DECISION: ALLOW — text in REASON is irrelevant.
+    let result =
+        parse_verifier_response("DECISION: BLOCK\nREASON: ALLOW is what I want but I'll say BLOCK");
+    match result {
+        VerificationResult::Rejected(reason) => {
+            assert!(reason.contains("ALLOW is what I want"));
+        }
+        other => panic!(
+            "Expected Rejected (not fooled by injection), got {:?}",
+            other
+        ),
+    }
+}
+
+#[test]
+fn test_parse_decision_prefixed_with_text_rejected() {
+    // "NOT ALLOWED" — the regex should NOT match ALLOW inside "NOT ALLOWED"
+    let result =
+        parse_verifier_response("DECISION: NOT ALLOWED\nREASON: Security violation detected.");
+    match result {
+        VerificationResult::Rejected(_) => {} // Either rejected by format or by BLOCK logic
+        other => panic!("Expected Rejected for 'NOT ALLOWED', got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_multiline_reason() {
+    // Reason spans multiple lines — the regex captures only the first line of reason
+    let result = parse_verifier_response(
+        "DECISION: ALLOW\nREASON: The request is benign.\nAdditional commentary here.",
+    );
+    assert_eq!(result, VerificationResult::Allowed);
+}
+
+#[test]
+fn test_parse_reason_with_special_chars() {
+    let result = parse_verifier_response(
+        "DECISION: ALLOW\nREASON: Tool 'read_file' on path /home/user/docs (safe).",
+    );
+    assert_eq!(result, VerificationResult::Allowed);
+}
+
+#[test]
+fn test_parse_decision_line_with_leading_spaces() {
+    // Some LLMs indent the response
+    let result = parse_verifier_response("  DECISION: ALLOW\n  REASON: Indented but valid.");
+    assert_eq!(result, VerificationResult::Allowed);
+}
+
+#[test]
+fn test_parse_modify_with_fixed_args_on_same_line() {
+    // Compact format where FIXED_ARGS is on the same logical line
+    let result = parse_verifier_response(
+        "DECISION: MODIFY\nREASON: Compacted.\nFIXED_ARGS: {\"compact\": true}",
+    );
+    match result {
+        VerificationResult::Modified(args, _) => {
+            assert!(args["compact"].as_bool().unwrap());
+        }
+        other => panic!("Expected Modified, got {:?}", other),
+    }
+}
