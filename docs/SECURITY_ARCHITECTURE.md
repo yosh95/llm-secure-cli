@@ -153,10 +153,10 @@ Risk-level classification in `defaults.toml`:
 
 ```toml
 [security]
-high_risk_tools   = ["execute_command", "edit_file", "create_or_overwrite_file", "read_url_content"]
+high_risk_tools   = ["execute_python", "edit_file", "create_or_overwrite_file", "read_url_content"]
 medium_risk_tools = ["read_file", "grep_files", "brave_search"]
 # Low-risk tools → list_files_in_directory, search_files
-# Critical risk → execute_command when Dual LLM is disabled
+# Critical risk → execute_python when Dual LLM is disabled
 ```
 
 Implementation: `src/security/cass.rs`.
@@ -383,11 +383,11 @@ auto_approval_level = "none"
 allowed_tools = [
     "list_files_in_directory", "read_file", "grep_files", "search_files",
     "edit_file", "create_or_overwrite_file", "read_url_content", "brave_search",
-    "execute_command"
+    "execute_python"
 ]
 
 # Risk classification
-high_risk_tools = ["execute_command", "edit_file",
+high_risk_tools = ["execute_python", "edit_file",
                    "create_or_overwrite_file", "read_url_content",
                    "brave_search"]
 medium_risk_tools = ["read_file", "grep_files"]
