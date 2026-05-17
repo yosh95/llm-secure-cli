@@ -359,7 +359,6 @@ The primary security configuration is in `src/config/defaults.toml`
 
 ```toml
 [general]
-unified_default_provider = "ollama"
 pdf_as_base64 = true
 request_timeout = 1800
 command_timeout = 300
@@ -396,7 +395,7 @@ medium_risk_tools = ["read_file", "grep_files"]
 # Dual LLM Verification
 dual_llm_verification = true
 dual_llm_provider = "ollama"
-dual_llm_model = "default"
+dual_llm_model = "gemma4:e2b"
 dual_llm_confidence_threshold = 0.7
 
 # Verifier Fallback Policy: "require_approval" (default) | "block"

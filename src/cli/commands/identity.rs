@@ -6,7 +6,7 @@ use crate::security::merkle_anchor::SessionAnchorManager;
 use std::fs;
 
 pub fn run_keygen() {
-    ui::report_success("Generating Secure Identity Keys (RSA + Post-Quantum)...");
+    ui::report_success("Generating Secure Identity Keys (Ed25519 + Post-Quantum)...");
 
     match IdentityManager::ensure_keys() {
         Ok(_) => {
@@ -14,7 +14,7 @@ pub fn run_keygen() {
                 "Keys successfully generated and stored in {}",
                 key_dir().display()
             );
-            println!("- RSA (3072-bit)");
+            println!("- Ed25519 (Classical Signature)");
             println!("- ML-DSA-44, 65, 87 (Post-Quantum Signatures)");
             println!("- ML-KEM-768 (Post-Quantum Key Encapsulation)");
         }

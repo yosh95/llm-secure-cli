@@ -80,7 +80,7 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum IdentityCommands {
-    /// Generate RSA and PQC key pairs
+    /// Generate Ed25519 and PQC key pairs
     Keygen,
     /// Generate/Update integrity manifest
     Manifest,
