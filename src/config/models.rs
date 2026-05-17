@@ -22,6 +22,10 @@ pub struct GeneralConfig {
     pub max_chat_archives: usize,
     #[serde(default = "default_image_save_path")]
     pub image_save_path: String,
+    #[serde(default = "default_max_output_lines")]
+    pub max_output_lines: usize,
+    #[serde(default = "default_max_output_chars")]
+    pub max_output_chars: usize,
 }
 
 fn default_true() -> bool {
@@ -51,6 +55,12 @@ fn default_max_chat_archives() -> usize {
 fn default_image_save_path() -> String {
     "~/Pictures/llsc".to_string()
 }
+fn default_max_output_lines() -> usize {
+    10000
+}
+fn default_max_output_chars() -> usize {
+    100000
+}
 
 impl Default for GeneralConfig {
     fn default() -> Self {
@@ -65,6 +75,8 @@ impl Default for GeneralConfig {
             max_chat_log_lines: default_max_chat_log(),
             max_chat_archives: default_max_chat_archives(),
             image_save_path: default_image_save_path(),
+            max_output_lines: default_max_output_lines(),
+            max_output_chars: default_max_output_chars(),
         }
     }
 }

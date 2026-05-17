@@ -381,19 +381,16 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
         r,
         "execute_command",
         "Executes a system command directly (no shell). \
-         The 'command' is the program name; 'args' are its arguments ONLY — do NOT repeat the command name in args. \
-         WRONG: command='rm', args=['rm', 'hoge']. CORRECT: command='rm', args=['hoge']. \
-         WRONG: command='git', args=['git', 'status']. CORRECT: command='git', args=['status']. \
+         'argv' is an array where argv[0] is the command name and subsequent elements are its arguments. \
+         Example: ['git', 'status'] or ['echo', 'hello', 'world']. \
          Shell features (pipes, redirections, chaining, globbing) are NOT supported. \
          Prefer built-in tools (grep_files, search_files, read_file_content) when possible.",
         json!({
             "type": "object",
             "properties": {
-                "command": {"type": "string", "description": "Executable name (e.g., 'rm', 'git', 'cargo'). This is the program to run."},
-                "args": {"type": "array", "items": { "type": "string" }, "description": "Arguments ONLY — do NOT include the command name. Example: for 'rm hoge', use command='rm', args=['hoge']."},
-                "cwd": {"type": "string", "description": "Current working directory for the command. Must be an existing directory path (e.g., '/home/user/project', '.'). Do NOT put command names, shell commands, or URLs here."}
+                "argv": {"type": "array", "items": { "type": "string" }, "description": "Array where argv[0] is the command name (e.g., 'git', 'rm', 'cargo') and the remaining elements are its arguments. Example: ['git', 'status'], ['echo', 'hello', 'world']."}
             },
-            "required": ["command", "args"]
+            "required": ["argv"]
         }),
         Arc::new(|args, config| {
             Box::pin(

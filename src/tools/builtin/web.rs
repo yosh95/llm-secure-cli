@@ -1,5 +1,5 @@
 use crate::config::models::AppConfig;
-use crate::consts::{MAX_OUTPUT_CHARS, MAX_OUTPUT_LINES};
+
 use crate::utils::http::CLIENT;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -8,7 +8,7 @@ use std::sync::Arc;
 /// Fetch a web page URL or PDF URL and convert the content to Markdown/text.
 pub async fn read_url_content(
     args: HashMap<String, Value>,
-    _config: Arc<AppConfig>,
+    config: Arc<AppConfig>,
 ) -> anyhow::Result<Value> {
     let url = args
         .get("url")
@@ -39,7 +39,7 @@ pub async fn read_url_content(
     let from = (start_line - 1).min(total_lines);
     let to = end_line
         .map(|e| e.min(total_lines))
-        .unwrap_or_else(|| (from + MAX_OUTPUT_LINES).min(total_lines));
+        .unwrap_or_else(|| (from + config.general.max_output_lines).min(total_lines));
 
     if from > to {
         return Ok(json!(format!(
@@ -53,8 +53,11 @@ pub async fn read_url_content(
     let mut result_text: String = slice.join("\n");
 
     let truncated_lines = to < total_lines;
-    let truncated_chars = if result_text.len() > MAX_OUTPUT_CHARS {
-        result_text = result_text.chars().take(MAX_OUTPUT_CHARS).collect();
+    let truncated_chars = if result_text.len() > config.general.max_output_chars {
+        result_text = result_text
+            .chars()
+            .take(config.general.max_output_chars)
+            .collect();
         true
     } else {
         false
@@ -70,7 +73,7 @@ pub async fn read_url_content(
     if truncated_chars {
         notes.push(format!(
             "Output truncated at {} characters. Use start_line/end_line to read more.",
-            MAX_OUTPUT_CHARS
+            config.general.max_output_chars
         ));
     }
 

@@ -60,12 +60,13 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
             &path,
             &original,
             &new_content,
-            dry_run,
-            path_str,
             EditMetadata {
                 match_type: "exact",
                 count,
                 escape_fixed: false,
+                dry_run,
+                max_output_lines: config.general.max_output_lines,
+                max_output_chars: config.general.max_output_chars,
             },
         );
     }
@@ -78,12 +79,13 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
             &path,
             &original,
             &new_content,
-            dry_run,
-            path_str,
             EditMetadata {
                 match_type: "flexible",
                 count,
                 escape_fixed: false,
+                dry_run,
+                max_output_lines: config.general.max_output_lines,
+                max_output_chars: config.general.max_output_chars,
             },
         );
     }
@@ -96,12 +98,13 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
             &path,
             &original,
             &new_content,
-            dry_run,
-            path_str,
             EditMetadata {
                 match_type: "regex",
                 count,
                 escape_fixed: false,
+                dry_run,
+                max_output_lines: config.general.max_output_lines,
+                max_output_chars: config.general.max_output_chars,
             },
         );
     }
@@ -125,12 +128,13 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
                 &path,
                 &original,
                 &new_content,
-                dry_run,
-                path_str,
                 EditMetadata {
                     match_type: "escape-fixed",
                     count,
                     escape_fixed: true,
+                    dry_run,
+                    max_output_lines: config.general.max_output_lines,
+                    max_output_chars: config.general.max_output_chars,
                 },
             );
         }
@@ -147,12 +151,13 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
                 &path,
                 &original,
                 &new_content,
-                dry_run,
-                path_str,
                 EditMetadata {
                     match_type: "escape-fixed",
                     count,
                     escape_fixed: true,
+                    dry_run,
+                    max_output_lines: config.general.max_output_lines,
+                    max_output_chars: config.general.max_output_chars,
                 },
             );
         }
@@ -445,16 +450,19 @@ struct EditMetadata<'a> {
     match_type: &'a str,
     count: usize,
     escape_fixed: bool,
+    dry_run: bool,
+    max_output_lines: usize,
+    max_output_chars: usize,
 }
 
 fn finalize_edit(
     path: &Path,
     original: &str,
     new_content: &str,
-    dry_run: bool,
-    path_str: &str,
     meta: EditMetadata,
 ) -> anyhow::Result<Value> {
+    let path_str = path.display().to_string();
+
     // Guard: detect when the edit would produce no actual change.
     // This catches cases like search == replace, or whitespace-only diffs
     // that collapse to identical content.
@@ -467,7 +475,7 @@ fn finalize_edit(
         ));
     }
 
-    let mut message = if dry_run {
+    let mut message = if meta.dry_run {
         format!(
             "Dry run complete ({} match, {} replacements). No changes written.",
             meta.match_type, meta.count
@@ -489,9 +497,13 @@ fn finalize_edit(
     }
 
     let diff = generate_diff(original, new_content);
-    let truncated_diff = crate::tools::executor_utils::truncate_output(&diff);
+    let truncated_diff = crate::tools::executor_utils::truncate_output(
+        &diff,
+        meta.max_output_lines,
+        meta.max_output_chars,
+    );
 
-    if dry_run {
+    if meta.dry_run {
         return Ok(json!({
             "dry_run": true,
             "diff": truncated_diff,
@@ -566,7 +578,11 @@ pub fn create_or_overwrite_file(
         // For new files, show a diff showing all lines added
         generate_diff("", &effective_content)
     };
-    let truncated_diff = crate::tools::executor_utils::truncate_output(&diff);
+    let truncated_diff = crate::tools::executor_utils::truncate_output(
+        &diff,
+        config.general.max_output_lines,
+        config.general.max_output_chars,
+    );
 
     let mut message = if existed {
         format!("File overwritten: {}", path_str)

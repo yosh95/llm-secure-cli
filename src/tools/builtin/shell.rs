@@ -8,74 +8,54 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 /// Executes a system command directly without a shell.
+/// 'argv' is an array where argv[0] is the command name and
+/// the remaining elements are its arguments.
 /// Architecturally, we rely on Phase 3 (Dual LLM) for intent verification.
 pub async fn execute_command(
     args: HashMap<String, Value>,
     config: Arc<AppConfig>,
 ) -> anyhow::Result<Value> {
-    let program = args
-        .get("command")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("Missing 'command' argument"))?;
-
-    let cmd_args: Vec<String> = match args.get("args") {
+    // Extract argv: first element is the program name, rest are arguments
+    let argv: Vec<String> = match args.get("argv") {
         Some(Value::Array(arr)) => arr
             .iter()
             .filter_map(|v| v.as_str().map(|s| s.to_string()))
             .collect(),
         Some(other) => {
             return Err(anyhow::anyhow!(
-                "Invalid type for 'args': expected an array of strings, got {}. \
-                 If you have a single argument, wrap it in an array: \
-                 e.g. {{\"args\": [\"{}\"]}} instead of {{\"args\": \"{}\"}}.",
+                "Invalid type for 'argv': expected an array of strings, got {}. \
+                 'argv' must be an array where the first element is the command name \
+                 and subsequent elements are its arguments. \
+                 Example: [\"git\", \"status\"] or [\"echo\", \"hello\", \"world\"].",
                 other,
-                match other {
-                    Value::String(s) => s.clone(),
-                    v => v.to_string(),
-                },
-                match other {
-                    Value::String(s) => s.clone(),
-                    v => v.to_string(),
-                },
             ));
         }
-        None => Vec::new(),
+        None => {
+            return Err(anyhow::anyhow!(
+                "Missing 'argv' argument. 'argv' must be an array where \
+                 the first element is the command name (e.g. [\"git\", \"status\"])."
+            ));
+        }
     };
+
+    if argv.is_empty() {
+        return Err(anyhow::anyhow!(
+            "'argv' must not be empty. Provide at least the command name as the first element."
+        ));
+    }
+
+    let program = &argv[0];
+    let cmd_args: &[String] = &argv[1..];
 
     // 1. Static Analysis (Minimalist/Semantic focus)
     // We strictly use Command::new which avoids shell-injection by design.
     // Semantic verification has already been handled by Phase 3 (Dual LLM).
 
-    // 2. Validate cwd (if provided)
-    let cwd = if let Some(cwd_raw) = args.get("cwd").and_then(|v| v.as_str()) {
-        // Reject obviously invalid values LLMs sometimes hallucinate
-        if cwd_raw.len() > 1024 || cwd_raw.contains('\n') || cwd_raw.contains('\0') {
-            return Err(anyhow::anyhow!(
-                "Invalid 'cwd': path contains newlines, null bytes, or is too long (>1024 chars). \
-                'cwd' must be a valid directory path, e.g. \".\" or \"/home/user/project\"."
-            ));
-        }
-        let validated = crate::security::path_validator::validate_path(cwd_raw, &config.security)
-            .map_err(|e| anyhow::anyhow!("Invalid 'cwd': {}", e))?;
-        if !validated.is_dir() {
-            return Err(anyhow::anyhow!(
-                "Invalid 'cwd': path is not an existing directory: {}",
-                validated.display()
-            ));
-        }
-        Some(validated)
-    } else {
-        None
-    };
-
-    // 3. Execution with Timeout
+    // 2. Execution with Timeout
     let timeout_secs = config.general.command_timeout;
 
     let mut cmd = Command::new(program);
-    cmd.args(&cmd_args);
-    if let Some(ref c) = cwd {
-        cmd.current_dir(c);
-    }
+    cmd.args(cmd_args);
 
     // Structural Isolation: By using Command::new directly, we avoid shell-injection
     // vulnerabilities regardless of the operating system.
@@ -155,8 +135,16 @@ pub async fn execute_command(
 
     match child.wait().await {
         Ok(status) => Ok(json!({
-            "stdout": crate::tools::executor_utils::truncate_output(&stdout_res),
-            "stderr": crate::tools::executor_utils::truncate_output(&stderr_res),
+            "stdout": crate::tools::executor_utils::truncate_output(
+                &stdout_res,
+                config.general.max_output_lines,
+                config.general.max_output_chars
+            ),
+            "stderr": crate::tools::executor_utils::truncate_output(
+                &stderr_res,
+                config.general.max_output_lines,
+                config.general.max_output_chars
+            ),
             "exit_code": status.code().unwrap_or(-1)
         })),
         Err(e) => Err(anyhow::anyhow!("Execution error: {}", e)),

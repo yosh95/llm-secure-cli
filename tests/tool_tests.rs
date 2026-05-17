@@ -159,11 +159,9 @@ fn contains_exact_line(content: &str, line: &str) -> bool {
 async fn test_shell_execute_command() {
     let mut args = HashMap::new();
     if cfg!(windows) {
-        args.insert("command".to_string(), json!("cmd"));
-        args.insert("args".to_string(), json!(["/C", "echo hello world"]));
+        args.insert("argv".to_string(), json!(["cmd", "/C", "echo hello world"]));
     } else {
-        args.insert("command".to_string(), json!("echo"));
-        args.insert("args".to_string(), json!(["hello", "world"]));
+        args.insert("argv".to_string(), json!(["echo", "hello", "world"]));
     }
 
     let config = Arc::new(AppConfig::default());
@@ -189,8 +187,7 @@ async fn test_shell_security_block() {
     use llm_secure_cli::security::validate_tool_call;
 
     let mut args = serde_json::Map::new();
-    args.insert("command".to_string(), json!("rm\0"));
-    args.insert("args".to_string(), json!(["-rf", "/"]));
+    args.insert("argv".to_string(), json!(["rm\0", "-rf", "/"]));
 
     let config = AppConfig::default();
     // Phase 1 (StaticAnalyzer) now actively blocks null bytes in the command name.
@@ -317,8 +314,10 @@ async fn test_shell_operator_standalone_blocked() {
     // Standalone shell operators are now passed as literal arguments
     // unless Dual LLM blocks them (Phase 3).
     let mut args = HashMap::new();
-    args.insert("command".to_string(), json!("echo"));
-    args.insert("args".to_string(), json!(["hello", ";", "rm", "-rf", "/"]));
+    args.insert(
+        "argv".to_string(),
+        json!(["echo", "hello", ";", "rm", "-rf", "/"]),
+    );
     let config = Arc::new(AppConfig::default());
     let res = execute_command(args, config).await;
     // Should be Ok in the tool level execution (echo will just print them)
@@ -330,10 +329,10 @@ async fn test_shell_operator_embedded_allowed() {
     // Shell operators embedded within a larger argument value (like ffmpeg filter graphs)
     // should NOT be blocked, since they are not standalone shell operators.
     let mut args = HashMap::new();
-    args.insert("command".to_string(), json!("ffmpeg"));
     args.insert(
-        "args".to_string(),
+        "argv".to_string(),
         json!([
+            "ffmpeg",
             "-i",
             "input.mp4",
             "-filter_complex",

@@ -8,8 +8,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::sync::Arc;
 
-use crate::consts::{MAX_OUTPUT_CHARS, MAX_OUTPUT_LINES};
-
 const MAX_FILE_READ_SIZE: u64 = 5 * 1024 * 1024; // 5MB
 const SEARCH_TIMEOUT_SECS: u64 = 55;
 const MAX_SEARCH_RESULTS: usize = 300;
@@ -213,8 +211,12 @@ pub fn read_file_content(
     }
 
     let selected = &lines[start..end];
-    let is_truncated = selected.len() > MAX_OUTPUT_LINES;
-    let limited: Vec<&str> = selected.iter().take(MAX_OUTPUT_LINES).cloned().collect();
+    let is_truncated = selected.len() > config.general.max_output_lines;
+    let limited: Vec<&str> = selected
+        .iter()
+        .take(config.general.max_output_lines)
+        .cloned()
+        .collect();
 
     let mut output = if with_line_numbers {
         limited
@@ -244,8 +246,11 @@ pub fn read_file_content(
     }
 
     // Truncate by chars if needed
-    if output.len() > MAX_OUTPUT_CHARS {
-        output = output.chars().take(MAX_OUTPUT_CHARS).collect();
+    if output.len() > config.general.max_output_chars {
+        output = output
+            .chars()
+            .take(config.general.max_output_chars)
+            .collect();
     }
 
     Ok(json!({

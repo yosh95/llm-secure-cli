@@ -597,7 +597,11 @@ impl ActiveSession {
             }
         };
 
-        crate::tools::executor_utils::truncate_json_strings(&mut final_v);
+        crate::tools::executor_utils::truncate_json_strings(
+            &mut final_v,
+            config.general.max_output_lines,
+            config.general.max_output_chars,
+        );
 
         // Calculate and display stats
         let stats = crate::cli::stats::get_tool_result_stats(&final_v);

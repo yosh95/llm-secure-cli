@@ -28,13 +28,11 @@ pub fn validate_tool_call(
 ) -> Result<(), String> {
     use crate::security::static_analyzer::StaticAnalyzer;
 
-    // Extract command string and its arguments for execute_command tool.
+    // Extract argv[0] (command name) and argv[1..] (arguments) for execute_command tool.
     // For all other tools, check every string value in args for anomalies.
     if name == "execute_command" {
-        let command = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
-
-        let cmd_args: Vec<String> = args
-            .get("args")
+        let argv: Vec<String> = args
+            .get("argv")
             .and_then(|v| v.as_array())
             .map(|arr| {
                 arr.iter()
@@ -42,6 +40,9 @@ pub fn validate_tool_call(
                     .collect()
             })
             .unwrap_or_default();
+
+        let command = argv.first().map(|s| s.as_str()).unwrap_or("");
+        let cmd_args: Vec<String> = argv.iter().skip(1).cloned().collect();
 
         let (ok, violations) = StaticAnalyzer::check(command, &cmd_args);
         if !ok {

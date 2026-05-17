@@ -60,8 +60,7 @@ fn test_validate_tool_call_normal_commands_allowed() {
 
     // A normal git command must pass Phase 1.
     let mut args = serde_json::Map::new();
-    args.insert("command".to_string(), json!("git"));
-    args.insert("args".to_string(), json!(["log", "--oneline"]));
+    args.insert("argv".to_string(), json!(["git", "log", "--oneline"]));
     let result = validate_tool_call("execute_command", &args, &config);
     assert!(result.is_ok(), "Normal git should pass: {:?}", result);
 }
@@ -74,7 +73,7 @@ fn test_validate_tool_call_control_characters_blocked() {
     for ch in ['\x00', '\x01', '\x02', '\x1b'] {
         let mut args = serde_json::Map::new();
         let cmd = format!("ls{}", ch);
-        args.insert("command".to_string(), json!(cmd));
+        args.insert("argv".to_string(), json!([cmd]));
         let result = validate_tool_call("execute_command", &args, &config);
         assert!(
             result.is_err(),
@@ -100,8 +99,7 @@ fn test_validate_tool_call_harmless_empty_args_allowed() {
     let config = SecurityConfig::default();
 
     let mut args = serde_json::Map::new();
-    args.insert("command".to_string(), json!("echo"));
-    args.insert("args".to_string(), json!(["hello"]));
+    args.insert("argv".to_string(), json!(["echo", "hello"]));
     let result = validate_tool_call("execute_command", &args, &config);
     assert!(result.is_ok());
 }
@@ -195,7 +193,7 @@ fn test_cass_risk_levels_are_mutually_exclusive_in_defaults() {
 
     // Execute command should be high risk
     let mut args = serde_json::Map::new();
-    args.insert("command".to_string(), json!("ls"));
+    args.insert("argv".to_string(), json!(["ls"]));
     let risk = CASS_ORCHESTRATOR.evaluate_risk("execute_command", Some(&json!(args)), &config);
     assert_eq!(
         risk as u8,
