@@ -137,9 +137,13 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             let diff = match std::fs::read_to_string(path) {
                 Ok(original) => {
                     if let Some(new_content) = try_exact_edit_for_preview(&original, old, new) {
+                        let orig_lines: Vec<String> =
+                            original.lines().map(|s| format!("{}\n", s)).collect();
+                        let new_lines: Vec<String> =
+                            new_content.lines().map(|s| format!("{}\n", s)).collect();
                         difflib::unified_diff(
-                            &original.lines().collect::<Vec<_>>(),
-                            &new_content.lines().collect::<Vec<_>>(),
+                            &orig_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                            &new_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
                             "original",
                             "modified",
                             "",
@@ -148,9 +152,13 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                         )
                     } else {
                         // Fall back: old-vs-new diff (exact match not found in file)
+                        let old_lines: Vec<String> =
+                            old.lines().map(|s| format!("{}\n", s)).collect();
+                        let new_lines: Vec<String> =
+                            new.lines().map(|s| format!("{}\n", s)).collect();
                         difflib::unified_diff(
-                            &old.lines().collect::<Vec<_>>(),
-                            &new.lines().collect::<Vec<_>>(),
+                            &old_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                            &new_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
                             "old",
                             "new",
                             "",
@@ -161,9 +169,11 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                 }
                 Err(_) => {
                     // File can't be read (e.g. doesn't exist yet) — fall back
+                    let old_lines: Vec<String> = old.lines().map(|s| format!("{}\n", s)).collect();
+                    let new_lines: Vec<String> = new.lines().map(|s| format!("{}\n", s)).collect();
                     difflib::unified_diff(
-                        &old.lines().collect::<Vec<_>>(),
-                        &new.lines().collect::<Vec<_>>(),
+                        &old_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                        &new_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
                         "old",
                         "new",
                         "",

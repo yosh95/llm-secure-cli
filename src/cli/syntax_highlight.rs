@@ -97,7 +97,7 @@ pub fn highlight_python(code: &str) -> String {
 
             // Comment
             if c == '#' {
-                result.push_str(&line[i..].dimmed().to_string());
+                result.push_str(&chars[i..].iter().collect::<String>().dimmed().to_string());
                 break;
             }
 
@@ -142,7 +142,13 @@ pub fn highlight_python(code: &str) -> String {
                     }
                 }
 
-                result.push_str(&line[i..j.min(len)].bright_green().to_string());
+                result.push_str(
+                    &chars[i..j.min(len)]
+                        .iter()
+                        .collect::<String>()
+                        .bright_green()
+                        .to_string(),
+                );
                 i = j;
                 continue;
             }
@@ -150,7 +156,13 @@ pub fn highlight_python(code: &str) -> String {
             // Decorator
             if c == '@' && (i == 0 || chars[..i].iter().all(|ch| ch.is_whitespace())) {
                 let j = word_end(&chars, i);
-                result.push_str(&line[i..j].bright_red().to_string());
+                result.push_str(
+                    &chars[i..j]
+                        .iter()
+                        .collect::<String>()
+                        .bright_red()
+                        .to_string(),
+                );
                 i = j;
                 continue;
             }
@@ -158,7 +170,13 @@ pub fn highlight_python(code: &str) -> String {
             // Number
             if c.is_ascii_digit() || (c == '.' && i + 1 < len && chars[i + 1].is_ascii_digit()) {
                 let j = number_end(&chars, i);
-                result.push_str(&line[i..j].bright_magenta().to_string());
+                result.push_str(
+                    &chars[i..j]
+                        .iter()
+                        .collect::<String>()
+                        .bright_magenta()
+                        .to_string(),
+                );
                 i = j;
                 continue;
             }
@@ -166,13 +184,13 @@ pub fn highlight_python(code: &str) -> String {
             // Word (identifier / keyword / builtin)
             if c.is_alphabetic() || c == '_' {
                 let j = word_end(&chars, i);
-                let word = &line[i..j];
-                if keywords.contains(word) {
+                let word: String = chars[i..j].iter().collect();
+                if keywords.contains(word.as_str()) {
                     result.push_str(&word.bright_yellow().bold().to_string());
-                } else if builtins.contains(word) {
+                } else if builtins.contains(word.as_str()) {
                     result.push_str(&word.bright_cyan().to_string());
                 } else {
-                    result.push_str(word);
+                    result.push_str(&word);
                 }
                 i = j;
                 continue;
@@ -272,5 +290,13 @@ mod tests {
         let result = highlight_python(code);
         assert!(result.contains("hello"));
         assert!(result.contains("x"));
+    }
+
+    #[test]
+    fn test_multibyte_chars_no_panic() {
+        // Regression: slicing with byte indices on multibyte chars panics
+        let code = "print(f\"1から50までの合計: {total}\")  # 日本語\n";
+        let result = highlight_python(code);
+        assert!(result.contains("から"));
     }
 }
