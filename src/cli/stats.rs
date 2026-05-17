@@ -70,8 +70,13 @@ pub fn get_tool_result_stats(result: &Value) -> ToolResultStats {
 }
 
 pub fn print_tool_stats(stats: &ToolResultStats) {
+    let mut prefix = String::new();
+    if stats.file_count.is_none() {
+        prefix = "stdout: ".to_string();
+    }
     let mut parts = vec![format!(
-        "  {} bytes",
+        "  {}{} bytes",
+        prefix,
         crate::utils::format_number(stats.byte_count)
     )];
     if let Some(fc) = stats.file_count {
