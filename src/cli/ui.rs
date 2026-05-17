@@ -176,7 +176,8 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             if diff.is_empty() && !old.is_empty() && old == new {
                 println!("        {}", "(no changes)".dimmed());
             } else {
-                for line in diff {
+                let diff_str = diff.join("");
+                for line in diff_str.lines() {
                     if line.starts_with('+') && !line.starts_with("+++") {
                         println!("        {}", line.cyan());
                     } else if line.starts_with('-') && !line.starts_with("---") {
@@ -203,6 +204,36 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             }
 
             // Print explanation last for edit_file
+            if let Some(exp) = explanation {
+                println!(
+                    "    {} {}: {}",
+                    "•".bright_black(),
+                    "explanation".cyan(),
+                    exp
+                );
+            }
+        } else if name == "execute_python" {
+            let code = obj.get("code").and_then(|v| v.as_str()).unwrap_or("");
+            let explanation = obj.get("explanation").and_then(|v| v.as_str());
+
+            println!("    {} {}:", "•".bright_black(), "code".cyan());
+            // Apply Python syntax highlighting and indent each line
+            let highlighted = crate::cli::syntax_highlight::highlight_python(code);
+            for line in highlighted.lines() {
+                println!("        {line}");
+            }
+
+            // Print other arguments if any (except code and explanation)
+            for (k, v) in obj {
+                if k != "code" && k != "explanation" {
+                    let val_str = v
+                        .as_str()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| v.to_string());
+                    println!("    {} {}: {}", "•".bright_black(), k.cyan(), val_str);
+                }
+            }
+            // Print explanation last
             if let Some(exp) = explanation {
                 println!(
                     "    {} {}: {}",

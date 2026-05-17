@@ -82,7 +82,7 @@ fn test_cass_risk_scaling() {
     assert!(level_low <= RiskLevel::Medium);
 
     // 2. Test Critical Risk Tool
-    let level_crit = CASS_ORCHESTRATOR.evaluate_risk("execute_command", None, &config);
+    let level_crit = CASS_ORCHESTRATOR.evaluate_risk("execute_python", None, &config);
     assert_eq!(level_crit, RiskLevel::Critical);
 
     // 3. Test Argument-based escalation

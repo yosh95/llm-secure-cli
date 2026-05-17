@@ -28,42 +28,17 @@ pub fn validate_tool_call(
 ) -> Result<(), String> {
     use crate::security::static_analyzer::StaticAnalyzer;
 
-    // Extract argv[0] (command name) and argv[1..] (arguments) for execute_command tool.
-    // For all other tools, check every string value in args for anomalies.
-    if name == "execute_command" {
-        let argv: Vec<String> = args
-            .get("argv")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let command = argv.first().map(|s| s.as_str()).unwrap_or("");
-        let cmd_args: Vec<String> = argv.iter().skip(1).cloned().collect();
-
-        let (ok, violations) = StaticAnalyzer::check(command, &cmd_args);
-        if !ok {
+    // Scan every string value in args for control characters / null bytes.
+    // This is a deterministic fast-fail for physical anomalies regardless of tool.
+    for (key, value) in args {
+        if let Some(s) = value.as_str()
+            && StaticAnalyzer::is_obviously_malicious(s)
+        {
             return Err(format!(
-                "Phase 1 Static Analysis blocked '{}': {}",
-                name,
-                violations.join("; ")
+                "Phase 1 Static Analysis blocked '{}': argument '{}' contains \
+                     control characters or null bytes.",
+                name, key
             ));
-        }
-    } else {
-        // For all other tools, scan every string value in args.
-        for (key, value) in args {
-            if let Some(s) = value.as_str()
-                && StaticAnalyzer::is_obviously_malicious(s)
-            {
-                return Err(format!(
-                    "Phase 1 Static Analysis blocked '{}': argument '{}' contains \
-                         control characters or null bytes.",
-                    name, key
-                ));
-            }
         }
     }
 

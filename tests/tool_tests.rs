@@ -3,7 +3,7 @@ use llm_secure_cli::tools::builtin::file_modification::{create_or_overwrite_file
 use llm_secure_cli::tools::builtin::file_ops::{
     grep_files, list_files_in_directory, read_file, search_files,
 };
-use llm_secure_cli::tools::builtin::shell::execute_command;
+use llm_secure_cli::tools::builtin::python::execute_python;
 use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
@@ -156,18 +156,14 @@ fn contains_exact_line(content: &str, line: &str) -> bool {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_shell_execute_command() {
+async fn test_python_execute() {
     let mut args = HashMap::new();
-    if cfg!(windows) {
-        args.insert("argv".to_string(), json!(["cmd", "/C", "echo hello world"]));
-    } else {
-        args.insert("argv".to_string(), json!(["echo", "hello", "world"]));
-    }
+    args.insert("code".to_string(), json!("print('hello world')"));
 
     let config = Arc::new(AppConfig::default());
-    let res = execute_command(args, config)
+    let res = execute_python(args, config)
         .await
-        .expect("execute_command should succeed");
+        .expect("execute_python should succeed");
     assert_eq!(
         res["stdout"]
             .as_str()
@@ -183,15 +179,16 @@ async fn test_shell_execute_command() {
     );
 }
 #[tokio::test(flavor = "multi_thread")]
-async fn test_shell_security_block() {
+async fn test_python_security_block_null_bytes() {
     use llm_secure_cli::security::validate_tool_call;
 
     let mut args = serde_json::Map::new();
-    args.insert("argv".to_string(), json!(["rm\0", "-rf", "/"]));
+    let code_with_null = format!("print('hello{}world')", '\0');
+    args.insert("code".to_string(), json!(code_with_null));
 
     let config = AppConfig::default();
-    // Phase 1 (StaticAnalyzer) now actively blocks null bytes in the command name.
-    let res = validate_tool_call("execute_command", &args, &config.security);
+    // Phase 1 (StaticAnalyzer) blocks null bytes in the code string.
+    let res = validate_tool_call("execute_python", &args, &config.security);
     assert!(res.is_err());
     assert!(
         res.expect_err("should be Err")
@@ -200,18 +197,15 @@ async fn test_shell_security_block() {
 }
 
 #[test]
-fn test_static_analyzer_blocks_shell_invocation() {
+fn test_static_analyzer_blocks_null_bytes_in_code() {
     use llm_secure_cli::security::static_analyzer::StaticAnalyzer;
 
-    // Normal commands should be allowed
-    let (safe, _) = StaticAnalyzer::check("git", &["log".to_string(), "--oneline".to_string()]);
-    assert!(safe);
+    // Normal strings should be allowed
+    assert!(!StaticAnalyzer::is_obviously_malicious("print('hello')"));
 
-    // StaticAnalyzer::check itself still implements the check,
-    // even if not called from Phase 1 anymore.
-    let (safe, violations) = StaticAnalyzer::check("echo", &["hello\0world".to_string()]);
-    assert!(!safe);
-    assert!(violations.iter().any(|v| v.contains("control characters")));
+    // Null bytes should be caught
+    let code_with_null = format!("print('hello{}world')", '\0');
+    assert!(StaticAnalyzer::is_obviously_malicious(&code_with_null));
 }
 
 #[test]
@@ -309,47 +303,47 @@ fn test_read_file_range_panic_fix() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_shell_operator_standalone_blocked() {
-    // Standalone shell operators are now passed as literal arguments
-    // unless Dual LLM blocks them (Phase 3).
+async fn test_python_execute_with_error() {
+    // Python with a syntax error should return non-zero exit code
     let mut args = HashMap::new();
-    args.insert(
-        "argv".to_string(),
-        json!(["echo", "hello", ";", "rm", "-rf", "/"]),
-    );
+    args.insert("code".to_string(), json!("print(undefined_var"));
+
     let config = Arc::new(AppConfig::default());
-    let res = execute_command(args, config).await;
-    // Should be Ok in the tool level execution (echo will just print them)
+    let res = execute_python(args, config).await;
+    // Should succeed at the tool level (python ran, just had an error)
     assert!(res.is_ok());
+    let val = res.unwrap();
+    let exit_code = val["exit_code"]
+        .as_i64()
+        .expect("exit_code should be an i64");
+    assert_ne!(exit_code, 0);
+    let stderr = val["stderr"].as_str().expect("stderr should be a string");
+    assert!(!stderr.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_shell_operator_embedded_allowed() {
-    // Shell operators embedded within a larger argument value (like ffmpeg filter graphs)
-    // should NOT be blocked, since they are not standalone shell operators.
+async fn test_python_execute_multiline() {
     let mut args = HashMap::new();
     args.insert(
-        "argv".to_string(),
-        json!([
-            "ffmpeg",
-            "-i",
-            "input.mp4",
-            "-filter_complex",
-            "fps=10,scale=640:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
-            "-y",
-            "output.gif"
-        ]),
+        "code".to_string(),
+        json!("import json\ndata = {'key': 'value'}\nprint(json.dumps(data))"),
     );
+
     let config = Arc::new(AppConfig::default());
-    // Should not error on the embedded semicolons
-    // (ffmpeg itself may not exist, so we only check it doesn't fail with shell operator error)
-    let res = execute_command(args, config).await;
-    if let Err(e) = res {
-        let msg = e.to_string();
-        assert!(
-            !msg.contains("Shell operator"),
-            "Embedded shell operators should not be blocked: {}",
-            msg
-        );
-    }
+    let res = execute_python(args, config)
+        .await
+        .expect("execute_python should succeed");
+    assert_eq!(
+        res["exit_code"]
+            .as_i64()
+            .expect("exit_code should be an i64"),
+        0
+    );
+    let stdout = res["stdout"]
+        .as_str()
+        .expect("stdout should be a string")
+        .trim();
+    let parsed: serde_json::Value =
+        serde_json::from_str(stdout).expect("stdout should be valid JSON");
+    assert_eq!(parsed["key"], "value");
 }

@@ -192,7 +192,7 @@ fn test_pqc_agility_manager() {
     {
         let mut config = (*config_manager.get_config().expect("Failed to get config")).clone();
         config.security.security_level = "standard".to_string();
-        config.security.high_risk_tools = vec!["execute_command".to_string()];
+        config.security.high_risk_tools = vec!["execute_python".to_string()];
         config.security.scaling_patterns = vec!["/etc/shadow".to_string()];
         config.security.dual_llm_verification = Some(true);
         let _ = config_manager.set_config(config);
@@ -205,7 +205,7 @@ fn test_pqc_agility_manager() {
     assert!(matches!(level, PQCVariant::MLDSA44));
 
     // High risk tool
-    let level = PQCAgilityManager::get_required_level(&config, "execute_command", None);
+    let level = PQCAgilityManager::get_required_level(&config, "execute_python", None);
     assert_eq!(level, PQCVariant::MLDSA87);
 
     // Sensitive context (Escalates to High)

@@ -45,7 +45,7 @@ allowed_tools = ["*"]
 
 # Risk Level Classification
 high_risk_tools = [
-    "execute_command",
+    "execute_python",
     "edit_file",
     "create_or_overwrite_file",
     "read_url_content",

@@ -58,11 +58,15 @@ fn test_security_config_default_values_are_sane() {
 fn test_validate_tool_call_normal_commands_allowed() {
     let config = SecurityConfig::default();
 
-    // A normal git command must pass Phase 1.
+    // A normal python code must pass Phase 1.
     let mut args = serde_json::Map::new();
-    args.insert("argv".to_string(), json!(["git", "log", "--oneline"]));
-    let result = validate_tool_call("execute_command", &args, &config);
-    assert!(result.is_ok(), "Normal git should pass: {:?}", result);
+    args.insert("code".to_string(), json!("print('hello')"));
+    let result = validate_tool_call("execute_python", &args, &config);
+    assert!(
+        result.is_ok(),
+        "Normal python code should pass: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -72,9 +76,9 @@ fn test_validate_tool_call_control_characters_blocked() {
     // Various control characters
     for ch in ['\x00', '\x01', '\x02', '\x1b'] {
         let mut args = serde_json::Map::new();
-        let cmd = format!("ls{}", ch);
-        args.insert("argv".to_string(), json!([cmd]));
-        let result = validate_tool_call("execute_command", &args, &config);
+        let code = format!("print('hello{}')", ch);
+        args.insert("code".to_string(), json!(code));
+        let result = validate_tool_call("execute_python", &args, &config);
         assert!(
             result.is_err(),
             "Control char {:#04x} should be blocked",
@@ -99,8 +103,8 @@ fn test_validate_tool_call_harmless_empty_args_allowed() {
     let config = SecurityConfig::default();
 
     let mut args = serde_json::Map::new();
-    args.insert("argv".to_string(), json!(["echo", "hello"]));
-    let result = validate_tool_call("execute_command", &args, &config);
+    args.insert("code".to_string(), json!("print('hello')"));
+    let result = validate_tool_call("execute_python", &args, &config);
     assert!(result.is_ok());
 }
 
@@ -191,14 +195,14 @@ fn test_cass_risk_levels_are_mutually_exclusive_in_defaults() {
         ..Default::default()
     };
 
-    // Execute command should be high risk
+    // Execute python should be high risk
     let mut args = serde_json::Map::new();
-    args.insert("argv".to_string(), json!(["ls"]));
-    let risk = CASS_ORCHESTRATOR.evaluate_risk("execute_command", Some(&json!(args)), &config);
+    args.insert("code".to_string(), json!("print('hello')"));
+    let risk = CASS_ORCHESTRATOR.evaluate_risk("execute_python", Some(&json!(args)), &config);
     assert_eq!(
         risk as u8,
         llm_secure_cli::security::cass::RiskLevel::High as u8,
-        "execute_command should be high risk with dual_llm enabled"
+        "execute_python should be high risk with dual_llm enabled"
     );
 
     // List files should be low risk

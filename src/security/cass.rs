@@ -28,7 +28,7 @@ impl CASSOrchestrator {
         config: &SecurityConfig,
     ) -> RiskLevel {
         // 1. Baseline risk by tool definition (Static classification)
-        let mut level = if tool_name == "execute_command"
+        let mut level = if tool_name == "execute_python"
             || config.high_risk_tools.iter().any(|t| t == tool_name)
         {
             RiskLevel::High

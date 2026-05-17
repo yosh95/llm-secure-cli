@@ -7,71 +7,89 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-/// Executes a system command directly without a shell.
-/// 'argv' is an array where argv[0] is the command name and
-/// the remaining elements are its arguments.
-/// Architecturally, we rely on Phase 3 (Dual LLM) for intent verification.
-pub async fn execute_command(
+/// Checks if python3 is available on the system PATH.
+/// Returns false if not found — when false, execute_python is not registered
+/// as a tool so the LLM never sees it.
+pub fn is_python_available() -> bool {
+    std::process::Command::new("python3")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Executes arbitrary Python code supplied by the LLM.
+///
+/// The code is written to a temporary file and executed via `python3`.
+/// Security is provided by:
+///   1. Docker container isolation (the primary sandbox)
+///   2. Dual LLM semantic verification (Phase 3)
+///   3. CASS risk classification (Critical → always requires Dual LLM)
+///
+/// No AST-level sandboxing, no restricted builtins, no blocked modules —
+/// those approaches proved brittle and incomplete in practice.
+pub async fn execute_python(
     args: HashMap<String, Value>,
     config: Arc<AppConfig>,
 ) -> anyhow::Result<Value> {
-    // Extract argv: first element is the program name, rest are arguments
-    let argv: Vec<String> = match args.get("argv") {
-        Some(Value::Array(arr)) => arr
-            .iter()
-            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-            .collect(),
+    let code = match args.get("code") {
+        Some(Value::String(s)) => s.clone(),
         Some(other) => {
             return Err(anyhow::anyhow!(
-                "Invalid type for 'argv': expected an array of strings, got {}. \
-                 'argv' must be an array where the first element is the command name \
-                 and subsequent elements are its arguments. \
-                 Example: [\"git\", \"status\"] or [\"echo\", \"hello\", \"world\"].",
+                "Invalid type for 'code': expected a string, got {}. \
+                 Provide the Python source code as a single string.",
                 other,
             ));
         }
         None => {
             return Err(anyhow::anyhow!(
-                "Missing 'argv' argument. 'argv' must be an array where \
-                 the first element is the command name (e.g. [\"git\", \"status\"])."
+                "Missing 'code' argument. Provide the Python source code to execute."
             ));
         }
     };
 
-    if argv.is_empty() {
-        return Err(anyhow::anyhow!(
-            "'argv' must not be empty. Provide at least the command name as the first element."
-        ));
+    if code.trim().is_empty() {
+        return Err(anyhow::anyhow!("'code' must not be empty."));
     }
 
-    let program = &argv[0];
-    let cmd_args: &[String] = &argv[1..];
+    // Write code to a temporary file so we can pass it to `python3` directly.
+    // Using a file avoids shell injection and command-line length limits.
+    let tmp_file = tempfile::Builder::new()
+        .prefix("llsc_py_")
+        .suffix(".py")
+        .tempfile()
+        .map_err(|e| anyhow::anyhow!("Failed to create temporary file: {}", e))?;
 
-    // 1. Static Analysis (Minimalist/Semantic focus)
-    // We strictly use Command::new which avoids shell-injection by design.
-    // Semantic verification has already been handled by Phase 3 (Dual LLM).
+    std::fs::write(tmp_file.path(), &code)
+        .map_err(|e| anyhow::anyhow!("Failed to write code to temporary file: {}", e))?;
 
-    // 2. Execution with Timeout
+    let tmp_path = tmp_file.path().to_path_buf();
+
+    // Execute: python3 -u <tempfile>
+    // -u flag forces unbuffered stdout/stderr, ensuring real-time streaming.
+    // PYTHONUNBUFFERED=1 env var is also set as a belt-and-suspenders approach.
     let timeout_secs = config.general.command_timeout;
 
-    let mut cmd = Command::new(program);
-    cmd.args(cmd_args);
-
-    // Structural Isolation: By using Command::new directly, we avoid shell-injection
-    // vulnerabilities regardless of the operating system.
-    let mut child = match cmd
+    let mut child = match Command::new("python3")
+        .arg("-u")
+        .arg(&tmp_path)
+        .env("PYTHONUNBUFFERED", "1")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
     {
         Ok(child) => child,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // This shouldn't happen since we check availability at registration,
+            // but handle it gracefully just in case.
             return Err(anyhow::anyhow!(
-                "Command '{}' not found in system PATH. Please ensure the command is correct and installed. Do NOT include natural language or explanations in the command field.",
-                program
+                "python3 not found in system PATH. \
+                 Ensure python3 is installed and available."
             ));
         }
-        Err(e) => return Err(anyhow::anyhow!("Failed to start process: {}", e)),
+        Err(e) => return Err(anyhow::anyhow!("Failed to start python3: {}", e)),
     };
 
     let mut stdout_reader = BufReader::new(
@@ -125,13 +143,18 @@ pub async fn execute_command(
             }
             _ = &mut sleep => {
                 let _ = child.kill().await;
+                // Clean up the temp file on timeout
+                let _ = std::fs::remove_file(&tmp_path);
                 return Err(anyhow::anyhow!(
-                    "Command timed out after {} seconds",
+                    "Python execution timed out after {} seconds",
                     timeout_secs
                 ));
             }
         }
     }
+
+    // Clean up temp file after execution
+    let _ = std::fs::remove_file(&tmp_path);
 
     match child.wait().await {
         Ok(status) => Ok(json!({

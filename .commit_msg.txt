@@ -1,0 +1,17 @@
+refactor: replace execute_command (shell) with execute_python
+
+Replace the shell-based execute_command tool with a Python-based
+execute_python tool. Python runs in the same container environment
+with full access to filesystem, pip packages, and network. This is
+safer (no OS-specific shell pitfalls), more portable, and avoids
+shell-injection concerns by design.
+
+Key changes:
+- New src/tools/builtin/python.rs: execute_python implementation
+- Removed src/tools/builtin/shell.rs entirely
+- New src/cli/syntax_highlight.rs: Python syntax highlighting for UI
+- CLI UI now renders execute_python with highlighted code preview
+- Simplified Phase 1 security validation: uniform string-scanning
+  for all tools instead of special-casing execute_command/argv
+- Updated CASS risk baseline, config defaults, and tool registry
+- All tests migrated from execute_command to execute_python patterns

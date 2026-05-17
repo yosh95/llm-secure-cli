@@ -47,7 +47,7 @@ fn test_evaluate_risk_critical_escalation_no_dual_llm() {
 
     // Command execution is always at least High, so moves to Critical
     assert_eq!(
-        orchestrator.evaluate_risk("execute_command", None, &config),
+        orchestrator.evaluate_risk("execute_python", None, &config),
         RiskLevel::Critical
     );
 }
@@ -105,13 +105,13 @@ fn test_get_security_requirements_returns_correct_pqc_levels() {
 
     let orchestrator = CASSOrchestrator;
 
-    // Critical: execute_command without dual llm
+    // Critical: execute_python without dual llm
     let critical_config = SecurityConfig {
         security_level: "standard".to_string(),
         dual_llm_verification: Some(false),
         ..Default::default()
     };
-    let posture = orchestrator.get_security_requirements("execute_command", None, &critical_config);
+    let posture = orchestrator.get_security_requirements("execute_python", None, &critical_config);
     assert!(posture.require_pqc_signature);
     assert_eq!(posture.pqc_variant, "ML-DSA-87");
     assert!(posture.require_pqc_audit_encryption);

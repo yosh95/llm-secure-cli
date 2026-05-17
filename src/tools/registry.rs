@@ -374,25 +374,32 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
         );
     }
 
-    maybe_register(
-        r,
-        "execute_command",
-        "Executes a system command directly (no shell). \
-         'argv' is an array where argv[0] is the command name and subsequent elements are its arguments. \
-         Example: ['git', 'status'] or ['echo', 'hello', 'world']. \
-         Shell features (pipes, redirections, chaining, globbing) are NOT supported. \
-         Prefer built-in tools (grep_files, search_files, read_file) when possible.",
-        json!({
-            "type": "object",
-            "properties": {
-                "argv": {"type": "array", "items": { "type": "string" }, "description": "Array where argv[0] is the command name (e.g., 'git', 'rm', 'cargo') and the remaining elements are its arguments. Example: ['git', 'status'], ['echo', 'hello', 'world']."}
-            },
-            "required": ["argv"]
-        }),
-        Arc::new(|args, config| {
-            Box::pin(
-                async move { crate::tools::builtin::shell::execute_command(args, config).await },
-            )
-        }),
-    );
+    if crate::tools::builtin::python::is_python_available() {
+        maybe_register(
+            r,
+            "execute_python",
+            "Execute arbitrary Python code. \
+             The code runs in the same environment as the agent (Docker container) with full access to \
+             the filesystem, installed packages (pip), and the network. \
+             Use this for complex file operations, data processing, scripting, or any task \
+             where composing shell commands would be cumbersome. \
+             Prefer built-in tools (read_file, edit_file, grep_files) for simple single-purpose operations. \
+             Security is handled by container isolation and Dual LLM intent verification.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "Python source code to execute. Can use any standard library or installed third-party package. Use print() for output."
+                    }
+                },
+                "required": ["code"]
+            }),
+            Arc::new(|args, config| {
+                Box::pin(async move {
+                    crate::tools::builtin::python::execute_python(args, config).await
+                })
+            }),
+        );
+    }
 }
