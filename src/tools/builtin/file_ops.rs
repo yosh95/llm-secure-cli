@@ -145,10 +145,7 @@ pub fn list_files_in_directory(
     }))
 }
 
-pub fn read_file_content(
-    args: HashMap<String, Value>,
-    config: Arc<AppConfig>,
-) -> anyhow::Result<Value> {
+pub fn read_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow::Result<Value> {
     let path_str = args
         .get("path")
         .and_then(|v| v.as_str())

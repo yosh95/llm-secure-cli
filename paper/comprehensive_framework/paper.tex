@@ -164,7 +164,7 @@ A simplified policy fragment is shown below to make the orchestration model conc
 \begin{lstlisting}[language={},caption={Example CASS policy fragment},label={lst:cass_policy}]
 [security]
 high_risk_tools = ["edit_file", "execute_command"]
-medium_risk_tools = ["read_file_content", "grep_files", "read_url_content"]
+medium_risk_tools = ["read_file", "grep_files", "read_url_content"]
 blocked_paths = ["/etc/shadow", "~/.ssh", ".env"]
 scaling_patterns = ["private_key", "secret", "token"]
 dual_llm_verification = true

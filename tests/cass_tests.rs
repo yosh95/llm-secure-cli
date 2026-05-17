@@ -157,10 +157,7 @@ fn test_evaluate_risk_blocked_paths_escalation() {
     let orchestrator = CASSOrchestrator;
 
     // A low-risk tool accessing a blocked path must escalate
-    let risk = orchestrator.evaluate_risk(
-        "read_file_content",
-        Some(&json!({"path": "/etc/passwd"})),
-        &config,
-    );
+    let risk =
+        orchestrator.evaluate_risk("read_file", Some(&json!({"path": "/etc/passwd"})), &config);
     assert_eq!(risk, RiskLevel::High);
 }

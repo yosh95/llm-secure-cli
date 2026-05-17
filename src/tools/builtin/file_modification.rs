@@ -15,20 +15,15 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("'path' is required"))?;
 
-    let search_str = args
-        .get("search")
+    let old_str = args
+        .get("old")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("'search' is required"))?;
+        .ok_or_else(|| anyhow::anyhow!("'old' is required"))?;
 
-    let replace_str = args
-        .get("replace")
+    let new_str = args
+        .get("new")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("'replace' is required"))?;
-
-    let allow_multiple = args
-        .get("allow_multiple")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+        .ok_or_else(|| anyhow::anyhow!("'new' is required"))?;
 
     let dry_run = args
         .get("dry_run")
@@ -46,16 +41,14 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
     let original =
         fs::read_to_string(&path).map_err(|e| anyhow::anyhow!("Cannot read file: {}", e))?;
 
-    if search_str.is_empty() {
+    if old_str.is_empty() {
         return Err(anyhow::anyhow!(
-            "Search string cannot be empty. To create or overwrite a file, use create_or_overwrite_file tool or provide a non-empty search string."
+            "Search string ('old') cannot be empty. To create or overwrite a file, use create_or_overwrite_file tool or provide a non-empty search string."
         ));
     }
 
     // Strategy 1: Exact match
-    if let Some((new_content, count)) =
-        try_exact_edit(&original, search_str, replace_str, allow_multiple)
-    {
+    if let Some((new_content, count)) = try_exact_edit(&original, old_str, new_str) {
         return finalize_edit(
             &path,
             &original,
@@ -72,9 +65,7 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
     }
 
     // Strategy 2: Flexible match (indentation-aware, line-by-line trim match)
-    if let Some((new_content, count)) =
-        try_flexible_edit(&original, search_str, replace_str, allow_multiple)
-    {
+    if let Some((new_content, count)) = try_flexible_edit(&original, old_str, new_str) {
         return finalize_edit(
             &path,
             &original,
@@ -91,9 +82,7 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
     }
 
     // Strategy 3: Regex match (whitespace-insensitive)
-    if let Some((new_content, count)) =
-        try_regex_edit(&original, search_str, replace_str, allow_multiple)
-    {
+    if let Some((new_content, count)) = try_regex_edit(&original, old_str, new_str) {
         return finalize_edit(
             &path,
             &original,
@@ -112,17 +101,11 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
     // Strategy 4: Escape-fixed match
     // LLMs sometimes double-escape characters (e.g. \" instead of "), causing all
     // previous strategies to fail. We fix the escapes and retry all three strategies.
-    if let (Some(fixed_search), Some(fixed_replace)) =
-        (fix_llm_escapes(search_str), fix_llm_escapes(replace_str))
+    if let (Some(fixed_old), Some(fixed_new)) = (fix_llm_escapes(old_str), fix_llm_escapes(new_str))
     {
-        if let Some((new_content, count)) =
-            try_exact_edit(&original, &fixed_search, &fixed_replace, allow_multiple)
-                .or_else(|| {
-                    try_flexible_edit(&original, &fixed_search, &fixed_replace, allow_multiple)
-                })
-                .or_else(|| {
-                    try_regex_edit(&original, &fixed_search, &fixed_replace, allow_multiple)
-                })
+        if let Some((new_content, count)) = try_exact_edit(&original, &fixed_old, &fixed_new)
+            .or_else(|| try_flexible_edit(&original, &fixed_old, &fixed_new))
+            .or_else(|| try_regex_edit(&original, &fixed_old, &fixed_new))
         {
             return finalize_edit(
                 &path,
@@ -138,14 +121,11 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
                 },
             );
         }
-    } else if let Some(fixed_search) = fix_llm_escapes(search_str) {
+    } else if let Some(fixed_old) = fix_llm_escapes(old_str) {
         // Only search had escapes, replace was fine
-        if let Some((new_content, count)) =
-            try_exact_edit(&original, &fixed_search, replace_str, allow_multiple)
-                .or_else(|| {
-                    try_flexible_edit(&original, &fixed_search, replace_str, allow_multiple)
-                })
-                .or_else(|| try_regex_edit(&original, &fixed_search, replace_str, allow_multiple))
+        if let Some((new_content, count)) = try_exact_edit(&original, &fixed_old, new_str)
+            .or_else(|| try_flexible_edit(&original, &fixed_old, new_str))
+            .or_else(|| try_regex_edit(&original, &fixed_old, new_str))
         {
             return finalize_edit(
                 &path,
@@ -164,70 +144,53 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
     }
 
     let mut error_msg = format!(
-        "Search string not found in file (tried exact, flexible, regex, and escape-fixed match).\n\
+        "Search string ('old') not found in file (tried exact, flexible, regex, and escape-fixed match).\n\
          File: {}\n\
-         Search (first 200 chars): {}",
+         Old (first 200 chars): {}",
         path_str,
-        search_str
+        old_str
             .char_indices()
             .nth(200)
-            .map(|(i, _)| &search_str[..i])
-            .unwrap_or(search_str)
+            .map(|(i, _)| &old_str[..i])
+            .unwrap_or(old_str)
     );
 
-    if search_str.contains("\\n") || replace_str.contains("\\n") {
-        error_msg.push_str("\n\nPROTIP: The search or replace string contains literal '\\n' (backslash + n). \
+    if old_str.contains("\\n") || new_str.contains("\\n") {
+        error_msg.push_str("\n\nPROTIP: The 'old' or 'new' string contains literal '\\n' (backslash + n). \
             If you intended to represent a newline, use a real newline character in your JSON argument instead of the string \"\\n\".");
     }
 
     Err(anyhow::anyhow!(error_msg))
 }
 
-fn try_exact_edit(
-    original: &str,
-    search: &str,
-    replace: &str,
-    allow_multiple: bool,
-) -> Option<(String, usize)> {
-    let count = original.matches(search).count();
-    if count == 0 {
-        return None;
-    }
-    if !allow_multiple && count > 1 {
+fn try_exact_edit(original: &str, old: &str, new: &str) -> Option<(String, usize)> {
+    let count = original.matches(old).count();
+    if count != 1 {
         return None;
     }
 
-    let new_content = if allow_multiple {
-        original.replace(search, replace)
-    } else {
-        original.replacen(search, replace, 1)
-    };
+    let new_content = original.replacen(old, new, 1);
 
     Some((new_content, count))
 }
 
-fn try_flexible_edit(
-    original: &str,
-    search: &str,
-    replace: &str,
-    allow_multiple: bool,
-) -> Option<(String, usize)> {
+fn try_flexible_edit(original: &str, old: &str, new: &str) -> Option<(String, usize)> {
     let source_lines: Vec<&str> = original.lines().collect();
-    let search_lines: Vec<&str> = search.lines().map(|l| l.trim()).collect();
-    if search_lines.is_empty() {
+    let old_lines: Vec<&str> = old.lines().map(|l| l.trim()).collect();
+    if old_lines.is_empty() {
         return None;
     }
 
-    let replace_lines: Vec<&str> = replace.lines().collect();
+    let new_lines: Vec<&str> = new.lines().collect();
     let mut occurrences = 0;
-    let mut new_lines = Vec::new();
+    let mut new_lines_result = Vec::new();
     let mut i = 0;
 
     while i < source_lines.len() {
-        if i + search_lines.len() <= source_lines.len() {
+        if i + old_lines.len() <= source_lines.len() {
             let mut matched = true;
-            for j in 0..search_lines.len() {
-                if source_lines[i + j].trim() != search_lines[j] {
+            for j in 0..old_lines.len() {
+                if source_lines[i + j].trim() != old_lines[j] {
                     matched = false;
                     break;
                 }
@@ -235,49 +198,44 @@ fn try_flexible_edit(
 
             if matched {
                 occurrences += 1;
-                if allow_multiple || occurrences == 1 {
+                if occurrences == 1 {
                     let first_line = source_lines[i];
                     let indentation: String = first_line
                         .chars()
                         .take_while(|c| c.is_whitespace())
                         .collect();
-                    let indented_replace = apply_indentation(&replace_lines, &indentation);
-                    for line in indented_replace {
-                        new_lines.push(line);
+                    let indented_new = apply_indentation(&new_lines, &indentation);
+                    for line in indented_new {
+                        new_lines_result.push(line);
                     }
-                    i += search_lines.len();
+                    i += old_lines.len();
                     continue;
                 }
             }
         }
-        new_lines.push(source_lines[i].to_string());
+        new_lines_result.push(source_lines[i].to_string());
         i += 1;
     }
 
-    if occurrences == 0 || (!allow_multiple && occurrences > 1) {
+    if occurrences != 1 {
         return None;
     }
 
-    let mut result = new_lines.join("\n");
+    let mut result = new_lines_result.join("\n");
     result = restore_trailing_newline(original, &result);
     Some((result, occurrences))
 }
 
-fn try_regex_edit(
-    original: &str,
-    search: &str,
-    replace: &str,
-    allow_multiple: bool,
-) -> Option<(String, usize)> {
+fn try_regex_edit(original: &str, old: &str, new: &str) -> Option<(String, usize)> {
     let delimiters = [
         '(', ')', ':', '[', ']', '{', '}', '>', '<', '=', '.', ',', ';',
     ];
-    let mut processed_search = search.to_string();
+    let mut processed_old = old.to_string();
     for delim in delimiters {
-        processed_search = processed_search.replace(delim, &format!(" {} ", delim));
+        processed_old = processed_old.replace(delim, &format!(" {} ", delim));
     }
 
-    let tokens: Vec<&str> = processed_search.split_whitespace().collect();
+    let tokens: Vec<&str> = processed_old.split_whitespace().collect();
     if tokens.is_empty() {
         return None;
     }
@@ -289,11 +247,11 @@ fn try_regex_edit(
     let re = Regex::new(&final_pattern).ok()?;
     let matches: Vec<_> = re.find_iter(original).collect();
 
-    if matches.is_empty() || (!allow_multiple && matches.len() > 1) {
+    if matches.len() != 1 {
         return None;
     }
 
-    let replace_lines: Vec<&str> = replace.lines().collect();
+    let new_lines: Vec<&str> = new.lines().collect();
     let mut last_end = 0;
     let mut result = String::new();
 
@@ -306,8 +264,8 @@ fn try_regex_edit(
             .map(|m| m.as_str())
             .unwrap_or("");
 
-        let indented_replace = apply_indentation(&replace_lines, indentation);
-        result.push_str(&indented_replace.join("\n"));
+        let indented_new = apply_indentation(&new_lines, indentation);
+        result.push_str(&indented_new.join("\n"));
 
         last_end = mat.end();
     }
@@ -464,11 +422,11 @@ fn finalize_edit(
     let path_str = path.display().to_string();
 
     // Guard: detect when the edit would produce no actual change.
-    // This catches cases like search == replace, or whitespace-only diffs
+    // This catches cases like old == new, or whitespace-only diffs
     // that collapse to identical content.
     if original == new_content {
         return Err(anyhow::anyhow!(
-            "Edit produced no changes: the search string was found, but the replacement \
+            "Edit produced no changes: the 'old' string was found, but the 'new' replacement \
             is identical to the matched text. The file was not modified.\n\
             File: {}",
             path_str,
@@ -490,7 +448,7 @@ fn finalize_edit(
 
     if meta.escape_fixed {
         message.push_str(
-            " WARNING: The search/replace strings contained double-escaped characters \
+            " WARNING: The 'old'/'new' strings contained double-escaped characters \
             (e.g. \\\" instead of \"). These were automatically corrected. \
             Please use raw characters in future tool calls to avoid this issue.",
         );

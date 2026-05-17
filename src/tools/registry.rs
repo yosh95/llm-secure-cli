@@ -231,7 +231,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
 
     maybe_register(
         r,
-        "read_file_content",
+        "read_file",
         "Read content from a text file or PDF.",
         json!({
             "type": "object",
@@ -244,9 +244,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
             "required": ["path"]
         }),
         Arc::new(|args, config| {
-            Box::pin(
-                async move { crate::tools::builtin::file_ops::read_file_content(args, config) },
-            )
+            Box::pin(async move { crate::tools::builtin::file_ops::read_file(args, config) })
         }),
     );
 
@@ -290,19 +288,18 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
         r,
         "edit_file",
         "Edit a file by replacing a block of text. \
-         IMPORTANT: provide the exact block of text to be replaced (search) and the exact block to replace it with. \
+         IMPORTANT: provide the exact block of text to be replaced (old) and the exact block to replace it with (new). \
          Do NOT use ellipsis (...) or omit any lines in the search or replace blocks; they must match the file content perfectly. \
-         Do NOT escape newlines; provide raw newline characters in your tool call.",
+         Do NOT escape newlines; provide raw newline characters in your tool call. \
+         This tool expects EXACTLY one match in the file to succeed.",
         json!({
             "type": "object",
             "properties": {
                 "path": {"type": "string", "description": "File path."},
-                "search": {"type": "string", "description": "The exact block of text to search for. Use raw newlines, not '\\n'. Do NOT use ellipsis (...)."},
-                "replace": {"type": "string", "description": "The block of text to replace it with. Use raw newlines, not '\\n'. Do NOT use ellipsis (...)."},
-                "allow_multiple": {"type": "boolean", "description": "If true, replace all occurrences. Default is false.", "default": false},
-                "dry_run": {"type": "boolean", "default": false}
+                "old": {"type": "string", "description": "The exact block of text to search for. Use raw newlines, not '\\n'. Do NOT use ellipsis (...)."},
+                "new": {"type": "string", "description": "The block of text to replace it with. Use raw newlines, not '\\n'. Do NOT use ellipsis (...)."}
             },
-            "required": ["path", "search", "replace"]
+            "required": ["path", "old", "new"]
         }),
         Arc::new(|args, config| {
             Box::pin(
@@ -384,7 +381,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
          'argv' is an array where argv[0] is the command name and subsequent elements are its arguments. \
          Example: ['git', 'status'] or ['echo', 'hello', 'world']. \
          Shell features (pipes, redirections, chaining, globbing) are NOT supported. \
-         Prefer built-in tools (grep_files, search_files, read_file_content) when possible.",
+         Prefer built-in tools (grep_files, search_files, read_file) when possible.",
         json!({
             "type": "object",
             "properties": {

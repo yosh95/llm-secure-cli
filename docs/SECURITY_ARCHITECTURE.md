@@ -154,7 +154,7 @@ Risk-level classification in `defaults.toml`:
 ```toml
 [security]
 high_risk_tools   = ["execute_command", "edit_file", "create_or_overwrite_file", "read_url_content"]
-medium_risk_tools = ["read_file_content", "grep_files", "brave_search"]
+medium_risk_tools = ["read_file", "grep_files", "brave_search"]
 # Low-risk tools → list_files_in_directory, search_files
 # Critical risk → execute_command when Dual LLM is disabled
 ```
@@ -381,7 +381,7 @@ auto_approval_level = "none"
 
 # Tool whitelist
 allowed_tools = [
-    "list_files_in_directory", "read_file_content", "grep_files", "search_files",
+    "list_files_in_directory", "read_file", "grep_files", "search_files",
     "edit_file", "create_or_overwrite_file", "read_url_content", "brave_search",
     "execute_command"
 ]
@@ -390,7 +390,7 @@ allowed_tools = [
 high_risk_tools = ["execute_command", "edit_file",
                    "create_or_overwrite_file", "read_url_content",
                    "brave_search"]
-medium_risk_tools = ["read_file_content", "grep_files"]
+medium_risk_tools = ["read_file", "grep_files"]
 # Low-risk tools → list_files_in_directory, search_files
 
 # Dual LLM Verification

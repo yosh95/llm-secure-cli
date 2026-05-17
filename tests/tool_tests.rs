@@ -1,7 +1,7 @@
 use llm_secure_cli::config::models::AppConfig;
 use llm_secure_cli::tools::builtin::file_modification::{create_or_overwrite_file, edit_file};
 use llm_secure_cli::tools::builtin::file_ops::{
-    grep_files, list_files_in_directory, read_file_content, search_files,
+    grep_files, list_files_in_directory, read_file, search_files,
 };
 use llm_secure_cli::tools::builtin::shell::execute_command;
 use serde_json::json;
@@ -120,7 +120,7 @@ fn test_file_ops_grep() {
 }
 
 #[test]
-fn test_read_file_content_options() {
+fn test_read_file_options() {
     let dir = tempdir().expect("Failed to create temp dir");
     let file_path = dir.path().join("test.txt");
     let path_str = file_path.to_str().expect("file path should be valid UTF-8");
@@ -141,7 +141,7 @@ fn test_read_file_content_options() {
     args.insert("end_line".to_string(), json!(3));
     args.insert("with_line_numbers".to_string(), json!(true));
 
-    let res = read_file_content(args, config).expect("read_file_content should succeed");
+    let res = read_file(args, config).expect("read_file should succeed");
     let content = res["content"]
         .as_str()
         .expect("Output should contain 'content' field");
@@ -242,8 +242,8 @@ fn test_file_modification_tools() {
     // 2. Edit file (exact)
     let mut args = HashMap::new();
     args.insert("path".to_string(), json!(path_str));
-    args.insert("search".to_string(), json!("line2"));
-    args.insert("replace".to_string(), json!("line2 modified"));
+    args.insert("old".to_string(), json!("line2"));
+    args.insert("new".to_string(), json!("line2 modified"));
 
     let res = edit_file(args, config.clone()).expect("edit_file failed");
     assert!(res["success"].as_bool().expect("success should be a bool"));
@@ -255,8 +255,8 @@ fn test_file_modification_tools() {
     // 3. Edit file (fuzzy match)
     let mut args = HashMap::new();
     args.insert("path".to_string(), json!(path_str));
-    args.insert("search".to_string(), json!("  line3  ")); // Whitespace difference
-    args.insert("replace".to_string(), json!("line3 modified"));
+    args.insert("old".to_string(), json!("  line3  ")); // Whitespace difference
+    args.insert("new".to_string(), json!("line3 modified"));
 
     let res = edit_file(args, config.clone()).expect("Fuzzy match should now succeed");
     assert!(res["success"].as_bool().expect("success should be a bool"));
@@ -276,8 +276,8 @@ fn test_file_modification_tools() {
 fn test_edit_file_not_found() {
     let mut args = HashMap::new();
     args.insert("path".to_string(), json!("non_existent_file.txt"));
-    args.insert("search".to_string(), json!("search"));
-    args.insert("replace".to_string(), json!("replace"));
+    args.insert("old".to_string(), json!("search"));
+    args.insert("new".to_string(), json!("replace"));
 
     let config = Arc::new(AppConfig::default());
     let res = edit_file(args, config);
@@ -285,7 +285,7 @@ fn test_edit_file_not_found() {
 }
 
 #[test]
-fn test_read_file_content_range_panic_fix() {
+fn test_read_file_range_panic_fix() {
     let dir = tempdir().expect("Failed to create temp dir");
     let file_path = dir.path().join("test_read.txt");
     let path_str = file_path.to_str().expect("file path should be valid UTF-8");
@@ -301,8 +301,7 @@ fn test_read_file_content_range_panic_fix() {
     args.insert("start_line".to_string(), json!(8));
     args.insert("end_line".to_string(), json!(3));
 
-    let res = read_file_content(args, config)
-        .expect("read_file_content should return Ok even with invalid range");
+    let res = read_file(args, config).expect("read_file should return Ok even with invalid range");
     let error_msg = res["error"]
         .as_str()
         .expect("Output should contain 'error' field");

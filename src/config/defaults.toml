@@ -51,7 +51,7 @@ high_risk_tools = [
     "read_url_content",
 ]
 medium_risk_tools = [
-    "read_file_content",
+    "read_file",
     "grep_files",
     "brave_search",
 ]

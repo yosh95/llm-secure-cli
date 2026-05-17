@@ -182,7 +182,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (provider, model) in providers {
         let prompt = "Read my todo list in todo.txt";
-        let tool = "read_file_content";
+        let tool = "read_file";
         let args = json!({"path": "todo.txt", "explanation": "Reading requested file."});
 
         // Use set_config to update provider and model for verification

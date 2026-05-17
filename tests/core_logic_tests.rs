@@ -90,7 +90,7 @@ fn test_validate_tool_call_non_execute_tool_string_args_checked() {
     // For non-execute tools, control chars in any string arg must be caught.
     let mut args = serde_json::Map::new();
     args.insert("path".to_string(), json!("test\x00.txt"));
-    let result = validate_tool_call("read_file_content", &args, &config);
+    let result = validate_tool_call("read_file", &args, &config);
     assert!(result.is_err(), "Null byte in path should be blocked");
 }
 

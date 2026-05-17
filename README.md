@@ -98,7 +98,7 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 
 - **Unified Provider Access**: Seamlessly switch between any OpenAI-compatible APIs (**OpenRouter, OpenAI, Ollama, LiteLLM**).
 - **Autonomous Agent**: A powerful set of built-in tools for complex automation:
-    - **File Operations**: `list_files_in_directory`, `read_file_content` (with paging support), `grep_files`, `search_files`.
+    - **File Operations**: `list_files_in_directory`, `read_file` (with paging support), `grep_files`, `search_files`.
     - **Search**: `grep_files` (regex content search) and `search_files` (filename pattern search).
     - **Modification**: `edit_file` (precision block replacement with exact/flexible/regex matching) and `create_or_overwrite_file`.
     - **System & Web**: `execute_command` (secure direct execution) and `read_url_content` (HTML-to-Markdown conversion with SSRF protection).
@@ -109,7 +109,7 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 - **Human-in-the-Loop**: Configurable `auto_approval_level` (none/low/medium) to balance speed and safety.
 
 ### Autonomous Agent Capabilities
-The AI agent autonomously selects tools to perform tasks. For example, it can search for a bug using `grep_files`, read the relevant code with `read_file_content`, and apply a fix with `edit_file`. All actions are logged with cryptographic signatures for auditability.
+The AI agent autonomously selects tools to perform tasks. For example, it can search for a bug using `grep_files`, read the relevant code with `read_file`, and apply a fix with `edit_file`. All actions are logged with cryptographic signatures for auditability.
 
 ---
 

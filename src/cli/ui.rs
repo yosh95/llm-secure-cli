@@ -122,24 +122,24 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
     if let Some(obj) = args.as_object() {
         if name == "edit_file" {
             let path = obj.get("path").and_then(|v| v.as_str()).unwrap_or("");
-            let search = obj.get("search").and_then(|v| v.as_str()).unwrap_or("");
-            let replace = obj.get("replace").and_then(|v| v.as_str()).unwrap_or("");
+            let old = obj.get("old").and_then(|v| v.as_str()).unwrap_or("");
+            let new = obj.get("new").and_then(|v| v.as_str()).unwrap_or("");
             let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
             println!("    {} {}: {}", "•".bright_black(), "path".cyan(), path);
             println!("    {} {}:", "•".bright_black(), "diff".cyan());
 
             let diff = difflib::unified_diff(
-                &search.lines().collect::<Vec<_>>(),
-                &replace.lines().collect::<Vec<_>>(),
-                "search",
-                "replace",
+                &old.lines().collect::<Vec<_>>(),
+                &new.lines().collect::<Vec<_>>(),
+                "old",
+                "new",
                 "",
                 "",
                 3,
             );
 
-            if diff.is_empty() && !search.is_empty() && search == replace {
+            if diff.is_empty() && !old.is_empty() && old == new {
                 println!("        {}", "(no changes)".dimmed());
             } else {
                 for line in diff {
@@ -158,7 +158,7 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
 
             // Print other arguments if any (except explanation which we want last)
             for (k, v) in obj {
-                if k != "path" && k != "search" && k != "replace" && k != "explanation" {
+                if k != "path" && k != "old" && k != "new" && k != "explanation" {
                     let val_str = v
                         .as_str()
                         .map(|s| s.to_string())
