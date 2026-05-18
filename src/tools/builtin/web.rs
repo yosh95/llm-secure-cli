@@ -92,7 +92,7 @@ pub async fn read_url_content(
 /// (text, tables, code) ready for LLM consumption — no scraping needed.
 pub async fn brave_search(
     args: HashMap<String, Value>,
-    _config: Arc<AppConfig>,
+    config: Arc<AppConfig>,
     api_key: &str,
 ) -> anyhow::Result<Value> {
     let query = args
@@ -100,44 +100,16 @@ pub async fn brave_search(
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("'query' is required"))?;
 
-    // Maximum number of search results to consider for context extraction (1–50)
-    let count = args
-        .get("count")
-        .and_then(|v| v.as_u64())
-        .map(|v| v.min(50))
-        .unwrap_or(20);
-
-    // Approximate maximum tokens in the returned context (1024–32768)
-    let max_tokens = args
-        .get("maximum_number_of_tokens")
-        .and_then(|v| v.as_u64())
-        .map(|v| v.clamp(1024, 32768))
-        .unwrap_or(8192);
-
-    // Maximum URLs in the response (1–50)
-    let max_urls = args
-        .get("maximum_number_of_urls")
-        .and_then(|v| v.as_u64())
-        .map(|v| v.clamp(1, 50))
-        .unwrap_or(20);
-
-    // Relevance threshold: "strict", "balanced", "lenient", or "disabled"
-    let context_threshold_mode = args
-        .get("context_threshold_mode")
-        .and_then(|v| v.as_str())
-        .unwrap_or("balanced");
-
-    // Freshness filter: "pd" (24h), "pw" (7d), "pm" (31d), "py" (365d), or date range
-    let freshness = args.get("freshness").and_then(|v| v.as_str()).unwrap_or("");
+    let bc = &config.brave_search;
 
     let result = call_brave_llm_context(
         BraveLlmContextParams {
             query,
-            count,
-            max_tokens,
-            max_urls,
-            context_threshold_mode,
-            freshness,
+            count: bc.count,
+            max_tokens: bc.max_tokens,
+            max_urls: bc.max_urls,
+            context_threshold_mode: &bc.context_threshold_mode,
+            freshness: &bc.freshness,
         },
         api_key,
     )

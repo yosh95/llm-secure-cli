@@ -356,12 +356,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
             json!({
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "The search query (1-400 chars, max 50 words)."},
-                    "count": {"type": "integer", "default": 20, "minimum": 1, "maximum": 50, "description": "Maximum number of search results to consider for context extraction."},
-                    "maximum_number_of_tokens": {"type": "integer", "default": 8192, "minimum": 1024, "maximum": 32768, "description": "Approximate maximum tokens in the returned context. Use lower values (2048) for simple factual queries, higher (16384) for complex research."},
-                    "maximum_number_of_urls": {"type": "integer", "default": 20, "minimum": 1, "maximum": 50, "description": "Maximum number of URLs in the response."},
-                    "context_threshold_mode": {"type": "string", "default": "balanced", "enum": ["strict", "balanced", "lenient", "disabled"], "description": "Relevance threshold for including content. 'strict' = fewer but more relevant, 'lenient' = more results possibly less relevant, 'disabled' = no filtering."},
-                    "freshness": {"type": "string", "default": "", "description": "Filter results by freshness: 'pd' (24h), 'pw' (7d), 'pm' (31d), 'py' (365d), or date range 'YYYY-MM-DDtoYYYY-MM-DD'."}
+                    "query": {"type": "string", "description": "The search query (1-400 chars, max 50 words)."}
                 },
                 "required": ["query"]
             }),

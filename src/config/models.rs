@@ -246,9 +246,58 @@ pub struct AppConfig {
     #[serde(default)]
     pub security: SecurityConfig,
     #[serde(default)]
+    pub brave_search: BraveSearchConfig,
+    #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
     #[serde(flatten)]
     pub providers: HashMap<String, ProviderConfig>,
     #[serde(default)]
     pub templates: HashMap<String, String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct BraveSearchConfig {
+    /// Maximum number of search results to consider for context extraction (1–50).
+    #[serde(default = "default_brave_count")]
+    pub count: u64,
+    /// Approximate maximum tokens in the returned context (1024–32768).
+    #[serde(default = "default_brave_max_tokens")]
+    pub max_tokens: u64,
+    /// Maximum number of URLs in the response (1–50).
+    #[serde(default = "default_brave_max_urls")]
+    pub max_urls: u64,
+    /// Relevance threshold: "strict", "balanced", "lenient", or "disabled".
+    #[serde(default = "default_brave_context_threshold_mode")]
+    pub context_threshold_mode: String,
+    /// Freshness filter: "pd" (24h), "pw" (7d), "pm" (31d), "py" (365d), or a date range.
+    #[serde(default = "default_brave_freshness")]
+    pub freshness: String,
+}
+
+fn default_brave_count() -> u64 {
+    50
+}
+fn default_brave_max_tokens() -> u64 {
+    32768
+}
+fn default_brave_max_urls() -> u64 {
+    50
+}
+fn default_brave_context_threshold_mode() -> String {
+    "balanced".to_string()
+}
+fn default_brave_freshness() -> String {
+    String::new()
+}
+
+impl Default for BraveSearchConfig {
+    fn default() -> Self {
+        Self {
+            count: default_brave_count(),
+            max_tokens: default_brave_max_tokens(),
+            max_urls: default_brave_max_urls(),
+            context_threshold_mode: default_brave_context_threshold_mode(),
+            freshness: default_brave_freshness(),
+        }
+    }
 }
