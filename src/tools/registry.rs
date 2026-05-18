@@ -352,7 +352,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
         maybe_register(
             r,
             "brave_search",
-            "Search the web using Brave LLM Context API. Returns pre-extracted page content (text, tables, code) optimised for LLM consumption — no additional scraping needed. Ideal for AI agents, RAG, and fact-checked answers.",
+            "Search the web using Brave Search API.",
             json!({
                 "type": "object",
                 "properties": {
@@ -373,13 +373,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
         maybe_register(
             r,
             "execute_python",
-            "Execute arbitrary Python code. \
-             The code runs in the same environment as the agent (Docker container) with full access to \
-             the filesystem, installed packages (pip), and the network. \
-             Use this for complex file operations, data processing, scripting, or any task \
-             where composing shell commands would be cumbersome. \
-             Prefer built-in tools (read_file, edit_file, grep_files) for simple single-purpose operations. \
-             Security is handled by container isolation and Dual LLM intent verification.",
+            "Execute arbitrary Python code.",
             json!({
                 "type": "object",
                 "properties": {
