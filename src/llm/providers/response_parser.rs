@@ -15,7 +15,7 @@ pub struct ParsedResponse {
     pub message_parts: Vec<MessagePart>,
 }
 
-/// Parse the "choices[0].message" object from an OpenAI-compatible chat completion
+/// Parse the "choices\[0\].message" object from an OpenAI-compatible chat completion
 /// response into a `ParsedResponse`.
 pub fn parse_assistant_message(msg: &Value) -> ParsedResponse {
     let text = msg["content"].as_str().map(|s| s.to_string());
