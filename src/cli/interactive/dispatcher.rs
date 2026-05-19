@@ -165,7 +165,10 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
 }
 
 pub async fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
-    if args.is_empty() {
+    let args_trimmed = args.trim();
+
+    // `/alias` (no args): list all aliases
+    if args_trimmed.is_empty() {
         match session.ctx.config_manager.get_state() {
             Ok(state) => {
                 if state.model_aliases.is_empty() {
@@ -185,9 +188,44 @@ pub async fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
         return;
     }
 
-    let parts: Vec<&str> = args.split_whitespace().collect();
+    let parts: Vec<&str> = args_trimmed.split_whitespace().collect();
+
+    // `/alias -d <name>` or `/alias --delete <name>`: remove an alias
+    if parts[0] == "-d" || parts[0] == "--delete" {
+        if parts.len() != 2 {
+            ui::report_error("Usage: /alias -d <name>");
+            return;
+        }
+        let alias_name = parts[1];
+        match session.ctx.config_manager.remove_alias(alias_name) {
+            Ok(true) => ui::report_success(&format!("Alias '{}' removed.", alias_name)),
+            Ok(false) => ui::report_info(&format!("Alias '{}' does not exist.", alias_name)),
+            Err(e) => ui::report_error(&format!("Failed to remove alias: {}", e)),
+        }
+        return;
+    }
+
+    // `/alias <name>`: show a specific alias
+    if parts.len() == 1 {
+        let alias_name = parts[0];
+        match session.ctx.config_manager.get_state() {
+            Ok(state) => {
+                if let Some(alias) = state.model_aliases.get(alias_name) {
+                    println!("  {: <15} -> {}", alias_name.bold().cyan(), alias.target);
+                } else {
+                    ui::report_info(&format!("Alias '{}' does not exist.", alias_name));
+                }
+            }
+            Err(e) => ui::report_error(&format!("Failed to load aliases: {}", e)),
+        }
+        return;
+    }
+
+    // `/alias <name> <target>`: create or update an alias
     if parts.len() != 2 {
-        ui::report_error("Usage: /alias <name> <target>");
+        ui::report_error(
+            "Usage: /alias <name> <target>   — create/update\n       /alias -d <name>       — delete\n       /alias <name>          — show one\n       /alias                 — list all",
+        );
         return;
     }
 
@@ -529,7 +567,17 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
         )
     };
 
-    if args.is_empty() {
+    let args_trimmed = args.trim();
+
+    // `/model -u` or `/model --update`: refresh the models cache
+    if args_trimmed == "-u" || args_trimmed == "--update" {
+        ui::report_info("Updating models cache...");
+        session.ctx.config_manager.update_models_cache().await;
+        ui::report_success("Models cache updated.");
+        // fall through to display
+    }
+
+    if args_trimmed.is_empty() || args_trimmed == "-u" || args_trimmed == "--update" {
         ui::print_rule(
             Some(&format!("Available Models for {}", provider)),
             Some("cyan"),
@@ -546,7 +594,7 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
             }
         } else {
             println!(
-                "  No models cached for {}. Try running 'llsc models --update' outside of the chat to fetch models.",
+                "  No models cached for {}. Use /model -u to fetch models now.",
                 provider
             );
         }
@@ -571,7 +619,7 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
         return;
     }
 
-    let target_model = args;
+    let target_model = args_trimmed;
     match crate::core::initializer::switch_model(session, target_model, stdout, !raw).await {
         Ok(_) => {
             let state = session.get_client().get_state();
@@ -616,7 +664,16 @@ pub async fn handle_provider_cmd(session: &mut ActiveSession, args: &str) {
 pub async fn handle_vmodel_cmd(session: &mut ActiveSession, args: &str) {
     let (current_provider, current_model) = session.ctx.config_manager.get_dual_llm_settings();
 
-    if args.is_empty() {
+    let args_trimmed = args.trim();
+
+    // `/vmodel -u` or `/vmodel --update`: refresh the models cache
+    if args_trimmed == "-u" || args_trimmed == "--update" {
+        ui::report_info("Updating models cache...");
+        session.ctx.config_manager.update_models_cache().await;
+        ui::report_success("Models cache updated.");
+    }
+
+    if args_trimmed.is_empty() || args_trimmed == "-u" || args_trimmed == "--update" {
         if current_provider.is_empty() {
             ui::report_error("Verifier provider is not set. Use /vp <provider> first.");
             return;
@@ -638,6 +695,11 @@ pub async fn handle_vmodel_cmd(session: &mut ActiveSession, args: &str) {
                     println!("    {}", model);
                 }
             }
+        } else {
+            println!(
+                "  No models cached for {}. Use /vmodel -u to fetch models now.",
+                current_provider
+            );
         }
         return;
     }
@@ -645,11 +707,11 @@ pub async fn handle_vmodel_cmd(session: &mut ActiveSession, args: &str) {
     if let Err(e) = session
         .ctx
         .config_manager
-        .update_v_state(&current_provider, args)
+        .update_v_state(&current_provider, args_trimmed)
     {
         ui::report_error(&format!("Failed to update verifier model: {}", e));
     } else {
-        ui::report_success(&format!("Verifier model set to: {}", args));
+        ui::report_success(&format!("Verifier model set to: {}", args_trimmed));
     }
 }
 
@@ -748,11 +810,12 @@ fn print_help() {
     println!("  /attach <path|url> Attach a file or URL to the next request");
     println!("  /tools [on|off]    Toggle or show status of tool execution");
     println!("  /system [on|off]   Toggle or show system prompt status");
-    println!("  /m, /model <name>  Switch LLM model for the current provider");
+    println!("  /m, /model [-u] [<name>]  List models (/model -u to refresh cache) or switch");
     println!("  /p, /provider <n>  Switch LLM provider");
-    println!("  /vm, /vmodel <n>   Set model for dual-LLM verification");
+    println!("  /vm, /vmodel [-u] [<name>] List verifier models (-u to refresh) or set");
     println!("  /vp, /vprovider <n> Set provider for dual-LLM verification");
     println!("  /verify [on|off]   Toggle or show status of dual-LLM verification");
+    println!("  /alias [-d <name>] [<name> <target>]  List/create/delete model aliases");
     println!("  /s, /summarize     Summarize history and clear it");
     println!("  /raw               Show raw conversation history");
     println!("  /dump              Dump conversation history as TOML");

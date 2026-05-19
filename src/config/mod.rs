@@ -168,6 +168,18 @@ impl ConfigManager {
         Ok(())
     }
 
+    pub fn remove_alias(&self, alias: &str) -> anyhow::Result<bool> {
+        let mut write = self
+            .app_state
+            .write()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+        let existed = write.model_aliases.remove(alias).is_some();
+        if existed {
+            Self::persist_state(&write);
+        }
+        Ok(existed)
+    }
+
     pub async fn get_cached_models(&self) -> HashMap<String, Vec<String>> {
         let c_path = models_cache_path();
         if !c_path.exists() {

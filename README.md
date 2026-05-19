@@ -180,8 +180,9 @@ Inside the `llsc` interactive session:
 - `/save <path>` / `/load <path>`: Manage conversation history.
 - `/attach <path/URL>`: Add a file or website content to the context.
 - `/tools [on|off]`: Show or toggle autonomous tool use status.
-- `/model`, `/m [<alias>]`: Switch or list models for current provider.
-- `/alias [<name> <target>]`: List, create, or update model aliases (e.g., `/alias mygpt openai:gpt-4o`).
+- `/model`, `/m [-u] [<alias>]`: List models for current provider. Use `-u`/`--update` to refresh the cache. Specify an alias or model name to switch.
+- `/vmodel`, `/vm [-u] [<name>]`: List models for the verifier (dual-LLM). Use `-u`/`--update` to refresh the cache.
+- `/alias` — list all; `/alias <name>` — show one; `/alias <name> <target>` — create/update; `/alias -d <name>` — delete.
 - `/provider`, `/p [<name>]`: Switch or list providers.
 - `/summarize`, `/s`: Summarize history and clear it (context preservation).
 

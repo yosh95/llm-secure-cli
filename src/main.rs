@@ -257,6 +257,35 @@ async fn start_chat_session(
 
     let stdout = args.stdout || !is_atty;
 
+    // Spawn a background task to refresh the models cache if it doesn't exist
+    // or is older than 24 hours
+    {
+        let ctx_bg = ctx.clone();
+        tokio::spawn(async move {
+            let c_path = llm_secure_cli::consts::models_cache_path();
+            let should_refresh = if !c_path.exists() {
+                true
+            } else {
+                match std::fs::metadata(&c_path) {
+                    Ok(meta) => match meta.modified() {
+                        Ok(mtime) => {
+                            let age = std::time::SystemTime::now()
+                                .duration_since(mtime)
+                                .unwrap_or_default();
+                            age.as_secs() > 24 * 3600
+                        }
+                        Err(_) => true,
+                    },
+                    Err(_) => true,
+                }
+            };
+            if should_refresh {
+                tracing::info!("Background refresh of models cache...");
+                ctx_bg.config_manager.update_models_cache().await;
+            }
+        });
+    }
+
     let client = {
         let registry = ctx.client_registry.lock().await;
         registry.create_client(&provider, &model, stdout, args.raw, &ctx.config_manager)
