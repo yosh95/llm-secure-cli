@@ -376,9 +376,7 @@ pub fn grep_files(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyho
         Err(poison) => {
             // Recover data from a poisoned mutex rather than returning empty.
             // The walker threads may have populated useful results before the panic.
-            tracing::warn!(
-                "Mutex poisoned in grep_files final results; recovering available data"
-            );
+            tracing::warn!("Mutex poisoned in grep_files final results; recovering available data");
             let inner = poison.into_inner();
             if inner.is_empty() {
                 return Ok(json!({

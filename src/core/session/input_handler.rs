@@ -5,10 +5,101 @@ use crate::core::session::ActiveSession;
 use crate::llm::models::DataSource;
 use colored::*;
 use rustyline::error::ReadlineError;
-use rustyline::history::FileHistory;
+use rustyline::history::{FileHistory, History};
 use rustyline::{Cmd, Editor, KeyCode, KeyEvent, Modifiers};
 use serde_json;
+use std::io::{BufRead, BufReader, Write};
 use std::sync::{Arc, Mutex};
+
+/// Load history with a fallback for platforms where rustyline's native
+/// `FileHistory::load` (which uses `flock`) may fail (e.g., Termux/Android).
+fn load_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::path::Path) {
+    // Try rustyline's native load first
+    if rl.load_history(path).is_ok() {
+        return;
+    }
+    // Fallback: read the file manually. rustyline writes in V2 format
+    // (#V2 header line, then each line has \n and \\ escaped).
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let reader = BufReader::new(file);
+    let mut lines = reader.lines();
+    // Check for V2 header
+    let mut v2 = false;
+    if let Some(Ok(first)) = lines.next() {
+        if first == "#V2" {
+            v2 = true;
+        } else {
+            let _ = rl.add_history_entry(&first);
+        }
+    }
+    for line in lines {
+        let mut line = match line {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+        if line.is_empty() {
+            continue;
+        }
+        if v2 {
+            // Unescape \n → newline, \\ → backslash
+            let mut unescaped = String::with_capacity(line.len());
+            let mut chars = line.chars();
+            while let Some(c) = chars.next() {
+                if c == '\\' {
+                    match chars.next() {
+                        Some('n') => unescaped.push('\n'),
+                        Some('\\') => unescaped.push('\\'),
+                        Some(other) => {
+                            unescaped.push('\\');
+                            unescaped.push(other);
+                        }
+                        None => unescaped.push('\\'),
+                    }
+                } else {
+                    unescaped.push(c);
+                }
+            }
+            line = unescaped;
+        }
+        let _ = rl.add_history_entry(&line);
+    }
+}
+
+/// Save history with a fallback for platforms where rustyline's native
+/// `FileHistory::save` (which uses `flock` and `umask` via the `nix` crate)
+/// may fail (e.g., Termux/Android, some FUSE filesystems).
+fn save_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::path::Path) {
+    // Try rustyline's native save first
+    if rl.save_history(path).is_ok() {
+        return;
+    }
+    // Fallback: write the history using plain file I/O (no flock, no umask).
+    // This mirrors rustyline's V2 format.
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    // Collect all entries first so we don't hold a borrow on `rl` while
+    // doing I/O.
+    let entries: Vec<String> = {
+        let history = rl.history();
+        if history.is_empty() {
+            return;
+        }
+        history.iter().cloned().collect()
+    };
+    let mut file = match std::fs::File::create(path) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let _ = file.write_all(b"#V2\n");
+    for entry in &entries {
+        let escaped = entry.replace('\\', "\\\\").replace('\n', "\\n");
+        let _ = writeln!(file, "{}", escaped);
+    }
+}
 
 impl ActiveSession {
     pub async fn run(
@@ -123,7 +214,7 @@ impl ActiveSession {
         if let Some(parent) = h_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let _ = rl.load_history(&h_path);
+        load_history_robust(&mut rl, &h_path);
 
         let mut next_initial_text: Option<String> = None;
 
@@ -156,7 +247,7 @@ impl ActiveSession {
                         .await
                     {
                         crate::cli::interactive::dispatcher::CommandResult::Exit => {
-                            let _ = rl.save_history(&history_log_path());
+                            save_history_robust(&mut rl, &history_log_path());
                             // Drop rustyline editor and return to let
                             // ChatSession Drop run naturally (saves Merkle anchor).
                             drop(rl);
@@ -164,7 +255,7 @@ impl ActiveSession {
                         }
                         crate::cli::interactive::dispatcher::CommandResult::Handled => {
                             let _ = rl.add_history_entry(&final_trimmed);
-                            let _ = rl.save_history(&history_log_path());
+                            save_history_robust(&mut rl, &history_log_path());
                             continue;
                         }
                         crate::cli::interactive::dispatcher::CommandResult::NotACommand => {}
@@ -193,7 +284,7 @@ impl ActiveSession {
                     // SIGKILL / OOM kills on Android where the process
                     // may be terminated before the deferred save_history
                     // on normal exit can run.
-                    let _ = rl.save_history(&history_log_path());
+                    save_history_robust(&mut rl, &history_log_path());
 
                     let mut data = std::mem::take(&mut self.pending_data);
                     data.push(DataSource {
@@ -224,7 +315,7 @@ impl ActiveSession {
                 }
                 Err(ReadlineError::Eof) => {
                     println!("CTRL-D");
-                    let _ = rl.save_history(&history_log_path());
+                    save_history_robust(&mut rl, &history_log_path());
                     drop(rl);
                     // Return to let ChatSession Drop run naturally
                     // (saves Merkle anchor and cleanup).
@@ -236,6 +327,6 @@ impl ActiveSession {
                 }
             }
         }
-        let _ = rl.save_history(&history_log_path());
+        save_history_robust(&mut rl, &history_log_path());
     }
 }

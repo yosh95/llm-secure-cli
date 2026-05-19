@@ -355,8 +355,7 @@ fn check_ip(ip: std::net::IpAddr) -> anyhow::Result<()> {
         IpAddr::V6(v6) => {
             // NOTE: is_documentation() is still nightly for Ipv6Addr as of Rust 1.95,
             // so we check the documentation prefix (2001:db8::/32) manually.
-            let is_doc = v6.segments()[0] == 0x2001
-                && v6.segments()[1] == 0x0db8;
+            let is_doc = v6.segments()[0] == 0x2001 && v6.segments()[1] == 0x0db8;
             v6.is_loopback()
                 || v6.is_unspecified()
                 || v6.is_multicast()
