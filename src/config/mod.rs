@@ -10,42 +10,84 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Arc, OnceLock, RwLock};
 
+/// Thread-safe configuration manager.
+///
+/// **`AppConfig`** is stored in a `RwLock` because it can be mutated at runtime
+/// (e.g., toggling Dual LLM Verification via `/verify on|off`).  The previous
+/// double-check locking pattern — acquire read lock, check, drop, acquire write
+/// lock, check again — was prone to TOCTOU races.  The current implementation
+/// eliminates that pattern by always acquiring the write lock for the first
+/// initialization path and using a separate `OnceLock` flag to make the
+/// initialization path atomic.
+///
+/// **`AppState`** is stored in a `RwLock` because it is mutable (*update_state*,
+/// *set_alias*, …).  The lock is held only for the brief clone-or-swap, so
+/// contention in the async runtime is negligible.
 pub struct ConfigManager {
-    app_config: RwLock<Option<Arc<AppConfig>>>,
-    app_state: RwLock<Option<AppState>>,
+    /// `true` once `AppConfig` has been loaded from disk.  Coupled with a
+    /// `RwLock<Arc<AppConfig>>`, this lets us avoid the old double-check
+    /// locking: the `OnceLock` guarantees that the *init-from-disk* closure
+    /// runs exactly once, while the `RwLock` permits later overwrites via
+    /// `set_config()`.
+    config_initialized: OnceLock<()>,
+    app_config: RwLock<Arc<AppConfig>>,
+    app_state: RwLock<AppState>,
     env_cache: OnceLock<HashMap<String, String>>,
 }
 
 impl ConfigManager {
     pub fn new() -> Self {
         Self {
-            app_config: RwLock::new(None),
-            app_state: RwLock::new(None),
+            config_initialized: OnceLock::new(),
+            app_config: RwLock::new(Arc::new(AppConfig::default())),
+            app_state: RwLock::new(AppState::default()), // populated lazily in get_state()
             env_cache: OnceLock::new(),
         }
     }
 
+    /// Returns a clone of the current application state.
+    ///
+    /// On the very first call the state is loaded from disk; subsequent calls
+    /// return the in-memory copy.  Mutations (via *update_state*, etc.) are
+    /// always written through to disk.
     pub fn get_state(&self) -> anyhow::Result<AppState> {
-        {
-            let read = self
-                .app_state
-                .read()
-                .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-            if let Some(state) = &*read {
-                return Ok(state.clone());
-            }
-        }
-
-        let mut write = self
+        let read = self
             .app_state
-            .write()
+            .read()
             .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-        if let Some(state) = &*write {
-            return Ok(state.clone());
+
+        // If the state is still the default placeholder and a state file exists
+        // on disk, we need to populate it.  We drop the read lock first to avoid
+        // deadlocking when acquiring the write lock.
+        if read.last_used_provider.is_none()
+            && read.last_used_model.is_none()
+            && read.last_used_v_provider.is_none()
+            && read.last_used_v_model.is_none()
+            && read.model_aliases.is_empty()
+        {
+            drop(read);
+            let mut write = self
+                .app_state
+                .write()
+                .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+            // Double-check after acquiring write lock (another thread may have
+            // initialized already).
+            if write.last_used_provider.is_none()
+                && write.last_used_model.is_none()
+                && write.model_aliases.is_empty()
+            {
+                *write = Self::load_state_from_disk();
+            }
+            return Ok(write.clone());
         }
 
+        Ok(read.clone())
+    }
+
+    /// Load state from disk (static helper used during first access).
+    fn load_state_from_disk() -> AppState {
         let s_path = state_file_path();
-        let state = if s_path.exists() {
+        if s_path.exists() {
             let content = match fs::read_to_string(&s_path) {
                 Ok(c) => c,
                 Err(e) => {
@@ -70,64 +112,59 @@ impl ConfigManager {
             }
         } else {
             AppState::default()
-        };
+        }
+    }
 
-        *write = Some(state.clone());
-        Ok(state)
+    /// Helper: persist an updated state to disk, logging any write failure.
+    ///
+    /// IMPORTANT: This must be called **while holding the write lock** so that
+    /// the in-memory state and on-disk state stay consistent.
+    fn persist_state(state: &AppState) {
+        if let Ok(content) = toml::to_string(state)
+            && let Err(e) = fs::write(state_file_path(), content)
+        {
+            tracing::error!(
+                path = %state_file_path().display(),
+                error = %e,
+                "CRITICAL: Failed to write state file — state may be lost on restart"
+            );
+        }
     }
 
     pub fn update_state(&self, provider: &str, model: &str) -> anyhow::Result<()> {
-        let mut state = self.get_state()?;
-        state.last_used_provider = Some(provider.to_string());
-        state.last_used_model = Some(model.to_string());
-
         let mut write = self
             .app_state
             .write()
             .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-        *write = Some(state.clone());
-
-        if let Ok(content) = toml::to_string(&state) {
-            let _ = fs::write(state_file_path(), content);
-        }
+        write.last_used_provider = Some(provider.to_string());
+        write.last_used_model = Some(model.to_string());
+        Self::persist_state(&write);
         Ok(())
     }
 
     pub fn update_v_state(&self, provider: &str, model: &str) -> anyhow::Result<()> {
-        let mut state = self.get_state()?;
-        state.last_used_v_provider = Some(provider.to_string());
-        state.last_used_v_model = Some(model.to_string());
-
         let mut write = self
             .app_state
             .write()
             .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-        *write = Some(state.clone());
-
-        if let Ok(content) = toml::to_string(&state) {
-            let _ = fs::write(state_file_path(), content);
-        }
+        write.last_used_v_provider = Some(provider.to_string());
+        write.last_used_v_model = Some(model.to_string());
+        Self::persist_state(&write);
         Ok(())
     }
 
     pub fn set_alias(&self, alias: &str, target: &str) -> anyhow::Result<()> {
-        let mut state = self.get_state()?;
-        state.model_aliases.insert(
+        let mut write = self
+            .app_state
+            .write()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+        write.model_aliases.insert(
             alias.to_string(),
             crate::config::models::ModelAlias {
                 target: target.to_string(),
             },
         );
-
-        let mut write = self
-            .app_state
-            .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-        *write = Some(state.clone());
-
-        if let Ok(content) = toml::to_string(&state) {
-            let _ = fs::write(state_file_path(), content);
-        }
+        Self::persist_state(&write);
         Ok(())
     }
 
@@ -201,8 +238,14 @@ impl ConfigManager {
             }
         }
 
-        if let Ok(content) = serde_json::to_string_pretty(&cache) {
-            let _ = fs::write(models_cache_path(), content);
+        if let Ok(content) = serde_json::to_string_pretty(&cache)
+            && let Err(e) = fs::write(models_cache_path(), &content)
+        {
+            tracing::error!(
+                path = %models_cache_path().display(),
+                error = %e,
+                "Failed to write models cache"
+            );
         }
         cache
     }
@@ -306,28 +349,37 @@ impl ConfigManager {
     }
 
     pub fn get_config(&self) -> anyhow::Result<Arc<AppConfig>> {
-        {
-            let read = self
-                .app_config
-                .read()
-                .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-            if let Some(config) = &*read {
-                return Ok(Arc::clone(config));
+        // The `OnceLock` guarantees that the *load-from-disk* logic runs exactly
+        // once, even under concurrent access.  After initialization the
+        // `RwLock<Arc<AppConfig>>` is read without any TOCTOU window because
+        // the OnceLock flag is already set.
+        self.config_initialized.get_or_init(|| {
+            let config = Self::load_config_from_disk();
+            match self.app_config.write() {
+                Ok(mut guard) => *guard = Arc::new(config),
+                Err(e) => {
+                    tracing::error!(error = %e, "Config RwLock poisoned during initialization");
+                }
             }
-        }
+        });
 
-        let mut write = self
+        let read = self
             .app_config
-            .write()
+            .read()
             .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-        if let Some(config) = &*write {
-            return Ok(Arc::clone(config));
-        }
+        Ok(Arc::clone(&read))
+    }
 
+    /// Load and validate the config from disk.
+    fn load_config_from_disk() -> AppConfig {
         // 1. Load defaults from embedded defaults.toml
         let defaults_toml = include_str!("defaults.toml");
-        let mut config_value: serde_json::Value = toml::from_str(defaults_toml)
-            .map_err(|e| anyhow::anyhow!("Failed to parse defaults: {}", e))?;
+        let mut config_value: serde_json::Value = match toml::from_str(defaults_toml) {
+            Ok(v) => v,
+            Err(e) => {
+                panic!("Embedded defaults.toml must be valid: {}", e);
+            }
+        };
 
         // 2. Load user config from files and merge them
         let config_path = config_file_path();
@@ -346,18 +398,20 @@ impl ConfigManager {
 
         // 3. Final deserialization into AppConfig
         let final_config_struct: AppConfig =
-            serde_json::from_value(config_value).map_err(|e| {
-                anyhow::anyhow!("CRITICAL: Failed to deserialize merged configuration: {}\nPlease check your {}/config.toml for schema errors.", e, get_base_dir().to_string_lossy())
-            })?;
+            serde_json::from_value(config_value).unwrap_or_else(|e| {
+                panic!(
+                    "CRITICAL: Failed to deserialize merged configuration: {}\nPlease check your {}/config.toml for schema errors.",
+                    e,
+                    get_base_dir().to_string_lossy()
+                )
+            });
 
         // 4. Validate critical security settings
         if let Err(e) = validate_security_config(&final_config_struct.security) {
-            return Err(anyhow::anyhow!("Invalid security configuration: {}", e));
+            panic!("Invalid security configuration: {}", e);
         }
 
-        let final_config = Arc::new(final_config_struct);
-        *write = Some(Arc::clone(&final_config));
-        Ok(final_config)
+        final_config_struct
     }
 
     /// Resolve the dual LLM provider and model, prioritizing AppState (state.toml)
@@ -487,12 +541,19 @@ impl ConfigManager {
         result
     }
 
+    /// Overwrites the in-memory application config.
+    ///
+    /// This is used by interactive commands (e.g., `/verify on|off`) to toggle
+    /// settings at runtime.  The write lock is held only for the brief swap.
     pub fn set_config(&self, config: AppConfig) -> anyhow::Result<()> {
+        // Ensure config is marked as initialized so future get_config() calls
+        // don't try to reload from disk.
+        let _ = self.config_initialized.set(());
         let mut write = self
             .app_config
             .write()
             .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-        *write = Some(Arc::new(config));
+        *write = Arc::new(config);
         Ok(())
     }
 }

@@ -116,7 +116,16 @@ impl<'a> AuditParams<'a> {
 }
 
 pub fn log_audit(params: AuditParams) {
-    let _ = log_audit_and_return(params, None);
+    let tool_name = params.tool_name.to_string();
+    let event_type = params.event_type.to_string();
+    let result = log_audit_and_return(params, None);
+    if result.is_none() {
+        tracing::error!(
+            tool = %tool_name,
+            event = %event_type,
+            "Audit log entry was not persisted — integrity gap"
+        );
+    }
 }
 
 pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Option<AuditEntry> {
@@ -488,14 +497,27 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
             "arch": arch,
             "cli_version": cli_version
         });
-        let _ = writeln!(temp_file, "{}", continuity_marker);
+        if let Err(e) = writeln!(temp_file, "{}", continuity_marker) {
+            tracing::error!(path = %temp_path.display(), error = %e, "Failed to write continuity marker during log rotation");
+        }
 
         for l in all_lines.into_iter().skip(skip_count) {
-            let _ = writeln!(temp_file, "{}", l);
+            if let Err(e) = writeln!(temp_file, "{}", l) {
+                tracing::error!(path = %temp_path.display(), error = %e, "Failed to write audit entry during log rotation");
+            }
         }
 
         // Finalize by renaming
         drop(temp_file);
-        let _ = fs::rename(&temp_path, path);
+        if let Err(e) = fs::rename(&temp_path, path) {
+            tracing::error!(
+                src = %temp_path.display(),
+                dst = %path.display(),
+                error = %e,
+                "CRITICAL: Failed to rotate audit log — old data retained, new data may be lost"
+            );
+        }
+    } else {
+        tracing::error!(path = %temp_path.display(), "Failed to create temp file for audit log rotation");
     }
 }

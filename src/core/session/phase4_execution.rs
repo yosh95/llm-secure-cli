@@ -49,24 +49,30 @@ impl ActiveSession {
         });
 
         let mut is_error = false;
+        let name_owned = name.to_string();
         let mut final_v = match result {
             Ok(v) => {
-                let entry = tokio::task::block_in_place(|| {
+                let c = config.clone();
+                let a = args.clone();
+                let ac = audit_ctx.clone();
+                let out_str = v.as_str().map(|s| s.to_string());
+                let entry = tokio::task::spawn_blocking(move || {
                     crate::security::audit::log_audit_and_return(
                         crate::security::audit::AuditParams {
                             event_type: "tool_call",
-                            tool_name: name,
-                            args: serde_json::json!(args),
-                            output: v.as_str(),
+                            tool_name: &name_owned,
+                            args: serde_json::json!(a),
+                            output: out_str.as_deref(),
                             exit_code: Some(0),
                             error: None,
-                            context: Some(&audit_ctx),
-                            config: &config,
+                            context: Some(&ac),
+                            config: &c,
                         },
                         None,
                     )
-                });
-                if let Some(entry) = entry {
+                })
+                .await;
+                if let Ok(Some(entry)) = entry {
                     self.audit_entries.push(entry);
                 }
                 v
@@ -74,22 +80,27 @@ impl ActiveSession {
             Err(e) => {
                 is_error = true;
                 let err_msg = e.to_string();
-                let entry = tokio::task::block_in_place(|| {
+                let err_msg_for_closure = err_msg.clone();
+                let c = config.clone();
+                let a = args.clone();
+                let ac = audit_ctx.clone();
+                let entry = tokio::task::spawn_blocking(move || {
                     crate::security::audit::log_audit_and_return(
                         crate::security::audit::AuditParams {
                             event_type: "tool_call",
-                            tool_name: name,
-                            args: serde_json::json!(args),
+                            tool_name: &name_owned,
+                            args: serde_json::json!(a),
                             output: None,
                             exit_code: Some(1),
-                            error: Some(&err_msg),
-                            context: Some(&audit_ctx),
-                            config: &config,
+                            error: Some(&err_msg_for_closure),
+                            context: Some(&ac),
+                            config: &c,
                         },
                         None,
                     )
-                });
-                if let Some(entry) = entry {
+                })
+                .await;
+                if let Ok(Some(entry)) = entry {
                     self.audit_entries.push(entry);
                 }
                 Value::String(format!("Error: {}", err_msg))
