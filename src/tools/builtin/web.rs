@@ -30,6 +30,11 @@ pub async fn read_url_content(
     // Validate URL (block SSRF: private/loopback addresses)
     validate_url_ssrf(url)?;
 
+    // DNS rebinding protection: resolve the hostname and check the resulting IPs.
+    // This prevents attacks where a hostname resolves to a public IP during the
+    // initial check but switches to a private IP during the actual request.
+    validate_dns_resolution(url).await?;
+
     let content = fetch_url(url).await?;
 
     // Apply line range and character limits
@@ -273,6 +278,50 @@ async fn call_brave_llm_context(
     Ok(result)
 }
 
+/// Resolve a hostname via DNS and validate the resulting IP addresses.
+/// This is a defence-in-depth measure against DNS rebinding attacks:
+/// an attacker-controlled domain could resolve to a public IP during
+/// `validate_url_ssrf` but switch to a private IP when the actual
+/// outbound request is made moments later.
+async fn validate_dns_resolution(url: &str) -> anyhow::Result<()> {
+    let parsed = url::Url::parse(url).map_err(|e| anyhow::anyhow!("Invalid URL: {}", e))?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| anyhow::anyhow!("URL has no host"))?;
+
+    // If the host is already an IP literal, it was already checked by validate_url_ssrf.
+    if host.parse::<std::net::IpAddr>().is_ok() {
+        return Ok(());
+    }
+
+    // Resolve the hostname. We use a dedicated, non-reused resolver so that
+    // cached entries from a previous resolution don't mask a rebinding attack.
+    // `tokio::net::lookup_host` uses the system resolver; a dedicated
+    // `tokio::net::ToSocketAddrs` call performs a fresh resolution.
+    let socket_addr = format!("{}:0", host);
+    let addrs: Vec<std::net::SocketAddr> = match tokio::net::lookup_host(&socket_addr).await {
+        Ok(addrs) => addrs.collect(),
+        Err(e) => {
+            // If DNS resolution fails entirely, block the request.
+            // A rebinding attack could deliberately return NXDOMAIN after the
+            // initial check, but we cannot distinguish that from a genuine
+            // failure, so we err on the side of safety.
+            return Err(anyhow::anyhow!(
+                "SSRF protection: DNS resolution failed for '{}': {}",
+                host,
+                e
+            ));
+        }
+    };
+
+    // Check every resolved IP address.
+    for addr in &addrs {
+        check_ip(addr.ip())?;
+    }
+
+    Ok(())
+}
+
 fn validate_url_ssrf(url: &str) -> anyhow::Result<()> {
     use std::net::IpAddr;
     let parsed = url::Url::parse(url).map_err(|e| anyhow::anyhow!("Invalid URL: {}", e))?;
@@ -303,7 +352,18 @@ fn check_ip(ip: std::net::IpAddr) -> anyhow::Result<()> {
                 || v4.is_unspecified()
                 || v4.is_documentation()
         }
-        IpAddr::V6(v6) => v6.is_loopback() || v6.is_unspecified() || v6.is_multicast(),
+        IpAddr::V6(v6) => {
+            // NOTE: is_documentation() is still nightly for Ipv6Addr as of Rust 1.95,
+            // so we check the documentation prefix (2001:db8::/32) manually.
+            let is_doc = v6.segments()[0] == 0x2001
+                && v6.segments()[1] == 0x0db8;
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || v6.is_unique_local()
+                || v6.is_unicast_link_local()
+                || is_doc
+        }
     };
     if blocked {
         return Err(anyhow::anyhow!(

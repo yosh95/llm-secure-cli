@@ -340,18 +340,26 @@ pub fn grep_files(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyho
                     if !local_matches.is_empty() {
                         let mut res = match results.lock() {
                             Ok(guard) => guard,
-                            Err(_) => {
-                                tracing::error!(
-                                    "Mutex poisoned in grep_files walker; skipping entry"
+                            Err(poison) => {
+                                // Mutex was poisoned by a panic in another thread,
+                                // but the underlying data is still usable.
+                                // Recover it so we don't silently lose search results.
+                                tracing::warn!(
+                                    "Mutex poisoned in grep_files walker; recovering data"
                                 );
-                                return ignore::WalkState::Skip;
+                                is_truncated.store(true, std::sync::atomic::Ordering::Relaxed);
+                                poison.into_inner()
                             }
                         };
                         if res.len() >= MAX_SEARCH_RESULTS {
                             is_truncated.store(true, std::sync::atomic::Ordering::Relaxed);
                             return ignore::WalkState::Quit;
                         }
-                        res.extend(local_matches);
+                        // Only extend up to the limit to avoid wasted work if we are near
+                        // the boundary.
+                        let remaining = MAX_SEARCH_RESULTS.saturating_sub(res.len());
+                        let take = local_matches.len().min(remaining);
+                        res.extend(local_matches.into_iter().take(take));
                         if res.len() >= MAX_SEARCH_RESULTS {
                             is_truncated.store(true, std::sync::atomic::Ordering::Relaxed);
                             return ignore::WalkState::Quit;
@@ -365,12 +373,20 @@ pub fn grep_files(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyho
 
     let mut final_results = match results.lock() {
         Ok(guard) => guard.clone(),
-        Err(_) => {
-            tracing::error!("Mutex poisoned in grep_files final results; returning empty results");
-            return Ok(json!({
-                "matches": [],
-                "error": "Internal error: mutex poisoned while collecting search results"
-            }));
+        Err(poison) => {
+            // Recover data from a poisoned mutex rather than returning empty.
+            // The walker threads may have populated useful results before the panic.
+            tracing::warn!(
+                "Mutex poisoned in grep_files final results; recovering available data"
+            );
+            let inner = poison.into_inner();
+            if inner.is_empty() {
+                return Ok(json!({
+                    "matches": [],
+                    "error": "Internal error: mutex poisoned while collecting search results and no results were available"
+                }));
+            }
+            inner.clone()
         }
     };
 
