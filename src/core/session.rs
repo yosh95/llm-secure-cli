@@ -25,6 +25,9 @@ pub struct ActiveSession {
     pub trace_id: String,
     pub audit_entries: Vec<AuditEntry>,
     pub total_usage: crate::llm::models::Usage,
+    /// Set to true after `finalize_audit` has run once — prevents double-anchoring
+    /// whether the session is closed via `close()` or via `Drop`.
+    audit_finalized: bool,
 }
 
 /// A session that has been closed or failed to initialize.
@@ -35,7 +38,9 @@ pub struct ClosedSession {
 
 impl Drop for ActiveSession {
     fn drop(&mut self) {
-        self.finalize_audit();
+        if !self.audit_finalized {
+            self.finalize_audit();
+        }
     }
 }
 
@@ -64,10 +69,14 @@ impl ActiveSession {
             trace_id,
             audit_entries: entry.into_iter().collect(),
             total_usage: crate::llm::models::Usage::default(),
+            audit_finalized: false,
         })
     }
 
     /// Consumes the ActiveSession and returns a ClosedSession.
+    ///
+    /// This is the preferred way to close a session.  If `close()` is *not*
+    /// called, `Drop` will still anchor the audit trail as a safety net.
     pub fn close(mut self) -> ClosedSession {
         self.finalize_audit();
         ClosedSession {
@@ -76,15 +85,40 @@ impl ActiveSession {
         }
     }
 
+    /// Anchor the accumulated audit entries via the Merkle-anchor manager.
+    ///
+    /// Idempotent: only the first call has an effect; subsequent calls are
+    /// no-ops.  This allows both `close()` and `Drop` to call this method
+    /// without risk of double-anchoring.
     fn finalize_audit(&mut self) {
-        let entries_val = self
+        if self.audit_finalized {
+            return;
+        }
+        self.audit_finalized = true;
+
+        if self.audit_entries.is_empty() {
+            return;
+        }
+
+        let entries_val: Vec<_> = self
             .audit_entries
             .iter()
             .filter_map(|e| serde_json::to_value(e).ok())
-            .collect::<Vec<_>>();
+            .collect();
 
-        if !entries_val.is_empty() {
-            let _ = SessionAnchorManager::create_anchor(&self.trace_id, Some(entries_val));
+        if entries_val.is_empty() {
+            return;
+        }
+
+        match SessionAnchorManager::create_anchor(&self.trace_id, Some(entries_val)) {
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!(
+                    trace_id = %self.trace_id,
+                    error = %e,
+                    "Failed to anchor audit trail for session"
+                );
+            }
         }
     }
 
