@@ -41,7 +41,7 @@ impl Drop for ActiveSession {
 
 impl ActiveSession {
     pub fn new(client: Box<dyn LlmClient>, ctx: Arc<AppContext>) -> anyhow::Result<Self> {
-        let trace_id = format!("sess-{}", &uuid::Uuid::new_v4().to_string()[..8]);
+        let trace_id = format!("sess-{}", uuid::Uuid::new_v4().to_string().replace('-', ""));
         let user_id = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
 
         let config = ctx.config_manager.get_config()?;

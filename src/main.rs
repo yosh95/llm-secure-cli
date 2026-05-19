@@ -1,5 +1,3 @@
-#![warn(clippy::unwrap_used)]
-
 use clap::{Parser, Subcommand};
 use llm_secure_cli::core::session::ActiveSession;
 use std::io::{IsTerminal, stdin};

@@ -350,6 +350,11 @@ impl ConfigManager {
                 anyhow::anyhow!("CRITICAL: Failed to deserialize merged configuration: {}\nPlease check your {}/config.toml for schema errors.", e, get_base_dir().to_string_lossy())
             })?;
 
+        // 4. Validate critical security settings
+        if let Err(e) = validate_security_config(&final_config_struct.security) {
+            return Err(anyhow::anyhow!("Invalid security configuration: {}", e));
+        }
+
         let final_config = Arc::new(final_config_struct);
         *write = Some(Arc::clone(&final_config));
         Ok(final_config)
@@ -490,6 +495,58 @@ impl ConfigManager {
         *write = Some(Arc::new(config));
         Ok(())
     }
+}
+
+/// Validate critical security configuration settings at load time.
+/// Returns Ok(()) if all values are valid, or an error message describing the issue.
+fn validate_security_config(
+    security: &crate::config::models::SecurityConfig,
+) -> Result<(), String> {
+    // Validate auto_approval_level: must be one of "none", "low", "medium" (or empty, which defaults to "none")
+    if let Some(ref level) = security.auto_approval_level {
+        match level.as_str() {
+            "none" | "low" | "medium" => {}
+            other => {
+                return Err(format!(
+                    "auto_approval_level must be one of 'none', 'low', or 'medium', got '{}'",
+                    other
+                ));
+            }
+        }
+    }
+
+    // Validate verifier_fallback: must be "require_approval" or "block"
+    match security.verifier_fallback.as_str() {
+        "require_approval" | "block" => {}
+        other => {
+            return Err(format!(
+                "verifier_fallback must be 'require_approval' or 'block', got '{}'",
+                other
+            ));
+        }
+    }
+
+    // Validate dual_llm_confidence_threshold: must be in (0.0, 1.0]
+    let threshold = security.dual_llm_confidence_threshold;
+    if threshold <= 0.0 || threshold > 1.0 {
+        return Err(format!(
+            "dual_llm_confidence_threshold must be in range (0.0, 1.0], got {}",
+            threshold
+        ));
+    }
+
+    // Validate security_level: must be "high" or "standard"
+    match security.security_level.as_str() {
+        "high" | "standard" => {}
+        other => {
+            return Err(format!(
+                "security_level must be 'high' or 'standard', got '{}'",
+                other
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 fn merge_json(base: &mut serde_json::Value, over: serde_json::Value) {

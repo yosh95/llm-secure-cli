@@ -109,9 +109,11 @@ impl ActiveSession {
         // This ensures that auto-approved successful calls don't clutter the UI with output (like stdout),
         // but failures are always shown. The tool call itself is always printed above.
         if !approved || is_error {
-            self.ctx
-                .ui
-                .print_tool_result(final_v.as_str().unwrap_or(&final_v.to_string()));
+            let display_str = final_v
+                .as_str()
+                .map(|s| s.to_owned())
+                .unwrap_or_else(|| final_v.to_string());
+            self.ctx.ui.print_tool_result(&display_str);
 
             // If we already printed common tool result UI, we don't want to re-print stderr in stats
             let mut quiet_stats = stats.clone();

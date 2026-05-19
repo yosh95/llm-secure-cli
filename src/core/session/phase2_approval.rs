@@ -207,6 +207,10 @@ impl ActiveSession {
     pub(crate) fn get_intent_context(&self) -> String {
         use crate::llm::models::Role;
 
+        const MAX_MSG_CHARS: usize = 1000;
+        const MAX_TOTAL_CHARS: usize = 4000;
+        const HEAD_TAIL_CHARS: usize = 500;
+
         let history: Vec<String> = self
             .client
             .get_state()
@@ -217,14 +221,21 @@ impl ActiveSession {
             .take(5)
             .map(|m| {
                 let text = m.get_text(true);
-                if text.chars().count() > 1000 {
-                    let head: String = text.chars().take(500).collect();
-                    let tail: String = text.chars().rev().take(500).collect::<String>();
-                    format!(
-                        "{}...[TRUNCATED]...{}",
-                        head,
-                        tail.chars().rev().collect::<String>()
-                    )
+                let len = text.chars().count();
+                if len > MAX_MSG_CHARS {
+                    // Take first HEAD_TAIL_CHARS chars and last HEAD_TAIL_CHARS chars,
+                    // avoiding double-reversal: collect all chars once, then slice.
+                    let chars: Vec<char> = text.chars().collect();
+                    let head: String = chars.iter().take(HEAD_TAIL_CHARS).collect();
+                    let tail: String = chars
+                        .iter()
+                        .rev()
+                        .take(HEAD_TAIL_CHARS)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect();
+                    format!("{}...[TRUNCATED]...{}", head, tail)
                 } else {
                     text
                 }
@@ -235,17 +246,10 @@ impl ActiveSession {
             .collect::<Vec<_>>();
 
         let context = history.join("\n---\n");
-        if context.chars().count() > 4000 {
-            context
-                .chars()
-                .rev()
-                .take(4000)
-                .collect::<String>()
-                .chars()
-                .rev()
-                .collect()
-        } else {
-            context
+        // Truncate to MAX_TOTAL_CHARS using char_indices for O(1) boundary check
+        match context.char_indices().nth(MAX_TOTAL_CHARS) {
+            Some((cut_at, _)) => context[..cut_at].to_string(),
+            None => context,
         }
     }
 
