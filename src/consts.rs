@@ -62,3 +62,6 @@ pub fn history_log_path() -> PathBuf {
 pub fn chat_log_path() -> PathBuf {
     log_dir().join("chat.log")
 }
+pub fn templates_dir() -> PathBuf {
+    get_base_dir().join("templates")
+}

@@ -157,6 +157,52 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             handle_verify_cmd(session, args);
             CommandResult::Handled
         }
+        "t" | "template" => {
+            let templates = session.ctx.config_manager.load_templates();
+            if args.is_empty() {
+                if templates.is_empty() {
+                    ui::report_info(
+                        "No templates found. Place .txt or .md files in ~/.llm_secure_cli/templates/",
+                    );
+                } else {
+                    ui::print_rule(Some("Available Templates"), Some("cyan"));
+                    let mut names: Vec<_> = templates.keys().collect();
+                    names.sort();
+                    for name in names {
+                        let preview: String = templates[name]
+                            .lines()
+                            .find(|l| !l.trim().is_empty())
+                            .map(|l| {
+                                let trimmed = l.trim();
+                                if trimmed.len() > 60 {
+                                    format!("{}...", &trimmed[..60])
+                                } else {
+                                    trimmed.to_string()
+                                }
+                            })
+                            .unwrap_or_else(|| "(empty)".to_string());
+                        println!("  {: <25} {}", name.bold().cyan(), preview.dimmed());
+                    }
+                    ui::print_rule(None, Some("cyan"));
+                    println!(
+                        "{}",
+                        "Usage: /t <name>  — insert template into prompt".dimmed()
+                    );
+                }
+                CommandResult::Handled
+            } else {
+                match templates.get(args) {
+                    Some(content) => CommandResult::Input(content.clone()),
+                    None => {
+                        ui::report_error(&format!(
+                            "Template '{}' not found. Use /t to list available templates.",
+                            args
+                        ));
+                        CommandResult::Handled
+                    }
+                }
+            }
+        }
         _ => {
             ui::report_error(&format!("Unknown command: /{}", cmd));
             CommandResult::Handled
@@ -817,6 +863,7 @@ fn print_help() {
     println!("  /verify [on|off]   Toggle or show status of dual-LLM verification");
     println!("  /alias [-d <name>] [<name> <target>]  List/create/delete model aliases");
     println!("  /s, /summarize     Summarize history and clear it");
+    println!("  /t, /template [<name>]  List templates or insert one into prompt");
     println!("  /raw               Show raw conversation history");
     println!("  /dump              Dump conversation history as TOML");
     ui::print_rule(None, Some("cyan"));

@@ -344,3 +344,66 @@ fn merge_json(base: &mut serde_json::Value, over: serde_json::Value) {
         }
     }
 }
+
+impl ConfigManager {
+    /// Load user-defined prompt templates from `~/.llm_secure_cli/templates/`.
+    ///
+    /// Only `.txt` and `.md` files are read.  The file stem (name without
+    /// extension) becomes the template name.  Directory entries are created
+    /// automatically if they don't exist yet.
+    pub fn load_templates(&self) -> HashMap<String, String> {
+        let dir = crate::consts::templates_dir();
+        let mut templates = HashMap::new();
+
+        let dir = match std::fs::read_dir(&dir) {
+            Ok(rd) => rd,
+            Err(_) => {
+                // Create the directory if missing
+                if let Err(e) = std::fs::create_dir_all(&dir) {
+                    tracing::warn!(
+                        path = %dir.display(),
+                        error = %e,
+                        "Failed to create templates directory"
+                    );
+                }
+                return templates;
+            }
+        };
+
+        for entry in dir.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if ext != "txt" && ext != "md" {
+                continue;
+            }
+
+            let name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
+            if name.is_empty() {
+                continue;
+            }
+
+            match std::fs::read_to_string(&path) {
+                Ok(content) => {
+                    templates.insert(name, content);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        error = %e,
+                        "Failed to read template file"
+                    );
+                }
+            }
+        }
+
+        templates
+    }
+}

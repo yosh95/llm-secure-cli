@@ -251,8 +251,6 @@ pub struct AppConfig {
     pub mcp_servers: Vec<McpServerConfig>,
     #[serde(flatten)]
     pub providers: HashMap<String, ProviderConfig>,
-    #[serde(default)]
-    pub templates: HashMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

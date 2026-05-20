@@ -53,6 +53,8 @@ impl ChatCompleter {
                 "/alias",
                 "/verify",
                 "/verifier",
+                "/template",
+                "/t",
             ],
             current_provider,
             ctx,
@@ -204,6 +206,20 @@ impl Completer for ChatCompleter {
                                 });
                             }
                         }
+                        return Ok((start, matches));
+                    }
+                    "/t" | "/template" => {
+                        let templates = self.ctx.config_manager.load_templates();
+                        let mut matches = Vec::new();
+                        for name in templates.keys() {
+                            if name.starts_with(arg_prefix) {
+                                matches.push(Pair {
+                                    display: name.clone(),
+                                    replacement: name.clone(),
+                                });
+                            }
+                        }
+                        matches.sort_by(|a, b| a.display.cmp(&b.display));
                         return Ok((start, matches));
                     }
                     "/alias" => {
