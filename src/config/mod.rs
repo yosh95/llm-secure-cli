@@ -28,12 +28,10 @@ use std::sync::{Arc, OnceLock, RwLock};
 ///
 /// State management methods live in [`state`]; model-cache methods in [`cache`].
 pub struct ConfigManager {
-    /// `true` once `AppConfig` has been loaded from disk.  Coupled with a
-    /// `RwLock<Arc<AppConfig>>`, this lets us avoid the old double-check
-    /// locking: the `OnceLock` guarantees that the *init-from-disk* closure
-    /// runs exactly once, while the `RwLock` permits later overwrites via
-    /// `set_config()`.
-    config_initialized: OnceLock<()>,
+    /// Stores a `Some(error)` when the initial load from disk fails.
+    /// `None` means the config was loaded successfully (or hasn't been
+    /// attempted yet — the `OnceLock` itself acts as the "initialized" flag).
+    config_init_error: OnceLock<Option<anyhow::Error>>,
     app_config: RwLock<Arc<AppConfig>>,
     app_state: RwLock<AppState>,
     env_cache: OnceLock<HashMap<String, String>>,
@@ -42,7 +40,7 @@ pub struct ConfigManager {
 impl ConfigManager {
     pub fn new() -> Self {
         Self {
-            config_initialized: OnceLock::new(),
+            config_init_error: OnceLock::new(),
             app_config: RwLock::new(Arc::new(AppConfig::default())),
             app_state: RwLock::new(AppState::default()), // populated lazily in get_state()
             env_cache: OnceLock::new(),
@@ -89,19 +87,38 @@ impl ConfigManager {
     }
 
     pub fn get_config(&self) -> anyhow::Result<Arc<AppConfig>> {
-        // The `OnceLock` guarantees that the *load-from-disk* logic runs exactly
-        // once, even under concurrent access.  After initialization the
-        // `RwLock<Arc<AppConfig>>` is read without any TOCTOU window because
-        // the OnceLock flag is already set.
-        self.config_initialized.get_or_init(|| {
-            let config = Self::load_config_from_disk();
-            match self.app_config.write() {
-                Ok(mut guard) => *guard = Arc::new(config),
+        // The `OnceLock<Option<anyhow::Error>>` acts as a one-shot flag:
+        //   - `None`    = initialized successfully (or not yet — see `get_or_init`).
+        //   - `Some(e)` = initialization failed; return the same error on every call.
+        //
+        // Because `get_or_init` runs the closure at most once, the *load-from-disk*
+        // logic is guaranteed to execute exactly once.  Afterwards the `RwLock` may
+        // be overwritten by `set_config()` (e.g. `/verify on`), but the init error
+        // flag stays forever — a persistent disk-load failure cannot be recovered
+        // from without restarting the process.
+        let init_error: &Option<anyhow::Error> = self.config_init_error.get_or_init(|| {
+            match Self::load_config_from_disk() {
+                Ok(config) => {
+                    let arc = Arc::new(config);
+                    if let Ok(mut guard) = self.app_config.write() {
+                        *guard = Arc::clone(&arc);
+                    } else {
+                        tracing::error!("Config RwLock poisoned during initialization");
+                    }
+                    None // success
+                }
                 Err(e) => {
-                    tracing::error!(error = %e, "Config RwLock poisoned during initialization");
+                    tracing::error!(error = %e, "Failed to load configuration from disk");
+                    // Keep the default (empty) AppConfig in the RwLock so that
+                    // basic CLI commands (e.g. `llsc models`) can still work.
+                    Some(e)
                 }
             }
         });
+
+        if let Some(e) = init_error {
+            return Err(anyhow::anyhow!("{}", e));
+        }
 
         let read = self
             .app_config
@@ -111,15 +128,11 @@ impl ConfigManager {
     }
 
     /// Load and validate the config from disk.
-    fn load_config_from_disk() -> AppConfig {
+    fn load_config_from_disk() -> anyhow::Result<AppConfig> {
         // 1. Load defaults from embedded defaults.toml
         let defaults_toml = include_str!("defaults.toml");
-        let mut config_value: serde_json::Value = match toml::from_str(defaults_toml) {
-            Ok(v) => v,
-            Err(e) => {
-                panic!("Embedded defaults.toml must be valid: {}", e);
-            }
-        };
+        let mut config_value: serde_json::Value = toml::from_str(defaults_toml)
+            .map_err(|e| anyhow::anyhow!("Embedded defaults.toml must be valid: {}", e))?;
 
         // 2. Load user config from files and merge them
         let config_path = config_file_path();
@@ -137,21 +150,21 @@ impl ConfigManager {
         }
 
         // 3. Final deserialization into AppConfig
-        let final_config_struct: AppConfig =
-            serde_json::from_value(config_value).unwrap_or_else(|e| {
-                panic!(
-                    "CRITICAL: Failed to deserialize merged configuration: {}\nPlease check your {}/config.toml for schema errors.",
-                    e,
-                    get_base_dir().to_string_lossy()
-                )
-            });
+        let final_config_struct: AppConfig = serde_json::from_value(config_value).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to deserialize merged configuration: {}\n\
+                     Please check your {}/config.toml for schema errors.",
+                e,
+                get_base_dir().to_string_lossy()
+            )
+        })?;
 
         // 4. Validate critical security settings
         if let Err(e) = validate_security_config(&final_config_struct.security) {
-            panic!("Invalid security configuration: {}", e);
+            return Err(anyhow::anyhow!("Invalid security configuration: {}", e));
         }
 
-        final_config_struct
+        Ok(final_config_struct)
     }
 
     pub fn get_api_key(&self, provider: &str) -> Option<String> {
@@ -263,7 +276,7 @@ impl ConfigManager {
     pub fn set_config(&self, config: AppConfig) -> anyhow::Result<()> {
         // Ensure config is marked as initialized so future get_config() calls
         // don't try to reload from disk.
-        let _ = self.config_initialized.set(());
+        let _ = self.config_init_error.set(None);
         let mut write = self
             .app_config
             .write()

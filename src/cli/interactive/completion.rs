@@ -174,7 +174,10 @@ impl Completer for ChatCompleter {
                         let current_p = self
                             .current_provider
                             .lock()
-                            .expect("mutex lock failed")
+                            .unwrap_or_else(|e| {
+                                tracing::warn!(error = %e, "Provider mutex poisoned during completion");
+                                e.into_inner()
+                            })
                             .clone();
 
                         // Suggest -u / --update flag

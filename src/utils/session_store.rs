@@ -48,7 +48,17 @@ pub fn auto_save(session: &ActiveSession) {
 
     let path = dir.join(format!("{}.json", trace_id));
 
-    let file = std::fs::File::create(&path).expect("Failed to create session file");
+    let file = match std::fs::File::create(&path) {
+        Ok(f) => f,
+        Err(e) => {
+            tracing::warn!(
+                trace_id = %trace_id,
+                error = %e,
+                "Failed to create session file"
+            );
+            return;
+        }
+    };
     match serde_json::to_writer_pretty(&file, &session_file) {
         Ok(_) => {}
         Err(e) => {
