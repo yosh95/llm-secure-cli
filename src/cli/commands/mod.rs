@@ -1,3 +1,4 @@
+pub mod chat;
 pub mod identity;
 pub mod mcp_server;
 pub mod models;

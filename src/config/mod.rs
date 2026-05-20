@@ -1,9 +1,11 @@
+pub mod cache;
 pub mod init;
 pub mod models;
+pub mod state;
 
 use crate::cli::ui;
 use crate::config::models::{AppConfig, AppState};
-use crate::consts::{config_file_path, get_base_dir, models_cache_path, state_file_path};
+use crate::consts::{config_file_path, get_base_dir};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -23,6 +25,8 @@ use std::sync::{Arc, OnceLock, RwLock};
 /// **`AppState`** is stored in a `RwLock` because it is mutable (*update_state*,
 /// *set_alias*, …).  The lock is held only for the brief clone-or-swap, so
 /// contention in the async runtime is negligible.
+///
+/// State management methods live in [`state`]; model-cache methods in [`cache`].
 pub struct ConfigManager {
     /// `true` once `AppConfig` has been loaded from disk.  Coupled with a
     /// `RwLock<Arc<AppConfig>>`, this lets us avoid the old double-check
@@ -43,282 +47,6 @@ impl ConfigManager {
             app_state: RwLock::new(AppState::default()), // populated lazily in get_state()
             env_cache: OnceLock::new(),
         }
-    }
-
-    /// Returns a clone of the current application state.
-    ///
-    /// On the very first call the state is loaded from disk; subsequent calls
-    /// return the in-memory copy.  Mutations (via *update_state*, etc.) are
-    /// always written through to disk.
-    pub fn get_state(&self) -> anyhow::Result<AppState> {
-        let read = self
-            .app_state
-            .read()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-
-        // If the state is still the default placeholder and a state file exists
-        // on disk, we need to populate it.  We drop the read lock first to avoid
-        // deadlocking when acquiring the write lock.
-        if read.last_used_provider.is_none()
-            && read.last_used_model.is_none()
-            && read.last_used_v_provider.is_none()
-            && read.last_used_v_model.is_none()
-            && read.model_aliases.is_empty()
-        {
-            drop(read);
-            let mut write = self
-                .app_state
-                .write()
-                .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-            // Double-check after acquiring write lock (another thread may have
-            // initialized already).
-            if write.last_used_provider.is_none()
-                && write.last_used_model.is_none()
-                && write.model_aliases.is_empty()
-            {
-                *write = Self::load_state_from_disk();
-            }
-            return Ok(write.clone());
-        }
-
-        Ok(read.clone())
-    }
-
-    /// Load state from disk (static helper used during first access).
-    fn load_state_from_disk() -> AppState {
-        let s_path = state_file_path();
-        if s_path.exists() {
-            let content = match fs::read_to_string(&s_path) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::warn!(
-                        path = %s_path.display(),
-                        error = %e,
-                        "Failed to read state file; falling back to defaults"
-                    );
-                    String::new()
-                }
-            };
-            match toml::from_str(&content) {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::warn!(
-                        path = %s_path.display(),
-                        error = %e,
-                        "Failed to parse state file; falling back to defaults"
-                    );
-                    AppState::default()
-                }
-            }
-        } else {
-            AppState::default()
-        }
-    }
-
-    /// Helper: persist an updated state to disk, logging any write failure.
-    ///
-    /// IMPORTANT: This must be called **while holding the write lock** so that
-    /// the in-memory state and on-disk state stay consistent.
-    fn persist_state(state: &AppState) {
-        if let Ok(content) = toml::to_string(state)
-            && let Err(e) = fs::write(state_file_path(), content)
-        {
-            tracing::error!(
-                path = %state_file_path().display(),
-                error = %e,
-                "CRITICAL: Failed to write state file — state may be lost on restart"
-            );
-        }
-    }
-
-    pub fn update_state(&self, provider: &str, model: &str) -> anyhow::Result<()> {
-        let mut write = self
-            .app_state
-            .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-        write.last_used_provider = Some(provider.to_string());
-        write.last_used_model = Some(model.to_string());
-        Self::persist_state(&write);
-        Ok(())
-    }
-
-    pub fn update_v_state(&self, provider: &str, model: &str) -> anyhow::Result<()> {
-        let mut write = self
-            .app_state
-            .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-        write.last_used_v_provider = Some(provider.to_string());
-        write.last_used_v_model = Some(model.to_string());
-        Self::persist_state(&write);
-        Ok(())
-    }
-
-    pub fn set_alias(&self, alias: &str, target: &str) -> anyhow::Result<()> {
-        let mut write = self
-            .app_state
-            .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-        write.model_aliases.insert(
-            alias.to_string(),
-            crate::config::models::ModelAlias {
-                target: target.to_string(),
-            },
-        );
-        Self::persist_state(&write);
-        Ok(())
-    }
-
-    pub fn remove_alias(&self, alias: &str) -> anyhow::Result<bool> {
-        let mut write = self
-            .app_state
-            .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-        let existed = write.model_aliases.remove(alias).is_some();
-        if existed {
-            Self::persist_state(&write);
-        }
-        Ok(existed)
-    }
-
-    pub async fn get_cached_models(&self) -> HashMap<String, Vec<String>> {
-        let c_path = models_cache_path();
-        if !c_path.exists() {
-            return self.update_models_cache().await;
-        }
-
-        let content = match fs::read_to_string(&c_path) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!(
-                    path = %c_path.display(),
-                    error = %e,
-                    "Failed to read models cache; falling back to empty cache"
-                );
-                String::new()
-            }
-        };
-        match serde_json::from_str(&content) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!(
-                    path = %c_path.display(),
-                    error = %e,
-                    "Failed to parse models cache; falling back to empty cache"
-                );
-                HashMap::new()
-            }
-        }
-    }
-
-    pub fn get_cached_models_sync(&self) -> HashMap<String, Vec<String>> {
-        let c_path = models_cache_path();
-        if !c_path.exists() {
-            return HashMap::new();
-        }
-
-        let content = match fs::read_to_string(&c_path) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!(
-                    path = %c_path.display(),
-                    error = %e,
-                    "Failed to read models cache (sync); falling back to empty cache"
-                );
-                String::new()
-            }
-        };
-        match serde_json::from_str(&content) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!(
-                    path = %c_path.display(),
-                    error = %e,
-                    "Failed to parse models cache (sync); falling back to empty cache"
-                );
-                HashMap::new()
-            }
-        }
-    }
-
-    pub async fn update_models_cache(&self) -> HashMap<String, Vec<String>> {
-        let providers = self.get_active_providers();
-        let mut cache = HashMap::new();
-
-        for p in providers {
-            if let Ok(models) = self.fetch_models_from_provider(&p).await {
-                cache.insert(p, models);
-            }
-        }
-
-        if let Ok(content) = serde_json::to_string_pretty(&cache)
-            && let Err(e) = fs::write(models_cache_path(), &content)
-        {
-            tracing::error!(
-                path = %models_cache_path().display(),
-                error = %e,
-                "Failed to write models cache"
-            );
-        }
-        cache
-    }
-
-    async fn fetch_models_from_provider(&self, provider: &str) -> anyhow::Result<Vec<String>> {
-        let api_key = self.get_api_key(provider);
-        let config = self.get_config()?;
-
-        let mut url = String::new();
-        if let Some(p_cfg) = config.providers.get(provider)
-            && let Some(api_url) = &p_cfg.api_url
-        {
-            url = api_url.clone();
-        }
-
-        if url.is_empty() {
-            match provider {
-                "openai" => url = "https://api.openai.com/v1".to_string(),
-                "openrouter" => url = "https://openrouter.ai/api/v1".to_string(),
-                "ollama" => url = "http://localhost:11434/v1".to_string(),
-                _ => return Err(anyhow::anyhow!("No API URL for provider")),
-            }
-        }
-
-        let models_url = if provider == "ollama" && !url.contains("/v1") {
-            format!("{}/api/tags", url.trim_end_matches('/'))
-        } else if provider == "openrouter" && url == "https://openrouter.ai/api/v1" {
-            // openrouter requires query param to include all modalities like video/image generation
-            "https://openrouter.ai/api/v1/models?output_modalities=all".to_string()
-        } else {
-            format!("{}/models", url.trim_end_matches('/'))
-        };
-
-        let mut req = crate::utils::http::CLIENT.get(&models_url);
-        if let Some(key) = api_key
-            && key != "local_bypass"
-        {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-
-        let res = req.send().await?;
-        let json: serde_json::Value = res.json().await?;
-
-        let mut models = Vec::new();
-        if provider == "ollama" && !url.contains("/v1") {
-            if let Some(list) = json.get("models").and_then(|v| v.as_array()) {
-                for m in list {
-                    if let Some(name) = m.get("name").and_then(|v| v.as_str()) {
-                        models.push(name.to_string());
-                    }
-                }
-            }
-        } else if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
-            for m in data {
-                if let Some(id) = m.get("id").and_then(|v| v.as_str()) {
-                    models.push(id.to_string());
-                }
-            }
-        }
-
-        Ok(models)
     }
 }
 
@@ -424,31 +152,6 @@ impl ConfigManager {
         }
 
         final_config_struct
-    }
-
-    /// Resolve the dual LLM provider and model, prioritizing AppState (state.toml)
-    /// but falling back to AppConfig (config.toml).
-    pub fn get_dual_llm_settings(&self) -> (String, String) {
-        let state = self.get_state().unwrap_or_default();
-        let config = self.get_config().ok();
-
-        let provider = state
-            .last_used_v_provider
-            .filter(|s| !s.is_empty())
-            .or_else(|| {
-                config
-                    .as_ref()
-                    .map(|c| c.security.dual_llm_provider.clone())
-            })
-            .unwrap_or_default();
-
-        let model = state
-            .last_used_v_model
-            .filter(|s| !s.is_empty())
-            .or_else(|| config.as_ref().map(|c| c.security.dual_llm_model.clone()))
-            .unwrap_or_default();
-
-        (provider, model)
     }
 
     pub fn get_api_key(&self, provider: &str) -> Option<String> {

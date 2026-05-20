@@ -186,6 +186,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
     // Hybrid Encryption for high-risk data
     let mut pqc_encrypted = false;
     let mut final_args = params.args.clone();
+    let mut encryption_failed = false;
 
     if params.config.security.security_level == "high"
         && let Ok(pk) = crate::security::identity::IdentityManager::get_kem_public_key()
@@ -198,20 +199,20 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
             }
             Err(e) => {
                 // Encryption failure in high-security mode is a critical integrity event.
-                // Block the audit write entirely rather than persisting plaintext args.
-                if params.config.security.security_level == "high" {
-                    crate::cli::ui::report_error(&format!(
-                        "CRITICAL SECURITY ERROR: PQC audit encryption failed in high-security mode: {}",
-                        e
-                    ));
-                    return None;
-                }
-                // In standard mode, log a warning and fall back to plaintext args.
-                tracing::warn!(
+                // Rather than silently dropping the audit entry (which creates a forensic
+                // gap an attacker could exploit), we record the failure and store redacted
+                // args so the event is still traceable.
+                tracing::error!(
                     tool = params.tool_name,
                     error = %e,
-                    "PQC audit encryption failed; storing plaintext args (standard mode)"
+                    "PQC audit encryption failed in high-security mode; storing redacted entry"
                 );
+                final_args = serde_json::json!({
+                    "pqc_encryption": "FAILED",
+                    "error": format!("{}", e),
+                    "args_redacted": true
+                });
+                encryption_failed = true;
             }
         }
     }
@@ -228,9 +229,16 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         args: final_args,
         pqc_confidential: pqc_encrypted,
         output: params.output.map(|s| s.to_string()),
-        status: match params.error {
-            None => "SUCCESS".to_string(),
-            Some(e) => format!("FAILED: {}", e),
+        status: {
+            let base = match params.error {
+                None => "SUCCESS".to_string(),
+                Some(e) => format!("FAILED: {}", e),
+            };
+            if encryption_failed {
+                format!("{}; PQC_ENCRYPTION_FAILED", base)
+            } else {
+                base
+            }
         },
         exit_code: params.exit_code,
         prev_hash,
@@ -268,23 +276,27 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                     .map(|s| s.to_string());
             }
             Err(e) => {
-                if params.config.security.security_level == "high" {
-                    crate::cli::ui::report_error(&format!(
-                        "CRITICAL SECURITY ERROR: PQC Sign failed in high-security mode: {}",
-                        e
-                    ));
-                    log_entry.status = format!("INTEGRITY_FAILURE: PQC Sign failed: {}", e);
-                    return None; // Integrity failure, block audit write
-                } else {
-                    log_entry.status = format!("SUCCESS_WITHOUT_SIGNATURE: {}", e);
-                }
+                // In high-security mode, a signing failure is a critical event,
+                // but we still persist the entry (with redacted args if needed)
+                // so the event is traceable in forensic analysis.
+                tracing::error!(
+                    tool = params.tool_name,
+                    error = %e,
+                    "PQC Sign failed in high-security mode; storing entry without signature"
+                );
+                log_entry.status = format!("INTEGRITY_FAILURE: PQC Sign failed: {}", e);
+                // Do NOT return None — persist the entry for forensic traceability.
             }
         }
     } else if params.config.security.security_level == "high" {
-        let msg = "CRITICAL SECURITY ERROR: PQC Private Key unavailable in high-security mode.";
-        crate::cli::ui::report_error(msg);
+        let msg = "PQC Private Key unavailable in high-security mode.";
+        tracing::error!(
+            tool = params.tool_name,
+            "{}; storing entry without signature",
+            msg
+        );
         log_entry.status = format!("INTEGRITY_FAILURE: {}", msg);
-        return None;
+        // Do NOT return None — persist for forensic traceability.
     } else {
         tracing::warn!(
             tool = params.tool_name,

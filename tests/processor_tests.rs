@@ -290,10 +290,17 @@ async fn test_processor_pqc_blocking_in_high_security() {
     // 3. Execute - This should trigger the PQC Error
     let _ = session.process_and_print(vec![]).await;
 
-    // 4. Verify - In High Security mode without a key, audit log writing is blocked
-    // and returns None in src/security/audit.rs, so session.audit_entries remains empty.
+    // 4. Verify - In High Security mode without a key, the audit entry is still
+    // persisted (with INTEGRITY_FAILURE status) for forensic traceability.
     assert!(
-        session.audit_entries.is_empty(),
-        "Audit entries should be empty because PQC signature failed in high-security mode"
+        !session.audit_entries.is_empty(),
+        "Audit entries should NOT be empty — failed entries are persisted for forensic traceability"
+    );
+    assert!(
+        session
+            .audit_entries
+            .iter()
+            .any(|e| e.status.contains("INTEGRITY_FAILURE")),
+        "Audit entry should have INTEGRITY_FAILURE status"
     );
 }
