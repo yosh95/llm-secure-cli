@@ -114,7 +114,7 @@ impl ActiveSession {
         );
 
         // Calculate and display stats
-        let stats = crate::cli::stats::get_tool_result_stats(&final_v);
+        let stats = crate::cli::stats::get_tool_result_stats(name, &final_v);
 
         // Display result if it was not auto-approved OR if an error occurred.
         // This ensures that auto-approved successful calls don't clutter the UI with output (like stdout),

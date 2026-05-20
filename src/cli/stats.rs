@@ -5,16 +5,19 @@ use serde_json::Value;
 pub struct ToolResultStats {
     pub byte_count: usize,
     pub line_count: usize,
-    pub file_count: Option<usize>,
+    pub item_count: Option<usize>,
+    /// Label for item_count, e.g. "files", "matches", "items".
+    pub item_label: &'static str,
     pub stderr: Option<String>,
     pub stderr_byte_count: usize,
     pub stderr_line_count: usize,
 }
 
-pub fn get_tool_result_stats(result: &Value) -> ToolResultStats {
+pub fn get_tool_result_stats(name: &str, result: &Value) -> ToolResultStats {
     let mut byte_count = 0;
     let mut line_count = 0;
-    let mut file_count = None;
+    let mut item_count = None;
+    let mut item_label = "items";
     let mut stderr = None;
     let mut stderr_byte_count = 0;
     let mut stderr_line_count = 0;
@@ -24,7 +27,7 @@ pub fn get_tool_result_stats(result: &Value) -> ToolResultStats {
         line_count = s.lines().count();
         // Check if it's JSON inside a string
         if let Ok(v) = serde_json::from_str::<Value>(s) {
-            return get_tool_result_stats(&v);
+            return get_tool_result_stats(name, &v);
         }
     } else if let Some(obj) = result.as_object() {
         // For structured data, we might want to sum up certain fields or just the whole JSON
@@ -45,11 +48,27 @@ pub fn get_tool_result_stats(result: &Value) -> ToolResultStats {
             stderr_line_count = se.lines().count();
         }
 
-        // Special handling for file lists
-        for key in ["matches", "results", "files"] {
-            if let Some(arr) = obj.get(key).and_then(|a| a.as_array()) {
-                file_count = Some(arr.len());
-                break;
+        // Special handling for item lists — choose a label appropriate to the tool
+        if name == "grep_files" {
+            if let Some(arr) = obj.get("matches").and_then(|a| a.as_array()) {
+                item_count = Some(arr.len());
+                item_label = "matches";
+            }
+        } else if name == "brave_search" {
+            if let Some(arr) = obj.get("results").and_then(|a| a.as_array()) {
+                item_count = Some(arr.len());
+                item_label = "items";
+            }
+        } else {
+            for key in ["matches", "results", "files"] {
+                if let Some(arr) = obj.get(key).and_then(|a| a.as_array()) {
+                    item_count = Some(arr.len());
+                    item_label = match key {
+                        "matches" => "matches",
+                        _ => "files",
+                    };
+                    break;
+                }
             }
         }
         // tool_outputs often use "content"
@@ -62,7 +81,8 @@ pub fn get_tool_result_stats(result: &Value) -> ToolResultStats {
     ToolResultStats {
         byte_count,
         line_count,
-        file_count,
+        item_count,
+        item_label,
         stderr,
         stderr_byte_count,
         stderr_line_count,
@@ -71,7 +91,7 @@ pub fn get_tool_result_stats(result: &Value) -> ToolResultStats {
 
 pub fn print_tool_stats(stats: &ToolResultStats) {
     let mut prefix = String::new();
-    if stats.file_count.is_none() {
+    if stats.item_count.is_none() {
         prefix = "stdout: ".to_string();
     }
     let mut parts = vec![format!(
@@ -79,8 +99,12 @@ pub fn print_tool_stats(stats: &ToolResultStats) {
         prefix,
         crate::utils::format_number(stats.byte_count)
     )];
-    if let Some(fc) = stats.file_count {
-        parts.push(format!("{} files", crate::utils::format_number(fc)));
+    if let Some(fc) = stats.item_count {
+        parts.push(format!(
+            "{} {}",
+            crate::utils::format_number(fc),
+            stats.item_label
+        ));
     } else {
         parts.push(format!(
             "{} lines",

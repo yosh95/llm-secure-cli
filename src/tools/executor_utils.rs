@@ -112,6 +112,39 @@ pub fn humanize_tool_result(name: &str, v: &serde_json::Value) -> String {
             return output;
         }
 
+        // Special handling for brave_search results (must come before the
+        // generic "results" handler below, which expects file/dir entries).
+        if let Some(results) = obj.get("results").and_then(|v| v.as_array())
+            && obj.get("query").is_some()
+        {
+            if results.is_empty() {
+                return "No search results found.".to_string();
+            }
+            let query = obj.get("query").and_then(|v| v.as_str()).unwrap_or("");
+            let mut output = format!(
+                "Search results for \"{}\" ({} items):\n\n",
+                query,
+                results.len()
+            );
+            for (i, item) in results.iter().enumerate() {
+                let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
+                let url = item.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                let snippets = item.get("snippets").and_then(|v| v.as_array());
+
+                output.push_str(&format!("{}. {}\n", i + 1, title));
+                output.push_str(&format!("   URL: {}\n", url));
+                if let Some(snip_arr) = snippets {
+                    for snippet in snip_arr {
+                        if let Some(s) = snippet.as_str() {
+                            output.push_str(&format!("   {}\n", s));
+                        }
+                    }
+                }
+                output.push('\n');
+            }
+            return output;
+        }
+
         // Special handling for list_files_in_directory or search_files
         for key in ["files", "results"] {
             if let Some(items) = obj.get(key).and_then(|v| v.as_array()) {

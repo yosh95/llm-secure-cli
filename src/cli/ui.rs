@@ -414,19 +414,20 @@ pub fn print_tool_result(result: &str) {
             for item in results {
                 let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
                 let url = item.get("url").and_then(|v| v.as_str()).unwrap_or("");
-                let snippet = item
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let snippets = item.get("snippets").and_then(|v| v.as_array());
                 println!(
                     "    {} \x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
                     "•".bright_black(),
                     url,
                     title.bold().blue()
                 );
-                if !snippet.is_empty() {
-                    for line in snippet.lines() {
-                        println!("      {}", line.dimmed());
+                if let Some(snip_arr) = snippets {
+                    for snippet in snip_arr {
+                        if let Some(s) = snippet.as_str() {
+                            for line in s.lines() {
+                                println!("      {}", line.dimmed());
+                            }
+                        }
                     }
                 }
                 println!();
