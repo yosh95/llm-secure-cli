@@ -97,25 +97,35 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             handle_edit_history(session);
             CommandResult::Handled
         }
-        "save" => {
-            if args.is_empty() {
-                ui::report_error("Usage: /save <path>");
-            } else {
-                let client = session.get_client();
-                match client.save_session(args) {
-                    Ok(_) => ui::report_success(&format!("Session saved to {}", args)),
-                    Err(e) => ui::report_error(&format!("Failed to save session: {}", e)),
-                }
-            }
-            CommandResult::Handled
-        }
         "load" => {
             if args.is_empty() {
-                ui::report_error("Usage: /load <path>");
+                // List sessions with first user prompt preview
+                match crate::utils::session_store::list_sessions() {
+                    Ok(sessions) => {
+                        if sessions.is_empty() {
+                            ui::report_info(
+                                "No saved sessions found. Sessions are auto-saved after each turn.",
+                            );
+                        } else {
+                            ui::print_rule(Some("Saved Sessions"), Some("cyan"));
+                            for s in &sessions {
+                                let first =
+                                    s.first_user_prompt.as_deref().unwrap_or("(no user prompt)");
+                                println!("  {: <40} {}", s.filename.bold().cyan(), first.dimmed());
+                            }
+                            ui::print_rule(None, Some("cyan"));
+                            println!("{}", "Usage: /load <session_id>  — load a session".dimmed());
+                        }
+                    }
+                    Err(e) => ui::report_error(&format!("Failed to list sessions: {}", e)),
+                }
             } else {
-                let client = session.get_client_mut();
-                match client.load_session(args) {
-                    Ok(_) => ui::report_success(&format!("Session loaded from {}", args)),
+                match crate::utils::session_store::load_session(args) {
+                    Ok(conversation) => {
+                        let client = session.get_client_mut();
+                        client.get_state_mut().conversation = conversation;
+                        ui::report_success(&format!("Session loaded from {}", args));
+                    }
                     Err(e) => ui::report_error(&format!("Failed to load session: {}", e)),
                 }
             }
@@ -851,8 +861,7 @@ fn print_help() {
     println!("  /c, /clear         Clear conversation history");
     println!("  /e, /edit          Open external editor for multi-line input");
     println!("  /eh, /edit_history Edit the conversation history in TOML format");
-    println!("  /save <path>       Save the current session history to a file");
-    println!("  /load <path>       Load session history from a file");
+    println!("  /load [<session_id>]  List saved sessions or load one");
     println!("  /attach <path|url> Attach a file or URL to the next request");
     println!("  /tools [on|off]    Toggle or show status of tool execution");
     println!("  /system [on|off]   Toggle or show system prompt status");

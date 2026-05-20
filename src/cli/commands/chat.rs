@@ -115,11 +115,22 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) {
     }
 
     if let Some(mut client) = client {
-        if let Some(session_path) = session_arg
-            && let Err(e) = client.load_session(&session_path)
-        {
-            ctx.ui
-                .report_error(&format!("Failed to load session: {}", e));
+        if let Some(session_path) = session_arg {
+            // Try session store first (by trace_id/filename), then as file path
+            let conv = crate::utils::session_store::load_session(&session_path).or_else(|_| {
+                crate::utils::session_store::load_from_path(&std::path::PathBuf::from(
+                    &session_path,
+                ))
+            });
+            match conv {
+                Ok(conversation) => {
+                    client.get_state_mut().conversation = conversation;
+                }
+                Err(e) => {
+                    ctx.ui
+                        .report_error(&format!("Failed to load session: {}", e));
+                }
+            }
         }
 
         let pdf_as_base64 = client.should_send_pdf_as_base64();

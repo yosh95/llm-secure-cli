@@ -273,13 +273,6 @@ impl ActiveSession {
                         self.intent = final_content.clone();
                     }
 
-                    crate::utils::chat_logger::log_chat(
-                        &self.ctx.config_manager,
-                        &crate::llm::models::Role::User,
-                        &final_content,
-                        None,
-                    );
-
                     // Persist history after each entry so it survives
                     // SIGKILL / OOM kills on Android where the process
                     // may be terminated before the deferred save_history

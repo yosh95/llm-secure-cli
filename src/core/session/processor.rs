@@ -26,6 +26,8 @@ impl ActiveSession {
             let tool_results = self.handle_tool_calls().await?;
 
             if tool_results.is_empty() {
+                // Auto-save session after each complete turn
+                crate::utils::session_store::auto_save(self);
                 break; // No more tools to execute
             } else {
                 // Return tool results to the conversation
@@ -112,19 +114,10 @@ impl ActiveSession {
         if let Some(text) = text
             && !text.trim().is_empty()
         {
-            let (display_name, model) = (
-                self.client.get_display_name(),
-                self.client.get_state().model.clone(),
-            );
+            let display_name = self.client.get_display_name();
             self.ctx
                 .ui
                 .print_block(&text, Some(&display_name), Some("cyan"));
-            crate::utils::chat_logger::log_chat(
-                &self.ctx.config_manager,
-                &Role::Assistant,
-                &text,
-                Some(&model),
-            );
         }
     }
 

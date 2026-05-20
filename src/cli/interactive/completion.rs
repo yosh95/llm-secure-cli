@@ -33,7 +33,6 @@ impl ChatCompleter {
                 "/system",
                 "/raw",
                 "/dump",
-                "/save",
                 "/load",
                 "/attach",
                 "/tools",
@@ -92,7 +91,68 @@ impl Completer for ChatCompleter {
                 let start = cmd.len() + 1;
 
                 match cmd {
-                    "/load" | "/save" | "/attach" | "/edit" | "/e" => {
+                    "/load" => {
+                        // Complete session filenames from sessions directory
+                        let dir = crate::consts::sessions_dir();
+                        let mut matches = Vec::new();
+                        if dir.exists()
+                            && let Ok(entries) = std::fs::read_dir(&dir)
+                        {
+                            for entry in entries.flatten() {
+                                let path = entry.path();
+                                if path.extension().and_then(|s| s.to_str()) == Some("json")
+                                    && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+                                    && stem.starts_with(arg_prefix)
+                                {
+                                    // Also get first user prompt for preview
+                                    let preview = std::fs::read_to_string(&path)
+                                        .ok()
+                                        .and_then(|c| {
+                                            serde_json::from_str::<
+                                                crate::utils::session_store::SessionFile,
+                                            >(&c)
+                                            .ok()
+                                        })
+                                        .and_then(
+                                            |sf: crate::utils::session_store::SessionFile| {
+                                                use crate::llm::models::Role;
+                                                sf.conversation
+                                                    .iter()
+                                                    .find(|m| m.role == Role::User)
+                                                    .map(|m| {
+                                                        let t = m.get_text(false);
+                                                        let line = t.lines().next().unwrap_or("");
+                                                        if line.chars().count() > 40 {
+                                                            format!(
+                                                                "{}...",
+                                                                line.chars()
+                                                                    .take(37)
+                                                                    .collect::<String>()
+                                                            )
+                                                        } else {
+                                                            line.to_string()
+                                                        }
+                                                    })
+                                            },
+                                        );
+                                    let display = if let Some(preview) = preview
+                                        && !preview.is_empty()
+                                    {
+                                        format!("{}  ({})", stem, preview)
+                                    } else {
+                                        stem.to_string()
+                                    };
+                                    matches.push(Pair {
+                                        display,
+                                        replacement: stem.to_string(),
+                                    });
+                                }
+                            }
+                        }
+                        matches.sort_by(|a, b| a.display.cmp(&b.display));
+                        return Ok((start, matches));
+                    }
+                    "/save" | "/attach" | "/edit" | "/e" => {
                         return self.file_completer.complete(line, pos, ctx);
                     }
                     "/provider" | "/p" | "/vprovider" | "/vp" => {
