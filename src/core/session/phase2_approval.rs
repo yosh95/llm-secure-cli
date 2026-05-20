@@ -6,7 +6,8 @@ use serde_json::Value;
 impl ActiveSession {
     /// Phase 2: CASS risk evaluation, Zero Trust check, auto-approval determination,
     /// and human-in-the-loop approval. Returns the risk level, whether the tool is
-    /// auto-approved, and an optional verifier task handle.
+    /// auto-approved, an optional verifier task handle, and an optional cancellation
+    /// message (when the user rejects with feedback).
     pub(crate) async fn phase2_risk_and_approval(
         &mut self,
         name: &str,
@@ -16,6 +17,7 @@ impl ActiveSession {
         RiskLevel,
         bool,
         Option<tokio::task::JoinHandle<VerificationOutcome>>,
+        Option<Value>,
     )> {
         // 2a. CASS risk evaluation
         let risk_level = crate::security::cass::CASS_ORCHESTRATOR.evaluate_risk(
@@ -58,12 +60,14 @@ impl ActiveSession {
         };
 
         // 2f. Request human approval if not auto-approved
-        if !approved {
+        let cancel_msg = if !approved {
             self.request_human_approval(name, verifier_handle.as_ref())
-                .await?;
-        }
+                .await?
+        } else {
+            None
+        };
 
-        Ok((risk_level, approved, verifier_handle))
+        Ok((risk_level, approved, verifier_handle, cancel_msg))
     }
 
     /// Check whether a Zero Trust MCP policy forces manual approval for this tool.
@@ -118,15 +122,16 @@ impl ActiveSession {
         }
     }
 
-    /// Request human approval for a tool call. Returns Ok(()) if approved,
-    /// Err if rejected or interrupted.
+    /// Request human approval for a tool call. Returns Ok(Some(cancel_message)) if rejected
+    /// with feedback (the caller should use this as the tool result and skip execution),
+    /// Ok(None) if approved, or Err if interrupted.
     async fn request_human_approval(
         &mut self,
         name: &str,
         verifier_handle: Option<&tokio::task::JoinHandle<VerificationOutcome>>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Option<Value>> {
         match self.ctx.ui.ask_confirm(&format!("Execute {}", name)).await {
-            Some(crate::cli::ui::ConfirmResult::Yes) => Ok(()),
+            Some(crate::cli::ui::ConfirmResult::Yes) => Ok(None),
             Some(res) => {
                 if let Some(h) = verifier_handle {
                     h.abort();
@@ -135,7 +140,8 @@ impl ActiveSession {
                     crate::cli::ui::ConfirmResult::Feedback(f) => Some(f),
                     _ => None,
                 };
-                self.handle_rejection_feedback(feedback).map(|_| ())
+                let cancel_msg = self.handle_rejection_feedback(feedback)?;
+                Ok(Some(cancel_msg))
             }
             None => {
                 if let Some(h) = verifier_handle {

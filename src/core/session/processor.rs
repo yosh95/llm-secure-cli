@@ -215,8 +215,13 @@ impl ActiveSession {
         self.phase1_static_check(name, args, &config)?;
 
         // Phase 2: Risk assessment, Zero Trust, approval gate
-        let (risk_level, approved, verifier_handle) =
+        let (risk_level, approved, verifier_handle, cancel_msg) =
             self.phase2_risk_and_approval(name, args, &config).await?;
+
+        // If the user cancelled with feedback, return the cancel message directly
+        if let Some(msg) = cancel_msg {
+            return Ok((msg, false));
+        }
 
         // Phase 3: Dual LLM semantic verification
         let effective_args = self
