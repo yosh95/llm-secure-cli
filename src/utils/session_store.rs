@@ -139,8 +139,8 @@ pub fn list_sessions() -> anyhow::Result<Vec<SessionListing>> {
         });
     }
 
-    // Sort by filename (which typically includes timestamp info)
-    listings.sort_by(|a, b| b.filename.cmp(&a.filename));
+    // Sort by created_at ascending (oldest first)
+    listings.sort_by(|a, b| a.created_at.cmp(&b.created_at));
 
     Ok(listings)
 }
@@ -200,10 +200,10 @@ fn extract_first_user_prompt(conversation: &[Message]) -> Option<String> {
     use crate::llm::models::Role;
     conversation.iter().find(|m| m.role == Role::User).map(|m| {
         let text = m.get_text(false);
-        // Truncate to first line or ~80 chars
+        // Truncate to first line or ~50 chars
         if let Some(first_line) = text.lines().next() {
-            if first_line.chars().count() > 80 {
-                format!("{}...", first_line.chars().take(77).collect::<String>())
+            if first_line.chars().count() > 50 {
+                format!("{}...", first_line.chars().take(47).collect::<String>())
             } else {
                 first_line.to_string()
             }

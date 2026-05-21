@@ -253,6 +253,7 @@ async fn register_clients(ctx: &Arc<AppContext>) {
                         .unwrap_or_else(|| match closure_p_name.as_str() {
                             "openai" => "https://api.openai.com/v1".to_string(),
                             "ollama" => "http://localhost:11434/v1".to_string(),
+                            "ollama_cloud" => "https://ollama.com/v1".to_string(),
                             "openrouter" => "https://openrouter.ai/api/v1".to_string(),
                             _ => "".to_string(),
                         });
@@ -273,6 +274,15 @@ async fn register_clients(ctx: &Arc<AppContext>) {
                         raw,
                     )?),
                     "ollama" => Box::new(OllamaClient::new(
+                        config_manager,
+                        &closure_p_name,
+                        &api_url,
+                        &api_key,
+                        model,
+                        stdout,
+                        raw,
+                    )?),
+                    "ollama_cloud" => Box::new(OllamaClient::new(
                         config_manager,
                         &closure_p_name,
                         &api_url,

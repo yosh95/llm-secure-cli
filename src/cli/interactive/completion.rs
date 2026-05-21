@@ -122,11 +122,11 @@ impl Completer for ChatCompleter {
                                                     .map(|m| {
                                                         let t = m.get_text(false);
                                                         let line = t.lines().next().unwrap_or("");
-                                                        if line.chars().count() > 40 {
+                                                        if line.chars().count() > 36 {
                                                             format!(
                                                                 "{}...",
                                                                 line.chars()
-                                                                    .take(37)
+                                                                    .take(33)
                                                                     .collect::<String>()
                                                             )
                                                         } else {

@@ -126,8 +126,10 @@ verifier_fallback = "require_approval"
 [ollama]
 # Ollama (Local)
 api_url = "http://localhost:11434/v1"
+
+[ollama_cloud]
 # Ollama (Cloud)
-# api_url = "https://ollama.com/v1"
+api_url = "https://ollama.com/v1"
 
 # OpenRouter (Aggregation service)
 [openrouter]

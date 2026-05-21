@@ -1,6 +1,7 @@
 use crate::cli::ui;
 use crate::core::session::ActiveSession;
 use crate::llm::models::{DataSource, Message, MessagePart, Role};
+use chrono;
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -109,9 +110,28 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
                         } else {
                             ui::print_rule(Some("Saved Sessions"), Some("cyan"));
                             for s in &sessions {
+                                let ts = if s.created_at.is_empty() {
+                                    "unknown".dimmed().to_string()
+                                } else {
+                                    // Parse RFC3339 and format as short local datetime
+                                    chrono::DateTime::parse_from_rfc3339(&s.created_at)
+                                        .map(|dt| {
+                                            dt.with_timezone(&chrono::Local)
+                                                .format("%Y-%m-%d %H:%M")
+                                                .to_string()
+                                        })
+                                        .unwrap_or_else(|_| s.created_at.clone())
+                                        .dimmed()
+                                        .to_string()
+                                };
                                 let first =
                                     s.first_user_prompt.as_deref().unwrap_or("(no user prompt)");
-                                println!("  {: <40} {}", s.filename.bold().cyan(), first.dimmed());
+                                println!(
+                                    "  {}  {: <36} {}",
+                                    ts,
+                                    s.filename.bold().cyan(),
+                                    first.dimmed()
+                                );
                             }
                             ui::print_rule(None, Some("cyan"));
                             println!("{}", "Usage: /load <session_id>  — load a session".dimmed());
