@@ -53,6 +53,15 @@ pub fn models_cache_path() -> PathBuf {
 pub fn audit_log_path() -> PathBuf {
     log_dir().join("audit.jsonl")
 }
+/// Head-pointer cache file for O(1) lookup of the last audit entry hash.
+/// Avoids scanning the entire audit log on every session start.
+///
+/// File format: a single line containing the SHA-256 hex hash of the last
+/// audit entry, followed by a newline.  If the cache is stale or corrupt,
+/// `get_last_log_hash()` falls back to a full-file scan.
+pub fn audit_head_cache_path() -> PathBuf {
+    log_dir().join("audit_head.cache")
+}
 pub fn security_log_path() -> PathBuf {
     log_dir().join("security.log")
 }

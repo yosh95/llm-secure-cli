@@ -138,7 +138,7 @@ fn test_merkle_session_verification_logic() {
         args: serde_json::json!({"cmd": "ls"}),
         pqc_confidential: false,
         output: None,
-        status: "SUCCESS".to_string(),
+        status: llm_secure_cli::security::audit::AuditStatus::Success,
         exit_code: Some(0),
         prev_hash: "0".repeat(64),
         hash: String::new(),

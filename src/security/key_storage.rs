@@ -7,7 +7,7 @@ use argon2::Argon2;
 use rand::RngCore;
 use std::fs;
 use std::io::{IsTerminal, stdin};
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Mutex;
 
 /// Header magic bytes to identify encrypted key files.
@@ -27,7 +27,7 @@ static PASSPHRASE_CACHE: Mutex<Option<String>> = Mutex::new(None);
 /// If `passphrase` is `Some` and non-empty, the key is encrypted with AES-256-GCM
 /// using an Argon2id-derived key. If `passphrase` is `None` or empty, the key is
 /// stored as raw bytes (backwards compatible).
-pub fn save_key(path: &PathBuf, key_bytes: &[u8], passphrase: Option<&str>) -> Result<()> {
+pub fn save_key(path: &Path, key_bytes: &[u8], passphrase: Option<&str>) -> Result<()> {
     match passphrase {
         Some(pw) if !pw.is_empty() => save_encrypted(path, key_bytes, pw),
         _ => {
@@ -43,7 +43,7 @@ pub fn save_key(path: &PathBuf, key_bytes: &[u8], passphrase: Option<&str>) -> R
 /// If the file starts with the `LKEF` magic header it is treated as encrypted
 /// and the passphrase is requested (interactive or env var). Otherwise the raw
 /// bytes are returned directly.
-pub fn load_key(path: &PathBuf) -> Result<Vec<u8>> {
+pub fn load_key(path: &Path) -> Result<Vec<u8>> {
     if !path.exists() {
         return Err(anyhow!("Key file not found: {:?}", path));
     }
@@ -77,7 +77,7 @@ pub fn purge_passphrase_cache() {
 }
 
 /// Returns true if the key file is encrypted (starts with LKEF magic).
-pub fn is_encrypted(path: &PathBuf) -> bool {
+pub fn is_encrypted(path: &Path) -> bool {
     path.exists()
         && fs::read(path)
             .map(|data| data.starts_with(ENCRYPTED_KEY_MAGIC))
@@ -214,7 +214,7 @@ fn read_passphrase_or_cached(is_optional: bool) -> Result<String> {
 // Internal: encryption / decryption
 // ─────────────────────────────────────────────
 
-fn save_encrypted(path: &PathBuf, key_bytes: &[u8], passphrase: &str) -> Result<()> {
+fn save_encrypted(path: &Path, key_bytes: &[u8], passphrase: &str) -> Result<()> {
     // 1. Derive AES key via Argon2id
     let mut aes_key = [0u8; 32];
     let mut salt = [0u8; 16];

@@ -297,10 +297,10 @@ async fn test_processor_pqc_blocking_in_high_security() {
         "Audit entries should NOT be empty — failed entries are persisted for forensic traceability"
     );
     assert!(
-        session
-            .audit_entries
-            .iter()
-            .any(|e| e.status.contains("INTEGRITY_FAILURE")),
+        session.audit_entries.iter().any(|e| matches!(
+            e.status,
+            llm_secure_cli::security::audit::AuditStatus::IntegrityFailure(_)
+        )),
         "Audit entry should have INTEGRITY_FAILURE status"
     );
 }

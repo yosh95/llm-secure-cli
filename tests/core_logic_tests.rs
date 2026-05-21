@@ -295,8 +295,13 @@ fn test_security_config_rejects_invalid_confidence_threshold() {
         dual_llm_confidence_threshold: 1.5,
         ..Default::default()
     };
-    assert!(cfg.dual_llm_confidence_threshold > 1.0);
-    // This would be caught by validate_security_config at load time
+    let errors = cfg.validate();
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.field == "dual_llm_confidence_threshold"),
+        "Should report error for confidence_threshold > 1.0"
+    );
 }
 
 #[test]
@@ -305,8 +310,13 @@ fn test_security_config_rejects_negative_threshold() {
         dual_llm_confidence_threshold: -0.1,
         ..Default::default()
     };
-    assert!(cfg.dual_llm_confidence_threshold < 0.0);
-    // This would be caught by validate_security_config at load time
+    let errors = cfg.validate();
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.field == "dual_llm_confidence_threshold"),
+        "Should report error for negative confidence_threshold"
+    );
 }
 
 #[test]
@@ -315,8 +325,11 @@ fn test_security_config_rejects_invalid_security_level() {
         security_level: "paranoid".to_string(),
         ..Default::default()
     };
-    assert_eq!(cfg.security_level, "paranoid");
-    // This would be caught by validate_security_config at load time
+    let errors = cfg.validate();
+    assert!(
+        errors.iter().any(|e| e.field == "security_level"),
+        "Should report error for invalid security_level"
+    );
 }
 
 #[test]
@@ -325,8 +338,63 @@ fn test_security_config_rejects_invalid_verifier_fallback() {
         verifier_fallback: "allow".to_string(),
         ..Default::default()
     };
-    assert_eq!(cfg.verifier_fallback, "allow");
-    // This would be caught by validate_security_config at load time
+    let errors = cfg.validate();
+    assert!(
+        errors.iter().any(|e| e.field == "verifier_fallback"),
+        "Should report error for invalid verifier_fallback"
+    );
+}
+
+#[test]
+fn test_security_config_validate_warnings_high_without_dual_llm() {
+    // Default config has security_level="high" but dual_llm_verification=None
+    let cfg = SecurityConfig::default();
+    let warnings = cfg.validate_warnings();
+    assert!(
+        warnings.iter().any(|w| w.field == "security_level"),
+        "Default config should warn about high security without dual_llm_verification"
+    );
+}
+
+#[test]
+fn test_security_config_no_warnings_when_dual_llm_enabled() {
+    let cfg = SecurityConfig {
+        dual_llm_verification: Some(true),
+        ..Default::default()
+    };
+    let warnings = cfg.validate_warnings();
+    assert!(
+        warnings.is_empty(),
+        "Config with dual_llm enabled should have no warnings, got: {:?}",
+        warnings
+    );
+}
+
+#[test]
+fn test_security_config_validate_errors_for_empty_allowed_paths() {
+    let cfg = SecurityConfig {
+        allowed_paths: vec![],
+        ..Default::default()
+    };
+    let errors = cfg.validate();
+    assert!(
+        errors.iter().any(|e| e.field == "allowed_paths"),
+        "Should report error for empty allowed_paths"
+    );
+}
+
+#[test]
+fn test_security_config_validate_errors_for_dual_llm_without_provider() {
+    let cfg = SecurityConfig {
+        dual_llm_verification: Some(true),
+        dual_llm_provider: "".to_string(),
+        ..Default::default()
+    };
+    let errors = cfg.validate();
+    assert!(
+        errors.iter().any(|e| e.field == "dual_llm_provider"),
+        "Should report error for dual_llm enabled without provider"
+    );
 }
 
 // ---------------------------------------------------------------------------

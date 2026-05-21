@@ -229,6 +229,141 @@ impl Default for SecurityConfig {
     }
 }
 
+/// Describes a single validation failure in a [`SecurityConfig`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidationError {
+    pub field: String,
+    pub message: String,
+}
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.field, self.message)
+    }
+}
+
+impl std::error::Error for ValidationError {}
+
+impl SecurityConfig {
+    /// Validates the security configuration and returns a list of all
+    /// validation **errors** found. An empty vec means the config has no
+    /// hard-validation errors.
+    ///
+    /// Use [`Self::validate_warnings`] for advisory issues that should not
+    /// block configuration loading but are worth surfacing to the user.
+    pub fn validate(&self) -> Vec<ValidationError> {
+        let mut errors = Vec::new();
+
+        // --- auto_approval_level ---
+        if let Some(ref level) = self.auto_approval_level {
+            match level.as_str() {
+                "none" | "low" | "medium" => {}
+                other => errors.push(ValidationError {
+                    field: "auto_approval_level".to_string(),
+                    message: format!("must be one of 'none', 'low', or 'medium', got '{}'", other),
+                }),
+            }
+        }
+
+        // --- verifier_fallback ---
+        match self.verifier_fallback.as_str() {
+            "require_approval" | "block" => {}
+            other => errors.push(ValidationError {
+                field: "verifier_fallback".to_string(),
+                message: format!("must be 'require_approval' or 'block', got '{}'", other),
+            }),
+        }
+
+        // --- dual_llm_confidence_threshold ---
+        let threshold = self.dual_llm_confidence_threshold;
+        if threshold <= 0.0 || threshold > 1.0 {
+            errors.push(ValidationError {
+                field: "dual_llm_confidence_threshold".to_string(),
+                message: format!("must be in range (0.0, 1.0], got {}", threshold),
+            });
+        }
+
+        // --- security_level ---
+        match self.security_level.as_str() {
+            "high" | "standard" => {}
+            other => errors.push(ValidationError {
+                field: "security_level".to_string(),
+                message: format!("must be 'high' or 'standard', got '{}'", other),
+            }),
+        }
+
+        // --- allowed_paths must not be empty ---
+        if self.allowed_paths.is_empty() {
+            errors.push(ValidationError {
+                field: "allowed_paths".to_string(),
+                message: "must contain at least one path".to_string(),
+            });
+        }
+
+        // --- cross-field: dual_llm_verification enabled but no provider ---
+        if self.dual_llm_verification.unwrap_or(false) && self.dual_llm_provider.is_empty() {
+            errors.push(ValidationError {
+                field: "dual_llm_provider".to_string(),
+                message: "dual_llm_verification is enabled but dual_llm_provider is empty"
+                    .to_string(),
+            });
+        }
+
+        // --- cross-field: dual_llm_verification enabled but no model ---
+        if self.dual_llm_verification.unwrap_or(false) && self.dual_llm_model.is_empty() {
+            errors.push(ValidationError {
+                field: "dual_llm_model".to_string(),
+                message: "dual_llm_verification is enabled but dual_llm_model is empty".to_string(),
+            });
+        }
+
+        errors
+    }
+
+    /// Returns advisory warnings for suboptimal (but not invalid) configuration
+    /// combinations.  These do **not** block configuration loading but should
+    /// be surfaced to the user (e.g., at startup or via `/info`).
+    pub fn validate_warnings(&self) -> Vec<ValidationError> {
+        let mut warnings = Vec::new();
+
+        // --- cross-field: high security without dual_llm ---
+        if self.security_level == "high" && !self.dual_llm_verification.unwrap_or(false) {
+            warnings.push(ValidationError {
+                field: "security_level".to_string(),
+                message: "security_level 'high' is set but dual_llm_verification is not enabled — high-risk tools will escalate to Critical".to_string(),
+            });
+        }
+
+        // --- cross-field: auto_approval medium with dual_llm off ---
+        if self.auto_approval_level.as_deref() == Some("medium")
+            && !self.dual_llm_verification.unwrap_or(false)
+        {
+            warnings.push(ValidationError {
+                field: "auto_approval_level".to_string(),
+                message: "auto_approval_level 'medium' without dual_llm_verification is not recommended — high-risk tools lack semantic verification".to_string(),
+            });
+        }
+
+        warnings
+    }
+
+    /// Convenience wrapper that returns `Ok(())` if valid, or `Err` with
+    /// a human-readable summary of all validation failures (errors only).
+    /// Use [`Self::validate_warnings`] separately for advisory issues.
+    pub fn validate_or_err(&self) -> Result<(), String> {
+        let errors = self.validate();
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            let messages: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+            Err(format!(
+                "Security config validation failed:\n  - {}",
+                messages.join("\n  - ")
+            ))
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct McpServerConfig {
     pub name: String,

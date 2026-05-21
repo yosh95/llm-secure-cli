@@ -13,6 +13,15 @@ pub mod pqc;
 pub mod pqc_cose;
 pub mod static_analyzer;
 
+// Re-export AuditStatus for downstream convenience
+pub use audit::AuditStatus;
+
+// Re-export key management abstractions for custom KeyStore implementations
+pub use identity::{FileSystemKeyStore, KeyStore};
+
+// Re-export config validation types for convenience
+pub use crate::config::models::ValidationError;
+
 /// Validates a tool call using Phase 1 security checks.
 ///
 /// Phase 1 performs fast, deterministic checks for physical anomalies

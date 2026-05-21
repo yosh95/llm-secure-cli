@@ -9,6 +9,81 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use uuid::Uuid;
 
+/// Type-safe status for audit log entries, replacing free-form strings.
+///
+/// This enum captures all known states that an audit entry can be in,
+/// ensuring that downstream consumers (log rotation, verification, dashboards)
+/// can pattern-match on well-defined variants instead of comparing raw
+/// strings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub enum AuditStatus {
+    /// The tool call completed successfully.
+    Success,
+    /// The tool call failed with an error message.
+    Failed(String),
+    /// PQC encryption failed in high-security mode; entry stored with redacted args.
+    PqcEncryptionFailed(String),
+    /// PQC signing failed in high-security mode; entry stored without signature.
+    IntegrityFailure(String),
+    /// Entry was stored without a PQC signature because the private key was unavailable.
+    SuccessWithoutSignature,
+    /// Log rotation continuity marker (not a real tool call).
+    #[doc(hidden)]
+    LogRotationMarker,
+}
+
+impl std::fmt::Display for AuditStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuditStatus::Success => write!(f, "SUCCESS"),
+            AuditStatus::Failed(reason) => write!(f, "FAILED: {}", reason),
+            AuditStatus::PqcEncryptionFailed(reason) => {
+                write!(f, "FAILED: {}; PQC_ENCRYPTION_FAILED", reason)
+            }
+            AuditStatus::IntegrityFailure(reason) => {
+                write!(f, "INTEGRITY_FAILURE: {}", reason)
+            }
+            AuditStatus::SuccessWithoutSignature => {
+                write!(f, "SUCCESS_WITHOUT_SIGNATURE: PQC private key unavailable")
+            }
+            AuditStatus::LogRotationMarker => write!(f, "CONTINUITY_MAINTAINED"),
+        }
+    }
+}
+
+impl TryFrom<String> for AuditStatus {
+    type Error = String;
+
+    fn try_from(s: String) -> Result<Self, String> {
+        if s == "SUCCESS" {
+            Ok(AuditStatus::Success)
+        } else if let Some(reason) = s.strip_prefix("FAILED: ") {
+            // Check for the PQC_ENCRYPTION_FAILED suffix
+            if let Some(inner) = reason.strip_suffix("; PQC_ENCRYPTION_FAILED") {
+                Ok(AuditStatus::PqcEncryptionFailed(inner.to_string()))
+            } else {
+                Ok(AuditStatus::Failed(reason.to_string()))
+            }
+        } else if let Some(reason) = s.strip_prefix("INTEGRITY_FAILURE: ") {
+            Ok(AuditStatus::IntegrityFailure(reason.to_string()))
+        } else if s.starts_with("SUCCESS_WITHOUT_SIGNATURE") {
+            Ok(AuditStatus::SuccessWithoutSignature)
+        } else if s == "CONTINUITY_MAINTAINED" {
+            Ok(AuditStatus::LogRotationMarker)
+        } else {
+            // Forward-compatible: unknown statuses are wrapped in Failed
+            Ok(AuditStatus::Failed(s))
+        }
+    }
+}
+
+impl From<AuditStatus> for String {
+    fn from(status: AuditStatus) -> String {
+        status.to_string()
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AuditEntry {
     pub timestamp: String,
@@ -22,7 +97,7 @@ pub struct AuditEntry {
     pub args: serde_json::Value,
     pub pqc_confidential: bool,
     pub output: Option<String>,
-    pub status: String,
+    pub status: AuditStatus,
     pub exit_code: Option<i32>,
     pub prev_hash: String,
     pub hash: String,
@@ -230,14 +305,16 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         pqc_confidential: pqc_encrypted,
         output: params.output.map(|s| s.to_string()),
         status: {
-            let base = match params.error {
-                None => "SUCCESS".to_string(),
-                Some(e) => format!("FAILED: {}", e),
-            };
             if encryption_failed {
-                format!("{}; PQC_ENCRYPTION_FAILED", base)
+                match params.error {
+                    None => AuditStatus::PqcEncryptionFailed(String::new()),
+                    Some(e) => AuditStatus::PqcEncryptionFailed(e.to_string()),
+                }
             } else {
-                base
+                match params.error {
+                    None => AuditStatus::Success,
+                    Some(e) => AuditStatus::Failed(e.to_string()),
+                }
             }
         },
         exit_code: params.exit_code,
@@ -284,7 +361,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                     error = %e,
                     "PQC Sign failed in high-security mode; storing entry without signature"
                 );
-                log_entry.status = format!("INTEGRITY_FAILURE: PQC Sign failed: {}", e);
+                log_entry.status = AuditStatus::IntegrityFailure(format!("PQC Sign failed: {}", e));
                 // Do NOT return None — persist the entry for forensic traceability.
             }
         }
@@ -295,14 +372,14 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
             "{}; storing entry without signature",
             msg
         );
-        log_entry.status = format!("INTEGRITY_FAILURE: {}", msg);
+        log_entry.status = AuditStatus::IntegrityFailure(msg.to_string());
         // Do NOT return None — persist for forensic traceability.
     } else {
         tracing::warn!(
             tool = params.tool_name,
             "PQC private key unavailable; audit entry will be stored without signature"
         );
-        log_entry.status = "SUCCESS_WITHOUT_SIGNATURE: PQC private key unavailable".to_string();
+        log_entry.status = AuditStatus::SuccessWithoutSignature;
     }
 
     // Now truncate the output only for storage efficiency
@@ -361,6 +438,10 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         }
     }
 
+    // Update the head-pointer cache so the next session can find this
+    // hash in O(1) without scanning the entire log file.
+    write_head_cache(&log_entry.hash);
+
     Some(log_entry)
 }
 
@@ -369,14 +450,81 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
 /// indistinguishable from a real chain hash.
 const GENESIS_HASH: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
+/// Read the head-pointer cache for O(1) last-hash lookup.
+///
+/// Returns `Some(hash)` if the cache exists and contains a valid hex string,
+/// or `None` if the cache is absent, stale, or corrupt (in which case the
+/// caller falls back to a full-file scan).
+fn read_head_cache() -> Option<String> {
+    let cache_path = crate::consts::audit_head_cache_path();
+    if !cache_path.exists() {
+        return None;
+    }
+    let content = std::fs::read_to_string(&cache_path).ok()?;
+    let line = content.lines().next()?;
+    let hash = line.trim();
+    // Sanity check: SHA-256 hex must be exactly 64 hex chars
+    if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+        Some(hash.to_string())
+    } else {
+        None
+    }
+}
+
+/// Write (or update) the head-pointer cache with the hash of the newest entry.
+fn write_head_cache(hash: &str) {
+    let cache_path = crate::consts::audit_head_cache_path();
+    if let Some(parent) = cache_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    // Write atomically via temp file + rename to avoid partial-write races.
+    let tmp_path = cache_path.with_extension("cache.tmp");
+    if let Ok(mut f) = std::fs::File::create(&tmp_path) {
+        use std::io::Write;
+        if writeln!(f, "{}", hash).is_ok() {
+            drop(f);
+            let _ = std::fs::rename(&tmp_path, &cache_path);
+            return;
+        }
+        drop(f);
+    }
+    // Non-atomic fallback: direct write (better than losing the cache).
+    let _ = std::fs::write(&cache_path, format!("{}\n", hash));
+}
+
 fn get_last_log_hash(path: &Path) -> String {
+    // 1. Try the head-pointer cache first (O(1) path).
+    if let Some(cached_hash) = read_head_cache() {
+        // Verify the cache is not stale: if the log file was truncated or
+        // rotated since the cache was written, we must fall back to a scan.
+        // A simple heuristic: if the log file doesn't exist at all, return genesis.
+        if !path.exists() {
+            return GENESIS_HASH.to_string();
+        }
+        // If the log file exists and is non-empty, trust the cache because
+        // `write_head_cache` is always called after a successful append.
+        // If the log was externally truncated (manual edit), the cache will
+        // be overwritten on the next write.
+        if let Ok(metadata) = std::fs::metadata(path)
+            && metadata.len() > 0
+        {
+            return cached_hash;
+        }
+        // Fall through to full scan if the log is empty but cache exists.
+    }
+
+    // 2. Fallback: full backward scan (original logic, now only used as
+    //    a recovery path when the cache is absent or the log is empty).
     if !path.exists() {
+        // No log file exists yet — create the cache with the genesis hash.
+        write_head_cache(GENESIS_HASH);
         return GENESIS_HASH.to_string();
     }
 
-    if let Ok(mut file) = fs::File::open(path) {
+    if let Ok(mut file) = std::fs::File::open(path) {
         let size = file.metadata().map(|m| m.len()).unwrap_or(0);
         if size == 0 {
+            write_head_cache(GENESIS_HASH);
             return GENESIS_HASH.to_string();
         }
 
@@ -418,6 +566,8 @@ fn get_last_log_hash(path: &Path) -> String {
                 if let Ok(entry) = serde_json::from_str::<serde_json::Value>(trimmed)
                     && let Some(hash) = entry.get("hash").and_then(|v| v.as_str())
                 {
+                    // Cache the found hash for future O(1) lookups.
+                    write_head_cache(hash);
                     return hash.to_string();
                 }
             }
@@ -435,6 +585,7 @@ fn get_last_log_hash(path: &Path) -> String {
         path = %path.display(),
         "Could not find last hash in audit log; chain may be broken — starting new genesis"
     );
+    write_head_cache(GENESIS_HASH);
     GENESIS_HASH.to_string()
 }
 
@@ -528,6 +679,12 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
                 error = %e,
                 "CRITICAL: Failed to rotate audit log — old data retained, new data may be lost"
             );
+        } else {
+            // Rotation succeeded — invalidate the head cache so the next read
+            // falls back to a full scan and rebuilds the cache with the new
+            // last-entry hash from the rotated file.
+            let cache_path = crate::consts::audit_head_cache_path();
+            let _ = std::fs::remove_file(&cache_path);
         }
     } else {
         tracing::error!(path = %temp_path.display(), "Failed to create temp file for audit log rotation");

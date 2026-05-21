@@ -66,7 +66,7 @@ fn test_audit_entry_serialization() {
         args: serde_json::json!({"arg1": "val1"}),
         pqc_confidential: false,
         output: Some("test output".to_string()),
-        status: "SUCCESS".to_string(),
+        status: llm_secure_cli::security::audit::AuditStatus::Success,
         exit_code: Some(0),
         prev_hash: "0".repeat(64),
         hash: "hash1".to_string(),
