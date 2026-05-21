@@ -232,11 +232,11 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
     maybe_register(
         r,
         "read_file",
-        "Read content from a text file or PDF.",
+        "Read content from a local text file or PDF.",
         json!({
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Single file path."},
+                "path": {"type": "string", "description": "Local file path (not a URL)."},
                 "start_line": {"type": "integer", "default": 1},
                 "end_line": {"type": "integer"},
                 "with_line_numbers": {"type": "boolean", "default": false}
@@ -331,11 +331,11 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
     maybe_register(
         r,
         "read_url_content",
-        "Fetch a web page or PDF.",
+        "Fetch a web page or PDF from a URL.",
         json!({
             "type": "object",
             "properties": {
-                "url": {"type": "string"},
+                "url": {"type": "string", "description": "URL to fetch (http/https)."},
                 "start_line": {"type": "integer", "default": 1},
                 "end_line": {"type": "integer"}
             },

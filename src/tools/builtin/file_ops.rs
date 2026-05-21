@@ -189,9 +189,24 @@ pub fn read_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
     let content = match fs::read_to_string(&path) {
         Ok(c) => c,
         Err(_) => {
-            return Ok(
-                json!({ "path": path_str, "error": "Appears to be a binary file or unreadable." }),
-            );
+            // Try PDF extraction before giving up
+            match fs::read(&path) {
+                Ok(bytes) => match pdf_extract::extract_text_from_mem(&bytes) {
+                    Ok(text) if !text.trim().is_empty() => text,
+                    _ => {
+                        return Ok(json!({
+                            "path": path_str,
+                            "error": "Appears to be a binary file or unreadable."
+                        }));
+                    }
+                },
+                Err(_) => {
+                    return Ok(json!({
+                        "path": path_str,
+                        "error": "Appears to be a binary file or unreadable."
+                    }));
+                }
+            }
         }
     };
 
