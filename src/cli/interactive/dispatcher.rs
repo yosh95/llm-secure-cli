@@ -204,8 +204,8 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
                             .find(|l| !l.trim().is_empty())
                             .map(|l| {
                                 let trimmed = l.trim();
-                                if trimmed.len() > 60 {
-                                    format!("{}...", &trimmed[..60])
+                                if trimmed.chars().count() > 60 {
+                                    format!("{}...", trimmed.chars().take(60).collect::<String>())
                                 } else {
                                     trimmed.to_string()
                                 }

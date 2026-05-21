@@ -176,8 +176,8 @@ async fn main() -> anyhow::Result<()> {
 
             println!(
                 "[{:<30}] Expected: {:<7} | Actual: {:<7} | Time: {:>4}ms | Result: {}",
-                if scenario.label.len() > 30 {
-                    scenario.label[..27].to_string() + "..."
+                if scenario.label.chars().count() > 30 {
+                    format!("{}...", scenario.label.chars().take(27).collect::<String>())
                 } else {
                     scenario.label.clone()
                 },
