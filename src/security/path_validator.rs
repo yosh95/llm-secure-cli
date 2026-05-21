@@ -38,10 +38,7 @@ pub fn validate_path(
     #[cfg(target_os = "windows")]
     {
         // Block Windows reserved device names (CON, PRN, AUX, NUL, COM1.., LPT1..)
-        if let Some(stem) = path_str
-            .split(|c: char| c == '\\' || c == '/' || c == ':')
-            .next()
-        {
+        if let Some(stem) = path_str.split(['\\', '/', ':']).next() {
             let upper = stem.to_uppercase();
             let reserved = [
                 "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",

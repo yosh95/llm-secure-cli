@@ -287,7 +287,7 @@ impl ConfigManager {
 }
 
 /// Validate critical security configuration settings at load time.
-/// Delegates to [`SecurityConfig::validate_or_err`].
+/// Delegates to [`crate::config::models::SecurityConfig::validate_or_err`].
 fn validate_security_config(
     security: &crate::config::models::SecurityConfig,
 ) -> Result<(), String> {
