@@ -27,7 +27,7 @@ max_output_chars = 100000
 #   "" (empty)       = disable pager, print everything directly (default)
 #   "auto"           = try 'less -FRSX', fall back to built-in pager
 #   "less -FRSX"     = use a specific command; falls back to built-in pager on error
-pager = ""
+pager = "auto"
 
 # =============================================================================
 # Security & API Keys

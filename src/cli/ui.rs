@@ -138,7 +138,6 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                 "path".cyan(),
                 path
             );
-            println!("    {} {}:", "\u{2022}".bright_black(), "diff".cyan());
 
             // Compute a file-based diff so the confirmation preview matches the
             // post-execution diff.  We read the file, try an exact-match edit,
@@ -164,21 +163,32 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             };
 
             if diff.is_empty() && !old.is_empty() && old == new {
+                println!("    {} {}:", "\u{2022}".bright_black(), "diff".cyan());
                 println!("        {}", "(no changes)".dimmed());
-            } else {
+            } else if !diff.is_empty() {
+                // Buffer the diff and send through the pager so the user can
+                // review large diffs before answering the approval prompt.
+                let mut diff_buf = String::new();
+                diff_buf.push_str(&format!(
+                    "    {} {}:\n",
+                    "\u{2022}".bright_black(),
+                    "diff".cyan()
+                ));
                 for line in diff.lines() {
                     if line.starts_with('+') && !line.starts_with("+++") {
-                        println!("        {}", line.cyan());
+                        push_line(&mut diff_buf, &format!("        {}", line.cyan()));
                     } else if line.starts_with('-') && !line.starts_with("---") {
-                        println!("        {}", line.red());
+                        push_line(&mut diff_buf, &format!("        {}", line.red()));
                     } else if line.starts_with("@@") {
-                        println!("        {}", line.cyan().dimmed());
+                        push_line(&mut diff_buf, &format!("        {}", line.cyan().dimmed()));
                     } else if line.starts_with("---") || line.starts_with("+++") {
-                        println!("        {}", line.bold().dimmed());
+                        push_line(&mut diff_buf, &format!("        {}", line.bold().dimmed()));
                     } else {
-                        println!("        {}", line.dimmed());
+                        push_line(&mut diff_buf, &format!("        {}", line.dimmed()));
                     }
                 }
+                let term_height = term.size().0;
+                crate::cli::pager::page_output(&diff_buf, term_height);
             }
 
             // Print other arguments if any (except explanation which we want last)
