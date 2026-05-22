@@ -11,6 +11,7 @@ pub mod permissions;
 pub mod policy;
 pub mod pqc;
 pub mod pqc_cose;
+pub mod skill_verifier;
 pub mod static_analyzer;
 
 // Re-export AuditStatus for downstream convenience

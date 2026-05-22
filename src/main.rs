@@ -73,6 +73,26 @@ enum Commands {
         #[clap(short, long)]
         output: Option<String>,
     },
+    /// Verify Agent Skills for safety (structural, signature, and semantic checks)
+    VerifySkill {
+        /// Path to the skill directory or a directory containing multiple skills
+        path: String,
+        /// Recursively scan for skill directories
+        #[clap(short, long)]
+        recursive: bool,
+        /// Run Semantic Firewall analysis (requires a configured Dual LLM verifier)
+        #[clap(short, long)]
+        semantic: bool,
+        /// Output results as JSON
+        #[clap(long)]
+        json: bool,
+        /// Override the Dual LLM provider for semantic analysis
+        #[clap(long)]
+        provider: Option<String>,
+        /// Override the Dual LLM model for semantic analysis
+        #[clap(long)]
+        model: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -218,6 +238,25 @@ async fn handle_subcommand(
                 input.into(),
                 output.map(|o| o.into()),
             );
+        }
+        Commands::VerifySkill {
+            path,
+            recursive,
+            semantic,
+            json,
+            provider,
+            model,
+        } => {
+            llm_secure_cli::cli::commands::skill_verify::run_skill_verify(
+                ctx,
+                &path,
+                recursive,
+                semantic,
+                json,
+                provider.as_deref(),
+                model.as_deref(),
+            )
+            .await;
         }
     }
 }

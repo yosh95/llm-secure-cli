@@ -434,3 +434,209 @@ While highly efficient (<0.01ms), this layer is intentionally minimal. **Real-wo
 Dual LLM Verification is a **probabilistic** defense. While it can achieve high accuracy with well-chosen verifier models, LLMs can hallucinate or fail to catch "jailbreak" style prompt injections. The confidence threshold setting (`dual_llm_confidence_threshold`) is important for balancing security and usability.
 
 ### 3. ML-DSA COSE algorithm identifier (`alg=−48`)
+
+The ML-DSA algorithm identifier used in COSE tokens (`-48`) is provisional
+(IANA pending per *draft-ietf-cose-dilithium*).  Until the IANA assignment
+is finalized, interoperability with third-party COSE implementations that
+use a different provisional identifier is not guaranteed.  `llsc` pins the
+`saorsa-pqc` crate version to maintain consistency.
+
+---
+
+## Agent Skill Verification (Tier 4 — Supply-Chain Safety)
+
+### Motivation
+
+In December 2025, Anthropic released the [Agent Skills open
+standard](https://agentskills.io/specification), a specification for
+portable, cross-platform procedural knowledge packages (`SKILL.md`).  Within
+90 days, 32+ AI coding tools adopted the format, and community marketplaces
+accumulated tens of thousands of community-contributed skills.
+
+This rapid, zero-friction ecosystem growth also created a **novel
+supply-chain attack surface** that existing security infrastructure was not
+designed to address.  Snyk's *ToxicSkills* study (February 2026)
+documented:
+
+| Finding | Scale |
+|---|---|
+| Skills with security flaws | 36% of 3,984 scanned |
+| Confirmed malicious payloads | 76 skills |
+| Coordinated campaign ("ClawHavoc") | 341 hostile skills delivering Atomic Stealer (AMOS) |
+| Behavioral degradation from poor-quality skills | 6 measurable mechanisms (template propagation, pattern bleed, etc.) |
+
+The attack surface is uniquely dangerous because Agent Skills execute inside
+AI agents that already have shell access, file-system permissions, and
+network connectivity.  A malicious npm package can access what Node.js
+allows; a malicious skill inherits the **full permissions of the AI agent**
+it runs inside.
+
+`llsc` already addresses the MCP side of this equation with `zero_trust =
+true`.  The Agent Skill Verification feature (`llsc verify-skill`) extends
+the same Zero Trust philosophy to the Skills layer.
+
+### Architecture: The Three-Tier Verification Pipeline
+
+The pipeline mirrors the Triple-Lock design of `llsc`'s main security
+framework, adapted for static file analysis rather than live tool execution:
+
+```
+                      SKILL.md directory
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+        ┌──────────┐  ┌──────────┐  ┌──────────────┐
+        │  Tier 1  │  │  Tier 2  │  │    Tier 3    │
+        │ Structure│  │ Signature│  │   Semantic   │
+        │          │  │          │  │   Firewall   │
+        └────┬─────┘  └────┬─────┘  └──────┬───────┘
+             │              │               │
+             └──────────────┼───────────────┘
+                            ▼
+                    ┌──────────────┐
+                    │   VERDICT    │
+                    │ SAFE / SUSP /│
+                    │  DANGEROUS   │
+                    └──────────────┘
+```
+
+### Tier 1 — Structural Validation (src/security/skill_verifier.rs)
+
+**Type**: Deterministic, sub-millisecond, no external dependencies.
+
+Validates `SKILL.md` against the Agent Skills specification:
+
+- YAML frontmatter delimited by `---`
+- Required field `name`: 1–64 characters, `[a-z0-9-]` only
+- Required field `description`: 1–1024 characters
+- Directory structure: `SKILL.md` found (case-insensitive)
+- Optional fields parsed but not required: `license`, `compatibility`,
+  `metadata`, `allowed-tools`
+
+A structural failure always results in a `DANGEROUS` verdict — the skill
+does not conform to the standard and cannot be safely parsed by downstream
+tools.
+
+**Implementation**: A minimal hand-written YAML frontmatter parser
+(`parse_frontmatter`) that avoids pulling in a full YAML library for a
+two-field specification.  Handles `>-` folded block scalars for multi-line
+descriptions.
+
+### Tier 2 — Signature Verification (src/security/skill_verifier.rs)
+
+**Type**: Cryptographic, local-only, no network dependency.
+
+Checks for a `SKILL.md.sig` file alongside `SKILL.md`.  Two strategies are
+attempted in order:
+
+1. **COSE hybrid token** (Tag 98): The signature file is parsed as a COSE
+   Sign structure.  The Ed25519 signature is verified against the project's
+   `id_ed25519.pub`, and the ML-DSA signature against the appropriate
+   variant's public key.  The `sub` claim from the token payload is
+   extracted as the publisher identity.
+
+2. **Raw Ed25519 fallback**: If COSE parsing fails, the signature file is
+   treated as a 64-byte raw Ed25519 signature over the SKILL.md content,
+   verified against `id_ed25519.pub`.
+
+An unsigned skill is flagged `SUSPICIOUS` rather than `DANGEROUS` — the
+absence of a signature is a trustworthiness concern, not a structural
+defect.
+
+**Future direction**: When the Agentic AI Foundation (AAIF) establishes a
+verified-publisher PKI, this tier can be extended to verify signatures
+against a trusted root rather than the project's own key.
+
+### Tier 3 — Semantic Firewall (src/security/skill_verifier.rs)
+
+**Type**: Probabilistic, LLM-dependent, requires configured Dual LLM
+verifier.
+
+This is the same Dual LLM architecture used for tool-call verification,
+repurposed with a **skill-specific security constitution**
+(`SKILL_SECURITY_CONSTITUTION`).  The verifier LLM receives:
+
+- The skill's declared `name` and `description` (from YAML frontmatter)
+- The full `SKILL.md` body
+- A hardcoded system prompt defining the threat model and judgment criteria
+
+The verifier analyzes for:
+
+| Threat Category | Detection Pattern |
+|---|---|
+| Hidden instructions | Content that contradicts or subverts the declared purpose |
+| Data exfiltration | `curl`/`wget` to external hosts, reading secrets/env |
+| Obfuscated payloads | base64, hex, or other encoded content |
+| Social engineering | Instructions to manipulate the user through the agent |
+| Security bypass | Attempts to disable or override security controls |
+
+The response format is structured:
+
+```
+DECISION: [CLEAN | SUSPICIOUS | TOXIC]
+CONFIDENCE: [0.0–1.0]
+FINDINGS: [JSON array of per-finding category, description, confidence]
+REASON: [One-sentence summary]
+```
+
+**Constitution isolation**: The `SKILL_SECURITY_CONSTITUTION` is a
+hardcoded constant in `src/security/skill_verifier.rs`, separate from the
+tool-call `SECURITY_CONSTITUTION` in `src/security/policy.rs`.  Each
+constitution is purpose-built for its threat model, preventing prompt
+leakage between concerns.
+
+### Verdict Computation
+
+```
+structural failure ──────────────────────────► DANGEROUS
+signature verification failure ──────────────► SUSPICIOUS
+semantic TOXIC ──────────────────────────────► DANGEROUS
+semantic SUSPICIOUS ─────────────────────────► SUSPICIOUS
+semantic CLEAN + signed ─────────────────────► SAFE
+semantic CLEAN + unsigned ───────────────────► SUSPICIOUS
+no semantic analysis + signed ───────────────► SAFE
+no semantic analysis + unsigned ─────────────► SUSPICIOUS
+```
+
+### Design Decisions
+
+**"Verify, don't execute"** is the foundational principle.  `llsc` never
+loads a skill into an agent's context window; it only audits the skill and
+reports findings.  This creates a clean responsibility boundary: the tool
+warns, the user decides.
+
+**Semantic Firewall is opt-in** (`--semantic` flag).  Without it, Tiers 1
+and 2 still catch structural failures and provide signature verification,
+but a well-formed malicious skill will be rated `SUSPICIOUS` (unsigned)
+rather than `DANGEROUS`.  This reflects the reality that deterministic
+analysis cannot detect semantic malice — and that running an LLM-based
+analysis has a non-zero cost (API call, latency).
+
+**No execution sandbox for skills.**  This is intentional.  If a future
+version adds skill execution, it will be gated behind:
+1. Verified publisher signature (Tier 2)
+2. Clean Semantic Firewall verdict (Tier 3)
+3. CASS risk scaling with mandatory human approval for high-risk operations
+4. Docker isolation by default
+
+### Relationship to the Existing Triple-Lock Framework
+
+Agent Skill Verification extends the Triple-Lock model with a fourth
+dimension — **Supply-Chain Safety** — that applies the same Zero Trust
+principles to content the agent *might* consume:
+
+| Tier | Existing (Tool Execution) | New (Skill Verification) |
+|---|---|---|
+| T1 — Space | Path guardrails, static analysis | YAML structural validation |
+| T2 — Behavior | Dual LLM intent verification, ABAC | Signature verification (Ed25519/ML-DSA) |
+| T3 — Time | PQC audit trail, Merkle anchoring | Semantic Firewall for skill content |
+| T4 — Supply Chain | — *(new)* | Three-tier skill safety audit |
+
+### Implementation Files
+
+| File | Role |
+|---|---|
+| `src/security/skill_verifier.rs` | Core logic: parser, validators, signature verification, Semantic Firewall integration, batch discovery |
+| `src/cli/commands/skill_verify.rs` | CLI handler: report formatting, JSON output, batch summary |
+| `src/main.rs` (`VerifySkill` command) | Subcommand registration and dispatch |
+| `src/security/mod.rs` | Module registration |
