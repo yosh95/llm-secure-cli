@@ -187,8 +187,7 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                         push_line(&mut diff_buf, &format!("        {}", line.dimmed()));
                     }
                 }
-                let term_height = term.size().0;
-                crate::cli::pager::page_output(&diff_buf, term_height);
+                println!("{diff_buf}");
             }
 
             // Print other arguments if any (except explanation which we want last)
@@ -556,11 +555,9 @@ fn push_line(buf: &mut String, line: &str) {
     buf.push('\n');
 }
 
-/// Send buffered tool result output through the pager.
+/// Print buffered tool result output directly (no pager in React flow).
 fn finish_tool_result(out: String) {
-    let term = Term::stdout();
-    let term_height = term.size().0;
-    crate::cli::pager::page_output(&out, term_height);
+    print!("{out}");
 }
 
 pub fn print_panel(
