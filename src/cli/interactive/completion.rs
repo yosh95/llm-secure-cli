@@ -33,7 +33,7 @@ impl ChatCompleter {
                 "/system",
                 "/raw",
                 "/dump",
-                "/load",
+                "/session",
                 "/attach",
                 "/tools",
                 "/model",
@@ -91,66 +91,118 @@ impl Completer for ChatCompleter {
                 let start = cmd.len() + 1;
 
                 match cmd {
-                    "/load" => {
-                        // Complete session filenames from sessions directory
-                        let dir = crate::consts::sessions_dir();
-                        let mut matches = Vec::new();
-                        if dir.exists()
-                            && let Ok(entries) = std::fs::read_dir(&dir)
-                        {
-                            for entry in entries.flatten() {
-                                let path = entry.path();
-                                if path.extension().and_then(|s| s.to_str()) == Some("json")
-                                    && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
-                                    && stem.starts_with(arg_prefix)
-                                {
-                                    // Also get first user prompt for preview
-                                    let preview = std::fs::read_to_string(&path)
-                                        .ok()
-                                        .and_then(|c| {
-                                            serde_json::from_str::<
-                                                crate::utils::session_store::SessionFile,
-                                            >(&c)
-                                            .ok()
-                                        })
-                                        .and_then(
-                                            |sf: crate::utils::session_store::SessionFile| {
-                                                use crate::llm::models::Role;
-                                                sf.conversation
-                                                    .iter()
-                                                    .find(|m| m.role == Role::User)
-                                                    .map(|m| {
-                                                        let t = m.get_text(false);
-                                                        let line = t.lines().next().unwrap_or("");
-                                                        if line.chars().count() > 36 {
-                                                            format!(
-                                                                "{}...",
-                                                                line.chars()
-                                                                    .take(33)
-                                                                    .collect::<String>()
-                                                            )
-                                                        } else {
-                                                            line.to_string()
-                                                        }
-                                                    })
-                                            },
-                                        );
-                                    let display = if let Some(preview) = preview
-                                        && !preview.is_empty()
-                                    {
-                                        format!("{}  ({})", stem, preview)
-                                    } else {
-                                        stem.to_string()
-                                    };
+                    "/session" => {
+                        // Determine the subcommand being typed
+                        let arg_parts: Vec<&str> = arg_prefix.split_whitespace().collect();
+                        if arg_parts.is_empty() {
+                            // "/session " → complete subcommands: load, delete, clear
+                            let subs = ["load", "delete", "clear"];
+                            let mut matches = Vec::new();
+                            for sub in &subs {
+                                if sub.starts_with(arg_prefix) {
                                     matches.push(Pair {
-                                        display,
-                                        replacement: stem.to_string(),
+                                        display: sub.to_string(),
+                                        replacement: sub.to_string(),
                                     });
                                 }
                             }
+                            return Ok((start, matches));
+                        } else if arg_parts.len() == 1 && !arg_prefix.ends_with(' ') {
+                            // "/session lo" or "/session d" → complete subcommand
+                            let sub_prefix = arg_parts[0];
+                            let subs = ["load", "delete", "clear"];
+                            let mut matches = Vec::new();
+                            for sub in &subs {
+                                if sub.starts_with(sub_prefix) {
+                                    matches.push(Pair {
+                                        display: sub.to_string(),
+                                        replacement: sub.to_string(),
+                                    });
+                                }
+                            }
+                            return Ok((start, matches));
+                        } else {
+                            // "/session load <prefix>" or "/session delete <prefix>"
+                            let subcmd = arg_parts[0];
+                            if subcmd == "clear" {
+                                // no further args for clear
+                                return Ok((0, Vec::new()));
+                            }
+                            if subcmd != "load" && subcmd != "delete" {
+                                return Ok((0, Vec::new()));
+                            }
+                            // The session id prefix is the rest after the subcommand
+                            let session_prefix = if arg_parts.len() >= 2 {
+                                arg_parts[1]
+                            } else {
+                                ""
+                            };
+                            let session_start = if arg_parts.len() >= 2 {
+                                start + subcmd.len() + 1 // skip subcommand and space
+                            } else {
+                                pos
+                            };
+                            // Complete session filenames
+                            let dir = crate::consts::sessions_dir();
+                            let mut matches = Vec::new();
+                            if dir.exists()
+                                && let Ok(entries) = std::fs::read_dir(&dir)
+                            {
+                                for entry in entries.flatten() {
+                                    let path = entry.path();
+                                    if path.extension().and_then(|s| s.to_str()) == Some("json")
+                                        && let Some(stem) =
+                                            path.file_stem().and_then(|s| s.to_str())
+                                        && stem.starts_with(session_prefix)
+                                    {
+                                        let preview = std::fs::read_to_string(&path)
+                                            .ok()
+                                            .and_then(|c| {
+                                                serde_json::from_str::<
+                                                    crate::utils::session_store::SessionFile,
+                                                >(&c)
+                                                .ok()
+                                            })
+                                            .and_then(
+                                                |sf: crate::utils::session_store::SessionFile| {
+                                                    use crate::llm::models::Role;
+                                                    sf.conversation
+                                                        .iter()
+                                                        .find(|m| m.role == Role::User)
+                                                        .map(|m| {
+                                                            let t = m.get_text(false);
+                                                            let line =
+                                                                t.lines().next().unwrap_or("");
+                                                            if line.chars().count() > 36 {
+                                                                format!(
+                                                                    "{}...",
+                                                                    line.chars()
+                                                                        .take(33)
+                                                                        .collect::<String>()
+                                                                )
+                                                            } else {
+                                                                line.to_string()
+                                                            }
+                                                        })
+                                                },
+                                            );
+                                        let display = if let Some(preview) = preview
+                                            && !preview.is_empty()
+                                        {
+                                            format!("{}  ({})", stem, preview)
+                                        } else {
+                                            stem.to_string()
+                                        };
+                                        matches.push(Pair {
+                                            display,
+                                            replacement: stem.to_string(),
+                                        });
+                                    }
+                                }
+                            }
+                            matches.sort_by(|a, b| a.display.cmp(&b.display));
+                            return Ok((session_start, matches));
                         }
-                        matches.sort_by(|a, b| a.display.cmp(&b.display));
-                        return Ok((start, matches));
                     }
                     "/save" | "/attach" | "/edit" | "/e" => {
                         return self.file_completer.complete(line, pos, ctx);

@@ -178,7 +178,7 @@ Inside the `llsc` interactive session:
 - `/info`, `/i`: Show session info, integrity, and security status.
 - `/raw`: Show conversation as raw text.
 - `/dump`: Dump conversation history as TOML.
-- `/save <path>` / `/load <path>`: Manage conversation history.
+- `/session [load|delete <id>|clear]`: List, load, delete, or clear saved sessions.
 - `/attach <path/URL>`: Add a file or website content to the context.
 - `/tools [on|off]`: Show or toggle autonomous tool use status.
 - `/model`, `/m [-u] [<alias>]`: List models for current provider. Use `-u`/`--update` to refresh the cache. Specify an alias or model name to switch.

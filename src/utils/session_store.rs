@@ -196,6 +196,51 @@ pub fn session_path(trace_id: &str) -> PathBuf {
     crate::consts::sessions_dir().join(format!("{}.json", trace_id))
 }
 
+/// Delete a single session by its filename (without .json extension).
+/// Returns Ok(true) if deleted, Ok(false) if not found.
+pub fn delete_session(filename: &str) -> anyhow::Result<bool> {
+    let dir = crate::consts::sessions_dir();
+    if !dir.exists() {
+        return Ok(false);
+    }
+
+    let path = if filename.ends_with(".json") {
+        dir.join(filename)
+    } else {
+        dir.join(format!("{}.json", filename))
+    };
+
+    if path.exists() {
+        fs::remove_file(&path)?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Delete all session files from the sessions directory.
+/// Returns the number of files deleted.
+pub fn clear_sessions() -> anyhow::Result<usize> {
+    let dir = crate::consts::sessions_dir();
+    if !dir.exists() {
+        return Ok(0);
+    }
+
+    let mut count = 0;
+    for entry in fs::read_dir(&dir)? {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("json") {
+            fs::remove_file(&path)?;
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
 fn extract_first_user_prompt(conversation: &[Message]) -> Option<String> {
     use crate::llm::models::Role;
     conversation.iter().find(|m| m.role == Role::User).map(|m| {

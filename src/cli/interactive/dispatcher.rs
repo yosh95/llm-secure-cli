@@ -98,57 +98,8 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             handle_edit_history(session);
             CommandResult::Handled
         }
-        "load" => {
-            if args.is_empty() {
-                // List sessions with first user prompt preview
-                match crate::utils::session_store::list_sessions() {
-                    Ok(sessions) => {
-                        if sessions.is_empty() {
-                            ui::report_info(
-                                "No saved sessions found. Sessions are auto-saved after each turn.",
-                            );
-                        } else {
-                            ui::print_rule(Some("Saved Sessions"), Some("cyan"));
-                            for s in &sessions {
-                                let ts = if s.created_at.is_empty() {
-                                    "unknown".dimmed().to_string()
-                                } else {
-                                    // Parse RFC3339 and format as short local datetime
-                                    chrono::DateTime::parse_from_rfc3339(&s.created_at)
-                                        .map(|dt| {
-                                            dt.with_timezone(&chrono::Local)
-                                                .format("%Y-%m-%d %H:%M")
-                                                .to_string()
-                                        })
-                                        .unwrap_or_else(|_| s.created_at.clone())
-                                        .dimmed()
-                                        .to_string()
-                                };
-                                let first =
-                                    s.first_user_prompt.as_deref().unwrap_or("(no user prompt)");
-                                println!(
-                                    "  {}  {: <36} {}",
-                                    ts,
-                                    s.filename.bold().cyan(),
-                                    first.dimmed()
-                                );
-                            }
-                            ui::print_rule(None, Some("cyan"));
-                            println!("{}", "Usage: /load <session_id>  — load a session".dimmed());
-                        }
-                    }
-                    Err(e) => ui::report_error(&format!("Failed to list sessions: {}", e)),
-                }
-            } else {
-                match crate::utils::session_store::load_session(args) {
-                    Ok(conversation) => {
-                        let client = session.get_client_mut();
-                        client.get_state_mut().conversation = conversation;
-                        ui::report_success(&format!("Session loaded from {}", args));
-                    }
-                    Err(e) => ui::report_error(&format!("Failed to load session: {}", e)),
-                }
-            }
+        "session" => {
+            handle_session_cmd(session, args);
             CommandResult::Handled
         }
         "attach" => {
@@ -236,6 +187,106 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
         _ => {
             ui::report_error(&format!("Unknown command: /{}", cmd));
             CommandResult::Handled
+        }
+    }
+}
+
+pub fn handle_session_cmd(session: &mut ActiveSession, args: &str) {
+    let args_trimmed = args.trim();
+
+    // No subcommand: list sessions
+    if args_trimmed.is_empty() {
+        match crate::utils::session_store::list_sessions() {
+            Ok(sessions) => {
+                if sessions.is_empty() {
+                    ui::report_info(
+                        "No saved sessions found. Sessions are auto-saved after each turn.",
+                    );
+                } else {
+                    ui::print_rule(Some("Saved Sessions"), Some("cyan"));
+                    for s in &sessions {
+                        let ts = if s.created_at.is_empty() {
+                            "unknown".dimmed().to_string()
+                        } else {
+                            chrono::DateTime::parse_from_rfc3339(&s.created_at)
+                                .map(|dt| {
+                                    dt.with_timezone(&chrono::Local)
+                                        .format("%Y-%m-%d %H:%M")
+                                        .to_string()
+                                })
+                                .unwrap_or_else(|_| s.created_at.clone())
+                                .dimmed()
+                                .to_string()
+                        };
+                        let first = s.first_user_prompt.as_deref().unwrap_or("(no user prompt)");
+                        println!(
+                            "  {}  {: <36} {}",
+                            ts,
+                            s.filename.bold().cyan(),
+                            first.dimmed()
+                        );
+                    }
+                    ui::print_rule(None, Some("cyan"));
+                    println!(
+                        "{}",
+                        "Usage: /session load|delete <id>  or  /session clear".dimmed()
+                    );
+                }
+            }
+            Err(e) => ui::report_error(&format!("Failed to list sessions: {}", e)),
+        }
+        return;
+    }
+
+    // Parse subcommand
+    let parts: Vec<&str> = args_trimmed.splitn(2, ' ').collect();
+    let subcmd = parts[0].to_lowercase();
+    let subargs = if parts.len() > 1 { parts[1].trim() } else { "" };
+
+    match subcmd.as_str() {
+        "load" => {
+            if subargs.is_empty() {
+                ui::report_error("Usage: /session load <session_id>");
+                return;
+            }
+            match crate::utils::session_store::load_session(subargs) {
+                Ok(conversation) => {
+                    let client = session.get_client_mut();
+                    client.get_state_mut().conversation = conversation;
+                    ui::report_success(&format!("Session loaded from {}", subargs));
+                }
+                Err(e) => ui::report_error(&format!("Failed to load session: {}", e)),
+            }
+        }
+        "delete" => {
+            if subargs.is_empty() {
+                ui::report_error("Usage: /session delete <session_id>");
+                return;
+            }
+            match crate::utils::session_store::delete_session(subargs) {
+                Ok(true) => {
+                    ui::report_success(&format!("Session '{}' deleted.", subargs));
+                }
+                Ok(false) => {
+                    ui::report_error(&format!("Session '{}' not found.", subargs));
+                }
+                Err(e) => ui::report_error(&format!("Failed to delete session: {}", e)),
+            }
+        }
+        "clear" => match crate::utils::session_store::clear_sessions() {
+            Ok(0) => {
+                ui::report_info("No sessions to clear.");
+            }
+            Ok(n) => {
+                ui::report_success(&format!("Cleared {} session(s).", n));
+            }
+            Err(e) => ui::report_error(&format!("Failed to clear sessions: {}", e)),
+        },
+        _ => {
+            ui::report_error(&format!(
+                "Unknown subcommand: '{}'. Use: load, delete, clear",
+                subcmd
+            ));
         }
     }
 }
@@ -881,7 +932,7 @@ fn print_help() {
     println!("  /c, /clear         Clear conversation history");
     println!("  /e, /edit          Open external editor for multi-line input");
     println!("  /eh, /edit_history Edit the conversation history in TOML format");
-    println!("  /load [<session_id>]  List saved sessions or load one");
+    println!("  /session [load|delete <id>|clear]  List, load, delete, or clear saved sessions");
     println!("  /attach <path|url> Attach a file or URL to the next request");
     println!("  /tools [on|off]    Toggle or show status of tool execution");
     println!("  /system [on|off]   Toggle or show system prompt status");
