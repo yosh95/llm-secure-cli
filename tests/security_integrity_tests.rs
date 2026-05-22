@@ -1,5 +1,5 @@
 use llm_secure_cli::config::models::SecurityConfig;
-use llm_secure_cli::security::cass::{CASS_ORCHESTRATOR, RiskLevel};
+use llm_secure_cli::security::cass::{CASSOrchestrator, RiskLevel};
 use llm_secure_cli::security::merkle::MerkleTree;
 use llm_secure_cli::security::path_validator::validate_path;
 use serde_json::json;
@@ -78,11 +78,11 @@ fn test_cass_risk_scaling() {
     let config = SecurityConfig::default();
 
     // 1. Test Low Risk Tool (default)
-    let level_low = CASS_ORCHESTRATOR.evaluate_risk("read_file", None, &config);
+    let level_low = CASSOrchestrator::evaluate_risk("read_file", None, &config);
     assert!(level_low <= RiskLevel::Medium);
 
     // 2. Test Critical Risk Tool
-    let level_crit = CASS_ORCHESTRATOR.evaluate_risk("execute_python", None, &config);
+    let level_crit = CASSOrchestrator::evaluate_risk("execute_python", None, &config);
     assert_eq!(level_crit, RiskLevel::Critical);
 
     // 3. Test Argument-based escalation
@@ -91,7 +91,7 @@ fn test_cass_risk_scaling() {
         ..SecurityConfig::default()
     };
 
-    let sensitive_read = CASS_ORCHESTRATOR.evaluate_risk(
+    let sensitive_read = CASSOrchestrator::evaluate_risk(
         "read_file",
         Some(&json!({"path": "/etc/shadow"})),
         &config_with_patterns,

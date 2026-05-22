@@ -21,7 +21,7 @@ impl ActiveSession {
         Option<Value>,
     )> {
         // 2a. CASS risk evaluation
-        let risk_level = crate::security::cass::CASS_ORCHESTRATOR.evaluate_risk(
+        let risk_level = crate::security::cass::CASSOrchestrator::evaluate_risk(
             name,
             Some(&serde_json::json!(args)),
             &config.security,

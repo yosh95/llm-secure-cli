@@ -22,7 +22,6 @@ pub struct CASSOrchestrator;
 
 impl CASSOrchestrator {
     pub fn evaluate_risk(
-        &self,
         tool_name: &str,
         args: Option<&serde_json::Value>,
         config: &SecurityConfig,
@@ -73,12 +72,11 @@ impl CASSOrchestrator {
     }
 
     pub fn get_security_requirements(
-        &self,
         tool_name: &str,
         args: Option<&serde_json::Value>,
         config: &SecurityConfig,
     ) -> SecurityPosture {
-        let risk_level = self.evaluate_risk(tool_name, args, config);
+        let risk_level = Self::evaluate_risk(tool_name, args, config);
 
         match risk_level {
             RiskLevel::Critical => SecurityPosture {
@@ -112,5 +110,3 @@ impl CASSOrchestrator {
         }
     }
 }
-
-pub static CASS_ORCHESTRATOR: CASSOrchestrator = CASSOrchestrator;

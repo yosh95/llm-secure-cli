@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 
 use super::message_builder::MessageBuilder;
 use super::{payload_formatter, response_parser};
+use anyhow::Context;
 
 // Re-export commonly-used items so existing imports stay unchanged.
 pub use payload_formatter::{
@@ -193,9 +194,13 @@ impl LlmClient for OpenAiCompatibleClient {
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&body)
             .send()
-            .await?;
+            .await
+            .context("Failed to send request to LLM API")?;
 
-        let resp_json: Value = res.json().await?;
+        let resp_json: Value = res
+            .json()
+            .await
+            .context("Failed to parse LLM API response as JSON")?;
 
         tracing::debug!(
             "LLM Response: {}",
@@ -276,9 +281,13 @@ impl LlmClient for OpenAiCompatibleClient {
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&body)
             .send()
-            .await?;
+            .await
+            .context("Failed to send request to LLM API")?;
 
-        let resp_json: Value = res.json().await?;
+        let resp_json: Value = res
+            .json()
+            .await
+            .context("Failed to parse LLM API response as JSON")?;
 
         tracing::debug!(
             "LLM Verifier Response: {}",

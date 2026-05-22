@@ -12,18 +12,16 @@ fn test_evaluate_risk_baseline() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     assert_eq!(
-        orchestrator.evaluate_risk("edit_file", None, &config),
+        CASSOrchestrator::evaluate_risk("edit_file", None, &config),
         RiskLevel::High
     );
     assert_eq!(
-        orchestrator.evaluate_risk("read_file", None, &config),
+        CASSOrchestrator::evaluate_risk("read_file", None, &config),
         RiskLevel::Medium
     );
     assert_eq!(
-        orchestrator.evaluate_risk("list_files", None, &config),
+        CASSOrchestrator::evaluate_risk("list_files", None, &config),
         RiskLevel::Low
     );
 }
@@ -37,17 +35,15 @@ fn test_evaluate_risk_critical_escalation_no_dual_llm() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     // High risk tool becomes Critical when Dual LLM is off
     assert_eq!(
-        orchestrator.evaluate_risk("edit_file", None, &config),
+        CASSOrchestrator::evaluate_risk("edit_file", None, &config),
         RiskLevel::Critical
     );
 
     // Command execution is always at least High, so moves to Critical
     assert_eq!(
-        orchestrator.evaluate_risk("execute_python", None, &config),
+        CASSOrchestrator::evaluate_risk("execute_python", None, &config),
         RiskLevel::Critical
     );
 }
@@ -62,17 +58,19 @@ fn test_evaluate_risk_dynamic_escalation() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     // Medium tool stays Medium usually
     assert_eq!(
-        orchestrator.evaluate_risk("read_file", Some(&json!({"path": "normal.txt"})), &config),
+        CASSOrchestrator::evaluate_risk("read_file", Some(&json!({"path": "normal.txt"})), &config),
         RiskLevel::Medium
     );
 
     // Medium tool escalates to High if sensitive pattern is found
     assert_eq!(
-        orchestrator.evaluate_risk("read_file", Some(&json!({"path": "/etc/shadow"})), &config),
+        CASSOrchestrator::evaluate_risk(
+            "read_file",
+            Some(&json!({"path": "/etc/shadow"})),
+            &config
+        ),
         RiskLevel::High
     );
 }
@@ -85,11 +83,9 @@ fn test_evaluate_risk_security_level_high() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     // In 'high' security mode, Low risk tools escalate to Medium
     assert_eq!(
-        orchestrator.evaluate_risk("list_files", None, &config),
+        CASSOrchestrator::evaluate_risk("list_files", None, &config),
         RiskLevel::Medium
     );
 }
@@ -103,22 +99,21 @@ fn test_get_security_requirements_returns_correct_pqc_levels() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     // Critical: execute_python without dual llm
     let critical_config = SecurityConfig {
         security_level: SecurityLevel::Standard,
         dual_llm_verification: Some(false),
         ..Default::default()
     };
-    let posture = orchestrator.get_security_requirements("execute_python", None, &critical_config);
+    let posture =
+        CASSOrchestrator::get_security_requirements("execute_python", None, &critical_config);
     assert!(posture.require_pqc_signature);
     assert_eq!(posture.pqc_variant, "ML-DSA-87");
     assert!(posture.require_pqc_audit_encryption);
     assert!(posture.require_dual_llm_verification);
 
     // High: edit_file (high risk tool with dual llm on)
-    let posture = orchestrator.get_security_requirements("edit_file", None, &config);
+    let posture = CASSOrchestrator::get_security_requirements("edit_file", None, &config);
     assert!(posture.require_pqc_signature);
     assert_eq!(posture.pqc_variant, "ML-DSA-87");
     assert!(posture.require_pqc_audit_encryption);
@@ -131,14 +126,14 @@ fn test_get_security_requirements_returns_correct_pqc_levels() {
         dual_llm_verification: Some(true),
         ..Default::default()
     };
-    let posture = orchestrator.get_security_requirements("read_file", None, &medium_config);
+    let posture = CASSOrchestrator::get_security_requirements("read_file", None, &medium_config);
     assert!(posture.require_pqc_signature);
     assert_eq!(posture.pqc_variant, "ML-DSA-65");
     assert!(!posture.require_pqc_audit_encryption);
     assert!(!posture.require_dual_llm_verification);
 
     // Low
-    let posture = orchestrator.get_security_requirements("list_files", None, &config);
+    let posture = CASSOrchestrator::get_security_requirements("list_files", None, &config);
     assert!(posture.require_pqc_signature);
     assert_eq!(posture.pqc_variant, "ML-DSA-44");
     assert!(!posture.require_pqc_audit_encryption);
@@ -154,11 +149,12 @@ fn test_evaluate_risk_blocked_paths_escalation() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     // A low-risk tool accessing a blocked path must escalate
-    let risk =
-        orchestrator.evaluate_risk("read_file", Some(&json!({"path": "/etc/passwd"})), &config);
+    let risk = CASSOrchestrator::evaluate_risk(
+        "read_file",
+        Some(&json!({"path": "/etc/passwd"})),
+        &config,
+    );
     assert_eq!(risk, RiskLevel::High);
 }
 
@@ -171,11 +167,12 @@ fn test_evaluate_risk_scaling_patterns_case_insensitive() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     // Case-insensitive matching via to_lowercase()
-    let risk =
-        orchestrator.evaluate_risk("read_file", Some(&json!({"path": "/ETC/SHADOW"})), &config);
+    let risk = CASSOrchestrator::evaluate_risk(
+        "read_file",
+        Some(&json!({"path": "/ETC/SHADOW"})),
+        &config,
+    );
     assert_eq!(risk, RiskLevel::High);
 }
 
@@ -187,10 +184,8 @@ fn test_evaluate_risk_unknown_tool_defaults_to_low() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     // An unknown tool not in any risk list defaults to Low
-    let risk = orchestrator.evaluate_risk("completely_unknown_tool", None, &config);
+    let risk = CASSOrchestrator::evaluate_risk("completely_unknown_tool", None, &config);
     assert_eq!(risk, RiskLevel::Low);
 }
 
@@ -204,11 +199,12 @@ fn test_evaluate_risk_high_args_existing_high_tool_stays_high() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     // Already High tool with sensitive args stays High (doesn't overflow)
-    let risk =
-        orchestrator.evaluate_risk("edit_file", Some(&json!({"path": "/etc/shadow"})), &config);
+    let risk = CASSOrchestrator::evaluate_risk(
+        "edit_file",
+        Some(&json!({"path": "/etc/shadow"})),
+        &config,
+    );
     assert_eq!(risk, RiskLevel::High);
 }
 
@@ -222,10 +218,8 @@ fn test_evaluate_risk_high_args_on_already_medium_tool() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     // Medium tool with sensitive pattern → escalates to High
-    let risk = orchestrator.evaluate_risk(
+    let risk = CASSOrchestrator::evaluate_risk(
         "read_file",
         Some(&json!({"path": "/root/.ssh/id_rsa"})),
         &config,
@@ -241,10 +235,8 @@ fn test_evaluate_risk_dual_llm_enabled_prevents_critical() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     // execute_python is always High, and with dual_llm enabled it stays High
-    let risk = orchestrator.evaluate_risk("execute_python", None, &config);
+    let risk = CASSOrchestrator::evaluate_risk("execute_python", None, &config);
     assert_eq!(risk, RiskLevel::High);
 }
 
@@ -257,10 +249,8 @@ fn test_evaluate_risk_dual_llm_none_treated_as_disabled() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     // dual_llm_verification: None → treated as disabled → Critical
-    let risk = orchestrator.evaluate_risk("edit_file", None, &config);
+    let risk = CASSOrchestrator::evaluate_risk("edit_file", None, &config);
     assert_eq!(risk, RiskLevel::Critical);
 }
 
@@ -277,10 +267,8 @@ fn test_evaluate_risk_multiple_blocked_paths_match() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     // Any one of the blocked paths triggers escalation
-    let risk = orchestrator.evaluate_risk(
+    let risk = CASSOrchestrator::evaluate_risk(
         "read_file",
         Some(&json!({"path": "/root/.ssh/authorized_keys"})),
         &config,
@@ -297,10 +285,8 @@ fn test_evaluate_risk_complex_nested_args() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     // The args are nested JSON; to_string() flattens it, and patterns are matched
-    let risk = orchestrator.evaluate_risk(
+    let risk = CASSOrchestrator::evaluate_risk(
         "execute_python",
         Some(&json!({
             "code": "import sqlite3; cursor.execute('DROP TABLE users')"
@@ -319,10 +305,8 @@ fn test_evaluate_risk_security_level_high_with_execute_python() {
         ..Default::default()
     };
 
-    let orchestrator = CASSOrchestrator;
-
     // execute_python is always at least High; security_level=high doesn't escalate beyond
-    let risk = orchestrator.evaluate_risk("execute_python", None, &config);
+    let risk = CASSOrchestrator::evaluate_risk("execute_python", None, &config);
     assert!(risk >= RiskLevel::High);
 }
 
@@ -336,7 +320,9 @@ fn test_get_security_requirements_risk_level_ord() {
 
 #[test]
 fn test_cass_orchestrator_is_send_sync() {
-    // CASS_ORCHESTRATOR is a static const; verify it compiles as Send + Sync
+    // CASSOrchestrator is a unit struct; verify it is Send + Sync for use
+    // across async task boundaries.
     fn _assert_send_sync<T: Send + Sync>(_: &T) {}
-    _assert_send_sync(&llm_secure_cli::security::cass::CASS_ORCHESTRATOR);
+    let orchestrator = llm_secure_cli::security::cass::CASSOrchestrator;
+    _assert_send_sync(&orchestrator);
 }

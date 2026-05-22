@@ -171,6 +171,19 @@ impl PqcProvider {
     }
 }
 
+/// Encrypted payload using ML-KEM + AES-256-GCM hybrid encryption.
+///
+/// # Field layout
+/// The AES-256-GCM authentication tag is stored in a **separate field** (`tag`)
+/// rather than being appended to the ciphertext (the more common `ciphertext ||
+/// tag` convention used by most AEAD libraries).  This split is intentional:
+///
+/// - **Structural clarity**: each component (ciphertext, nonce, tag) is
+///   independently addressable, simplifying serialization and debugging.
+/// - **Interoperability note**: consumers that expect a standard concatenated
+///   AEAD payload must reconstruct it as `[aes_ct, tag].concat()`.
+/// - **Security**: the tag is always verified via `Aes256Gcm::decrypt()` which
+///   rejoins them internally; the split does not weaken integrity guarantees.
 #[derive(Serialize, Deserialize)]
 pub struct EncryptedPacket {
     pub kem_ct: Vec<u8>,
@@ -240,8 +253,8 @@ impl PQCAgilityManager {
         tool_name: &str,
         args: Option<&serde_json::Value>,
     ) -> PQCVariant {
-        use crate::security::cass::{CASS_ORCHESTRATOR, RiskLevel};
-        let risk = CASS_ORCHESTRATOR.evaluate_risk(tool_name, args, &config.security);
+        use crate::security::cass::{CASSOrchestrator, RiskLevel};
+        let risk = CASSOrchestrator::evaluate_risk(tool_name, args, &config.security);
         match risk {
             RiskLevel::Critical | RiskLevel::High => PQCVariant::MLDSA87,
             RiskLevel::Medium => PQCVariant::MLDSA65,

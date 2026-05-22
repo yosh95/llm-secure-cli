@@ -485,6 +485,13 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
 /// Sentinel hash used when no previous log entry exists (genesis of the hash chain).
 /// This is SHA-256 of the empty string — a well-known, deterministic constant
 /// indistinguishable from a real chain hash.
+///
+/// # Important
+/// This constant is **tightly coupled to the hash function used throughout the
+/// audit chain** (`SHA-256`).  If the hash algorithm is ever changed (e.g.
+/// upgrading to SHA-512 or a post-quantum hash), this sentinel **must** be
+/// updated to the corresponding hash of the empty string for the new algorithm,
+/// otherwise all existing log chains will fail verification.
 const GENESIS_HASH: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 /// Read the head-pointer cache for O(1) last-hash lookup.

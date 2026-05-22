@@ -116,7 +116,7 @@ default: list
 # Run Docker container interactively
 @docker-run:
     docker run -it --rm \
-        -v ~/.llm_secure_cli:/root/.llm_secure_cli \
+        -v ~/.llm_secure_cli:/home/agent/.llm_secure_cli \
         -v $(pwd):/workspace \
         llm-secure-cli
 

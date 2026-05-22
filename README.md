@@ -77,7 +77,7 @@ Run the agent in a completely isolated container to protect your host system. In
 3. **Run**:
    ```bash
    docker run -it --rm \
-     -v ~/.llm_secure_cli:/root/.llm_secure_cli \
+     -v ~/.llm_secure_cli:/home/agent/.llm_secure_cli \
      -v $(pwd):/workspace \
      llm-secure-cli -m llama3 "Summarize the files in this directory"
    ```

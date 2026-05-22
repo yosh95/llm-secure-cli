@@ -184,7 +184,7 @@ allowed_paths = ["/tmp"]
 
 #[test]
 fn test_cass_risk_levels_are_mutually_exclusive_in_defaults() {
-    use llm_secure_cli::security::cass::CASS_ORCHESTRATOR;
+    use llm_secure_cli::security::cass::CASSOrchestrator;
     // SecurityConfig::default() has dual_llm_verification = None which
     // is treated as false, causing High -> Critical escalation.
     // Also security_level = "high" escalates Low -> Medium.
@@ -198,7 +198,7 @@ fn test_cass_risk_levels_are_mutually_exclusive_in_defaults() {
     // Execute python should be high risk
     let mut args = serde_json::Map::new();
     args.insert("code".to_string(), json!("print('hello')"));
-    let risk = CASS_ORCHESTRATOR.evaluate_risk("execute_python", Some(&json!(args)), &config);
+    let risk = CASSOrchestrator::evaluate_risk("execute_python", Some(&json!(args)), &config);
     assert_eq!(
         risk as u8,
         llm_secure_cli::security::cass::RiskLevel::High as u8,
@@ -206,7 +206,7 @@ fn test_cass_risk_levels_are_mutually_exclusive_in_defaults() {
     );
 
     // List files should be low risk
-    let risk = CASS_ORCHESTRATOR.evaluate_risk("list_files", None, &config);
+    let risk = CASSOrchestrator::evaluate_risk("list_files", None, &config);
     assert_eq!(
         risk as u8,
         llm_secure_cli::security::cass::RiskLevel::Low as u8,
