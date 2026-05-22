@@ -65,8 +65,11 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Load scenarios and arguments
-    let args: Vec<String> = std::env::args().collect();
+    // Collect and filter args: cargo bench injects "--bench" which we need to skip
+    let args: Vec<String> = std::env::args()
+        .skip(1) // skip binary path
+        .filter(|a| a != "--bench")
+        .collect();
     if args.len() < 2 {
         eprintln!(
             "Usage: cargo bench --bench benchmark_dual_llm -- <provider> <model> [json_path]"
@@ -78,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    let (target_provider, target_model) = match (args.get(1), args.get(2)) {
+    let (target_provider, target_model) = match (args.first(), args.get(1)) {
         (Some(p), Some(m)) => (p, m),
         _ => {
             eprintln!("{}: Missing arguments.", "Error".red().bold());
@@ -90,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let json_path = args
-        .get(3)
+        .get(2)
         .map(|s| s.as_str())
         .unwrap_or("benchmark/scenarios.json");
 

@@ -478,7 +478,7 @@ CI runs on every push and pull request via [GitHub Actions](.github/workflows/ci
 just bench-local
 
 # Dual LLM verification benchmarks (requires API keys)
-just bench-dual openrouter amazon/nova-2-lite-v1
+just bench-dual openrouter google/gemini-3.1-flash-lite
 ```
 
 ##  License
