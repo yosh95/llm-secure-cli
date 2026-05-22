@@ -154,7 +154,7 @@ pub fn humanize_tool_result(name: &str, v: &serde_json::Value) -> String {
             return output;
         }
 
-        // Special handling for list_files_in_directory or search_files
+        // Special handling for list_files or search_files
         for key in ["files", "results"] {
             if let Some(items) = obj.get(key).and_then(|v| v.as_array()) {
                 if items.is_empty() {

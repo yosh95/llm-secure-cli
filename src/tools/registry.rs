@@ -210,8 +210,8 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
 
     maybe_register(
         r,
-        "list_files_in_directory",
-        "List files in a directory.",
+        "list_files",
+        "List files and directories in a directory.",
         json!({
             "type": "object",
             "properties": {
@@ -223,9 +223,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
             }
         }),
         Arc::new(|args, config| {
-            Box::pin(async move {
-                crate::tools::builtin::file_ops::list_files_in_directory(args, config)
-            })
+            Box::pin(async move { crate::tools::builtin::file_ops::list_files(args, config) })
         }),
     );
 

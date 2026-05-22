@@ -98,7 +98,7 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 
 - **Unified Provider Access**: Seamlessly switch between any OpenAI-compatible APIs (**OpenRouter, OpenAI, Ollama, LiteLLM**).
 - **Autonomous Agent**: A powerful set of built-in tools for complex automation:
-    - **File Operations**: `list_files_in_directory`, `read_file` (with paging support), `grep_files`, `search_files`.
+    - **File Operations**: `list_files`, `read_file` (with paging support), `grep_files`, `search_files`.
     - **Search**: `grep_files` (regex content search) and `search_files` (filename pattern search).
     - **Modification**: `edit_file` (precision block replacement with exact/flexible/regex matching) and `create_or_overwrite_file`.
     - **System & Web**: `execute_python` (secure Python execution with Dual LLM verification) and `read_url_content` (HTML-to-Markdown conversion with SSRF protection).

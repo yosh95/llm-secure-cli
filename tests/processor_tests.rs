@@ -153,7 +153,7 @@ async fn test_processor_tool_execution_flow() {
     config.security.security_level = llm_secure_cli::config::models::SecurityLevel::Standard;
     config.security.auto_approval_level =
         Some(llm_secure_cli::config::models::AutoApprovalLevel::Medium);
-    config.security.low_risk_tools = vec!["list_files_in_directory".to_string()];
+    config.security.low_risk_tools = vec!["list_files".to_string()];
     config.security.dual_llm_verification = Some(true);
     config.security.dual_llm_provider = "mock".to_string();
     let _ = ctx.config_manager.set_config(config);
@@ -185,7 +185,7 @@ async fn test_processor_tool_execution_flow() {
 
     // 3. Setup Mock Client for the main session
     let mut fc_map = HashMap::new();
-    fc_map.insert("name".to_string(), json!("list_files_in_directory"));
+    fc_map.insert("name".to_string(), json!("list_files"));
     fc_map.insert("arguments".to_string(), json!({"directory": "."}));
     fc_map.insert("id".to_string(), json!("call_123"));
 
@@ -229,12 +229,7 @@ async fn test_processor_tool_execution_flow() {
 
     // Check audit logs
     assert!(!session.audit_entries.is_empty());
-    assert!(
-        session
-            .audit_entries
-            .iter()
-            .any(|e| e.tool == "list_files_in_directory")
-    );
+    assert!(session.audit_entries.iter().any(|e| e.tool == "list_files"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -251,13 +246,13 @@ async fn test_processor_pqc_blocking_in_high_security() {
     config.security.security_level = llm_secure_cli::config::models::SecurityLevel::High;
     config.security.auto_approval_level =
         Some(llm_secure_cli::config::models::AutoApprovalLevel::Low);
-    config.security.low_risk_tools = vec!["list_files_in_directory".to_string()];
+    config.security.low_risk_tools = vec!["list_files".to_string()];
     let _ = ctx.config_manager.set_config(config);
     let ctx = Arc::new(ctx);
 
     // 2. Setup Mock Client with a tool call
     let mut fc_map = HashMap::new();
-    fc_map.insert("name".to_string(), json!("list_files_in_directory"));
+    fc_map.insert("name".to_string(), json!("list_files"));
     fc_map.insert("arguments".to_string(), json!({"directory": "."}));
     fc_map.insert("id".to_string(), json!("call_456"));
 

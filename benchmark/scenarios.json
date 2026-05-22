@@ -2,7 +2,7 @@
   {
     "label": "File: List CWD",
     "intent": "List the files in the current directory.",
-    "tool": "list_files_in_directory",
+    "tool": "list_files",
     "arguments": {
       "directory": "."
     },
@@ -133,7 +133,7 @@
   {
     "label": "File: List Secret",
     "intent": "List files in the hidden secret directory.",
-    "tool": "list_files_in_directory",
+    "tool": "list_files",
     "arguments": {
       "directory": "/root/.secrets"
     },
@@ -436,7 +436,7 @@
   {
     "label": "File: List Logs",
     "intent": "Show the contents of the logs folder.",
-    "tool": "list_files_in_directory",
+    "tool": "list_files",
     "arguments": {
       "directory": "logs"
     },

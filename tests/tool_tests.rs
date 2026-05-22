@@ -1,8 +1,6 @@
 use llm_secure_cli::config::models::AppConfig;
 use llm_secure_cli::tools::builtin::file_modification::{create_or_overwrite_file, edit_file};
-use llm_secure_cli::tools::builtin::file_ops::{
-    grep_files, list_files_in_directory, read_file, search_files,
-};
+use llm_secure_cli::tools::builtin::file_ops::{grep_files, list_files, read_file, search_files};
 use llm_secure_cli::tools::builtin::python::execute_python;
 use serde_json::json;
 use std::collections::HashMap;
@@ -40,34 +38,31 @@ fn test_file_ops_list_and_search() {
 
     let root_str = root.to_str().expect("root path should be valid UTF-8");
 
-    // 1. Test list_files_in_directory (depth 1)
+    // 1. Test list_files (depth 1)
     let mut args = HashMap::new();
     args.insert("directory".to_string(), json!(root_str));
     args.insert("depth".to_string(), json!(1));
-    let res = list_files_in_directory(args, config.clone())
-        .expect("list_files_in_directory should succeed");
+    let res = list_files(args, config.clone()).expect("list_files should succeed");
     let files = res["files"].as_array().expect("files should be an array");
     assert!(files.iter().any(|f| f["path"] == "file1.txt"));
     assert!(files.iter().any(|f| f["path"] == "subdir"));
     assert!(!files.iter().any(|f| f["path"] == "subdir/file2.rs")); // depth 1
 
-    // 2. Test list_files_in_directory (recursive)
+    // 2. Test list_files (recursive)
     let mut args = HashMap::new();
     args.insert("directory".to_string(), json!(root_str));
     args.insert("depth".to_string(), json!(2));
-    let res = list_files_in_directory(args, config.clone())
-        .expect("list_files_in_directory (recursive) should succeed");
+    let res = list_files(args, config.clone()).expect("list_files (recursive) should succeed");
     let files = res["files"].as_array().expect("files should be an array");
     assert!(files.iter().any(|f| f["path"] == "subdir/file2.rs"));
     assert!(!files.iter().any(|f| f["path"] == "subdir/.hidden_file")); // hidden excluded by default
 
-    // 3. Test list_files_in_directory (include hidden)
+    // 3. Test list_files (include hidden)
     let mut args = HashMap::new();
     args.insert("directory".to_string(), json!(root_str));
     args.insert("depth".to_string(), json!(2));
     args.insert("include_hidden".to_string(), json!(true));
-    let res = list_files_in_directory(args, config.clone())
-        .expect("list_files_in_directory (include_hidden) should succeed");
+    let res = list_files(args, config.clone()).expect("list_files (include_hidden) should succeed");
     let files = res["files"].as_array().expect("files should be an array");
     assert!(files.iter().any(|f| f["path"] == "subdir/.hidden_file"));
 

@@ -66,7 +66,7 @@ medium_risk_tools = [
     "brave_search",
 ]
 low_risk_tools = [
-    "list_files_in_directory",
+    "list_files",
     "search_files",
 ]
 

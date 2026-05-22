@@ -206,11 +206,11 @@ fn test_cass_risk_levels_are_mutually_exclusive_in_defaults() {
     );
 
     // List files should be low risk
-    let risk = CASS_ORCHESTRATOR.evaluate_risk("list_files_in_directory", None, &config);
+    let risk = CASS_ORCHESTRATOR.evaluate_risk("list_files", None, &config);
     assert_eq!(
         risk as u8,
         llm_secure_cli::security::cass::RiskLevel::Low as u8,
-        "list_files_in_directory should be low risk by default"
+        "list_files should be low risk by default"
     );
 }
 

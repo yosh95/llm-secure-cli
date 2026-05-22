@@ -155,7 +155,7 @@ Risk-level classification in `defaults.toml`:
 [security]
 high_risk_tools   = ["execute_python", "edit_file", "create_or_overwrite_file", "read_url_content"]
 medium_risk_tools = ["read_file", "grep_files", "brave_search"]
-# Low-risk tools → list_files_in_directory, search_files
+# Low-risk tools → list_files, search_files
 # Critical risk → execute_python when Dual LLM is disabled
 ```
 
@@ -201,7 +201,7 @@ The `auto_approval_level` setting controls which tool calls can bypass human app
 | Level | Auto-Approved Tools |
 |---|---|
 | `none` (default) | No tools are auto-approved; all require human confirmation. |
-| `low` | Only low-risk tools (e.g., `list_files_in_directory`, `search_files`). |
+| `low` | Only low-risk tools (e.g., `list_files`, `search_files`). |
 | `medium` | Low and medium-risk tools. High-risk tools still require approval. |
 
 > **Note:** Any `BLOCK` verdict from the Dual LLM auditor will always force manual intervention, regardless of the auto-approval level.
@@ -380,7 +380,7 @@ auto_approval_level = "none"
 
 # Tool whitelist
 allowed_tools = [
-    "list_files_in_directory", "read_file", "grep_files", "search_files",
+    "list_files", "read_file", "grep_files", "search_files",
     "edit_file", "create_or_overwrite_file", "read_url_content", "brave_search",
     "execute_python"
 ]
@@ -390,7 +390,7 @@ high_risk_tools = ["execute_python", "edit_file",
                    "create_or_overwrite_file", "read_url_content",
                    "brave_search"]
 medium_risk_tools = ["read_file", "grep_files"]
-# Low-risk tools → list_files_in_directory, search_files
+# Low-risk tools → list_files, search_files
 
 # Dual LLM Verification
 dual_llm_verification = true

@@ -24,10 +24,7 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
-pub fn list_files_in_directory(
-    args: HashMap<String, Value>,
-    config: Arc<AppConfig>,
-) -> anyhow::Result<Value> {
+pub fn list_files(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow::Result<Value> {
     let directory = args
         .get("directory")
         .and_then(|v| v.as_str())
