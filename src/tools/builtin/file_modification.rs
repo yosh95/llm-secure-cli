@@ -81,6 +81,28 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
         );
     }
 
+    // Strategy 2.5: Partial-line match (line-by-line substring match).
+    // LLMs often provide a fragment of a line (e.g. "let y = 2;" when the
+    // real line is "    let y = 2; // comment").  The flexible strategy
+    // requires whole-line trim equality, which fails here.  This strategy
+    // checks whether each (trimmed) old line is a *substring* of the
+    // corresponding (trimmed) source line.
+    if let Some((new_content, count)) = try_partial_line_edit(&original, old_str, new_str) {
+        return finalize_edit(
+            &path,
+            &original,
+            &new_content,
+            EditMetadata {
+                match_type: "partial",
+                count,
+                escape_fixed: false,
+                dry_run,
+                max_output_lines: config.general.max_output_lines,
+                max_output_chars: config.general.max_output_chars,
+            },
+        );
+    }
+
     // Strategy 3: Regex match (whitespace-insensitive)
     if let Some((new_content, count)) = try_regex_edit(&original, old_str, new_str) {
         return finalize_edit(
@@ -105,6 +127,7 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
     {
         if let Some((new_content, count)) = try_exact_edit(&original, &fixed_old, &fixed_new)
             .or_else(|| try_flexible_edit(&original, &fixed_old, &fixed_new))
+            .or_else(|| try_partial_line_edit(&original, &fixed_old, &fixed_new))
             .or_else(|| try_regex_edit(&original, &fixed_old, &fixed_new))
         {
             return finalize_edit(
@@ -125,6 +148,7 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
         // Only search had escapes, replace was fine
         if let Some((new_content, count)) = try_exact_edit(&original, &fixed_old, new_str)
             .or_else(|| try_flexible_edit(&original, &fixed_old, new_str))
+            .or_else(|| try_partial_line_edit(&original, &fixed_old, new_str))
             .or_else(|| try_regex_edit(&original, &fixed_old, new_str))
         {
             return finalize_edit(
@@ -144,7 +168,7 @@ pub fn edit_file(args: HashMap<String, Value>, config: Arc<AppConfig>) -> anyhow
     }
 
     let mut error_msg = format!(
-        "Search string ('old') not found in file (tried exact, flexible, regex, and escape-fixed match).\n\
+        "Search string ('old') not found in file (tried exact, flexible, partial, regex, and escape-fixed match).\n\
          File: {}\n\
          Old (first 200 chars): {}",
         path_str,
@@ -199,6 +223,79 @@ fn try_flexible_edit(original: &str, old: &str, new: &str) -> Option<(String, us
             if matched {
                 occurrences += 1;
                 if occurrences == 1 {
+                    let first_line = source_lines[i];
+                    let indentation: String = first_line
+                        .chars()
+                        .take_while(|c| c.is_whitespace())
+                        .collect();
+                    let indented_new = apply_indentation(&new_lines, &indentation);
+                    for line in indented_new {
+                        new_lines_result.push(line);
+                    }
+                    i += old_lines.len();
+                    continue;
+                }
+            }
+        }
+        new_lines_result.push(source_lines[i].to_string());
+        i += 1;
+    }
+
+    if occurrences != 1 {
+        return None;
+    }
+
+    let mut result = new_lines_result.join("\n");
+    result = restore_trailing_newline(original, &result);
+    Some((result, occurrences))
+}
+
+/// Like `try_flexible_edit`, but matches when each (trimmed) old line is a
+/// *substring* of the corresponding (trimmed) source line rather than an
+/// exact equality.  This handles cases where the LLM picks a fragment of a
+/// long line (e.g. missing a trailing comment, or only the code portion).
+fn try_partial_line_edit(original: &str, old: &str, new: &str) -> Option<(String, usize)> {
+    let source_lines: Vec<&str> = original.lines().collect();
+    let old_lines: Vec<&str> = old.lines().map(|l| l.trim()).collect();
+    if old_lines.is_empty() {
+        return None;
+    }
+    // Avoid ambiguity: if old equals the whole trimmed line everywhere,
+    // the flexible strategy already handles it; this strategy is for
+    // *strict substrings* only.
+    let is_proper_substring = old_lines.iter().enumerate().any(|(j, ol)| {
+        if j < source_lines.len() {
+            let st = source_lines[j].trim();
+            st != *ol && st.contains(*ol)
+        } else {
+            false
+        }
+    });
+    if !is_proper_substring {
+        return None;
+    }
+
+    let new_lines: Vec<&str> = new.lines().collect();
+    let mut occurrences = 0;
+    let mut new_lines_result = Vec::new();
+    let mut i = 0;
+
+    while i < source_lines.len() {
+        if i + old_lines.len() <= source_lines.len() {
+            let mut matched = true;
+            for j in 0..old_lines.len() {
+                if !source_lines[i + j].trim().contains(old_lines[j]) {
+                    matched = false;
+                    break;
+                }
+            }
+
+            if matched {
+                occurrences += 1;
+                if occurrences == 1 {
+                    // For partial-line matches we replace the *entire* source
+                    // line with the corresponding new line, preserving the
+                    // original indentation.
                     let first_line = source_lines[i];
                     let indentation: String = first_line
                         .chars()
@@ -323,8 +420,8 @@ fn restore_trailing_newline(original: &str, modified: &str) -> String {
 ///
 /// This function detects and fixes such patterns:
 ///   - `\"` → `"`  (double-escaped quote → literal quote)
-///   - `\n` → newline (double-escaped newline → real newline, only when no real newlines exist)
-///   - `\t` → tab (double-escaped tab → real tab, only when no real tabs exist)
+///   - `\n` → newline (double-escaped newline → real newline)
+///   - `\t` → tab (double-escaped tab → real tab)
 ///
 /// Returns `Some(fixed)` if any fix was applied, `None` if the string looks correct already.
 fn fix_llm_escapes(s: &str) -> Option<String> {
@@ -357,27 +454,19 @@ fn fix_llm_escapes(s: &str) -> Option<String> {
                     changed = true;
                 }
                 b'n' => {
-                    // `\n` → real newline, but only if the string has no real newlines.
-                    // If real newlines already exist, the `\n` is likely intentional.
-                    if !s.contains('\n') {
-                        result.push(b'\n');
-                        i += 2;
-                        changed = true;
-                    } else {
-                        result.push(b'\\');
-                        i += 1;
-                    }
+                    // `\n` → real newline. LLMs almost always intend a newline
+                    // character when they write \n, but JSON serialisation
+                    // double-escapes it.  If the caller truly wants a literal
+                    // backslash+n they should write \\n.
+                    result.push(b'\n');
+                    i += 2;
+                    changed = true;
                 }
                 b't' => {
-                    // `\t` → real tab, but only if the string has no real tabs.
-                    if !s.contains('\t') {
-                        result.push(b'\t');
-                        i += 2;
-                        changed = true;
-                    } else {
-                        result.push(b'\\');
-                        i += 1;
-                    }
+                    // `\t` → real tab (same reasoning as \n above).
+                    result.push(b'\t');
+                    i += 2;
+                    changed = true;
                 }
                 b'\\' => {
                     // `\\` — an escaped backslash. Preserve both bytes as-is.
@@ -844,11 +933,13 @@ mod tests {
 
     #[test]
     fn test_fix_llm_escapes_newline_with_real_newlines() {
-        // \n in a string that already has real newlines → leave \n as-is
+        // \n in a string that already has real newlines → still convert
+        // because LLMs routinely mix both forms and we now always unescape.
         let input = "line1\nline2\\nline3";
         let fixed = fix_llm_escapes(input);
-        // The \n should NOT be converted because real newlines exist
-        assert!(fixed.is_none());
+        assert!(fixed.is_some());
+        // The \\n was converted to a real newline
+        assert_eq!(fixed.expect("Expected Some"), "line1\nline2\nline3");
     }
 
     #[test]
