@@ -256,29 +256,16 @@ install them.  This is a deliberate architectural choice:
 
 ### Three-Tier Verification Pipeline
 
-```
-SKILL.md directory
-       │
-       ▼
-┌──────────────────┐
-│ Tier 1: Structure │  YAML frontmatter conformance (name, description, etc.)
-└───────┬──────────┘
-        │ PASS
-        ▼
-┌──────────────────┐
-│ Tier 2: Signature │  Ed25519 / ML-DSA COSE signature verification
-└───────┬──────────┘
-        │ (optional --semantic)
-        ▼
-┌──────────────────┐
-│ Tier 3: Semantic  │  Dual LLM analysis for hidden instructions, data
-│      Firewall     │  exfiltration, obfuscated payloads, social engineering
-└───────┬──────────┘
-        │
-        ▼
-   ┌─────────┐
-   │ VERDICT │  SAFE / SUSPICIOUS / DANGEROUS
-   └─────────┘
+```mermaid
+flowchart TD
+    A["📄 SKILL.md directory"] --> B
+    B["🔍 Tier 1: Structure<br/>YAML frontmatter conformance<br/>(name, description, etc.)"]
+    B -->|PASS| C
+    C["✍️ Tier 2: Signature<br/>Ed25519 / ML-DSA COSE<br/>signature verification"]
+    C -->|"optional --semantic"| D
+    D["🔥 Tier 3: Semantic Firewall<br/>Dual LLM analysis for:<br/>hidden instructions, data exfiltration,<br/>obfuscated payloads, social engineering"]
+    D --> E
+    E["🏁 VERDICT<br/>SAFE / SUSPICIOUS / DANGEROUS"]
 ```
 
 **Tier 1 — Structural Validation** checks that the `SKILL.md` conforms to
