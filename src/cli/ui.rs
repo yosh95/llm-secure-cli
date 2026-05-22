@@ -60,22 +60,28 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
     let (_, width) = term.size();
     let width = (width as usize).min(140);
 
+    let mut output = String::new();
+
     if let Some(t) = title {
         let rule_color = style.unwrap_or("cyan");
-        let rule = "─".repeat(width);
-        println!("{}", rule.color(rule_color));
-        println!("{}", t.bold().color(rule_color));
+        let rule = "\u{2500}".repeat(width);
+        output.push_str(&format!("{}\n", rule.color(rule_color)));
+        output.push_str(&format!("{}\n", t.bold().color(rule_color)));
     }
 
     // Use our custom markdown renderer
-    let output = render_markdown(content.trim(), width);
-    println!("{}", output);
+    let rendered = render_markdown(content.trim(), width);
+    output.push_str(&rendered);
+    output.push('\n');
 
     if title.is_some() {
         let rule_color = style.unwrap_or("cyan");
-        let rule = "─".repeat(width);
-        println!("{}", rule.color(rule_color));
+        let rule = "\u{2500}".repeat(width);
+        output.push_str(&format!("{}\n", rule.color(rule_color)));
     }
+
+    let term_height = term.size().0;
+    crate::cli::pager::page_output(&output, term_height);
 }
 
 pub fn print_rule(title: Option<&str>, style: Option<&str>) {
@@ -93,12 +99,12 @@ pub fn print_rule(title: Option<&str>, style: Option<&str>) {
         let right = rule_len.saturating_sub(left);
         println!(
             "{}{}{}",
-            "─".repeat(left).color(color),
+            "\u{2500}".repeat(left).color(color),
             title_display.color(color),
-            "─".repeat(right).color(color)
+            "\u{2500}".repeat(right).color(color)
         );
     } else {
-        println!("{}", "─".repeat(width).color(color));
+        println!("{}", "\u{2500}".repeat(width).color(color));
     }
 }
 
@@ -112,7 +118,7 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
     let width = (width as usize).min(140);
     let color = "yellow";
 
-    println!("{}", "─".repeat(width).color(color));
+    println!("{}", "\u{2500}".repeat(width).color(color));
     println!(
         "{} {}{}",
         "->".yellow().bold(),
@@ -126,8 +132,13 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             let new = obj.get("new").and_then(|v| v.as_str()).unwrap_or_default();
             let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
-            println!("    {} {}: {}", "•".bright_black(), "path".cyan(), path);
-            println!("    {} {}:", "•".bright_black(), "diff".cyan());
+            println!(
+                "    {} {}: {}",
+                "\u{2022}".bright_black(),
+                "path".cyan(),
+                path
+            );
+            println!("    {} {}:", "\u{2022}".bright_black(), "diff".cyan());
 
             // Compute a file-based diff so the confirmation preview matches the
             // post-execution diff.  We read the file, try an exact-match edit,
@@ -147,7 +158,7 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                     }
                 }
                 Err(_) => {
-                    // File can't be read (e.g. doesn't exist yet) — fall back
+                    // File can't be read (e.g. doesn't exist yet) \u{2014} fall back
                     crate::tools::builtin::file_modification::generate_diff(old, new)
                 }
             };
@@ -177,7 +188,12 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                         .as_str()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| v.to_string());
-                    println!("    {} {}: {}", "•".bright_black(), k.cyan(), val_str);
+                    println!(
+                        "    {} {}: {}",
+                        "\u{2022}".bright_black(),
+                        k.cyan(),
+                        val_str
+                    );
                 }
             }
 
@@ -185,7 +201,7 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             if let Some(exp) = explanation {
                 println!(
                     "    {} {}: {}",
-                    "•".bright_black(),
+                    "\u{2022}".bright_black(),
                     "explanation".cyan(),
                     exp
                 );
@@ -194,7 +210,7 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             let code = obj.get("code").and_then(|v| v.as_str()).unwrap_or_default();
             let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
-            println!("    {} {}:", "•".bright_black(), "code".cyan());
+            println!("    {} {}:", "\u{2022}".bright_black(), "code".cyan());
             // Apply Python syntax highlighting and indent each line
             let highlighted = crate::cli::syntax_highlight::highlight_python(code);
             for line in highlighted.lines() {
@@ -208,14 +224,19 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                         .as_str()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| v.to_string());
-                    println!("    {} {}: {}", "•".bright_black(), k.cyan(), val_str);
+                    println!(
+                        "    {} {}: {}",
+                        "\u{2022}".bright_black(),
+                        k.cyan(),
+                        val_str
+                    );
                 }
             }
             // Print explanation last
             if let Some(exp) = explanation {
                 println!(
                     "    {} {}: {}",
-                    "•".bright_black(),
+                    "\u{2022}".bright_black(),
                     "explanation".cyan(),
                     exp
                 );
@@ -228,7 +249,12 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                         .as_str()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| v.to_string());
-                    println!("    {} {}: {}", "•".bright_black(), k.cyan(), val_str);
+                    println!(
+                        "    {} {}: {}",
+                        "\u{2022}".bright_black(),
+                        k.cyan(),
+                        val_str
+                    );
                 }
             }
             // Print explanation last
@@ -239,7 +265,7 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                     .unwrap_or_else(|| v.to_string());
                 println!(
                     "    {} {}: {}",
-                    "•".bright_black(),
+                    "\u{2022}".bright_black(),
                     "explanation".cyan(),
                     val_str
                 );
@@ -248,12 +274,19 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
     } else {
         println!("    {}", args);
     }
-    println!("{}", "─".repeat(width).color(color));
+    println!("{}", "\u{2500}".repeat(width).color(color));
 }
 
 pub fn print_tool_result(result: &str) {
     let color = "bright_green";
-    println!("  {}", "── Result ──".color(color).bold());
+    let mut out = String::new();
+
+    out.push_str(&format!(
+        "  {}\n",
+        "\u{2500}\u{2500} Result \u{2500}\u{2500}"
+            .color(color)
+            .bold()
+    ));
 
     // Try to parse as JSON for pretty printing
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(result) {
@@ -267,26 +300,41 @@ pub fn print_tool_result(result: &str) {
                 .and_then(|v| v.as_str())
                 .unwrap_or_default();
             if !message.is_empty() {
-                println!("    {} {}", "•".bright_black(), message.cyan());
+                push_line(
+                    &mut out,
+                    &format!("    {} {}", "\u{2022}".bright_black(), message.cyan()),
+                );
             }
-            println!("    {} {}: {}", "•".bright_black(), "path".cyan(), path);
+            push_line(
+                &mut out,
+                &format!(
+                    "    {} {}: {}",
+                    "\u{2022}".bright_black(),
+                    "path".cyan(),
+                    path
+                ),
+            );
 
             if !diff.is_empty() {
-                println!("    {} {}:", "•".bright_black(), "diff".cyan());
+                push_line(
+                    &mut out,
+                    &format!("    {} {}:", "\u{2022}".bright_black(), "diff".cyan()),
+                );
                 for line in diff.lines() {
                     if line.starts_with('+') && !line.starts_with("+++") {
-                        println!("        {}", line.bright_green());
+                        push_line(&mut out, &format!("        {}", line.bright_green()));
                     } else if line.starts_with('-') && !line.starts_with("---") {
-                        println!("        {}", line.red());
+                        push_line(&mut out, &format!("        {}", line.red()));
                     } else if line.starts_with("@@") {
-                        println!("        {}", line.cyan().dimmed());
+                        push_line(&mut out, &format!("        {}", line.cyan().dimmed()));
                     } else if line.starts_with("---") || line.starts_with("+++") {
-                        println!("        {}", line.bold().dimmed());
+                        push_line(&mut out, &format!("        {}", line.bold().dimmed()));
                     } else {
-                        println!("        {}", line.dimmed());
+                        push_line(&mut out, &format!("        {}", line.dimmed()));
                     }
                 }
             }
+            finish_tool_result(out);
             return;
         }
 
@@ -301,12 +349,15 @@ pub fn print_tool_result(result: &str) {
             } else {
                 "red"
             };
-            println!(
-                "    {} {}",
-                "Exit Code:".bold(),
-                exit_code.to_string().color(status_color)
+            push_line(
+                &mut out,
+                &format!(
+                    "    {} {}",
+                    "Exit Code:".bold(),
+                    exit_code.to_string().color(status_color)
+                ),
             );
-
+            finish_tool_result(out);
             return;
         }
 
@@ -314,11 +365,14 @@ pub fn print_tool_result(result: &str) {
         for key in ["matches", "results", "files"] {
             if let Some(arr) = v.get(key).and_then(|a| a.as_array()) {
                 if arr.is_empty() {
-                    println!("    {}", "(empty results)".dimmed());
+                    push_line(&mut out, &format!("    {}", "(empty results)".dimmed()));
                 } else {
                     for item in arr {
                         if let Some(s) = item.as_str() {
-                            println!("    {} {}", "•".bright_black(), s.dimmed());
+                            push_line(
+                                &mut out,
+                                &format!("    {} {}", "\u{2022}".bright_black(), s.dimmed()),
+                            );
                         } else if let Some(obj) = item.as_object() {
                             // Try to format common object structures
                             if let (Some(file), Some(line), Some(text)) = (
@@ -326,12 +380,15 @@ pub fn print_tool_result(result: &str) {
                                 obj.get("line"),
                                 obj.get("text").and_then(|v| v.as_str()),
                             ) {
-                                println!(
-                                    "    {} {}:{}: {}",
-                                    "•".bright_black(),
-                                    file.cyan(),
-                                    line.to_string().yellow(),
-                                    text.dimmed()
+                                push_line(
+                                    &mut out,
+                                    &format!(
+                                        "    {} {}:{}: {}",
+                                        "\u{2022}".bright_black(),
+                                        file.cyan(),
+                                        line.to_string().yellow(),
+                                        text.dimmed()
+                                    ),
                                 );
                             } else if let (Some(t), Some(path)) = (
                                 obj.get("type").and_then(|v| v.as_str()),
@@ -348,22 +405,36 @@ pub fn print_tool_result(result: &str) {
                                 }
 
                                 if details.is_empty() {
-                                    println!("    {} [{}] {}", "•".bright_black(), t.cyan(), path);
+                                    push_line(
+                                        &mut out,
+                                        &format!(
+                                            "    {} [{}] {}",
+                                            "\u{2022}".bright_black(),
+                                            t.cyan(),
+                                            path
+                                        ),
+                                    );
                                 } else {
-                                    println!(
-                                        "    {} [{}] {:<30}  {}",
-                                        "•".bright_black(),
-                                        t.cyan(),
-                                        path,
-                                        details.join(" | ").dimmed()
+                                    push_line(
+                                        &mut out,
+                                        &format!(
+                                            "    {} [{}] {:<30}  {}",
+                                            "\u{2022}".bright_black(),
+                                            t.cyan(),
+                                            path,
+                                            details.join(" | ").dimmed()
+                                        ),
                                     );
                                 }
                             } else {
                                 // Fallback for other objects in the array
-                                println!(
-                                    "    {} {}",
-                                    "•".bright_black(),
-                                    item.to_string().dimmed()
+                                push_line(
+                                    &mut out,
+                                    &format!(
+                                        "    {} {}",
+                                        "\u{2022}".bright_black(),
+                                        item.to_string().dimmed()
+                                    ),
                                 );
                             }
                         }
@@ -372,8 +443,12 @@ pub fn print_tool_result(result: &str) {
                 if let Some(truncated) = v.get("truncated").and_then(|v| v.as_bool())
                     && truncated
                 {
-                    println!("    {}", "... (results truncated)".yellow().dimmed());
+                    push_line(
+                        &mut out,
+                        &format!("    {}", "... (results truncated)".yellow().dimmed()),
+                    );
                 }
+                finish_tool_result(out);
                 return;
             }
         }
@@ -389,41 +464,52 @@ pub fn print_tool_result(result: &str) {
                     .unwrap_or_default();
                 let url = item.get("url").and_then(|v| v.as_str()).unwrap_or_default();
                 let snippets = item.get("snippets").and_then(|v| v.as_array());
-                println!(
-                    "    {} \x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
-                    "•".bright_black(),
-                    url,
-                    title.bold().blue()
+                push_line(
+                    &mut out,
+                    &format!(
+                        "    {} \x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
+                        "\u{2022}".bright_black(),
+                        url,
+                        title.bold().blue()
+                    ),
                 );
                 if let Some(snip_arr) = snippets {
                     for snippet in snip_arr {
                         if let Some(s) = snippet.as_str() {
                             for line in s.lines() {
-                                println!("      {}", line.dimmed());
+                                push_line(&mut out, &format!("      {}", line.dimmed()));
                             }
                         }
                     }
                 }
-                println!();
+                out.push('\n');
             }
+            finish_tool_result(out);
             return;
         }
 
         // Special handling for read_url_content or similar "content" responses
         if let Some(content) = v.get("content").and_then(|v| v.as_str()) {
             for line in content.lines().take(20) {
-                println!("    {}", line.dimmed());
+                push_line(&mut out, &format!("    {}", line.dimmed()));
             }
             if content.lines().count() > 20 {
-                println!("    {}", "... (long content truncated in display)".dimmed());
+                push_line(
+                    &mut out,
+                    &format!("    {}", "... (long content truncated in display)".dimmed()),
+                );
             }
             if let Some(notes) = v.get("notes").and_then(|v| v.as_array()) {
                 for note in notes {
                     if let Some(n) = note.as_str() {
-                        println!("    {} {}", "!".yellow(), n.yellow().dimmed());
+                        push_line(
+                            &mut out,
+                            &format!("    {} {}", "!".yellow(), n.yellow().dimmed()),
+                        );
                     }
                 }
             }
+            finish_tool_result(out);
             return;
         }
 
@@ -431,26 +517,40 @@ pub fn print_tool_result(result: &str) {
             // If it's a complex object, show it pretty
             if v.is_object() || v.is_array() {
                 for line in pretty.lines() {
-                    println!("    {}", line.dimmed());
+                    push_line(&mut out, &format!("    {}", line.dimmed()));
                 }
             } else if let Some(s) = v.as_str() {
                 // If it's just a string, print it directly (it might have newlines)
                 for line in s.lines() {
-                    println!("    {}", line.dimmed());
+                    push_line(&mut out, &format!("    {}", line.dimmed()));
                 }
             } else {
-                println!("    {}", pretty.dimmed());
+                push_line(&mut out, &format!("    {}", pretty.dimmed()));
             }
         } else {
-            println!("    {}", result.dimmed());
+            push_line(&mut out, &format!("    {}", result.dimmed()));
         }
     } else {
         // Not JSON, just print it dimmed and indented
         for line in result.lines() {
-            println!("    {}", line.dimmed());
+            push_line(&mut out, &format!("    {}", line.dimmed()));
         }
     }
-    println!();
+    out.push('\n');
+    finish_tool_result(out);
+}
+
+/// Append a line to a string buffer (with trailing newline).
+fn push_line(buf: &mut String, line: &str) {
+    buf.push_str(line);
+    buf.push('\n');
+}
+
+/// Send buffered tool result output through the pager.
+fn finish_tool_result(out: String) {
+    let term = Term::stdout();
+    let term_height = term.size().0;
+    crate::cli::pager::page_output(&out, term_height);
 }
 
 pub fn print_panel(
@@ -471,10 +571,15 @@ pub fn print_panel(
         let remaining = width.saturating_sub(title_str.len() + 2);
         println!(
             "{}",
-            format!("─{}─{}", title_str, "─".repeat(remaining)).color(border_color)
+            format!(
+                "\u{2500}{}\u{2500}{}",
+                title_str,
+                "\u{2500}".repeat(remaining)
+            )
+            .color(border_color)
         );
     } else {
-        println!("{}", "─".repeat(width).color(border_color));
+        println!("{}", "\u{2500}".repeat(width).color(border_color));
     }
 
     // Content with wrapping
@@ -491,7 +596,7 @@ pub fn print_panel(
     }
 
     // Bottom border
-    println!("{}", "─".repeat(width).color(border_color));
+    println!("{}", "\u{2500}".repeat(width).color(border_color));
 }
 
 pub fn report_error(message: &str) {
@@ -560,11 +665,15 @@ fn ask_confirm_with_mode(prompt: &str, mode: PromptMode) -> Option<ConfirmResult
             if lower.is_empty()
                 || lower == "y"
                 || lower == "yes"
-                || lower == "ｙ"
-                || lower == "ｙｅｓ"
+                || lower == "\u{ff59}"
+                || lower == "\u{ff59}\u{ff45}\u{ff53}"
             {
                 Some(ConfirmResult::Yes)
-            } else if lower == "n" || lower == "no" || lower == "ｎ" || lower == "ｎｏ" {
+            } else if lower == "n"
+                || lower == "no"
+                || lower == "\u{ff4e}"
+                || lower == "\u{ff4e}\u{ff4f}"
+            {
                 Some(ConfirmResult::No)
             } else {
                 match mode {

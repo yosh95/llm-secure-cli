@@ -182,6 +182,10 @@ pub struct GeneralConfig {
     pub max_output_lines: usize,
     #[serde(default = "default_max_output_chars")]
     pub max_output_chars: usize,
+    /// Pager for long output.  `""` = disabled (default), `"auto"` = try less / built-in,
+    /// or a specific command like `"less -FRSX"`.
+    #[serde(default)]
+    pub pager: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -233,6 +237,7 @@ impl Default for GeneralConfig {
             image_save_path: default_image_save_path(),
             max_output_lines: default_max_output_lines(),
             max_output_chars: default_max_output_chars(),
+            pager: None,
         }
     }
 }

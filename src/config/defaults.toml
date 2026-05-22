@@ -23,6 +23,12 @@ max_chat_archives = 5
 max_output_lines = 10000
 max_output_chars = 100000
 
+# Pager for long output. Supported values:
+#   "" (empty)       = disable pager, print everything directly (default)
+#   "auto"           = try 'less -FRSX', fall back to built-in pager
+#   "less -FRSX"     = use a specific command; falls back to built-in pager on error
+pager = ""
+
 # =============================================================================
 # Security & API Keys
 # =============================================================================

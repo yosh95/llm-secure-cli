@@ -94,6 +94,18 @@ pub async fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<Ap
         crate::config::init::init_config();
     }
 
+    // 2.5. Initialize the pager from config (before any output is produced).
+    {
+        let cm = &ctx.config_manager;
+        // The full get_config() may fail if the config file is missing or
+        // corrupt.  In that case we leave the pager disabled (default).
+        if let Ok(config) = cm.get_config() {
+            crate::cli::pager::set_pager_config(
+                crate::cli::pager::PagerConfig::from_config_string(config.general.pager.as_deref()),
+            );
+        }
+    }
+
     // 3. Security & Integrity Checks
     ensure_identity_and_integrity(&ctx, is_atty).await?;
 
