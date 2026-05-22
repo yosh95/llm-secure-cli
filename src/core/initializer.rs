@@ -141,11 +141,14 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
     // 2. System Integrity Check
     let verifier = IntegrityVerifier::new();
     let config = ctx.config_manager.get_config()?;
-    let security_level = std::env::var("LLM_CLI_SECURITY_LEVEL")
-        .unwrap_or_else(|_| config.security.security_level.clone());
+    let security_level_str = std::env::var("LLM_CLI_SECURITY_LEVEL")
+        .unwrap_or_else(|_| config.security.security_level.to_string());
+    let security_level =
+        crate::config::models::SecurityLevel::try_from(security_level_str.as_str())
+            .unwrap_or(config.security.security_level);
 
     if !verifier.manifest_path.exists() {
-        let msg = if security_level == "high" {
+        let msg = if security_level == crate::config::models::SecurityLevel::High {
             "SECURITY FAILURE: Integrity manifest not found. In 'high' security mode, a signed manifest is required."
         } else {
             "Integrity manifest not found. This protects your binary and config from unauthorized changes."
@@ -162,7 +165,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
             if let Err(e) = verifier.rebuild_manifest() {
                 ctx.ui
                     .report_error(&format!("Failed to build manifest: {}", e));
-                if security_level == "high" {
+                if security_level == crate::config::models::SecurityLevel::High {
                     return Err(anyhow::anyhow!(
                         "Integrity manifest build failed in 'high' security mode: {}",
                         e
@@ -171,7 +174,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
             } else {
                 ctx.ui.report_success("Integrity manifest generated.");
             }
-        } else if security_level == "high" {
+        } else if security_level == crate::config::models::SecurityLevel::High {
             return Err(anyhow::anyhow!(
                 "Execution aborted: integrity manifest not found in 'high' security mode."
             ));
@@ -202,7 +205,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
                     if let Err(e) = verifier.rebuild_manifest() {
                         ctx.ui
                             .report_error(&format!("Failed to rebuild manifest: {}", e));
-                        if security_level == "high" {
+                        if security_level == crate::config::models::SecurityLevel::High {
                             return Err(anyhow::anyhow!(
                                 "Integrity manifest rebuild failed in 'high' security mode: {}",
                                 e
@@ -211,7 +214,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
                     } else {
                         ctx.ui.report_success("Integrity manifest updated.");
                     }
-                } else if security_level == "high" {
+                } else if security_level == crate::config::models::SecurityLevel::High {
                     ctx.ui.report_error(
                         "Execution aborted due to integrity failure in 'high' security mode.",
                     );

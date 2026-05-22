@@ -84,7 +84,7 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) {
                         Ok(mtime) => {
                             let age = std::time::SystemTime::now()
                                 .duration_since(mtime)
-                                .unwrap_or_default();
+                                .unwrap_or(std::time::Duration::ZERO);
                             age.as_secs() > 24 * 3600
                         }
                         Err(_) => true,

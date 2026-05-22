@@ -109,7 +109,10 @@ pub async fn run_skill_verify(
     if output_json {
         println!(
             "{}",
-            serde_json::to_string_pretty(&report).unwrap_or_default()
+            serde_json::to_string_pretty(&report).unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "JSON serialization failed");
+                String::new()
+            })
         );
     } else {
         print_full_report(&report);

@@ -1,3 +1,4 @@
+use crate::config::models::AutoApprovalLevel;
 use crate::core::session::ActiveSession;
 use crate::security::cass::RiskLevel;
 use crate::security::dual_llm_verifier::{VerificationOutcome, VerificationParams};
@@ -79,7 +80,7 @@ impl ActiveSession {
         if !name.contains("__") {
             return false;
         }
-        let server_name = name.split("__").next().unwrap_or("");
+        let server_name = name.split("__").next().unwrap_or_default();
         if let Some(mcp_config) = mcp_servers.iter().find(|s| s.name == server_name)
             && mcp_config.zero_trust
         {
@@ -190,18 +191,14 @@ impl ActiveSession {
             Ok(c) => c,
             Err(_) => return false,
         };
-        let policy = config
-            .security
-            .auto_approval_level
-            .as_deref()
-            .unwrap_or("none");
+        let policy = config.security.auto_approval_level.unwrap_or_default();
 
         match policy {
-            "low" if risk == RiskLevel::Low => {
+            AutoApprovalLevel::Low if risk == RiskLevel::Low => {
                 self.ctx.ui.report_success("Auto-approved (Low Risk)");
                 true
             }
-            "medium" if risk == RiskLevel::Low || risk == RiskLevel::Medium => {
+            AutoApprovalLevel::Medium if risk == RiskLevel::Low || risk == RiskLevel::Medium => {
                 self.ctx.ui.report_success("Auto-approved (Medium Risk)");
                 true
             }

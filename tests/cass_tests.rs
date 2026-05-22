@@ -1,11 +1,11 @@
-use llm_secure_cli::config::models::SecurityConfig;
+use llm_secure_cli::config::models::{SecurityConfig, SecurityLevel};
 use llm_secure_cli::security::cass::{CASSOrchestrator, RiskLevel};
 use serde_json::json;
 
 #[test]
 fn test_evaluate_risk_baseline() {
     let config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         high_risk_tools: vec!["edit_file".to_string()],
         medium_risk_tools: vec!["read_file".to_string()],
         dual_llm_verification: Some(true),
@@ -31,7 +31,7 @@ fn test_evaluate_risk_baseline() {
 #[test]
 fn test_evaluate_risk_critical_escalation_no_dual_llm() {
     let config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         high_risk_tools: vec!["edit_file".to_string()],
         dual_llm_verification: Some(false),
         ..Default::default()
@@ -55,7 +55,7 @@ fn test_evaluate_risk_critical_escalation_no_dual_llm() {
 #[test]
 fn test_evaluate_risk_dynamic_escalation() {
     let config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         medium_risk_tools: vec!["read_file".to_string()],
         scaling_patterns: vec!["/etc/shadow".to_string()],
         dual_llm_verification: Some(true),
@@ -80,7 +80,7 @@ fn test_evaluate_risk_dynamic_escalation() {
 #[test]
 fn test_evaluate_risk_security_level_high() {
     let config = SecurityConfig {
-        security_level: "high".to_string(),
+        security_level: SecurityLevel::High,
         dual_llm_verification: Some(true),
         ..Default::default()
     };
@@ -97,7 +97,7 @@ fn test_evaluate_risk_security_level_high() {
 #[test]
 fn test_get_security_requirements_returns_correct_pqc_levels() {
     let config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         high_risk_tools: vec!["edit_file".to_string()],
         dual_llm_verification: Some(true),
         ..Default::default()
@@ -107,7 +107,7 @@ fn test_get_security_requirements_returns_correct_pqc_levels() {
 
     // Critical: execute_python without dual llm
     let critical_config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         dual_llm_verification: Some(false),
         ..Default::default()
     };
@@ -126,7 +126,7 @@ fn test_get_security_requirements_returns_correct_pqc_levels() {
 
     // Medium
     let medium_config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         medium_risk_tools: vec!["read_file".to_string()],
         dual_llm_verification: Some(true),
         ..Default::default()
@@ -148,7 +148,7 @@ fn test_get_security_requirements_returns_correct_pqc_levels() {
 #[test]
 fn test_evaluate_risk_blocked_paths_escalation() {
     let config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         blocked_paths: vec!["/etc/passwd".to_string()],
         dual_llm_verification: Some(true),
         ..Default::default()
@@ -165,7 +165,7 @@ fn test_evaluate_risk_blocked_paths_escalation() {
 #[test]
 fn test_evaluate_risk_scaling_patterns_case_insensitive() {
     let config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         scaling_patterns: vec!["/etc/shadow".to_string()],
         dual_llm_verification: Some(true),
         ..Default::default()
@@ -182,7 +182,7 @@ fn test_evaluate_risk_scaling_patterns_case_insensitive() {
 #[test]
 fn test_evaluate_risk_unknown_tool_defaults_to_low() {
     let config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         dual_llm_verification: Some(true),
         ..Default::default()
     };
@@ -197,7 +197,7 @@ fn test_evaluate_risk_unknown_tool_defaults_to_low() {
 #[test]
 fn test_evaluate_risk_high_args_existing_high_tool_stays_high() {
     let config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         high_risk_tools: vec!["edit_file".to_string()],
         blocked_paths: vec!["/etc/shadow".to_string()],
         dual_llm_verification: Some(true),
@@ -215,7 +215,7 @@ fn test_evaluate_risk_high_args_existing_high_tool_stays_high() {
 #[test]
 fn test_evaluate_risk_high_args_on_already_medium_tool() {
     let config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         medium_risk_tools: vec!["read_file".to_string()],
         scaling_patterns: vec!["/root/".to_string()],
         dual_llm_verification: Some(true),
@@ -236,7 +236,7 @@ fn test_evaluate_risk_high_args_on_already_medium_tool() {
 #[test]
 fn test_evaluate_risk_dual_llm_enabled_prevents_critical() {
     let config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         dual_llm_verification: Some(true),
         ..Default::default()
     };
@@ -251,7 +251,7 @@ fn test_evaluate_risk_dual_llm_enabled_prevents_critical() {
 #[test]
 fn test_evaluate_risk_dual_llm_none_treated_as_disabled() {
     let config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         high_risk_tools: vec!["edit_file".to_string()],
         dual_llm_verification: None,
         ..Default::default()
@@ -267,7 +267,7 @@ fn test_evaluate_risk_dual_llm_none_treated_as_disabled() {
 #[test]
 fn test_evaluate_risk_multiple_blocked_paths_match() {
     let config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         blocked_paths: vec![
             "/etc/passwd".to_string(),
             "/etc/shadow".to_string(),
@@ -291,7 +291,7 @@ fn test_evaluate_risk_multiple_blocked_paths_match() {
 #[test]
 fn test_evaluate_risk_complex_nested_args() {
     let config = SecurityConfig {
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         scaling_patterns: vec!["DROP TABLE".to_string()],
         dual_llm_verification: Some(true),
         ..Default::default()
@@ -314,7 +314,7 @@ fn test_evaluate_risk_complex_nested_args() {
 #[test]
 fn test_evaluate_risk_security_level_high_with_execute_python() {
     let config = SecurityConfig {
-        security_level: "high".to_string(),
+        security_level: SecurityLevel::High,
         dual_llm_verification: Some(true),
         ..Default::default()
     };

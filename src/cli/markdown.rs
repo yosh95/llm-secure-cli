@@ -372,6 +372,7 @@ pub fn render_markdown(content: &str, width: usize) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::render_markdown;
 

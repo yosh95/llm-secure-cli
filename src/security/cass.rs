@@ -57,7 +57,9 @@ impl CASSOrchestrator {
         }
 
         // 3. Environment-based risk escalation
-        if config.security_level == "high" && level == RiskLevel::Low {
+        if config.security_level == crate::config::models::SecurityLevel::High
+            && level == RiskLevel::Low
+        {
             level = RiskLevel::Medium;
         }
 

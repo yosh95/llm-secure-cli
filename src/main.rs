@@ -1,3 +1,6 @@
+#![deny(clippy::unwrap_used)]
+#![warn(clippy::expect_used)]
+
 use clap::{Parser, Subcommand};
 use std::io::{IsTerminal, stdin};
 use std::process;

@@ -1,3 +1,4 @@
+use crate::config::models::VerifierFallback;
 use crate::core::session::ActiveSession;
 use crate::security::dual_llm_verifier::VerificationOutcome;
 use serde_json::Value;
@@ -86,8 +87,8 @@ impl ActiveSession {
             Ok(c) => c,
             Err(_) => return false,
         };
-        match config.security.verifier_fallback.as_str() {
-            "block" => {
+        match config.security.verifier_fallback {
+            VerifierFallback::Block => {
                 self.ctx
                     .ui
                     .report_error(&format!("Verifier unavailable — blocked: {}", reason));

@@ -232,8 +232,14 @@ async fn call_brave_llm_context(
         .and_then(|g| g.as_array())
     {
         for entry in generic {
-            let e_url = entry.get("url").and_then(|v| v.as_str()).unwrap_or("");
-            let e_title = entry.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let e_url = entry
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let e_title = entry
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
             let snippets = entry
                 .get("snippets")
                 .and_then(|s| s.as_array())

@@ -171,8 +171,10 @@ impl Completer for ChatCompleter {
                                                         .find(|m| m.role == Role::User)
                                                         .map(|m| {
                                                             let t = m.get_text(false);
-                                                            let line =
-                                                                t.lines().next().unwrap_or("");
+                                                            let line = t
+                                                                .lines()
+                                                                .next()
+                                                                .unwrap_or_default();
                                                             if line.chars().count() > 36 {
                                                                 format!(
                                                                     "{}...",
@@ -343,7 +345,11 @@ impl Completer for ChatCompleter {
                         if (parts.len() == 2 && (parts[1] == "-d" || parts[1] == "--delete"))
                             && arg_prefix.ends_with(' ')
                         {
-                            let state = self.ctx.config_manager.get_state().unwrap_or_default();
+                            let state = self
+                                .ctx
+                                .config_manager
+                                .get_state()
+                                .unwrap_or_else(|_| Default::default());
                             let mut matches: Vec<Pair> = state
                                 .model_aliases
                                 .keys()
@@ -358,7 +364,11 @@ impl Completer for ChatCompleter {
                         if parts.len() == 3 && (parts[1] == "-d" || parts[1] == "--delete") {
                             let target_prefix = parts[2];
                             let start_of_target = pos - target_prefix.len();
-                            let state = self.ctx.config_manager.get_state().unwrap_or_default();
+                            let state = self
+                                .ctx
+                                .config_manager
+                                .get_state()
+                                .unwrap_or_else(|_| Default::default());
                             let mut matches: Vec<Pair> = state
                                 .model_aliases
                                 .keys()

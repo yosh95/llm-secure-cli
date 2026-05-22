@@ -139,8 +139,11 @@ impl ActiveSession {
                 if let MessagePart::Part(cp) = part
                     && let Some(id) = &cp.inline_data
                 {
-                    let b64_data = id.get("data").and_then(|v| v.as_str()).unwrap_or("");
-                    let mime_type = id.get("mimeType").and_then(|v| v.as_str()).unwrap_or("");
+                    let b64_data = id.get("data").and_then(|v| v.as_str()).unwrap_or_default();
+                    let mime_type = id
+                        .get("mimeType")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
                     if !b64_data.is_empty() {
                         match crate::utils::media::save_media(
                             b64_data,
@@ -175,13 +178,13 @@ impl ActiveSession {
                 if let MessagePart::Part(cp) = part
                     && let Some(fc) = &cp.function_call
                 {
-                    let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or_default();
                     let args = fc
                         .get("arguments")
                         .and_then(|v| v.as_object())
                         .cloned()
                         .unwrap_or_default();
-                    let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or_default();
 
                     let (result_value, _approved) =
                         self.verify_and_execute_tool_workflow(name, &args).await?;

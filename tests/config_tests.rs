@@ -40,7 +40,11 @@ auto_approval_level = "low"
     let config = manager.get_config().expect("Failed to load config");
 
     // Default is "none", so "low" indicates it was merged from our file.
-    assert_eq!(config.security.auto_approval_level.as_deref(), Some("low"));
+    use llm_secure_cli::config::models::AutoApprovalLevel;
+    assert_eq!(
+        config.security.auto_approval_level,
+        Some(AutoApprovalLevel::Low)
+    );
 
     // Clean up
     let _ = fs::remove_file(config_path);

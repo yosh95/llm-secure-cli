@@ -49,7 +49,7 @@ impl<'a> MessageBuilder<'a> {
                                 Some(v) => v.to_string(),
                                 None => "".to_string(),
                             };
-                            let id = fr.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                            let id = fr.get("id").and_then(|v| v.as_str()).unwrap_or_default();
                             let tool_name =
                                 fr.get("name").and_then(|v| v.as_str()).unwrap_or("tool");
 
@@ -99,7 +99,8 @@ impl<'a> MessageBuilder<'a> {
                                     parts.push(self.formatter.format_text(t));
                                 }
                                 if let Some(fc) = &cp.function_call {
-                                    let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                    let id =
+                                        fc.get("id").and_then(|v| v.as_str()).unwrap_or_default();
                                     if role == "assistant" && !id.is_empty() {
                                         available_tool_calls.insert(id.to_string());
                                     }
@@ -108,15 +109,18 @@ impl<'a> MessageBuilder<'a> {
                                         "id": id,
                                         "type": "function",
                                         "function": {
-                                            "name": fc.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                                            "name": fc.get("name").and_then(|v| v.as_str()).unwrap_or_default(),
                                             "arguments": fc.get("arguments").cloned().unwrap_or(json!({})).to_string()
                                         }
                                     }));
                                 }
                                 if let Some(id) = &cp.inline_data {
-                                    let mime =
-                                        id.get("mimeType").and_then(|v| v.as_str()).unwrap_or("");
-                                    let b64 = id.get("data").and_then(|v| v.as_str()).unwrap_or("");
+                                    let mime = id
+                                        .get("mimeType")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or_default();
+                                    let b64 =
+                                        id.get("data").and_then(|v| v.as_str()).unwrap_or_default();
                                     if mime == "application/pdf" {
                                         if let Some(v) = self.formatter.format_pdf(
                                             b64,
@@ -171,10 +175,13 @@ impl<'a> MessageBuilder<'a> {
         let mut current_parts = Vec::new();
         for d in self.pending_data {
             if d.content_type == "text/plain" {
-                current_parts.push(self.formatter.format_text(d.content.as_str().unwrap_or("")));
+                current_parts.push(
+                    self.formatter
+                        .format_text(d.content.as_str().unwrap_or_default()),
+                );
             } else if d.content_type == "application/pdf" {
                 if let Some(v) = self.formatter.format_pdf(
-                    d.content.as_str().unwrap_or(""),
+                    d.content.as_str().unwrap_or_default(),
                     d.metadata.get("filename").and_then(|v| v.as_str()),
                 ) {
                     current_parts.push(v);
@@ -182,7 +189,7 @@ impl<'a> MessageBuilder<'a> {
             } else if d.content_type.starts_with("image/") {
                 current_parts.push(
                     self.formatter
-                        .format_image(&d.content_type, d.content.as_str().unwrap_or("")),
+                        .format_image(&d.content_type, d.content.as_str().unwrap_or_default()),
                 );
             }
         }

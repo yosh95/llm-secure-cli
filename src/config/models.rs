@@ -1,5 +1,161 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
+
+// ---------------------------------------------------------------------------
+// Enum types for type-safe security configuration
+// ---------------------------------------------------------------------------
+
+/// Security level — controls PQC enforcement strictness.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SecurityLevel {
+    /// Strict PQC enforcement; high-risk actions without signatures are blocked.
+    #[default]
+    High,
+    /// Permissive checks; warnings instead of blocks for interoperability.
+    Standard,
+}
+
+impl SecurityLevel {
+    /// Convert to the TOML string representation (for serialization).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SecurityLevel::High => "high",
+            SecurityLevel::Standard => "standard",
+        }
+    }
+}
+
+impl std::fmt::Display for SecurityLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Serialize for SecurityLevel {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for SecurityLevel {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        match s.as_str() {
+            "high" => Ok(SecurityLevel::High),
+            "standard" => Ok(SecurityLevel::Standard),
+            other => Err(serde::de::Error::unknown_variant(
+                other,
+                &["high", "standard"],
+            )),
+        }
+    }
+}
+
+impl TryFrom<&str> for SecurityLevel {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        match s {
+            "high" => Ok(SecurityLevel::High),
+            "standard" => Ok(SecurityLevel::Standard),
+            other => Err(format!("unknown security level: '{}'", other)),
+        }
+    }
+}
+
+/// Auto-approval level — controls which tool calls bypass human approval.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AutoApprovalLevel {
+    /// All tools require manual approval (safest).
+    #[default]
+    None,
+    /// Only low-risk tools are auto-approved.
+    Low,
+    /// Low and medium-risk tools are auto-approved.
+    Medium,
+}
+
+impl AutoApprovalLevel {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AutoApprovalLevel::None => "none",
+            AutoApprovalLevel::Low => "low",
+            AutoApprovalLevel::Medium => "medium",
+        }
+    }
+}
+
+impl std::fmt::Display for AutoApprovalLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Serialize for AutoApprovalLevel {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for AutoApprovalLevel {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        match s.as_str() {
+            "none" => Ok(AutoApprovalLevel::None),
+            "low" => Ok(AutoApprovalLevel::Low),
+            "medium" => Ok(AutoApprovalLevel::Medium),
+            other => Err(serde::de::Error::unknown_variant(
+                other,
+                &["none", "low", "medium"],
+            )),
+        }
+    }
+}
+
+/// Verifier fallback policy when the Dual LLM Verifier is unavailable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VerifierFallback {
+    /// Force human approval for every tool call (fail-safe).
+    #[default]
+    RequireApproval,
+    /// Block all tool calls when the verifier is down (maximum safety).
+    Block,
+}
+
+impl VerifierFallback {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VerifierFallback::RequireApproval => "require_approval",
+            VerifierFallback::Block => "block",
+        }
+    }
+}
+
+impl std::fmt::Display for VerifierFallback {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Serialize for VerifierFallback {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for VerifierFallback {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        match s.as_str() {
+            "require_approval" => Ok(VerifierFallback::RequireApproval),
+            "block" => Ok(VerifierFallback::Block),
+            other => Err(serde::de::Error::unknown_variant(
+                other,
+                &["require_approval", "block"],
+            )),
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GeneralConfig {
@@ -129,7 +285,7 @@ pub struct SecurityConfig {
     #[serde(default)]
     pub scaling_patterns: Vec<String>,
     #[serde(default)]
-    pub auto_approval_level: Option<String>,
+    pub auto_approval_level: Option<AutoApprovalLevel>,
     #[serde(default)]
     pub dual_llm_verification: Option<bool>,
     #[serde(default = "default_unified_provider")]
@@ -138,10 +294,10 @@ pub struct SecurityConfig {
     pub dual_llm_model: String,
     #[serde(default = "default_confidence_threshold")]
     pub dual_llm_confidence_threshold: f64,
-    #[serde(default = "default_security_level")]
-    pub security_level: String,
-    #[serde(default = "default_verifier_fallback")]
-    pub verifier_fallback: String,
+    #[serde(default)]
+    pub security_level: SecurityLevel,
+    #[serde(default)]
+    pub verifier_fallback: VerifierFallback,
     /// Template for the Dual LLM verifier system prompt.
     /// Placeholders: {constitution}, {security_context}
     #[serde(default = "default_dual_llm_system_prompt_template")]
@@ -161,14 +317,8 @@ fn default_dual_llm_model() -> String {
 fn default_unified_provider() -> String {
     "".to_string()
 }
-fn default_security_level() -> String {
-    "high".to_string()
-}
 fn default_confidence_threshold() -> f64 {
     0.7
-}
-fn default_verifier_fallback() -> String {
-    "require_approval".to_string()
 }
 fn default_dual_llm_system_prompt_template() -> String {
     concat!(
@@ -221,8 +371,8 @@ impl Default for SecurityConfig {
             dual_llm_provider: default_unified_provider(),
             dual_llm_model: default_dual_llm_model(),
             dual_llm_confidence_threshold: default_confidence_threshold(),
-            security_level: default_security_level(),
-            verifier_fallback: default_verifier_fallback(),
+            security_level: SecurityLevel::High,
+            verifier_fallback: VerifierFallback::RequireApproval,
             dual_llm_system_prompt_template: default_dual_llm_system_prompt_template(),
             dual_llm_user_prompt_template: default_dual_llm_user_prompt_template(),
         }
@@ -255,24 +405,12 @@ impl SecurityConfig {
         let mut errors = Vec::new();
 
         // --- auto_approval_level ---
-        if let Some(ref level) = self.auto_approval_level {
-            match level.as_str() {
-                "none" | "low" | "medium" => {}
-                other => errors.push(ValidationError {
-                    field: "auto_approval_level".to_string(),
-                    message: format!("must be one of 'none', 'low', or 'medium', got '{}'", other),
-                }),
-            }
-        }
+        // No runtime check needed: invalid values are rejected at
+        // deserialization time by the AutoApprovalLevel custom Deserialize impl.
 
         // --- verifier_fallback ---
-        match self.verifier_fallback.as_str() {
-            "require_approval" | "block" => {}
-            other => errors.push(ValidationError {
-                field: "verifier_fallback".to_string(),
-                message: format!("must be 'require_approval' or 'block', got '{}'", other),
-            }),
-        }
+        // No runtime check needed: invalid values are rejected at
+        // deserialization time by the VerifierFallback custom Deserialize impl.
 
         // --- dual_llm_confidence_threshold ---
         let threshold = self.dual_llm_confidence_threshold;
@@ -284,13 +422,8 @@ impl SecurityConfig {
         }
 
         // --- security_level ---
-        match self.security_level.as_str() {
-            "high" | "standard" => {}
-            other => errors.push(ValidationError {
-                field: "security_level".to_string(),
-                message: format!("must be 'high' or 'standard', got '{}'", other),
-            }),
-        }
+        // No runtime check needed: invalid values are rejected at
+        // deserialization time by the SecurityLevel custom Deserialize impl.
 
         // --- allowed_paths must not be empty ---
         if self.allowed_paths.is_empty() {
@@ -327,7 +460,9 @@ impl SecurityConfig {
         let mut warnings = Vec::new();
 
         // --- cross-field: high security without dual_llm ---
-        if self.security_level == "high" && !self.dual_llm_verification.unwrap_or(false) {
+        if self.security_level == SecurityLevel::High
+            && !self.dual_llm_verification.unwrap_or(false)
+        {
             warnings.push(ValidationError {
                 field: "security_level".to_string(),
                 message: "security_level 'high' is set but dual_llm_verification is not enabled — high-risk tools will escalate to Critical".to_string(),
@@ -335,7 +470,7 @@ impl SecurityConfig {
         }
 
         // --- cross-field: auto_approval medium with dual_llm off ---
-        if self.auto_approval_level.as_deref() == Some("medium")
+        if self.auto_approval_level == Some(AutoApprovalLevel::Medium)
             && !self.dual_llm_verification.unwrap_or(false)
         {
             warnings.push(ValidationError {

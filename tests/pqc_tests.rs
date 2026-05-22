@@ -191,7 +191,7 @@ fn test_pqc_agility_manager() {
 
     {
         let mut config = (*config_manager.get_config().expect("Failed to get config")).clone();
-        config.security.security_level = "standard".to_string();
+        config.security.security_level = llm_secure_cli::config::models::SecurityLevel::Standard;
         config.security.high_risk_tools = vec!["execute_python".to_string()];
         config.security.scaling_patterns = vec!["/etc/shadow".to_string()];
         config.security.dual_llm_verification = Some(true);

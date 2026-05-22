@@ -66,7 +66,9 @@ pub fn validate_path(
 
     // 2. Resolve to absolute and clean logical traversals
     if !path.is_absolute() {
-        path = std::env::current_dir().unwrap_or_default().join(path);
+        path = std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::new())
+            .join(path);
     }
     let cleaned_path = path.clean();
 

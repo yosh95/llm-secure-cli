@@ -262,7 +262,7 @@ fn try_regex_edit(original: &str, old: &str, new: &str) -> Option<(String, usize
             .captures(mat.as_str())
             .and_then(|caps| caps.get(1))
             .map(|m| m.as_str())
-            .unwrap_or("");
+            .unwrap_or_default();
 
         let indented_new = apply_indentation(&new_lines, indentation);
         result.push_str(&indented_new.join("\n"));
@@ -572,34 +572,242 @@ pub fn create_or_overwrite_file(
 // ---------------------------------------------------------------------------
 
 /// Generate a unified diff for display purposes.
-fn generate_diff(original: &str, new_content: &str) -> String {
-    let orig_lines: Vec<String> = original.lines().map(|s| format!("{}\n", s)).collect();
-    let new_lines: Vec<String> = new_content.lines().map(|s| format!("{}\n", s)).collect();
+///
+/// This is a native Rust implementation that replaces the `difflib` crate,
+/// removing a transitive Python-heritage dependency.  Uses a classic
+/// patience/LCS diff algorithm and outputs standard unified-diff format
+/// (compatible with `patch(1)`).
+pub fn generate_diff(original: &str, new_content: &str) -> String {
+    let orig_lines: Vec<&str> = original.lines().collect();
+    let new_lines: Vec<&str> = new_content.lines().collect();
 
-    let diff = difflib::unified_diff(
-        &orig_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-        &new_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-        "original",
-        "modified",
-        "",
-        "",
-        3,
-    );
+    // Compute the edit script using an LCS-based diff.
+    let hunks = compute_unified_hunks(&orig_lines, &new_lines, 3);
 
-    if diff.is_empty() {
+    if hunks.is_empty() {
         if original == new_content {
             return "--- original\n+++ modified\n (no changes)\n".to_string();
         } else {
-            // Fallback for very small changes or whitespace differences
             return "--- original\n+++ modified\n[Content changed, but diff is empty]\n"
                 .to_string();
         }
     }
 
-    diff.join("")
+    let mut result = String::from("--- original\n+++ modified\n");
+    for hunk in &hunks {
+        result.push_str(&format!(
+            "@@ -{},{} +{},{} @@\n",
+            hunk.old_start, hunk.old_count, hunk.new_start, hunk.new_count
+        ));
+        for line in &hunk.lines {
+            result.push_str(line);
+            result.push('\n');
+        }
+    }
+    result
+}
+
+/// A single hunk in a unified diff.
+struct Hunk {
+    old_start: usize,
+    old_count: usize,
+    new_start: usize,
+    new_count: usize,
+    lines: Vec<String>,
+}
+
+/// Compute unified-diff hunks between two line slices with `context` lines
+/// of surrounding context.
+fn compute_unified_hunks(old: &[&str], new: &[&str], context: usize) -> Vec<Hunk> {
+    let edits = lcs_diff(old, new);
+    if edits.is_empty() {
+        return Vec::new();
+    }
+
+    // Group edits into hunks, merging hunks that overlap within `context` lines.
+    let mut hunks: Vec<Hunk> = Vec::new();
+    let mut i = 0;
+    while i < edits.len() {
+        let start_old = edits[i].old_pos.saturating_sub(context);
+        let start_new = edits[i].new_pos.saturating_sub(context);
+        let mut end_idx = i;
+
+        // Expand the hunk to merge nearby changes
+        loop {
+            let next_old_end = if end_idx + 1 < edits.len() {
+                edits[end_idx + 1].old_pos + context
+            } else {
+                old.len()
+            };
+            let cur_old_end = edits[end_idx].old_pos;
+            if end_idx + 1 < edits.len() && next_old_end <= cur_old_end + context + 1 {
+                end_idx += 1;
+            } else {
+                break;
+            }
+        }
+
+        let end_old = std::cmp::min(edits[end_idx].old_pos + context + 1, old.len());
+        let end_new = std::cmp::min(edits[end_idx].new_pos + context + 1, new.len());
+
+        let mut lines = Vec::new();
+        let mut oi = start_old;
+        let mut ni = start_new;
+
+        while oi < end_old || ni < end_new {
+            // Find next edit at or before current position
+            let next_edit_old = edits
+                .iter()
+                .find(|e| e.old_pos == oi && e.kind != EditKind::Insert);
+            let next_edit_new = edits
+                .iter()
+                .find(|e| e.new_pos == ni && e.kind == EditKind::Insert);
+
+            if let Some(e) = next_edit_old {
+                match e.kind {
+                    EditKind::Delete => {
+                        lines.push(format!("-{}", old[oi]));
+                        oi += 1;
+                        continue;
+                    }
+                    EditKind::Replace => {
+                        lines.push(format!("-{}", old[oi]));
+                        lines.push(format!("+{}", new[ni]));
+                        oi += 1;
+                        ni += 1;
+                        continue;
+                    }
+                    EditKind::Insert => unreachable!(),
+                    EditKind::Keep => {}
+                }
+            } else if let Some(_e) = next_edit_new {
+                lines.push(format!("+{}", new[ni]));
+                ni += 1;
+                continue;
+            }
+
+            // Context line
+            if oi < old.len() && ni < new.len() && old[oi] == new[ni] {
+                lines.push(format!(" {}", old[oi]));
+                oi += 1;
+                ni += 1;
+            } else if oi < end_old && (ni >= end_new || oi < old.len()) {
+                lines.push(format!("-{}", old[oi]));
+                oi += 1;
+            } else if ni < end_new {
+                lines.push(format!("+{}", new[ni]));
+                ni += 1;
+            } else {
+                break;
+            }
+        }
+
+        hunks.push(Hunk {
+            old_start: start_old + 1, // 1-indexed
+            old_count: oi.saturating_sub(start_old),
+            new_start: start_new + 1,
+            new_count: ni.saturating_sub(start_new),
+            lines,
+        });
+
+        i = end_idx + 1;
+    }
+
+    hunks
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EditKind {
+    #[allow(dead_code)]
+    Keep,
+    Delete,
+    Insert,
+    #[allow(dead_code)]
+    Replace,
+}
+
+struct Edit {
+    old_pos: usize,
+    new_pos: usize,
+    kind: EditKind,
+}
+
+/// Compute the diff between two line slices using LCS.
+/// Returns only the non-keep edit operations.
+fn lcs_diff(old: &[&str], new: &[&str]) -> Vec<Edit> {
+    if old.is_empty() && new.is_empty() {
+        return Vec::new();
+    }
+    if old.is_empty() {
+        return new
+            .iter()
+            .enumerate()
+            .map(|(i, _)| Edit {
+                old_pos: 0,
+                new_pos: i,
+                kind: EditKind::Insert,
+            })
+            .collect();
+    }
+    if new.is_empty() {
+        return old
+            .iter()
+            .enumerate()
+            .map(|(i, _)| Edit {
+                old_pos: i,
+                new_pos: 0,
+                kind: EditKind::Delete,
+            })
+            .collect();
+    }
+
+    // Build LCS table
+    let m = old.len();
+    let n = new.len();
+    let mut table = vec![vec![0usize; n + 1]; m + 1];
+
+    for i in 1..=m {
+        for j in 1..=n {
+            if old[i - 1] == new[j - 1] {
+                table[i][j] = table[i - 1][j - 1] + 1;
+            } else {
+                table[i][j] = std::cmp::max(table[i - 1][j], table[i][j - 1]);
+            }
+        }
+    }
+
+    // Backtrack to produce the edit script
+    let mut edits = Vec::new();
+    let mut i = m;
+    let mut j = n;
+
+    while i > 0 || j > 0 {
+        if i > 0 && j > 0 && old[i - 1] == new[j - 1] {
+            i -= 1;
+            j -= 1;
+        } else if j > 0 && (i == 0 || table[i][j - 1] >= table[i - 1][j]) {
+            j -= 1;
+            edits.push(Edit {
+                old_pos: i,
+                new_pos: j,
+                kind: EditKind::Insert,
+            });
+        } else if i > 0 {
+            i -= 1;
+            edits.push(Edit {
+                old_pos: i,
+                new_pos: j,
+                kind: EditKind::Delete,
+            });
+        }
+    }
+
+    edits.reverse();
+    edits
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 

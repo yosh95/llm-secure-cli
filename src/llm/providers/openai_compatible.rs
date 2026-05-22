@@ -181,7 +181,10 @@ impl LlmClient for OpenAiCompatibleClient {
         tracing::debug!(
             "LLM Request (to {}): {}",
             self.api_url,
-            serde_json::to_string_pretty(&body).unwrap_or_default()
+            serde_json::to_string_pretty(&body).unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "JSON serialization failed");
+                String::new()
+            })
         );
 
         let res = self
@@ -196,7 +199,10 @@ impl LlmClient for OpenAiCompatibleClient {
 
         tracing::debug!(
             "LLM Response: {}",
-            serde_json::to_string_pretty(&resp_json).unwrap_or_default()
+            serde_json::to_string_pretty(&resp_json).unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "JSON serialization failed");
+                String::new()
+            })
         );
 
         if let Some(err) = resp_json.get("error") {
@@ -258,7 +264,10 @@ impl LlmClient for OpenAiCompatibleClient {
         tracing::debug!(
             "LLM Verifier Request (to {}): {}",
             self.api_url,
-            serde_json::to_string_pretty(&body).unwrap_or_default()
+            serde_json::to_string_pretty(&body).unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "JSON serialization failed");
+                String::new()
+            })
         );
 
         let res = self
@@ -273,7 +282,10 @@ impl LlmClient for OpenAiCompatibleClient {
 
         tracing::debug!(
             "LLM Verifier Response: {}",
-            serde_json::to_string_pretty(&resp_json).unwrap_or_default()
+            serde_json::to_string_pretty(&resp_json).unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "JSON serialization failed");
+                String::new()
+            })
         );
 
         // 1. Check for API-level error field

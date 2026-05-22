@@ -85,7 +85,7 @@ impl ToolRegistry {
             .as_str()
             .unwrap_or("unknown_remote_tool")
             .to_string();
-        let description = tool["description"].as_str().unwrap_or("").to_string();
+        let description = tool["description"].as_str().unwrap_or_default().to_string();
         let parameters = tool["parameters"].clone();
 
         let name_for_error = name.clone();
@@ -158,7 +158,7 @@ pub async fn initialize_remote_tools(
     let mut registry = registry.write().await;
     for tool in tools {
         if let Some(allowed) = allowed_tools {
-            let name = tool["name"].as_str().unwrap_or("");
+            let name = tool["name"].as_str().unwrap_or_default();
             if allowed.is_empty() {
                 continue; // Empty list disables all tools
             }

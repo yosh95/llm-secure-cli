@@ -1,4 +1,4 @@
-use llm_secure_cli::config::models::{AppConfig, SecurityConfig};
+use llm_secure_cli::config::models::{AppConfig, SecurityConfig, SecurityLevel, VerifierFallback};
 use llm_secure_cli::security::validate_tool_call;
 use serde_json::json;
 
@@ -41,10 +41,10 @@ fn test_config_merge_nested_objects_preserve_existing_keys() {
 #[test]
 fn test_security_config_default_values_are_sane() {
     let cfg = SecurityConfig::default();
-    assert_eq!(cfg.security_level, "high");
+    assert_eq!(cfg.security_level, SecurityLevel::High);
     assert!(!cfg.allowed_paths.is_empty());
     assert_eq!(cfg.allowed_paths[0], ".");
-    assert_eq!(cfg.verifier_fallback, "require_approval");
+    assert_eq!(cfg.verifier_fallback, VerifierFallback::RequireApproval);
     assert!(cfg.static_analysis_is_error);
     assert!(cfg.dual_llm_confidence_threshold > 0.0);
     assert!(cfg.dual_llm_confidence_threshold <= 1.0);
@@ -175,7 +175,7 @@ allowed_paths = ["/tmp"]
     assert!(!cfg.general.pdf_as_base64);
     assert_eq!(cfg.security.allowed_paths, vec!["/tmp"]);
     // Fields not specified should take their defaults
-    assert_eq!(cfg.security.security_level, "high");
+    assert_eq!(cfg.security.security_level, SecurityLevel::High);
 }
 
 // ---------------------------------------------------------------------------
@@ -191,7 +191,7 @@ fn test_cass_risk_levels_are_mutually_exclusive_in_defaults() {
     // Set both explicitly to test the base classification.
     let config = SecurityConfig {
         dual_llm_verification: Some(true),
-        security_level: "standard".to_string(),
+        security_level: SecurityLevel::Standard,
         ..Default::default()
     };
 
@@ -274,8 +274,8 @@ fn test_validate_security_config_accepts_valid_defaults() {
 
 #[test]
 fn test_security_config_rejects_invalid_auto_approval_level() {
-    // We test the observable behavior: loading a config with an invalid
-    // auto_approval_level should fail.
+    // With the typed enum, invalid auto_approval_level values are
+    // rejected at TOML deserialization time, not at runtime validation.
     let toml_str = r#"
 [security]
 auto_approval_level = "full"
@@ -283,10 +283,9 @@ security_level = "high"
 "#;
     let cfg: Result<AppConfig, _> = toml::from_str(toml_str);
     assert!(
-        cfg.is_ok(),
-        "TOML parse should succeed (validation happens later)"
+        cfg.is_err(),
+        "TOML parse should fail for invalid auto_approval_level value"
     );
-    // The validation would be triggered by ConfigManager::get_config()
 }
 
 #[test]
@@ -321,27 +320,31 @@ fn test_security_config_rejects_negative_threshold() {
 
 #[test]
 fn test_security_config_rejects_invalid_security_level() {
-    let cfg = SecurityConfig {
-        security_level: "paranoid".to_string(),
-        ..Default::default()
-    };
-    let errors = cfg.validate();
+    // With the typed enum, invalid security_level values are
+    // rejected at TOML deserialization time.
+    let toml_str = r#"
+[security]
+security_level = "paranoid"
+"#;
+    let cfg: Result<AppConfig, _> = toml::from_str(toml_str);
     assert!(
-        errors.iter().any(|e| e.field == "security_level"),
-        "Should report error for invalid security_level"
+        cfg.is_err(),
+        "TOML parse should fail for invalid security_level value"
     );
 }
 
 #[test]
 fn test_security_config_rejects_invalid_verifier_fallback() {
-    let cfg = SecurityConfig {
-        verifier_fallback: "allow".to_string(),
-        ..Default::default()
-    };
-    let errors = cfg.validate();
+    // With the typed enum, invalid verifier_fallback values are
+    // rejected at TOML deserialization time.
+    let toml_str = r#"
+[security]
+verifier_fallback = "allow"
+"#;
+    let cfg: Result<AppConfig, _> = toml::from_str(toml_str);
     assert!(
-        errors.iter().any(|e| e.field == "verifier_fallback"),
-        "Should report error for invalid verifier_fallback"
+        cfg.is_err(),
+        "TOML parse should fail for invalid verifier_fallback value"
     );
 }
 

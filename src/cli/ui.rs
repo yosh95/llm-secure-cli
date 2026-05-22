@@ -121,9 +121,9 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
     );
     if let Some(obj) = args.as_object() {
         if name == "edit_file" {
-            let path = obj.get("path").and_then(|v| v.as_str()).unwrap_or("");
-            let old = obj.get("old").and_then(|v| v.as_str()).unwrap_or("");
-            let new = obj.get("new").and_then(|v| v.as_str()).unwrap_or("");
+            let path = obj.get("path").and_then(|v| v.as_str()).unwrap_or_default();
+            let old = obj.get("old").and_then(|v| v.as_str()).unwrap_or_default();
+            let new = obj.get("new").and_then(|v| v.as_str()).unwrap_or_default();
             let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
             println!("    {} {}: {}", "•".bright_black(), "path".cyan(), path);
@@ -137,57 +137,25 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             let diff = match std::fs::read_to_string(path) {
                 Ok(original) => {
                     if let Some(new_content) = try_exact_edit_for_preview(&original, old, new) {
-                        let orig_lines: Vec<String> =
-                            original.lines().map(|s| format!("{}\n", s)).collect();
-                        let new_lines: Vec<String> =
-                            new_content.lines().map(|s| format!("{}\n", s)).collect();
-                        difflib::unified_diff(
-                            &orig_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                            &new_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                            "original",
-                            "modified",
-                            "",
-                            "",
-                            3,
+                        crate::tools::builtin::file_modification::generate_diff(
+                            &original,
+                            &new_content,
                         )
                     } else {
                         // Fall back: old-vs-new diff (exact match not found in file)
-                        let old_lines: Vec<String> =
-                            old.lines().map(|s| format!("{}\n", s)).collect();
-                        let new_lines: Vec<String> =
-                            new.lines().map(|s| format!("{}\n", s)).collect();
-                        difflib::unified_diff(
-                            &old_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                            &new_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                            "old",
-                            "new",
-                            "",
-                            "",
-                            3,
-                        )
+                        crate::tools::builtin::file_modification::generate_diff(old, new)
                     }
                 }
                 Err(_) => {
                     // File can't be read (e.g. doesn't exist yet) — fall back
-                    let old_lines: Vec<String> = old.lines().map(|s| format!("{}\n", s)).collect();
-                    let new_lines: Vec<String> = new.lines().map(|s| format!("{}\n", s)).collect();
-                    difflib::unified_diff(
-                        &old_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                        &new_lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                        "old",
-                        "new",
-                        "",
-                        "",
-                        3,
-                    )
+                    crate::tools::builtin::file_modification::generate_diff(old, new)
                 }
             };
 
             if diff.is_empty() && !old.is_empty() && old == new {
                 println!("        {}", "(no changes)".dimmed());
             } else {
-                let diff_str = diff.join("");
-                for line in diff_str.lines() {
+                for line in diff.lines() {
                     if line.starts_with('+') && !line.starts_with("+++") {
                         println!("        {}", line.cyan());
                     } else if line.starts_with('-') && !line.starts_with("---") {
@@ -223,7 +191,7 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                 );
             }
         } else if name == "execute_python" {
-            let code = obj.get("code").and_then(|v| v.as_str()).unwrap_or("");
+            let code = obj.get("code").and_then(|v| v.as_str()).unwrap_or_default();
             let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
             println!("    {} {}:", "•".bright_black(), "code".cyan());
@@ -294,7 +262,10 @@ pub fn print_tool_result(result: &str) {
             v.get("path").and_then(|v| v.as_str()),
             v.get("diff").and_then(|v| v.as_str()),
         ) {
-            let message = v.get("message").and_then(|v| v.as_str()).unwrap_or("");
+            let message = v
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
             if !message.is_empty() {
                 println!("    {} {}", "•".bright_black(), message.cyan());
             }
@@ -412,8 +383,11 @@ pub fn print_tool_result(result: &str) {
             && v.get("query").is_some()
         {
             for item in results {
-                let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
-                let url = item.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                let title = item
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let url = item.get("url").and_then(|v| v.as_str()).unwrap_or_default();
                 let snippets = item.get("snippets").and_then(|v| v.as_array());
                 println!(
                     "    {} \x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",

@@ -115,7 +115,7 @@ pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> Verificati
 
     let ctx = params
         .context
-        .unwrap_or_else(|| SecurityContext::gather(&params.config.security_level));
+        .unwrap_or_else(|| SecurityContext::gather(params.config.security_level.as_str()));
 
     let mut verifier = DualLLMVerifier::new(
         client,
@@ -233,7 +233,13 @@ impl DualLLMVerifier {
         tool_args: &Value,
         context: &SecurityContext,
     ) -> VerificationResult {
-        let security_context_json = serde_json::to_string_pretty(context).unwrap_or_default();
+        let security_context_json = serde_json::to_string_pretty(context).unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "Failed to serialize SecurityContext for verifier prompt");
+            format!(
+                "{{\"error\": \"SecurityContext serialization failed: {}\"}}",
+                e
+            )
+        });
 
         // Build the system prompt from the template
         let system_prompt = self
@@ -242,7 +248,10 @@ impl DualLLMVerifier {
             .replace("{security_context}", &security_context_json);
 
         // Build the user prompt from the template
-        let tool_args_pretty = serde_json::to_string_pretty(tool_args).unwrap_or_default();
+        let tool_args_pretty = serde_json::to_string_pretty(tool_args).unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "Failed to serialize tool_args for verifier prompt");
+            format!("{{\"error\": \"tool_args serialization failed: {}\"}}", e)
+        });
         let user_prompt = self
             .user_prompt_template
             .replace("{user_query}", user_query)

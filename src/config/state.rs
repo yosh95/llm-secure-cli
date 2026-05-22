@@ -145,7 +145,7 @@ impl ConfigManager {
     /// Resolve the dual LLM provider and model, prioritizing AppState (state.toml)
     /// but falling back to AppConfig (config.toml).
     pub fn get_dual_llm_settings(&self) -> (String, String) {
-        let state = self.get_state().unwrap_or_default();
+        let state = self.get_state().unwrap_or_else(|_| Default::default());
         let config = self.get_config().ok();
 
         let provider = state

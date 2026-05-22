@@ -64,8 +64,11 @@ pub fn humanize_tool_result(name: &str, v: &serde_json::Value) -> String {
                 .get("path")
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown");
-            let message = obj.get("message").and_then(|v| v.as_str()).unwrap_or("");
-            let diff = obj.get("diff").and_then(|v| v.as_str()).unwrap_or("");
+            let message = obj
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let diff = obj.get("diff").and_then(|v| v.as_str()).unwrap_or_default();
 
             let mut output = String::new();
             if !message.is_empty() {
@@ -120,15 +123,21 @@ pub fn humanize_tool_result(name: &str, v: &serde_json::Value) -> String {
             if results.is_empty() {
                 return "No search results found.".to_string();
             }
-            let query = obj.get("query").and_then(|v| v.as_str()).unwrap_or("");
+            let query = obj
+                .get("query")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
             let mut output = format!(
                 "Search results for \"{}\" ({} items):\n\n",
                 query,
                 results.len()
             );
             for (i, item) in results.iter().enumerate() {
-                let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
-                let url = item.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                let title = item
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let url = item.get("url").and_then(|v| v.as_str()).unwrap_or_default();
                 let snippets = item.get("snippets").and_then(|v| v.as_array());
 
                 output.push_str(&format!("{}. {}\n", i + 1, title));
@@ -181,8 +190,14 @@ pub fn humanize_tool_result(name: &str, v: &serde_json::Value) -> String {
         // Special handling for command execution
         if obj.contains_key("stdout") && obj.contains_key("stderr") && obj.contains_key("exit_code")
         {
-            let stdout = obj.get("stdout").and_then(|v| v.as_str()).unwrap_or("");
-            let stderr = obj.get("stderr").and_then(|v| v.as_str()).unwrap_or("");
+            let stdout = obj
+                .get("stdout")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let stderr = obj
+                .get("stderr")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
             let exit_code = obj.get("exit_code").and_then(|v| v.as_i64()).unwrap_or(-1);
 
             let mut output = format!("Exit Code: {}\n", exit_code);

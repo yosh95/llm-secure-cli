@@ -204,7 +204,7 @@ impl ConfigManager {
     fn is_local_ollama(config: &AppConfig) -> bool {
         match config.providers.get("ollama") {
             Some(p_cfg) => {
-                let base_url = p_cfg.api_url.as_deref().unwrap_or("");
+                let base_url = p_cfg.api_url.as_deref().unwrap_or_default();
                 base_url.is_empty()
                     || base_url.contains("localhost")
                     || base_url.contains("127.0.0.1")
@@ -345,7 +345,10 @@ impl ConfigManager {
                 continue;
             }
 
-            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or_default();
             if ext != "txt" && ext != "md" {
                 continue;
             }
@@ -353,7 +356,7 @@ impl ConfigManager {
             let name = path
                 .file_stem()
                 .and_then(|s| s.to_str())
-                .unwrap_or("")
+                .unwrap_or_default()
                 .to_string();
             if name.is_empty() {
                 continue;

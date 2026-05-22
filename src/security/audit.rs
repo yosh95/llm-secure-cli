@@ -263,28 +263,45 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
     let mut final_args = params.args.clone();
     let mut encryption_failed = false;
 
-    if params.config.security.security_level == "high"
+    if params.config.security.security_level == crate::config::models::SecurityLevel::High
         && let Ok(pk) = crate::security::identity::IdentityManager::get_kem_public_key()
     {
-        let arg_bytes = serde_json::to_vec(&params.args).unwrap_or_default();
-        match crate::security::pqc::SecureStorage::encrypt(&arg_bytes, &pk) {
-            Ok(packet) => {
-                final_args = serde_json::to_value(packet).unwrap_or_else(|_| params.args.clone());
-                pqc_encrypted = true;
+        match serde_json::to_vec(&params.args) {
+            Ok(arg_bytes) => {
+                match crate::security::pqc::SecureStorage::encrypt(&arg_bytes, &pk) {
+                    Ok(packet) => {
+                        final_args =
+                            serde_json::to_value(packet).unwrap_or_else(|_| params.args.clone());
+                        pqc_encrypted = true;
+                    }
+                    Err(e) => {
+                        // Encryption failure in high-security mode is a critical integrity event.
+                        // Rather than silently dropping the audit entry (which creates a forensic
+                        // gap an attacker could exploit), we record the failure and store redacted
+                        // args so the event is still traceable.
+                        tracing::error!(
+                            tool = params.tool_name,
+                            error = %e,
+                            "PQC audit encryption failed in high-security mode; storing redacted entry"
+                        );
+                        final_args = serde_json::json!({
+                            "pqc_encryption": "FAILED",
+                            "error": format!("{}", e),
+                            "args_redacted": true
+                        });
+                        encryption_failed = true;
+                    }
+                }
             }
             Err(e) => {
-                // Encryption failure in high-security mode is a critical integrity event.
-                // Rather than silently dropping the audit entry (which creates a forensic
-                // gap an attacker could exploit), we record the failure and store redacted
-                // args so the event is still traceable.
                 tracing::error!(
                     tool = params.tool_name,
                     error = %e,
-                    "PQC audit encryption failed in high-security mode; storing redacted entry"
+                    "Failed to serialize args for PQC encryption; storing redacted entry"
                 );
                 final_args = serde_json::json!({
                     "pqc_encryption": "FAILED",
-                    "error": format!("{}", e),
+                    "error": format!("Arg serialization failed: {}", e),
                     "args_redacted": true
                 });
                 encryption_failed = true;
@@ -328,8 +345,26 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         cli_version,
     };
 
-    // Calculate hash over COMPLETE data before truncation for integrity
-    let entry_json = serde_json::to_string(&log_entry).unwrap_or_default();
+    // Calculate hash over COMPLETE data before truncation for integrity.
+    // If serialization fails, the hash chain must still be maintained —
+    // we generate a deterministic fallback hash from the trace_id and
+    // timestamp to avoid producing a predictable (empty-string) hash.
+    let entry_json = match serde_json::to_string(&log_entry) {
+        Ok(json) => json,
+        Err(e) => {
+            tracing::error!(
+                tool = params.tool_name,
+                error = %e,
+                "CRITICAL: Audit entry serialization failed; using fallback hash"
+            );
+            log_entry.status =
+                AuditStatus::IntegrityFailure(format!("Entry serialization failed: {}", e));
+            format!(
+                "{{\"fallback\": true, \"trace_id\": \"{}\", \"timestamp\": \"{}\"}}",
+                log_entry.trace_id, log_entry.timestamp
+            )
+        }
+    };
     let mut hasher = Sha256::new();
     hasher.update(entry_json.as_bytes());
     log_entry.hash = crate::utils::hex_encode(hasher.finalize());
@@ -365,7 +400,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                 // Do NOT return None — persist the entry for forensic traceability.
             }
         }
-    } else if params.config.security.security_level == "high" {
+    } else if params.config.security.security_level == crate::config::models::SecurityLevel::High {
         let msg = "PQC Private Key unavailable in high-security mode.";
         tracing::error!(
             tool = params.tool_name,
@@ -405,7 +440,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
     match options.open(path) {
         Err(e) => {
             tracing::error!(path = %path.display(), error = %e, "audit log open failed");
-            if params.config.security.security_level == "high" {
+            if params.config.security.security_level == crate::config::models::SecurityLevel::High {
                 crate::cli::ui::report_error(&format!("CRITICAL: Audit log unavailable: {}", e));
             }
             return None;
@@ -420,7 +455,9 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
             };
             if let Err(e) = writeln!(file, "{}", line) {
                 tracing::error!(path = %path.display(), error = %e, "audit log write failed");
-                if params.config.security.security_level == "high" {
+                if params.config.security.security_level
+                    == crate::config::models::SecurityLevel::High
+                {
                     crate::cli::ui::report_error(&format!(
                         "CRITICAL: Audit log write failed: {}",
                         e

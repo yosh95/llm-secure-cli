@@ -27,7 +27,8 @@
 //! - [`tools`] — Built-in tool registry (file ops, search, Python execution, web, MCP)
 //! - [`utils`] — Logging, HTTP, chat logging, media handling
 
-#![warn(clippy::unwrap_used)]
+#![deny(clippy::unwrap_used)]
+#![warn(clippy::expect_used)]
 
 pub mod cli;
 pub mod config;

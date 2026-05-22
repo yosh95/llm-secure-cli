@@ -75,7 +75,7 @@ fn parse_multimodal_content_array(msg: &Value, parts: &mut Vec<MessagePart>) {
                     let b64 = audio_data
                         .get("data")
                         .and_then(|v| v.as_str())
-                        .unwrap_or("");
+                        .unwrap_or_default();
                     let format = audio_data
                         .get("format")
                         .and_then(|v| v.as_str())

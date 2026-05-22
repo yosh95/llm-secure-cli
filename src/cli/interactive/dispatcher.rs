@@ -421,7 +421,7 @@ pub fn handle_info(session: &ActiveSession) {
     };
     ui::print_key_value("System Integrity", &integrity_status);
     ui::print_key_value("PQC Algorithm", "ML-DSA-65 (Dilithium)");
-    ui::print_key_value("Security Level", &config.security.security_level);
+    ui::print_key_value("Security Level", config.security.security_level.as_str());
 
     ui::print_rule(Some("Statistics"), Some("cyan"));
     ui::print_key_value(
