@@ -115,6 +115,7 @@ pub fn page_output(content: &str, term_height: u16) {
 
 /// Spawn `less -FR` with a friendly status-line prompt so users unfamiliar
 /// with `less` know how to navigate and exit.
+#[allow(clippy::suspicious_command_arg_space)]
 fn try_less_pager(content: &str) -> bool {
     use std::process::{Command, Stdio};
 
@@ -123,7 +124,7 @@ fn try_less_pager(content: &str) -> bool {
     // -Pm set the status-line prompt (default is just ":", which confuses newcomers)
     let mut child = match Command::new("less")
         .arg("-FR")
-        .args(["-Pm", "Press q to quit, ↑↓/j k to scroll, / to search"])
+        .arg("-PmPress q to quit, ↑↓/j k to scroll, / to search")
         .stdin(Stdio::piped())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
