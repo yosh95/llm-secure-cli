@@ -62,4 +62,3 @@ rand = { version = "0.8", default-features = false }
 argon2 = { version = "0.5", default-features = false, features = ["std"] }
 rpassword = { version = "7.3", default-features = false }
 
-[dev-dependencies]
