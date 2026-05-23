@@ -18,7 +18,7 @@ COPY src ./src
 
 # 4. Build the final binary
 # We touch the main file to ensure cargo rebuilds it
-RUN touch src/main.rs && cargo build --release
+RUN touch src/lib.rs src/main.rs && cargo build --release
 
 # --- Runtime Stage (Sandbox Environment) ---
 FROM debian:trixie-slim
