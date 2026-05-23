@@ -2,7 +2,7 @@
 //!
 //! Supports three modes:
 //! - `Disabled`: print everything directly.
-//! - `Auto`: try `less -FR`, fall back to printing directly.
+//! - `Auto`: try `less -FRM`, fall back to printing directly.
 //! - `External(cmd)`: use a specific command, fall back to printing directly.
 //!
 //! In all cases, after the pager exits the full content is printed to stdout,
@@ -14,7 +14,7 @@
 //! ```toml
 //! [general]
 //! pager = "auto"          # try less, fallback to direct print
-//! pager = "less -FR"      # specific command
+//! pager = "less -FRM"     # specific command
 //! pager = ""              # disabled (default)
 //! ```
 
@@ -46,9 +46,9 @@ pub fn get_pager_config() -> &'static PagerConfig {
 pub enum PagerConfig {
     /// No paging — print everything directly (default).
     Disabled,
-    /// Try `less -FR`; if unavailable, print directly.
+    /// Try `less -FRM`; if unavailable, print directly.
     Auto,
-    /// Use a specific external command (e.g. `"less -FR"`).
+    /// Use a specific external command (e.g. `"less -FRM"`).
     /// Falls back to printing directly if the command cannot be launched.
     External(String),
 }
@@ -113,7 +113,7 @@ pub fn page_output(content: &str, term_height: u16) {
 // External pager
 // ---------------------------------------------------------------------------
 
-/// Spawn `less -FR` with a friendly status-line prompt so users unfamiliar
+/// Spawn `less -FRM` with a friendly status-line prompt so users unfamiliar
 /// with `less` know how to navigate and exit.
 #[allow(clippy::suspicious_command_arg_space)]
 fn try_less_pager(content: &str) -> bool {
@@ -123,8 +123,7 @@ fn try_less_pager(content: &str) -> bool {
     // -R  interpret ANSI colour escapes
     // -Pm set the status-line prompt (default is just ":", which confuses newcomers)
     let mut child = match Command::new("less")
-        .arg("-FR")
-        .arg("-PmPress q to quit, ↑↓/j k to scroll, / to search")
+        .arg("-FRM")
         .stdin(Stdio::piped())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
