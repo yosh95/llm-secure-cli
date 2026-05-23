@@ -364,7 +364,11 @@ impl ConfigManager {
 
             match std::fs::read_to_string(&path) {
                 Ok(content) => {
-                    templates.insert(name, content);
+                    // Strip trailing newlines — text editors often add a final \n
+                    // (POSIX convention), which would cause the cursor to move to
+                    // the next line when the template is inserted via /template.
+                    let content = content.trim_end_matches(&['\n', '\r'] as &[_]);
+                    templates.insert(name, content.to_string());
                 }
                 Err(e) => {
                     tracing::warn!(
