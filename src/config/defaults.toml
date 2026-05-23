@@ -25,8 +25,8 @@ max_output_chars = 100000
 
 # Pager for long output. Supported values:
 #   "" (empty)       = disable pager, print everything directly (default)
-#   "auto"           = try 'less -FRME', fall back to built-in pager
-#   "less -FRME"     = use a specific command; falls back to built-in pager on error
+#   "auto"           = try 'less -FRMe', fall back to built-in pager
+#   "less -FRMe"     = use a specific command; falls back to built-in pager on error
 pager = "auto"
 
 # =============================================================================

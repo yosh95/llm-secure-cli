@@ -135,6 +135,20 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             let new = obj.get("new").and_then(|v| v.as_str()).unwrap_or_default();
             let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
+            // Print explanation FIRST
+            if let Some(exp) = explanation {
+                push_line(
+                    &mut buf,
+                    &format!(
+                        "    {} {}: {}",
+                        "\u{2022}".bright_black(),
+                        "explanation".cyan(),
+                        exp
+                    ),
+                );
+            }
+
+            // Then print path
             push_line(
                 &mut buf,
                 &format!(
@@ -194,7 +208,7 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                 }
             }
 
-            // Print other arguments if any (except explanation which we want last)
+            // Print remaining arguments (old, new, etc.)
             for (k, v) in obj {
                 if k != "path" && k != "old" && k != "new" && k != "explanation" {
                     let val_str = v
@@ -212,8 +226,11 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                     );
                 }
             }
+        } else if name == "execute_python" {
+            let code = obj.get("code").and_then(|v| v.as_str()).unwrap_or_default();
+            let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
-            // Print explanation last for edit_file
+            // Print explanation FIRST
             if let Some(exp) = explanation {
                 push_line(
                     &mut buf,
@@ -225,10 +242,8 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                     ),
                 );
             }
-        } else if name == "execute_python" {
-            let code = obj.get("code").and_then(|v| v.as_str()).unwrap_or_default();
-            let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
+            // Then print code (path-like)
             push_line(
                 &mut buf,
                 &format!("    {} {}:", "\u{2022}".bright_black(), "code".cyan()),
@@ -257,22 +272,81 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                     );
                 }
             }
-            // Print explanation last
+        } else {
+            let explanation = obj.get("explanation").and_then(|v| v.as_str());
+
+            // Print explanation FIRST
             if let Some(exp) = explanation {
+                let val_str = exp.to_string();
                 push_line(
                     &mut buf,
                     &format!(
                         "    {} {}: {}",
                         "\u{2022}".bright_black(),
                         "explanation".cyan(),
-                        exp
+                        val_str
                     ),
                 );
             }
-        } else {
-            // Print all arguments except explanation
-            for (k, v) in obj {
+
+            // Define priority categories for parameter ordering
+            let path_like = [
+                "path",
+                "url",
+                "directory",
+                "query",
+                "pattern",
+                "file_pattern",
+                "content",
+                "code",
+                "old",
+                "new",
+                "ignore_patterns",
+                "exclude_patterns",
+                "include_hidden",
+                "max_files",
+                "depth",
+            ];
+            let start_keys = ["start_line"];
+            let end_keys = ["end_line"];
+
+            // Collect remaining keys
+            let mut remaining_keys: Vec<&String> = Vec::new();
+            for k in obj.keys() {
                 if k != "explanation" {
+                    remaining_keys.push(k);
+                }
+            }
+
+            // Sort: path-like first, then start, then end, then rest (alphabetically)
+            remaining_keys.sort_by(|a, b| {
+                let a_is_path = path_like.contains(&a.as_str());
+                let b_is_path = path_like.contains(&b.as_str());
+                let a_is_start = start_keys.contains(&a.as_str());
+                let b_is_start = start_keys.contains(&b.as_str());
+                let a_is_end = end_keys.contains(&a.as_str());
+                let b_is_end = end_keys.contains(&b.as_str());
+
+                if a_is_path && !b_is_path {
+                    std::cmp::Ordering::Less
+                } else if !a_is_path && b_is_path {
+                    std::cmp::Ordering::Greater
+                } else if a_is_start && !b_is_start {
+                    std::cmp::Ordering::Less
+                } else if !a_is_start && b_is_start {
+                    std::cmp::Ordering::Greater
+                } else if a_is_end && !b_is_end {
+                    std::cmp::Ordering::Less
+                } else if !a_is_end && b_is_end {
+                    std::cmp::Ordering::Greater
+                } else {
+                    a.cmp(b)
+                }
+            });
+
+            // Print parameters in the determined order
+            for k in remaining_keys {
+                if let Some(v) = obj.get(k) {
                     let val_str = v
                         .as_str()
                         .map(|s| s.to_string())
@@ -287,22 +361,6 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                         ),
                     );
                 }
-            }
-            // Print explanation last
-            if let Some(v) = obj.get("explanation") {
-                let val_str = v
-                    .as_str()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| v.to_string());
-                push_line(
-                    &mut buf,
-                    &format!(
-                        "    {} {}: {}",
-                        "\u{2022}".bright_black(),
-                        "explanation".cyan(),
-                        val_str
-                    ),
-                );
             }
         }
     } else {
