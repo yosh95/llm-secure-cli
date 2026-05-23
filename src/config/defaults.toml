@@ -48,7 +48,7 @@ security_level = "high"
 # Auto-Approval Policy
 # Controls which tools can run without human intervention.
 # - "none":   All tools require manual approval (Safest).
-# - "low":    Only low_risk_tools (e.g., list_files) are auto-approved.
+# - "low":    Only low_risk_tools are auto-approved.
 # - "medium": Low and medium risk tools are auto-approved.
 # Note: Any 'block' or 'warning' from the Dual LLM auditor will always force manual intervention.
 auto_approval_level = "none"
@@ -62,19 +62,11 @@ allowed_tools = ["*"]
 # Risk Level Classification
 high_risk_tools = [
     "execute_python",
-    "edit_file",
-    "create_or_overwrite_file",
-    "read_url_content",
 ]
 medium_risk_tools = [
-    "read_file",
-    "grep_files",
     "brave_search",
 ]
-low_risk_tools = [
-    "list_files",
-    "search_files",
-]
+low_risk_tools = []
 
 # Dual LLM Verification (AI-native ABAC / Semantic Firewall)
 # Validates tool calls using a secondary LLM with a hardcoded Security Constitution.

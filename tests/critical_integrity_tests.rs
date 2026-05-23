@@ -21,73 +21,6 @@ use serde_json::json;
 // Each branch (file_ops, grep, search, python, brave_search, etc.) is tested.
 
 #[test]
-fn test_humanize_grep_results_formats_correctly() {
-    let v = json!({
-        "matches": [
-            {"file": "src/main.rs", "line": 42, "text": "fn main() {"},
-            {"file": "src/lib.rs", "line": 7, "text": "pub mod config;"}
-        ]
-    });
-    let output = humanize_tool_result("grep_files", &v);
-    assert!(output.contains("Found 2 matches"));
-    assert!(output.contains("src/main.rs:42: fn main() {"));
-    assert!(output.contains("src/lib.rs:7: pub mod config;"));
-    assert!(!output.contains("[TRUNCATED]"));
-}
-
-#[test]
-fn test_humanize_grep_empty_results_shows_message() {
-    let v = json!({"matches": [], "message": "No matches found."});
-    let output = humanize_tool_result("grep_files", &v);
-    assert_eq!(output, "No matches found.");
-}
-
-#[test]
-fn test_humanize_grep_truncated_flag_shown() {
-    let v = json!({
-        "matches": [{"file": "a.rs", "line": 1, "text": "// hi"}],
-        "truncated": true
-    });
-    let output = humanize_tool_result("grep_files", &v);
-    assert!(output.contains("... (results truncated)"));
-}
-
-#[test]
-fn test_humanize_list_files_shows_items() {
-    let v = json!({
-        "files": [
-            {"path": "src/main.rs", "type": "file"},
-            {"path": "src/lib.rs", "type": "file"},
-            {"path": "images", "type": "dir"}
-        ]
-    });
-    let output = humanize_tool_result("list_files", &v);
-    assert!(output.contains("Found 3 items"));
-    assert!(output.contains("[file] src/main.rs"));
-    assert!(output.contains("[dir] images"));
-}
-
-#[test]
-fn test_humanize_list_files_empty() {
-    let v = json!({"files": [], "message": "No items found."});
-    let output = humanize_tool_result("list_files", &v);
-    assert_eq!(output, "No items found.");
-}
-
-#[test]
-fn test_humanize_search_files_shows_matches() {
-    let v = json!({
-        "results": [
-            {"path": "Cargo.toml", "type": "file"},
-            {"path": "Cargo.lock", "type": "file"}
-        ]
-    });
-    let output = humanize_tool_result("search_files", &v);
-    assert!(output.contains("Found 2 items"));
-    assert!(output.contains("[file] Cargo.toml"));
-}
-
-#[test]
 fn test_humanize_python_execution_shows_stdout_stderr() {
     let v = json!({
         "stdout": "Hello World
@@ -114,42 +47,6 @@ fn test_humanize_python_execution_with_errors() {
     assert!(!output.contains("STDOUT:"));
     assert!(output.contains("STDERR:"));
     assert!(output.contains("NameError"));
-}
-
-#[test]
-fn test_humanize_edit_file_shows_diff() {
-    let v = json!({
-        "success": true,
-        "path": "/tmp/test.txt",
-        "message": "File updated successfully.",
-        "diff": "--- a/test.txt
-+++ b/test.txt
-@@ -1 +1 @@
--old
-+new"
-    });
-    let output = humanize_tool_result("edit_file", &v);
-    assert!(output.contains("File updated successfully."));
-    assert!(output.contains("File: /tmp/test.txt"));
-    assert!(output.contains("--- Diff ---"));
-    assert!(output.contains("-old"));
-    assert!(output.contains("+new"));
-    assert!(output.contains("------------"));
-}
-
-#[test]
-fn test_humanize_create_file_shows_diff() {
-    let v = json!({
-        "success": true,
-        "path": "/tmp/new.txt",
-        "message": "File created successfully.",
-        "diff": "@@ -0,0 +1 @@
-    +new content"
-    });
-    let output = humanize_tool_result("create_or_overwrite_file", &v);
-    assert!(output.contains("File created successfully."));
-    assert!(output.contains("File: /tmp/new.txt"));
-    assert!(output.contains("--- Diff ---"));
 }
 
 #[test]
@@ -768,7 +665,7 @@ fn test_path_validation_accepts_deeply_nested_path() {
 
 // =============================================================================
 //
-// The edit_file tool is high-risk (modifies actual files on disk).
+// The execute_python tool is high-risk (arbitrary code execution).
 // It must handle multiline content, trailing newlines, and edge cases
 // without corrupting data.
 
@@ -789,7 +686,7 @@ fn test_pqc_agility_manager_all_levels_map_correctly() {
         "High-risk tools must get ML-DSA-87"
     );
 
-    // list_files is low-risk → ML-DSA-44 (in Standard mode)
+    // Low-risk tools use ML-DSA-44 (in Standard mode)
     let level = PQCAgilityManager::get_required_level(&config, "list_files", None);
     assert_eq!(
         level,

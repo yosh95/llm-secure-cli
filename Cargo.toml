@@ -1,6 +1,6 @@
 [package]
 name = "llm-secure-cli"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2024"
 autobins = false
 rust-version = "1.95.0"
@@ -47,7 +47,6 @@ regex = { version = "1.11", default-features = false, features = ["std", "perf",
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }
 tempfile = { version = "3.12", default-features = false }
 base64 = { version = "0.22", default-features = false }
-url = { version = "2.5", default-features = false }
 sha2 = { version = "0.11", default-features = false }
 rustyline = { version = "18.0", default-features = false, features = ["custom-bindings", "with-file-history"] }
 mime_guess = { version = "2.0", default-features = false }
@@ -60,9 +59,7 @@ pkcs8 = { version = "0.10", default-features = false, features = ["pem"] }
 uuid = { version = "1.10", default-features = false, features = ["v4"] }
 hostname = { version = "0.4", default-features = false }
 rand = { version = "0.8", default-features = false }
-ignore = { version = "0.4", default-features = false }
 argon2 = { version = "0.5", default-features = false, features = ["std"] }
 rpassword = { version = "7.3", default-features = false }
 
 [dev-dependencies]
-tokio-test = { version = "0.4", default-features = false }

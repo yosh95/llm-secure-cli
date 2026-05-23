@@ -56,67 +56,9 @@ pub fn truncate_json_strings(
 
 /// Converts a tool result (JSON) into a human-readable string.
 /// This is used to provide better output for both humans (CLI) and LLMs.
-pub fn humanize_tool_result(name: &str, v: &serde_json::Value) -> String {
+pub fn humanize_tool_result(_name: &str, v: &serde_json::Value) -> String {
     if let Some(obj) = v.as_object() {
-        // Special handling for file modification tools
-        if (name == "edit_file" || name == "create_or_overwrite_file") && obj.contains_key("diff") {
-            let path = obj
-                .get("path")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            let message = obj
-                .get("message")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            let diff = obj.get("diff").and_then(|v| v.as_str()).unwrap_or_default();
-
-            let mut output = String::new();
-            if !message.is_empty() {
-                output.push_str(&format!("{}\n", message));
-            }
-            output.push_str(&format!("File: {}\n", path));
-            if !diff.is_empty() {
-                output.push_str("--- Diff ---\n");
-                output.push_str(diff);
-                output.push_str("\n------------");
-            }
-            return output;
-        }
-
-        // Special handling for grep_files
-        if let Some(matches) = obj.get("matches").and_then(|v| v.as_array()) {
-            if matches.is_empty() {
-                return obj
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("No matches found.")
-                    .to_string();
-            }
-            let mut output = format!(
-                "Found {} matches:\n",
-                crate::utils::format_number(matches.len())
-            );
-            for m in matches {
-                if let (Some(file), Some(line), Some(text)) = (
-                    m.get("file").and_then(|v| v.as_str()),
-                    m.get("line").and_then(|v| v.as_i64()),
-                    m.get("text").and_then(|v| v.as_str()),
-                ) {
-                    output.push_str(&format!("{}:{}: {}\n", file, line, text));
-                }
-            }
-            if obj
-                .get("truncated")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-            {
-                output.push_str("... (results truncated)\n");
-            }
-            return output;
-        }
-
-        // Special handling for brave_search results (must come before the
-        // generic "results" handler below, which expects file/dir entries).
+        // Special handling for brave_search results
         if let Some(results) = obj.get("results").and_then(|v| v.as_array())
             && obj.get("query").is_some()
         {
@@ -152,39 +94,6 @@ pub fn humanize_tool_result(name: &str, v: &serde_json::Value) -> String {
                 output.push('\n');
             }
             return output;
-        }
-
-        // Special handling for list_files or search_files
-        for key in ["files", "results"] {
-            if let Some(items) = obj.get(key).and_then(|v| v.as_array()) {
-                if items.is_empty() {
-                    return obj
-                        .get("message")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("No items found.")
-                        .to_string();
-                }
-                let mut output = format!(
-                    "Found {} items:\n",
-                    crate::utils::format_number(items.len())
-                );
-                for item in items {
-                    if let Some(path) = item.get("path").and_then(|v| v.as_str()) {
-                        let kind = item.get("type").and_then(|v| v.as_str()).unwrap_or("file");
-                        output.push_str(&format!("[{}] {}\n", kind, path));
-                    } else if let Some(s) = item.as_str() {
-                        output.push_str(&format!("• {}\n", s));
-                    }
-                }
-                if obj
-                    .get("truncated")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-                {
-                    output.push_str("... (results truncated)\n");
-                }
-                return output;
-            }
         }
 
         // Special handling for command execution

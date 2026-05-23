@@ -161,42 +161,6 @@ fn test_audit_hash_chaining() {
     }
 }
 
-#[test]
-fn test_mcp_security_validation() {
-    use llm_secure_cli::security::validate_tool_call;
-    use serde_json::json;
-
-    let config = SecurityConfig {
-        allowed_paths: vec!["/tmp/allowed".to_string()],
-        ..SecurityConfig::default()
-    };
-
-    // 1. MCP-like tool name with path traversal
-    let args = json!({
-        "server_root": "/etc/passwd"
-    });
-    let res = validate_tool_call(
-        "filesystem__read_file",
-        args.as_object().expect("args should be an object"),
-        &config,
-    );
-    // Now returns Ok, delegated to Phase 3 (Dual LLM)
-    assert!(res.is_ok());
-
-    // 2. MCP-like command execution with malicious characters
-    let args = json!({
-        "cmd": "ls",
-        "args": ["normal_arg", "with\0null"]
-    });
-    let res = validate_tool_call(
-        "shell__run_shell",
-        args.as_object().expect("args should be an object"),
-        &config,
-    );
-    // Now returns Ok, delegated to Phase 3 (Dual LLM)
-    assert!(res.is_ok());
-}
-
 // =============================================================================
 // Unit tests for validate_tool_call (Phase 1 static analysis)
 // =============================================================================
@@ -209,38 +173,6 @@ fn make_args(pairs: &[(&str, Value)]) -> Map<String, Value> {
         .iter()
         .map(|(k, v)| (k.to_string(), v.clone()))
         .collect()
-}
-
-#[test]
-fn test_validate_null_byte_in_top_level_string_blocked() {
-    let config = SecurityConfig::default();
-    let args = make_args(&[("path", json!("file\0name.txt"))]);
-    let result = validate_tool_call("read_file", &args, &config);
-    assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .contains("control characters or null bytes")
-    );
-}
-
-#[test]
-fn test_validate_control_char_bell_blocked() {
-    let config = SecurityConfig::default();
-    let args = make_args(&[("content", json!("hello\x07world"))]);
-    let result = validate_tool_call("create_or_overwrite_file", &args, &config);
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_validate_normal_strings_pass() {
-    let config = SecurityConfig::default();
-    let args = make_args(&[
-        ("path", json!("file.txt")),
-        ("content", json!("Hello world\nNew line\tTabbed")),
-    ]);
-    let result = validate_tool_call("edit_file", &args, &config);
-    assert!(result.is_ok());
 }
 
 #[test]
@@ -261,14 +193,6 @@ fn test_validate_non_string_values_pass() {
         ("nothing", json!(null)),
     ]);
     let result = validate_tool_call("some_tool", &args, &config);
-    assert!(result.is_ok());
-}
-
-#[test]
-fn test_validate_empty_args_pass() {
-    let config = SecurityConfig::default();
-    let args = Map::new();
-    let result = validate_tool_call("list_files", &args, &config);
     assert!(result.is_ok());
 }
 

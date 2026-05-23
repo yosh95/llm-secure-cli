@@ -129,104 +129,7 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
     ));
 
     if let Some(obj) = args.as_object() {
-        if name == "edit_file" {
-            let path = obj.get("path").and_then(|v| v.as_str()).unwrap_or_default();
-            let old = obj.get("old").and_then(|v| v.as_str()).unwrap_or_default();
-            let new = obj.get("new").and_then(|v| v.as_str()).unwrap_or_default();
-            let explanation = obj.get("explanation").and_then(|v| v.as_str());
-
-            // Print explanation FIRST
-            if let Some(exp) = explanation {
-                push_line(
-                    &mut buf,
-                    &format!(
-                        "    {} {}: {}",
-                        "\u{2022}".bright_black(),
-                        "explanation".cyan(),
-                        exp
-                    ),
-                );
-            }
-
-            // Then print path
-            push_line(
-                &mut buf,
-                &format!(
-                    "    {} {}: {}",
-                    "\u{2022}".bright_black(),
-                    "path".cyan(),
-                    path
-                ),
-            );
-
-            // Compute a file-based diff so the confirmation preview matches the
-            // post-execution diff.  We read the file, try an exact-match edit,
-            // and diff the original against the would-be result.  If the file
-            // can't be read or the match fails we fall back to a plain old-vs-new
-            // diff (the LLM's intent is still visible).
-            let diff = match std::fs::read_to_string(path) {
-                Ok(original) => {
-                    if let Some(new_content) = try_exact_edit_for_preview(&original, old, new) {
-                        crate::tools::builtin::file_modification::generate_diff(
-                            &original,
-                            &new_content,
-                        )
-                    } else {
-                        // Fall back: old-vs-new diff (exact match not found in file)
-                        crate::tools::builtin::file_modification::generate_diff(old, new)
-                    }
-                }
-                Err(_) => {
-                    // File can't be read (e.g. doesn't exist yet) \u{2014} fall back
-                    crate::tools::builtin::file_modification::generate_diff(old, new)
-                }
-            };
-
-            if diff.is_empty() && !old.is_empty() && old == new {
-                push_line(
-                    &mut buf,
-                    &format!("    {} {}:", "\u{2022}".bright_black(), "diff".cyan()),
-                );
-                push_line(&mut buf, &format!("        {}", "(no changes)".dimmed()));
-            } else if !diff.is_empty() {
-                push_line(
-                    &mut buf,
-                    &format!("    {} {}:", "\u{2022}".bright_black(), "diff".cyan()),
-                );
-                for line in diff.lines() {
-                    if line.starts_with('+') && !line.starts_with("+++") {
-                        push_line(&mut buf, &format!("        {}", line.cyan()));
-                    } else if line.starts_with('-') && !line.starts_with("---") {
-                        push_line(&mut buf, &format!("        {}", line.red()));
-                    } else if line.starts_with("@@") {
-                        push_line(&mut buf, &format!("        {}", line.cyan().dimmed()));
-                    } else if line.starts_with("---") || line.starts_with("+++") {
-                        push_line(&mut buf, &format!("        {}", line.bold().dimmed()));
-                    } else {
-                        push_line(&mut buf, &format!("        {}", line.dimmed()));
-                    }
-                }
-            }
-
-            // Print remaining arguments (old, new, etc.)
-            for (k, v) in obj {
-                if k != "path" && k != "old" && k != "new" && k != "explanation" {
-                    let val_str = v
-                        .as_str()
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| v.to_string());
-                    push_line(
-                        &mut buf,
-                        &format!(
-                            "    {} {}: {}",
-                            "\u{2022}".bright_black(),
-                            k.cyan(),
-                            val_str
-                        ),
-                    );
-                }
-            }
-        } else if name == "execute_python" {
+        if name == "execute_python" {
             let code = obj.get("code").and_then(|v| v.as_str()).unwrap_or_default();
             let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
@@ -583,31 +486,6 @@ pub fn print_tool_result(result: &str) {
             return;
         }
 
-        // Special handling for read_url_content or similar "content" responses
-        if let Some(content) = v.get("content").and_then(|v| v.as_str()) {
-            for line in content.lines().take(20) {
-                push_line(&mut out, &format!("    {}", line.dimmed()));
-            }
-            if content.lines().count() > 20 {
-                push_line(
-                    &mut out,
-                    &format!("    {}", "... (long content truncated in display)".dimmed()),
-                );
-            }
-            if let Some(notes) = v.get("notes").and_then(|v| v.as_array()) {
-                for note in notes {
-                    if let Some(n) = note.as_str() {
-                        push_line(
-                            &mut out,
-                            &format!("    {} {}", "!".yellow(), n.yellow().dimmed()),
-                        );
-                    }
-                }
-            }
-            finish_tool_result(out);
-            return;
-        }
-
         if let Ok(pretty) = serde_json::to_string_pretty(&v) {
             // If it's a complex object, show it pretty
             if v.is_object() || v.is_array() {
@@ -880,16 +758,4 @@ pub fn open_external_editor(initial_content: &str) -> anyhow::Result<String> {
     file.read_to_string(&mut content)?;
 
     Ok(content)
-}
-
-/// Exact-match edit helper used by `print_tool_call` to preview the result of
-/// an `edit_file` operation on the actual file content before the real
-/// execution.  Returns the file content after applying the replacement, or
-/// `None` when the `old` string does not appear exactly once in the file.
-fn try_exact_edit_for_preview(original: &str, old: &str, new: &str) -> Option<String> {
-    let count = original.matches(old).count();
-    if count != 1 {
-        return None;
-    }
-    Some(original.replacen(old, new, 1))
 }

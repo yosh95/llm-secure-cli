@@ -49,27 +49,11 @@ pub fn get_tool_result_stats(name: &str, result: &Value) -> ToolResultStats {
         }
 
         // Special handling for item lists — choose a label appropriate to the tool
-        if name == "grep_files" {
-            if let Some(arr) = obj.get("matches").and_then(|a| a.as_array()) {
-                item_count = Some(arr.len());
-                item_label = "matches";
-            }
-        } else if name == "brave_search" {
-            if let Some(arr) = obj.get("results").and_then(|a| a.as_array()) {
-                item_count = Some(arr.len());
-                item_label = "items";
-            }
-        } else {
-            for key in ["matches", "results", "files"] {
-                if let Some(arr) = obj.get(key).and_then(|a| a.as_array()) {
-                    item_count = Some(arr.len());
-                    item_label = match key {
-                        "matches" => "matches",
-                        _ => "files",
-                    };
-                    break;
-                }
-            }
+        if name == "brave_search"
+            && let Some(arr) = obj.get("results").and_then(|a| a.as_array())
+        {
+            item_count = Some(arr.len());
+            item_label = "items";
         }
         // tool_outputs often use "content"
         if let Some(content) = obj.get("content").and_then(|v| v.as_str()) {

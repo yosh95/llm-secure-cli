@@ -97,19 +97,16 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 ## Core Features & Tools
 
 - **Unified Provider Access**: Seamlessly switch between any OpenAI-compatible APIs (**OpenRouter, OpenAI, Ollama, LiteLLM**).
-- **Autonomous Agent**: A powerful set of built-in tools for complex automation:
-    - **File Operations**: `list_files`, `read_file` (with paging support), `grep_files`, `search_files`.
-    - **Search**: `grep_files` (regex content search) and `search_files` (filename pattern search).
-    - **Modification**: `edit_file` (precision block replacement with exact/flexible/regex matching) and `create_or_overwrite_file`.
-    - **System & Web**: `execute_python` (secure Python execution with Dual LLM verification) and `read_url_content` (HTML-to-Markdown conversion with SSRF protection).
-    - **Web Search**: `brave_search` using the Brave LLM Context API for grounded, pre-extracted content.
+- **Autonomous Agent**: A streamlined set of built-in tools for complex automation:
+    - **Universal Executor**: `execute_python` — run arbitrary Python code for any file operation, data processing, or computation task.
+    - **Web Search**: `brave_search` — Brave LLM Context API for grounded, pre-extracted web content (LLM-optimized).
 - **High-Assurance via Dual LLM**: Every non-auto-approved tool call is verified by a secondary LLM as a Semantic Firewall to ensure intent alignment.
 - **MCP (Model Context Protocol)**: Connect to remote resources or services via custom servers.
 - **Operational Stability**: A clean, flicker-free UI designed for long-term "Deep Work" sessions.
 - **Human-in-the-Loop**: Configurable `auto_approval_level` (none/low/medium) to balance speed and safety.
 
 ### Autonomous Agent Capabilities
-The AI agent autonomously selects tools to perform tasks. For example, it can search for a bug using `grep_files`, read the relevant code with `read_file`, and apply a fix with `edit_file`. All actions are logged with cryptographic signatures for auditability.
+The AI agent autonomously selects tools to perform tasks. For example, it can search for a bug with Python file operations, read the relevant code, and apply a fix — all through `execute_python`. All actions are logged with cryptographic signatures for auditability.
 
 ---
 
