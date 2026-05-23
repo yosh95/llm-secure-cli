@@ -62,7 +62,7 @@ pub fn load_key(path: &Path) -> Result<Vec<u8>> {
     data.extend_from_slice(&magic);
     file.read_to_end(&mut data)?;
     let pw = read_passphrase_or_cached(false)?; // false = not optional for encrypted keys
-    load_encrypted_inner(&data, &pw)
+    load_encrypted_key_data(&data, &pw)
 }
 
 /// Purge the passphrase cache (called on session end).
@@ -250,7 +250,16 @@ fn save_encrypted(path: &Path, key_bytes: &[u8], passphrase: &str) -> Result<()>
     Ok(())
 }
 
-fn load_encrypted_inner(data: &[u8], passphrase: &str) -> Result<Vec<u8>> {
+/// Decrypt an LKEF-format key blob using the given passphrase.
+///
+/// This is the testable core of encrypted key loading — it takes raw file
+/// bytes and a passphrase directly, bypassing the interactive prompt / env var
+/// resolution.  Callers that need to resolve the passphrase from the environment
+/// or user input should use [`load_key`] instead.
+///
+/// # Format
+/// `data` is expected to be: `LKEF(4) || salt(16) || nonce(12) || ciphertext(N+16)`
+pub(crate) fn load_encrypted_key_data(data: &[u8], passphrase: &str) -> Result<Vec<u8>> {
     if data.len() < HEADER_SIZE + 1 {
         return Err(anyhow!("Invalid encrypted key file: too short"));
     }
@@ -287,4 +296,124 @@ fn set_permissions(_path: &std::path::Path) -> Result<()> {
         fs::set_permissions(_path, fs::Permissions::from_mode(0o600))?;
     }
     Ok(())
+}
+
+
+// ─────────────────────────────────────────────
+// Tests
+// ─────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_save_and_load_raw() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("test_key");
+        let key_data = b"this-is-a-test-key-32-bytes!!";
+
+        save_key(&path, key_data, None).expect("save raw key");
+        assert!(path.exists(), "Raw key file must exist");
+
+        let loaded = load_key(&path).expect("load raw key");
+        assert_eq!(loaded, key_data, "Raw key data must match after load");
+        assert!(!is_encrypted(&path), "Raw key must not be marked encrypted");
+    }
+
+    #[test]
+    fn test_save_and_load_encrypted_with_passphrase() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("test_key_enc");
+        let key_data = b"test-key-data-for-encryption";
+        let passphrase = "test-passphrase-123";
+
+        save_key(&path, key_data, Some(passphrase)).expect("save encrypted key");
+        assert!(path.exists(), "Encrypted key file must exist");
+        assert!(is_encrypted(&path), "Key must be marked encrypted");
+
+        let file_bytes = std::fs::read(&path).expect("read encrypted key file");
+        let loaded = load_encrypted_key_data(&file_bytes, passphrase)
+            .expect("load encrypted key with passphrase");
+        assert_eq!(loaded, key_data, "Encrypted key data must match after load/decrypt");
+    }
+
+    #[test]
+    fn test_encrypted_wrong_passphrase_rejected() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("test_key_wrong_pw");
+        let key_data = b"test-key-data-for-wrong-passphrase";
+        let correct_pw = "correct-passphrase";
+        let wrong_pw = "wrong-passphrase";
+
+        save_key(&path, key_data, Some(correct_pw)).expect("save encrypted key");
+
+        let file_bytes = std::fs::read(&path).expect("read encrypted key file");
+        let result = load_encrypted_key_data(&file_bytes, wrong_pw);
+        assert!(result.is_err(), "Wrong passphrase must fail decryption");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("incorrect passphrase"),
+            "Error must mention incorrect passphrase, got: {}",
+            err_msg
+        );
+    }
+
+    #[test]
+    fn test_encrypted_file_format() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("test_key_format");
+        let key_data = b"test-key-data-for-format-check";
+        let passphrase = "correct-passphrase";
+
+        save_key(&path, key_data, Some(passphrase)).expect("save encrypted key");
+
+        let file_bytes = std::fs::read(&path).expect("read encrypted key file");
+        assert!(file_bytes.starts_with(b"LKEF"), "File must start with LKEF magic");
+        let expected_len = 4 + 16 + 12 + key_data.len() + 16;
+        assert_eq!(file_bytes.len(), expected_len,
+            "File must have correct size: expected {}, got {}",
+            expected_len, file_bytes.len());
+    }
+
+    #[test]
+    fn test_empty_passphrase_treated_as_raw() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("test_key_empty_pw");
+        let key_data = b"test-key-data";
+
+        save_key(&path, key_data, Some("")).expect("save with empty passphrase");
+        assert!(!is_encrypted(&path), "Empty passphrase should not encrypt");
+
+        let loaded = load_key(&path).expect("load raw key");
+        assert_eq!(loaded, key_data);
+    }
+
+    #[test]
+    fn test_encrypted_corrupted_file_rejected() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("test_key_corrupt");
+        let key_data = b"test-key-data";
+        let passphrase = "test-passphrase";
+
+        save_key(&path, key_data, Some(passphrase)).expect("save encrypted key");
+
+        let mut file_bytes = std::fs::read(&path).expect("read encrypted key file");
+        let corrupt_pos = file_bytes.len() - 10;
+        file_bytes[corrupt_pos] ^= 0xFF;
+
+        let result = load_encrypted_key_data(&file_bytes, passphrase);
+        assert!(result.is_err(), "Corrupted encrypted key must fail decryption");
+    }
+
+    #[test]
+    fn test_encrypted_too_short_data_rejected() {
+        let result = load_encrypted_key_data(b"LKEF", "passphrase");
+        assert!(result.is_err(), "Too short encrypted data must be rejected");
+        assert!(
+            result.unwrap_err().to_string().contains("too short"),
+            "Error must mention too short"
+        );
+    }
 }

@@ -183,7 +183,7 @@ pub struct GeneralConfig {
     #[serde(default = "default_max_output_chars")]
     pub max_output_chars: usize,
     /// Pager for long output.  `""` = disabled (default), `"auto"` = try less / built-in,
-    /// or a specific command like `"less -FRM"`.
+    /// or a specific command like `"less -FRME"`.
     #[serde(default)]
     pub pager: Option<String>,
 }
