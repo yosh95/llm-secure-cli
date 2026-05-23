@@ -298,13 +298,13 @@ fn set_permissions(_path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-
 // ─────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
     use super::*;
     use tempfile::tempdir;
 
@@ -336,7 +336,10 @@ mod tests {
         let file_bytes = std::fs::read(&path).expect("read encrypted key file");
         let loaded = load_encrypted_key_data(&file_bytes, passphrase)
             .expect("load encrypted key with passphrase");
-        assert_eq!(loaded, key_data, "Encrypted key data must match after load/decrypt");
+        assert_eq!(
+            loaded, key_data,
+            "Encrypted key data must match after load/decrypt"
+        );
     }
 
     #[test]
@@ -370,11 +373,18 @@ mod tests {
         save_key(&path, key_data, Some(passphrase)).expect("save encrypted key");
 
         let file_bytes = std::fs::read(&path).expect("read encrypted key file");
-        assert!(file_bytes.starts_with(b"LKEF"), "File must start with LKEF magic");
+        assert!(
+            file_bytes.starts_with(b"LKEF"),
+            "File must start with LKEF magic"
+        );
         let expected_len = 4 + 16 + 12 + key_data.len() + 16;
-        assert_eq!(file_bytes.len(), expected_len,
+        assert_eq!(
+            file_bytes.len(),
+            expected_len,
             "File must have correct size: expected {}, got {}",
-            expected_len, file_bytes.len());
+            expected_len,
+            file_bytes.len()
+        );
     }
 
     #[test]
@@ -404,7 +414,10 @@ mod tests {
         file_bytes[corrupt_pos] ^= 0xFF;
 
         let result = load_encrypted_key_data(&file_bytes, passphrase);
-        assert!(result.is_err(), "Corrupted encrypted key must fail decryption");
+        assert!(
+            result.is_err(),
+            "Corrupted encrypted key must fail decryption"
+        );
     }
 
     #[test]

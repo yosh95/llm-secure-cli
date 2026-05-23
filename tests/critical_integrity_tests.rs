@@ -91,7 +91,7 @@ fn test_humanize_search_files_shows_matches() {
 fn test_humanize_python_execution_shows_stdout_stderr() {
     let v = json!({
         "stdout": "Hello World
-",
+    ",
         "stderr": "",
         "exit_code": 0
     });
@@ -144,7 +144,7 @@ fn test_humanize_create_file_shows_diff() {
         "path": "/tmp/new.txt",
         "message": "File created successfully.",
         "diff": "@@ -0,0 +1 @@
-+new content"
+    +new content"
     });
     let output = humanize_tool_result("create_or_overwrite_file", &v);
     assert!(output.contains("File created successfully."));
@@ -171,8 +171,12 @@ fn test_humanize_brave_search_formats_correctly() {
     });
     let output = humanize_tool_result("brave_search", &v);
     let expected_prefix = "Search results for \"rust programming\" (2 items)";
-    assert!(output.starts_with(expected_prefix),
-        "Expected prefix: {:?}, got: {:?}", expected_prefix, &output[..expected_prefix.len().min(output.len())]);
+    assert!(
+        output.starts_with(expected_prefix),
+        "Expected prefix: {:?}, got: {:?}",
+        expected_prefix,
+        &output[..expected_prefix.len().min(output.len())]
+    );
     assert!(output.contains("1. Rust Lang"));
     assert!(output.contains("URL: https://www.rust-lang.org"));
     assert!(output.contains("2. Learn Rust"));
@@ -192,13 +196,32 @@ fn test_humanize_fallback_shows_pretty_json_for_objects() {
     let v = json!({"custom": "data", "nested": {"key": "val"}});
     let output = humanize_tool_result("unknown_tool", &v);
     // Should produce pretty-printed JSON with indented keys
-    assert!(output.contains("custom"), "output should contain key 'custom': {}", output);
-    assert!(output.contains("nested"), "output should contain key 'nested': {}", output);
-    assert!(output.contains("data"), "output should contain value 'data': {}", output);
-    assert!(output.contains("val"), "output should contain value 'val': {}", output);
+    assert!(
+        output.contains("custom"),
+        "output should contain key 'custom': {}",
+        output
+    );
+    assert!(
+        output.contains("nested"),
+        "output should contain key 'nested': {}",
+        output
+    );
+    assert!(
+        output.contains("data"),
+        "output should contain value 'data': {}",
+        output
+    );
+    assert!(
+        output.contains("val"),
+        "output should contain value 'val': {}",
+        output
+    );
     // Should have newlines (pretty-print) or be structured
-    assert!(output.contains('\n') || output.contains('{'),
-        "output should be structured JSON: {}", output);
+    assert!(
+        output.contains('\n') || output.contains('{'),
+        "output should be structured JSON: {}",
+        output
+    );
 }
 
 #[test]
@@ -226,7 +249,7 @@ fn test_humanize_fallback_shows_number() {
 #[test]
 fn test_truncate_output_under_limit_unchanged() {
     let input = "Hello, world!";
-    let result = truncate_output(&input, 100, 1000);
+    let result = truncate_output(input, 100, 1000);
     assert_eq!(result, input);
 }
 
@@ -235,7 +258,7 @@ fn test_truncate_output_exactly_at_line_limit() {
     let input = "line1
 line2
 line3";
-    let result = truncate_output(&input, 3, 1000);
+    let result = truncate_output(input, 3, 1000);
     // Exactly 3 lines — should not truncate
     assert_eq!(result, input);
 }
@@ -246,7 +269,7 @@ fn test_truncate_output_one_line_over_limit() {
 line2
 line3
 line4";
-    let result = truncate_output(&input, 3, 1000);
+    let result = truncate_output(input, 3, 1000);
     assert!(result.contains("line1"));
     assert!(result.contains("line2"));
     assert!(result.contains("line3"));
@@ -268,14 +291,23 @@ fn test_truncate_output_one_char_over_limit() {
     // The content before the truncation message must be exactly 100 chars
     let trunc_msg_start = result.find("... (Output truncated").unwrap_or(result.len());
     let content_part = &result[..trunc_msg_start];
-    assert_eq!(content_part.chars().filter(|&c| c == 'a').count(), 100,
-        "Content before truncation message should be 100 chars");
+    assert_eq!(
+        content_part.chars().filter(|&c| c == 'a').count(),
+        100,
+        "Content before truncation message should be 100 chars"
+    );
     // Verify the message mentions truncation occurred
-    assert!(result.contains("(Output truncated"),
-        "Result must indicate truncation: {:?}", result);
+    assert!(
+        result.contains("(Output truncated"),
+        "Result must indicate truncation: {:?}",
+        result
+    );
     // Verify we see the original and shown counts somewhere
-    assert!(result.contains("100 of") || result.contains("101"),
-        "Should show char counts: {:?}", result);
+    assert!(
+        result.contains("100 of") || result.contains("101"),
+        "Should show char counts: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -310,14 +342,15 @@ fn test_truncate_output_empty_string() {
 #[test]
 fn test_truncate_output_zero_lines_truncates_all() {
     let input = "some content";
-    let result = truncate_output(&input, 0, 1000);
+    let result = truncate_output(input, 0, 1000);
     assert!(result.contains("Shown 0 of"));
 }
 
 #[test]
 fn test_truncate_output_both_limits_hit() {
     let input = "short
-".repeat(200); // 200 lines, ~1200 chars
+"
+    .repeat(200); // 200 lines, ~1200 chars
     let result = truncate_output(&input, 50, 500);
     // Both limits exceeded — the most restrictive applies
     assert!(result.contains("Shown"));
@@ -332,7 +365,7 @@ line2
 line3
 line4
 line5";
-    let result = truncate_output(&input, 3, 1000);
+    let result = truncate_output(input, 3, 1000);
     let msg_line = result.lines().last().unwrap();
     assert!(msg_line.starts_with("... (Output truncated."));
     assert!(msg_line.contains("Shown 3 of 5 lines"));
@@ -379,7 +412,9 @@ fn test_audit_status_pqc_encryption_failed_round_trip() {
     let status = AuditStatus::PqcEncryptionFailed("KEM encapsulate failed".to_string());
     let s: String = status.clone().into();
     assert!(s.contains("PQC_ENCRYPTION_FAILED"));
-    let back: AuditStatus = s.try_into().expect("Should deserialise PQC_ENCRYPTION_FAILED");
+    let back: AuditStatus = s
+        .try_into()
+        .expect("Should deserialise PQC_ENCRYPTION_FAILED");
     assert_eq!(status, back);
 }
 
@@ -476,7 +511,10 @@ fn test_merkle_tree_single_leaf_root_is_its_hash() {
     let leaf_hash = llm_secure_cli::utils::hex_encode(Sha256::digest(b"test data"));
     assert_eq!(leaf_hash.len(), 64, "Hash must be 64 hex chars");
     let tree = MerkleTree::new(vec![leaf_hash.clone()]);
-    assert_eq!(tree.root_hex, leaf_hash, "Single leaf's root must be the leaf itself");
+    assert_eq!(
+        tree.root_hex, leaf_hash,
+        "Single leaf's root must be the leaf itself"
+    );
 }
 
 #[test]
@@ -525,23 +563,47 @@ use std::str::FromStr;
 
 #[test]
 fn test_pqc_variant_from_str_standard_names() {
-    assert_eq!(PQCVariant::from_str("ML-DSA-44").unwrap(), PQCVariant::MLDSA44);
-    assert_eq!(PQCVariant::from_str("ML-DSA-65").unwrap(), PQCVariant::MLDSA65);
-    assert_eq!(PQCVariant::from_str("ML-DSA-87").unwrap(), PQCVariant::MLDSA87);
+    assert_eq!(
+        PQCVariant::from_str("ML-DSA-44").unwrap(),
+        PQCVariant::MLDSA44
+    );
+    assert_eq!(
+        PQCVariant::from_str("ML-DSA-65").unwrap(),
+        PQCVariant::MLDSA65
+    );
+    assert_eq!(
+        PQCVariant::from_str("ML-DSA-87").unwrap(),
+        PQCVariant::MLDSA87
+    );
 }
 
 #[test]
 fn test_pqc_variant_from_str_compact_names() {
     // The code also handles compact forms (without hyphens)
-    assert_eq!(PQCVariant::from_str("MLDSA44").unwrap(), PQCVariant::MLDSA44);
-    assert_eq!(PQCVariant::from_str("MLDSA65").unwrap(), PQCVariant::MLDSA65);
-    assert_eq!(PQCVariant::from_str("MLDSA87").unwrap(), PQCVariant::MLDSA87);
+    assert_eq!(
+        PQCVariant::from_str("MLDSA44").unwrap(),
+        PQCVariant::MLDSA44
+    );
+    assert_eq!(
+        PQCVariant::from_str("MLDSA65").unwrap(),
+        PQCVariant::MLDSA65
+    );
+    assert_eq!(
+        PQCVariant::from_str("MLDSA87").unwrap(),
+        PQCVariant::MLDSA87
+    );
 }
 
 #[test]
 fn test_pqc_variant_from_str_case_insensitive() {
-    assert_eq!(PQCVariant::from_str("ml-dsa-44").unwrap(), PQCVariant::MLDSA44);
-    assert_eq!(PQCVariant::from_str("mldsa87").unwrap(), PQCVariant::MLDSA87);
+    assert_eq!(
+        PQCVariant::from_str("ml-dsa-44").unwrap(),
+        PQCVariant::MLDSA44
+    );
+    assert_eq!(
+        PQCVariant::from_str("mldsa87").unwrap(),
+        PQCVariant::MLDSA87
+    );
 }
 
 #[test]
@@ -584,7 +646,11 @@ fn test_security_context_serializes_to_json() {
     assert!(json.get("os").and_then(|v| v.as_str()).is_some());
     assert!(json.get("user").and_then(|v| v.as_str()).is_some());
     assert!(json.get("current_dir").and_then(|v| v.as_str()).is_some());
-    assert!(json.get("container_mode").and_then(|v| v.as_bool()).is_some());
+    assert!(
+        json.get("container_mode")
+            .and_then(|v| v.as_bool())
+            .is_some()
+    );
     assert!(json.get("is_git_repo").and_then(|v| v.as_bool()).is_some());
 }
 
@@ -621,10 +687,7 @@ fn test_path_validation_rejects_symlink_escape() {
         };
 
         // Try to read secret.txt through the symlink
-        let result = validate_path(
-            link.join("secret.txt").to_str().unwrap(),
-            &config,
-        );
+        let result = validate_path(link.join("secret.txt").to_str().unwrap(), &config);
         // The symlink resolves to outside/ which is NOT in allowed_paths,
         // so this must be rejected.
         assert!(result.is_err(), "Symlink escape must be blocked");
@@ -654,10 +717,7 @@ fn test_path_validation_rejects_double_symlink_escape() {
             ..Default::default()
         };
 
-        let result = validate_path(
-            link1.join("link2").to_str().unwrap(),
-            &config,
-        );
+        let result = validate_path(link1.join("link2").to_str().unwrap(), &config);
         assert!(result.is_err(), "Double symlink escape must be blocked");
     }
 }
@@ -683,10 +743,7 @@ fn test_path_validation_allows_symlink_within_boundary() {
         };
 
         // Symlink points to another file within the same allowed directory
-        let result = validate_path(
-            link.to_str().unwrap(),
-            &config,
-        );
+        let result = validate_path(link.to_str().unwrap(), &config);
         assert!(result.is_ok(), "Symlink within allowed boundary must pass");
     }
 }
@@ -702,11 +759,11 @@ fn test_path_validation_accepts_deeply_nested_path() {
         ..Default::default()
     };
 
-    let result = validate_path(
-        deep.to_str().unwrap(),
-        &config,
+    let result = validate_path(deep.to_str().unwrap(), &config);
+    assert!(
+        result.is_ok(),
+        "Deeply nested path within allowed dir must pass"
     );
-    assert!(result.is_ok(), "Deeply nested path within allowed dir must pass");
 }
 
 // =============================================================================
@@ -726,14 +783,26 @@ fn test_pqc_agility_manager_all_levels_map_correctly() {
 
     // execute_python is hardcoded as high-risk → ML-DSA-87
     let level = PQCAgilityManager::get_required_level(&config, "execute_python", None);
-    assert_eq!(level, PQCVariant::MLDSA87, "High-risk tools must get ML-DSA-87");
+    assert_eq!(
+        level,
+        PQCVariant::MLDSA87,
+        "High-risk tools must get ML-DSA-87"
+    );
 
     // list_files is low-risk → ML-DSA-44 (in Standard mode)
     let level = PQCAgilityManager::get_required_level(&config, "list_files", None);
-    assert_eq!(level, PQCVariant::MLDSA44, "Low-risk tools must get ML-DSA-44");
+    assert_eq!(
+        level,
+        PQCVariant::MLDSA44,
+        "Low-risk tools must get ML-DSA-44"
+    );
 
     // With security_level=High, low-risk tools escalate to Medium → ML-DSA-65
     config.security.security_level = SecurityLevel::High;
     let level = PQCAgilityManager::get_required_level(&config, "list_files", None);
-    assert_eq!(level, PQCVariant::MLDSA65, "Low-risk in High security must get ML-DSA-65");
+    assert_eq!(
+        level,
+        PQCVariant::MLDSA65,
+        "Low-risk in High security must get ML-DSA-65"
+    );
 }
