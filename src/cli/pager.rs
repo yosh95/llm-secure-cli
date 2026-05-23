@@ -99,7 +99,7 @@ pub fn page_output(content: &str, term_height: u16) {
             print!("{content}");
         }
         PagerConfig::Auto => {
-            try_external_pager("less -FR", content);
+            try_less_pager(content);
             print!("{content}");
         }
         PagerConfig::External(cmd) => {
@@ -112,6 +112,37 @@ pub fn page_output(content: &str, term_height: u16) {
 // ---------------------------------------------------------------------------
 // External pager
 // ---------------------------------------------------------------------------
+
+/// Spawn `less -FR` with a friendly status-line prompt so users unfamiliar
+/// with `less` know how to navigate and exit.
+fn try_less_pager(content: &str) -> bool {
+    use std::process::{Command, Stdio};
+
+    // -F  quit if content fits on one screen
+    // -R  interpret ANSI colour escapes
+    // -Pm set the status-line prompt (default is just ":", which confuses newcomers)
+    let mut child = match Command::new("less")
+        .arg("-FR")
+        .args(["-Pm", "Press q to quit, ↑↓/j k to scroll, / to search"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    if let Some(mut stdin) = child.stdin.take() {
+        if stdin.write_all(content.as_bytes()).is_err() {
+            let _ = child.wait();
+            return false;
+        }
+        drop(stdin);
+    }
+
+    child.wait().is_ok()
+}
 
 /// Try to spawn an external pager, piping `content` to its stdin.
 /// Returns `true` on success (but the caller can safely ignore this — we

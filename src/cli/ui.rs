@@ -114,17 +114,20 @@ pub fn print_key_value(key: &str, value: &str) {
 
 pub fn print_tool_call(name: &str, args: &serde_json::Value) {
     let term = Term::stdout();
-    let (_, width) = term.size();
+    let (term_height, width) = term.size();
     let width = (width as usize).min(140);
     let color = "yellow";
 
-    println!("{}", "\u{2500}".repeat(width).color(color));
-    println!(
-        "{} {}{}",
+    let mut buf = String::new();
+
+    buf.push_str(&format!("{}\n", "\u{2500}".repeat(width).color(color)));
+    buf.push_str(&format!(
+        "{} {}{}\n",
         "->".yellow().bold(),
         name.bold().yellow(),
         ":".yellow()
-    );
+    ));
+
     if let Some(obj) = args.as_object() {
         if name == "edit_file" {
             let path = obj.get("path").and_then(|v| v.as_str()).unwrap_or_default();
@@ -132,11 +135,14 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             let new = obj.get("new").and_then(|v| v.as_str()).unwrap_or_default();
             let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
-            println!(
-                "    {} {}: {}",
-                "\u{2022}".bright_black(),
-                "path".cyan(),
-                path
+            push_line(
+                &mut buf,
+                &format!(
+                    "    {} {}: {}",
+                    "\u{2022}".bright_black(),
+                    "path".cyan(),
+                    path
+                ),
             );
 
             // Compute a file-based diff so the confirmation preview matches the
@@ -163,31 +169,29 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
             };
 
             if diff.is_empty() && !old.is_empty() && old == new {
-                println!("    {} {}:", "\u{2022}".bright_black(), "diff".cyan());
-                println!("        {}", "(no changes)".dimmed());
+                push_line(
+                    &mut buf,
+                    &format!("    {} {}:", "\u{2022}".bright_black(), "diff".cyan()),
+                );
+                push_line(&mut buf, &format!("        {}", "(no changes)".dimmed()));
             } else if !diff.is_empty() {
-                // Buffer the diff and send through the pager so the user can
-                // review large diffs before answering the approval prompt.
-                let mut diff_buf = String::new();
-                diff_buf.push_str(&format!(
-                    "    {} {}:\n",
-                    "\u{2022}".bright_black(),
-                    "diff".cyan()
-                ));
+                push_line(
+                    &mut buf,
+                    &format!("    {} {}:", "\u{2022}".bright_black(), "diff".cyan()),
+                );
                 for line in diff.lines() {
                     if line.starts_with('+') && !line.starts_with("+++") {
-                        push_line(&mut diff_buf, &format!("        {}", line.cyan()));
+                        push_line(&mut buf, &format!("        {}", line.cyan()));
                     } else if line.starts_with('-') && !line.starts_with("---") {
-                        push_line(&mut diff_buf, &format!("        {}", line.red()));
+                        push_line(&mut buf, &format!("        {}", line.red()));
                     } else if line.starts_with("@@") {
-                        push_line(&mut diff_buf, &format!("        {}", line.cyan().dimmed()));
+                        push_line(&mut buf, &format!("        {}", line.cyan().dimmed()));
                     } else if line.starts_with("---") || line.starts_with("+++") {
-                        push_line(&mut diff_buf, &format!("        {}", line.bold().dimmed()));
+                        push_line(&mut buf, &format!("        {}", line.bold().dimmed()));
                     } else {
-                        push_line(&mut diff_buf, &format!("        {}", line.dimmed()));
+                        push_line(&mut buf, &format!("        {}", line.dimmed()));
                     }
                 }
-                println!("{diff_buf}");
             }
 
             // Print other arguments if any (except explanation which we want last)
@@ -197,33 +201,42 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                         .as_str()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| v.to_string());
-                    println!(
-                        "    {} {}: {}",
-                        "\u{2022}".bright_black(),
-                        k.cyan(),
-                        val_str
+                    push_line(
+                        &mut buf,
+                        &format!(
+                            "    {} {}: {}",
+                            "\u{2022}".bright_black(),
+                            k.cyan(),
+                            val_str
+                        ),
                     );
                 }
             }
 
             // Print explanation last for edit_file
             if let Some(exp) = explanation {
-                println!(
-                    "    {} {}: {}",
-                    "\u{2022}".bright_black(),
-                    "explanation".cyan(),
-                    exp
+                push_line(
+                    &mut buf,
+                    &format!(
+                        "    {} {}: {}",
+                        "\u{2022}".bright_black(),
+                        "explanation".cyan(),
+                        exp
+                    ),
                 );
             }
         } else if name == "execute_python" {
             let code = obj.get("code").and_then(|v| v.as_str()).unwrap_or_default();
             let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
-            println!("    {} {}:", "\u{2022}".bright_black(), "code".cyan());
+            push_line(
+                &mut buf,
+                &format!("    {} {}:", "\u{2022}".bright_black(), "code".cyan()),
+            );
             // Apply Python syntax highlighting and indent each line
             let highlighted = crate::cli::syntax_highlight::highlight_python(code);
             for line in highlighted.lines() {
-                println!("        {line}");
+                push_line(&mut buf, &format!("        {line}"));
             }
 
             // Print other arguments if any (except code and explanation)
@@ -233,21 +246,27 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                         .as_str()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| v.to_string());
-                    println!(
-                        "    {} {}: {}",
-                        "\u{2022}".bright_black(),
-                        k.cyan(),
-                        val_str
+                    push_line(
+                        &mut buf,
+                        &format!(
+                            "    {} {}: {}",
+                            "\u{2022}".bright_black(),
+                            k.cyan(),
+                            val_str
+                        ),
                     );
                 }
             }
             // Print explanation last
             if let Some(exp) = explanation {
-                println!(
-                    "    {} {}: {}",
-                    "\u{2022}".bright_black(),
-                    "explanation".cyan(),
-                    exp
+                push_line(
+                    &mut buf,
+                    &format!(
+                        "    {} {}: {}",
+                        "\u{2022}".bright_black(),
+                        "explanation".cyan(),
+                        exp
+                    ),
                 );
             }
         } else {
@@ -258,11 +277,14 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                         .as_str()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| v.to_string());
-                    println!(
-                        "    {} {}: {}",
-                        "\u{2022}".bright_black(),
-                        k.cyan(),
-                        val_str
+                    push_line(
+                        &mut buf,
+                        &format!(
+                            "    {} {}: {}",
+                            "\u{2022}".bright_black(),
+                            k.cyan(),
+                            val_str
+                        ),
                     );
                 }
             }
@@ -272,18 +294,24 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
                     .as_str()
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| v.to_string());
-                println!(
-                    "    {} {}: {}",
-                    "\u{2022}".bright_black(),
-                    "explanation".cyan(),
-                    val_str
+                push_line(
+                    &mut buf,
+                    &format!(
+                        "    {} {}: {}",
+                        "\u{2022}".bright_black(),
+                        "explanation".cyan(),
+                        val_str
+                    ),
                 );
             }
         }
     } else {
-        println!("    {}", args);
+        push_line(&mut buf, &format!("    {}", args));
     }
-    println!("{}", "\u{2500}".repeat(width).color(color));
+
+    buf.push_str(&format!("{}\n", "\u{2500}".repeat(width).color(color)));
+
+    crate::cli::pager::page_output(&buf, term_height);
 }
 
 pub fn print_tool_result(result: &str) {
