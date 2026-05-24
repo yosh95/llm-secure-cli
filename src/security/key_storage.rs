@@ -9,6 +9,7 @@ use std::fs;
 use std::io::{IsTerminal, stdin};
 use std::path::Path;
 use std::sync::Mutex;
+use zeroize::Zeroize;
 
 /// Header magic bytes to identify encrypted key files.
 const ENCRYPTED_KEY_MAGIC: &[u8; 4] = b"LKEF";
@@ -70,9 +71,10 @@ pub fn purge_passphrase_cache() {
     if let Ok(mut cache) = PASSPHRASE_CACHE.lock()
         && let Some(pw) = cache.take()
     {
-        // Zero the string before dropping
+        // Zero the string's backing memory using volatile writes
+        // that the compiler is prohibited from optimizing away.
         let mut v = pw.into_bytes();
-        v.fill(0);
+        v.zeroize();
     }
 }
 
@@ -245,8 +247,9 @@ fn save_encrypted(path: &Path, key_bytes: &[u8], passphrase: &str) -> Result<()>
     fs::write(path, &output)?;
     set_permissions(path)?;
 
-    // Zero out the derived key
-    aes_key.fill(0);
+    // Zero out the derived key using volatile writes that the compiler
+    // cannot optimize away (unlike `fill(0)` which may be elided).
+    aes_key.zeroize();
     Ok(())
 }
 
@@ -281,7 +284,7 @@ pub(crate) fn load_encrypted_key_data(data: &[u8], passphrase: &str) -> Result<V
         .decrypt(nonce, ciphertext)
         .map_err(|_| anyhow!("Decryption failed: incorrect passphrase or corrupted key file"))?;
 
-    aes_key.fill(0);
+    aes_key.zeroize();
     Ok(result)
 }
 

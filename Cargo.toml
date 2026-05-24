@@ -61,5 +61,6 @@ uuid = { version = "1.10", default-features = false, features = ["v4"] }
 hostname = { version = "0.4", default-features = false }
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng", "getrandom"] }
 argon2 = { version = "0.5", default-features = false, features = ["std"] }
+zeroize = { version = "1.8", default-features = false, features = ["derive"] }
 rpassword = { version = "7.3", default-features = false }
 

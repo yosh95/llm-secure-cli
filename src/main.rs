@@ -139,6 +139,8 @@ async fn main() {
         Ok(c) => c,
         Err(e) => {
             llm_secure_cli::cli::ui::report_error(&format!("Critical Initialization Error: {}", e));
+            // SAFETY: No ActiveSession has been created yet, so no Drop
+            // destructors (finalize_audit) will be skipped by process::exit.
             process::exit(1);
         }
     };
@@ -156,13 +158,17 @@ async fn main() {
         .await
         {
             ctx.ui.report_error(&format!("MCP Server Error: {}", e));
+            // SAFETY: MCP server mode does not create an ActiveSession,
+            // so no Drop destructors (finalize_audit) will be skipped.
             process::exit(1);
         }
         return;
     }
 
     // Delegates chat session startup to the extracted module.
-    llm_secure_cli::cli::commands::chat::start_chat_session(
+    // start_chat_session returns Result instead of calling process::exit
+    // so that the session's Drop (finalize_audit) runs even on failure.
+    if let Err(_e) = llm_secure_cli::cli::commands::chat::start_chat_session(
         llm_secure_cli::cli::commands::chat::ChatArgs {
             provider_arg: args.provider,
             model_arg: args.model,
@@ -174,7 +180,13 @@ async fn main() {
         },
         ctx,
     )
-    .await;
+    .await
+    {
+        // No ActiveSession is in scope here — it was either never created
+        // or has already been dropped (running finalize_audit via Drop).
+        // process::exit is safe here because there are no destructors to skip.
+        process::exit(1);
+    }
 }
 
 async fn handle_subcommand(

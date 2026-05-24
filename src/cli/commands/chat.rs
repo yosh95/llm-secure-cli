@@ -1,6 +1,6 @@
 use crate::core::context::AppContext;
 use crate::core::session::ActiveSession;
-use std::process;
+use anyhow::bail;
 use std::sync::Arc;
 
 /// Grouped arguments for [`start_chat_session`] to keep the argument count
@@ -20,7 +20,14 @@ pub struct ChatArgs {
 /// This is extracted from `main.rs` so that the entry point stays focused on
 /// CLI routing while the chat-session logic lives alongside the other command
 /// implementations.
-pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) {
+///
+/// # Errors
+///
+/// Returns an error instead of calling `process::exit` so that the caller
+/// (typically `main`) can decide how to handle the failure and ensure that
+/// any `Drop` destructors (e.g. `ActiveSession::finalize_audit`) run to
+/// completion.
+pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow::Result<()> {
     let ChatArgs {
         provider_arg,
         model_arg,
@@ -34,9 +41,9 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) {
     let _config = match cm.get_config() {
         Ok(c) => c,
         Err(e) => {
-            ctx.ui
-                .report_error(&format!("Failed to load config: {}", e));
-            process::exit(1);
+            let msg = format!("Failed to load config: {}", e);
+            ctx.ui.report_error(&msg);
+            bail!(msg);
         }
     };
     let state = match cm.get_state() {
@@ -61,8 +68,9 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) {
         } else if !active_providers.is_empty() {
             provider = active_providers[0].clone();
         } else {
-            ctx.ui.report_error("No active LLM providers found.");
-            process::exit(1);
+            let msg = "No active LLM providers found.";
+            ctx.ui.report_error(msg);
+            bail!(msg);
         }
     }
 
@@ -137,9 +145,9 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) {
         let mut session = match ActiveSession::new(client, ctx.clone()) {
             Ok(s) => s,
             Err(e) => {
-                ctx.ui
-                    .report_error(&format!("Failed to initialize session: {}", e));
-                process::exit(1);
+                let msg = format!("Failed to initialize session: {}", e);
+                ctx.ui.report_error(&msg);
+                bail!(msg);
             }
         };
 
@@ -161,11 +169,10 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) {
             Some(crate::utils::media::process_sources(all_sources, pdf_as_base64).await)
         };
         session.run(sources, None).await;
+        Ok(())
     } else {
-        ctx.ui.report_error(&format!(
-            "Provider '{}' not found or not configured.",
-            provider
-        ));
-        process::exit(1);
+        let msg = format!("Provider '{}' not found or not configured.", provider);
+        ctx.ui.report_error(&msg);
+        bail!(msg);
     }
 }

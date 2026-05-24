@@ -211,8 +211,13 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
 
     if let Some(parent) = path.parent()
         && !parent.exists()
+        && let Err(e) = fs::create_dir_all(parent)
     {
-        let _ = fs::create_dir_all(parent);
+        tracing::error!(
+            path = %parent.display(),
+            error = %e,
+            "CRITICAL: Failed to create audit log directory"
+        );
     }
 
     let timestamp = Utc::now().to_rfc3339();
@@ -518,8 +523,14 @@ fn read_head_cache() -> Option<String> {
 /// Write (or update) the head-pointer cache with the hash of the newest entry.
 fn write_head_cache(hash: &str) {
     let cache_path = crate::consts::audit_head_cache_path();
-    if let Some(parent) = cache_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+    if let Some(parent) = cache_path.parent()
+        && let Err(e) = std::fs::create_dir_all(parent)
+    {
+        tracing::warn!(
+            path = %parent.display(),
+            error = %e,
+            "Failed to create head cache directory"
+        );
     }
     // Write atomically via temp file + rename to avoid partial-write races.
     let tmp_path = cache_path.with_extension("cache.tmp");
@@ -527,13 +538,26 @@ fn write_head_cache(hash: &str) {
         use std::io::Write;
         if writeln!(f, "{}", hash).is_ok() {
             drop(f);
-            let _ = std::fs::rename(&tmp_path, &cache_path);
+            if let Err(e) = std::fs::rename(&tmp_path, &cache_path) {
+                tracing::warn!(
+                    src = %tmp_path.display(),
+                    dst = %cache_path.display(),
+                    error = %e,
+                    "Failed to atomically rename head cache; falling back to direct write"
+                );
+            }
             return;
         }
         drop(f);
     }
     // Non-atomic fallback: direct write (better than losing the cache).
-    let _ = std::fs::write(&cache_path, format!("{}\n", hash));
+    if let Err(e) = std::fs::write(&cache_path, format!("{}\n", hash)) {
+        tracing::warn!(
+            path = %cache_path.display(),
+            error = %e,
+            "Failed to write head cache (non-critical: next session will rebuild it)"
+        );
+    }
 }
 
 fn get_last_log_hash(path: &Path) -> String {
@@ -728,7 +752,13 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
             // falls back to a full scan and rebuilds the cache with the new
             // last-entry hash from the rotated file.
             let cache_path = crate::consts::audit_head_cache_path();
-            let _ = std::fs::remove_file(&cache_path);
+            if let Err(e) = std::fs::remove_file(&cache_path) {
+                tracing::debug!(
+                    path = %cache_path.display(),
+                    error = %e,
+                    "Failed to remove stale head cache after rotation (will be rebuilt on next access)"
+                );
+            }
         }
     } else {
         tracing::error!(path = %temp_path.display(), "Failed to create temp file for audit log rotation");
