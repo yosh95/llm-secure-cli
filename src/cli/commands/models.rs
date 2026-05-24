@@ -34,6 +34,34 @@ pub async fn list_models(
                 h,
             )
         }
+        "ollama_cloud" => {
+            let config = match config_manager.get_config() {
+                Ok(c) => c,
+                Err(e) => {
+                    ui::report_error(&format!("Failed to load config: {}", e));
+                    return;
+                }
+            };
+            let mut base_url = "https://ollama.com".to_string();
+            if let Some(p_cfg) = config.providers.get("ollama_cloud")
+                && let Some(api_url) = &p_cfg.api_url
+            {
+                if api_url.contains("/v1") {
+                    base_url = api_url
+                        .split("/v1")
+                        .next()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| api_url.clone());
+                } else {
+                    base_url = api_url.clone();
+                }
+            }
+            let mut h = Vec::new();
+            if let Some(key) = &api_key {
+                h.push(("Authorization".to_string(), format!("Bearer {}", key)));
+            }
+            (format!("{}/v1/models", base_url), h)
+        }
         "ollama" => {
             let config = match config_manager.get_config() {
                 Ok(c) => c,
@@ -90,7 +118,7 @@ pub async fn list_models(
 
     let provider_str = provider.as_str();
     let models_data = match provider_str {
-        "openai" | "openrouter" => result.get("data"),
+        "openai" | "openrouter" | "ollama_cloud" => result.get("data"),
         "ollama" => result.get("models"),
         _ => None,
     };
@@ -100,7 +128,7 @@ pub async fn list_models(
         sorted_models.sort_by(|a, b| {
             let get_id = |m: &Value| {
                 match provider.as_str() {
-                    "openai" | "openrouter" => {
+                    "openai" | "openrouter" | "ollama_cloud" => {
                         m.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
                     }
                     "ollama" => m
@@ -117,7 +145,9 @@ pub async fn list_models(
         if !models.is_empty() {
             for m in &sorted_models {
                 let id = match provider.as_str() {
-                    "openai" | "openrouter" => m.get("id").and_then(|v| v.as_str()),
+                    "openai" | "openrouter" | "ollama_cloud" => {
+                        m.get("id").and_then(|v| v.as_str())
+                    }
                     "ollama" => m.get("name").and_then(|v| v.as_str()),
                     _ => None,
                 };
@@ -139,6 +169,13 @@ pub async fn list_models(
             for m in &sorted_models {
                 match provider.as_str() {
                     "openai" => {
+                        println!(
+                            "{:<30} {:<20}",
+                            m.get("id").and_then(|v| v.as_str()).unwrap_or("N/A"),
+                            m.get("owned_by").and_then(|v| v.as_str()).unwrap_or("N/A")
+                        );
+                    }
+                    "ollama_cloud" => {
                         println!(
                             "{:<30} {:<20}",
                             m.get("id").and_then(|v| v.as_str()).unwrap_or("N/A"),
@@ -169,7 +206,9 @@ pub async fn list_models(
         } else {
             for m in &sorted_models {
                 let id = match provider.as_str() {
-                    "openai" | "openrouter" => m.get("id").and_then(|v| v.as_str()),
+                    "openai" | "openrouter" | "ollama_cloud" => {
+                        m.get("id").and_then(|v| v.as_str())
+                    }
                     "ollama" => m.get("name").and_then(|v| v.as_str()),
                     _ => None,
                 };

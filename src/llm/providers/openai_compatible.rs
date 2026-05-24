@@ -33,6 +33,7 @@ pub struct OpenAiCompatibleClientBuilder<'a> {
     stdout: bool,
     raw: bool,
     formatter: Option<Box<dyn PayloadFormatter>>,
+    supports_tools: Option<bool>,
 }
 
 impl<'a> OpenAiCompatibleClientBuilder<'a> {
@@ -46,6 +47,7 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
             stdout: false,
             raw: false,
             formatter: None,
+            supports_tools: None,
         }
     }
 
@@ -84,6 +86,16 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
         self
     }
 
+    /// Override the tool-support detection for this model.
+    ///
+    /// When set to `Some(false)`, tool definitions will never be sent in requests
+    /// even if the model list cache would indicate otherwise.  When `None` (the
+    /// default), the builder will look up the model in the cache to decide.
+    pub fn supports_tools(mut self, supports: Option<bool>) -> Self {
+        self.supports_tools = supports;
+        self
+    }
+
     pub fn build(self) -> anyhow::Result<OpenAiCompatibleClient> {
         let spec = ProviderSpec {
             api_key_name: "api_key".to_string(),
@@ -104,7 +116,15 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
             format!("{}/chat/completions", self.api_url.trim_end_matches('/'))
         };
 
-        let supports_tools = true;
+        // Determine tool support:
+        //   1. Explicit override from builder (Some(val))
+        //   2. Cache lookup (if supported_parameters metadata exists)
+        //   3. Default to `true` (backward compatibility)
+        let supports_tools = self.supports_tools.unwrap_or_else(|| {
+            self.config_manager
+                .model_supports_tools(&self.provider_name, &self.model)
+                .unwrap_or(true)
+        });
         let http_client = create_http_client(self.config_manager)?;
         let formatter = self
             .formatter

@@ -7,14 +7,12 @@ use rustyline::highlight::{CmdKind, Highlighter};
 use rustyline::hint::Hinter;
 use rustyline::validate::Validator;
 use std::sync::{Arc, Mutex};
-
 pub struct ChatCompleter {
     file_completer: FilenameCompleter,
     commands: Vec<&'static str>,
     pub current_provider: Arc<Mutex<String>>,
     pub ctx: Arc<AppContext>,
 }
-
 impl ChatCompleter {
     pub fn new(current_provider: Arc<Mutex<String>>, ctx: Arc<AppContext>) -> Self {
         Self {
@@ -30,7 +28,6 @@ impl ChatCompleter {
                 "/c",
                 "/info",
                 "/i",
-                "/system",
                 "/raw",
                 "/dump",
                 "/session",
@@ -61,10 +58,8 @@ impl ChatCompleter {
         }
     }
 }
-
 impl Completer for ChatCompleter {
     type Candidate = Pair;
-
     fn complete(
         &self,
         line: &str,
@@ -90,7 +85,6 @@ impl Completer for ChatCompleter {
                 let cmd = parts[0];
                 let arg_prefix = parts[1];
                 let start = cmd.len() + 1;
-
                 match cmd {
                     "/session" => {
                         // Determine the subcommand being typed
@@ -234,7 +228,6 @@ impl Completer for ChatCompleter {
                                 e.into_inner()
                             })
                             .clone();
-
                         // Suggest -u / --update flag
                         if arg_prefix.starts_with('-') {
                             for flag in &["-u", "--update"] {
@@ -248,7 +241,6 @@ impl Completer for ChatCompleter {
                             matches.sort_by(|a, b| a.display.cmp(&b.display));
                             return Ok((start, matches));
                         }
-
                         // Add aliases to completions (only for main model switch)
                         if let Ok(state) = self.ctx.config_manager.get_state() {
                             for alias in state.model_aliases.keys() {
@@ -260,7 +252,6 @@ impl Completer for ChatCompleter {
                                 }
                             }
                         }
-
                         // Suggest models for the CURRENT provider directly
                         if let Some(models) = models_map.get(&current_p) {
                             for model in models {
@@ -272,7 +263,6 @@ impl Completer for ChatCompleter {
                                 }
                             }
                         }
-
                         matches.sort_by(|a, b| a.display.cmp(&b.display));
                         matches.dedup_by(|a, b| a.display == b.display);
                         return Ok((start, matches));
@@ -280,7 +270,6 @@ impl Completer for ChatCompleter {
                     "/vmodel" | "/vm" => {
                         let models_map = self.ctx.config_manager.get_cached_models_sync();
                         let mut matches = Vec::new();
-
                         // Suggest -u / --update flag
                         if arg_prefix.starts_with('-') {
                             for flag in &["-u", "--update"] {
@@ -294,9 +283,7 @@ impl Completer for ChatCompleter {
                             matches.sort_by(|a, b| a.display.cmp(&b.display));
                             return Ok((start, matches));
                         }
-
                         let (v_p, _) = self.ctx.config_manager.get_dual_llm_settings();
-
                         if !v_p.is_empty()
                             && let Some(models) = models_map.get(&v_p)
                         {
@@ -309,12 +296,11 @@ impl Completer for ChatCompleter {
                                 }
                             }
                         }
-
                         matches.sort_by(|a, b| a.display.cmp(&b.display));
                         matches.dedup_by(|a, b| a.display == b.display);
                         return Ok((start, matches));
                     }
-                    "/tools" | "/system" | "/verify" | "/verifier" => {
+                    "/tools" | "/verify" | "/verifier" => {
                         let mut matches = Vec::new();
                         for opt in &["on", "off"] {
                             if opt.starts_with(arg_prefix) {
@@ -454,11 +440,9 @@ impl Completer for ChatCompleter {
         Ok((0, Vec::new()))
     }
 }
-
 impl Hinter for ChatCompleter {
     type Hint = String;
 }
-
 impl Highlighter for ChatCompleter {
     fn highlight<'l>(&self, line: &'l str, _pos: usize) -> std::borrow::Cow<'l, str> {
         if line.starts_with('/') {
@@ -473,42 +457,34 @@ impl Highlighter for ChatCompleter {
                 return std::borrow::Cow::Owned(highlighted);
             }
         }
-
         // Basic highlighting for markdown-style code blocks in input
         if line.contains("```") {
             let mut highlighted = line.to_string();
             highlighted = highlighted.replace("```", "\x1b[1;33m```\x1b[0m");
             return std::borrow::Cow::Owned(highlighted);
         }
-
         std::borrow::Cow::Borrowed(line)
     }
-
     fn highlight_char(&self, _line: &str, _pos: usize, _forced: CmdKind) -> bool {
         true
     }
 }
-
 impl Validator for ChatCompleter {
     fn validate(
         &self,
         ctx: &mut rustyline::validate::ValidationContext,
     ) -> rustyline::Result<rustyline::validate::ValidationResult> {
         let input = ctx.input();
-
         // Simple check for unclosed code blocks
         let backtick_count = input.matches("```").count();
         if !backtick_count.is_multiple_of(2) {
             return Ok(rustyline::validate::ValidationResult::Incomplete);
         }
-
         // Allow explicit newline continuation with \
         if input.ends_with('\\') {
             return Ok(rustyline::validate::ValidationResult::Incomplete);
         }
-
         Ok(rustyline::validate::ValidationResult::Valid(None))
     }
 }
-
 impl Helper for ChatCompleter {}

@@ -168,7 +168,6 @@ llsc verify-skill <path>             # Verify Agent Skills for safety (structura
 Inside the `llsc` interactive session:
 - `/help`, `/h`: Show help message.
 - `/quit`, `/q`: Exit the application.
-- `/system [on|off]`: Show or toggle system prompt status.
 - `/verify [on|off]`: Show or toggle dual-LLM verification status.
 - `/edit`, `/e`: Edit current buffer in external editor.
 - `/clear`, `/c`: Clear conversation history.

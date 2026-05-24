@@ -328,6 +328,13 @@ async fn register_clients(ctx: &Arc<AppContext>) {
                             Box::new(crate::llm::providers::openai_compatible::GenericPayloadFormatter)
                         };
 
+                        // Look up whether this model supports tool calling from the cache.
+                        // When the cache has not been populated yet (first launch) we default
+                        // to `true` so that tool definitions are still sent.
+                        let model_supports_tools = config_manager
+                            .model_supports_tools(&closure_p_name, model)
+                            .unwrap_or(true);
+
                         Box::new(OpenAiCompatibleClient::builder(config_manager)
                             .provider_name(&closure_p_name)
                             .api_url(&api_url)
@@ -336,6 +343,7 @@ async fn register_clients(ctx: &Arc<AppContext>) {
                             .stdout(stdout)
                             .raw(raw)
                             .formatter(formatter)
+                            .supports_tools(Some(model_supports_tools))
                             .build()?)
                     },
                 };

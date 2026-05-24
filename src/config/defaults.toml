@@ -20,8 +20,8 @@ max_audit_log_lines = 10000
 max_audit_archives = 10
 max_chat_log_lines = 5000
 max_chat_archives = 5
-max_output_lines = 10000
-max_output_chars = 100000
+max_output_lines = 5000
+max_output_chars = 50000
 
 # Pager for long output. Supported values:
 #   "" (empty)       = disable pager, print everything directly (default)

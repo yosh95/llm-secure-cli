@@ -33,32 +33,7 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             CommandResult::Handled
         }
         "q" | "quit" => CommandResult::Exit,
-        "system" => {
-            let state = session.get_client_mut().get_state_mut();
-            match args.to_lowercase().as_str() {
-                "on" => {
-                    state.system_prompt_enabled = true;
-                    ui::report_success("System prompt enabled.");
-                }
-                "off" => {
-                    state.system_prompt_enabled = false;
-                    ui::report_success("System prompt disabled.");
-                }
-                "" => {
-                    let status = if state.system_prompt_enabled {
-                        "ON"
-                    } else {
-                        "OFF"
-                    };
-                    println!("System Prompt Status: {}", status);
-                    if let Some(sp) = state.get_effective_system_prompt() {
-                        println!("\nEffective System Prompt:\n{}", sp);
-                    }
-                }
-                _ => ui::report_error("Usage: /system [on|off]"),
-            }
-            CommandResult::Handled
-        }
+
         "edit" | "e" => match ui::open_external_editor(args) {
             Ok(content) => {
                 if content.trim().is_empty() {
@@ -454,23 +429,7 @@ pub fn handle_info(session: &ActiveSession) {
             "Disabled"
         },
     );
-    ui::print_key_value(
-        "System Prompt",
-        if state.system_prompt_enabled {
-            "On"
-        } else {
-            "Off"
-        },
-    );
-    if state.system_prompt_enabled
-        && let Some(sp) = state.get_effective_system_prompt()
-    {
-        println!("  --------------------------------------------------");
-        for line in sp.lines() {
-            println!("  {}", line);
-        }
-        println!("  --------------------------------------------------");
-    }
+
     ui::print_rule(None, Some("cyan"));
 }
 
@@ -1006,7 +965,7 @@ fn print_help() {
     println!("  /session [load|delete <id>|clear]  List, load, delete, or clear saved sessions");
     println!("  /attach <path|url> Attach a file or URL to the next request");
     println!("  /tools [on|off]    Toggle or show status of tool execution");
-    println!("  /system [on|off]   Toggle or show system prompt status");
+
     println!("  /m, /model [-u] [<name>]  List models (/model -u to refresh cache) or switch");
     println!("  /p, /provider <n>  Switch LLM provider");
     println!("  /vm, /vmodel [-u] [<name>] List verifier models (-u to refresh) or set");
