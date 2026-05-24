@@ -34,7 +34,6 @@ impl ChatCompleter {
                 "/attach",
                 "/tools",
                 "/model",
-                "/models",
                 "/m",
                 "/vmodel",
                 "/vm",
@@ -217,7 +216,7 @@ impl Completer for ChatCompleter {
                         }
                         return Ok((start, matches));
                     }
-                    "/model" | "/m" | "/models" => {
+                    "/model" | "/m" => {
                         let models_map = self.ctx.config_manager.get_cached_models_sync();
                         let mut matches = Vec::new();
                         let current_p = self

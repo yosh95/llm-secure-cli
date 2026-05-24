@@ -49,20 +49,6 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// List available models for a provider
-    Models {
-        /// Provider name (e.g., openai, anthropic, google, ollama)
-        provider: Option<String>,
-        /// Specific models to show detail for (JSON)
-        #[clap(num_args = 0..)]
-        models: Vec<String>,
-        /// Verbose output (table format)
-        #[clap(short, long)]
-        verbose: bool,
-        /// Update models cache
-        #[clap(short, long)]
-        update: bool,
-    },
     /// Identity and Integrity management
     Identity {
         #[clap(subcommand)]
@@ -194,44 +180,6 @@ async fn handle_subcommand(
     ctx: &std::sync::Arc<llm_secure_cli::core::context::AppContext>,
 ) {
     match command {
-        Commands::Models {
-            provider,
-            models,
-            verbose,
-            update,
-        } => {
-            if update {
-                println!("Updating models cache...");
-                ctx.config_manager.update_models_cache().await;
-                println!("Cache updated successfully.");
-                return;
-            }
-            if let Some(p) = provider {
-                llm_secure_cli::cli::commands::models::list_models(
-                    &ctx.config_manager,
-                    &p,
-                    models,
-                    verbose,
-                )
-                .await;
-            } else {
-                let active_providers = ctx.config_manager.get_active_providers();
-                if active_providers.is_empty() {
-                    println!("No active providers found. Please set API keys.");
-                } else {
-                    for p in active_providers {
-                        println!("\n--- Models for {} ---", p);
-                        llm_secure_cli::cli::commands::models::list_models(
-                            &ctx.config_manager,
-                            &p,
-                            models.clone(),
-                            verbose,
-                        )
-                        .await;
-                    }
-                }
-            }
-        }
         Commands::Identity { subcommand } => match subcommand {
             Some(IdentityCommands::Keygen) => llm_secure_cli::cli::commands::identity::run_keygen(),
             Some(IdentityCommands::Manifest) => {

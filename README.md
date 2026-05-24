@@ -153,8 +153,6 @@ llsc "query"                         # One-shot query
 
 ### Subcommands
 ```bash
-llsc models [provider]               # List available models (optionally for a specific provider)
-llsc models <provider> -v            # Verbose model listing
 llsc identity keygen                 # Generate Ed25519 and PQC (ML-DSA/ML-KEM) key pairs
 llsc identity manifest               # Rebuild integrity manifest for system verification
 llsc identity verify                 # Run full integrity verification

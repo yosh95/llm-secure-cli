@@ -85,7 +85,7 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             handle_tools(session, args).await;
             CommandResult::Handled
         }
-        "model" | "models" | "m" => {
+        "model" | "m" => {
             handle_model_cmd(session, args).await;
             CommandResult::Handled
         }
