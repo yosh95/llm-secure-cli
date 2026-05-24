@@ -709,7 +709,25 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
         return;
     }
 
+    // Validate: model must exist in cache or be a known alias
     let target_model = args_trimmed;
+    let models_map = session.ctx.config_manager.get_cached_models().await;
+    let cached_models: Vec<String> = models_map.get(&provider).cloned().unwrap_or_default();
+    let state = match session.ctx.config_manager.get_state() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let is_alias = state.model_aliases.contains_key(target_model);
+    let is_cached = cached_models.iter().any(|m| m == target_model);
+
+    if !is_cached && !is_alias {
+        ui::report_error(&format!(
+            "Unknown model: '{}'. Use /model to list available models for provider '{}'.",
+            target_model, provider
+        ));
+        return;
+    }
+
     match crate::core::initializer::switch_model(session, target_model, stdout, !raw).await {
         Ok(_) => {
             let state = session.get_client().get_state();
@@ -791,6 +809,27 @@ pub async fn handle_vmodel_cmd(session: &mut ActiveSession, args: &str) {
                 current_provider
             );
         }
+        return;
+    }
+
+    // Validate: model must exist in cache or be a known alias
+    let models_map = session.ctx.config_manager.get_cached_models().await;
+    let cached_models: Vec<String> = models_map
+        .get(&current_provider)
+        .cloned()
+        .unwrap_or_default();
+    let state = match session.ctx.config_manager.get_state() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let is_alias = state.model_aliases.contains_key(args_trimmed);
+    let is_cached = cached_models.iter().any(|m| m == args_trimmed);
+
+    if !is_cached && !is_alias {
+        ui::report_error(&format!(
+            "Unknown verifier model: '{}'. Use /vmodel to list available models for provider '{}'.",
+            args_trimmed, current_provider
+        ));
         return;
     }
 
