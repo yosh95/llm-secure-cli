@@ -185,32 +185,25 @@ allowed_paths = ["/tmp"]
 #[test]
 fn test_cass_risk_levels_are_mutually_exclusive_in_defaults() {
     use llm_secure_cli::security::cass::CASSOrchestrator;
-    // SecurityConfig::default() has dual_llm_verification = None which
-    // is treated as false, causing High -> Critical escalation.
-    // Also security_level = "high" escalates Low -> Medium.
-    // Set both explicitly to test the base classification.
-    let config = SecurityConfig {
-        dual_llm_verification: Some(true),
-        security_level: SecurityLevel::Standard,
-        ..Default::default()
-    };
+    // CASS risk evaluation is deprecated: all tools return Low.
+    // The Dual LLM Verifier handles all risk assessment.
+    let config = SecurityConfig::default();
 
-    // Execute python should be high risk
+    // Every tool now returns Low — CASS delegates all risk to the Verifier
     let mut args = serde_json::Map::new();
     args.insert("code".to_string(), json!("print('hello')"));
     let risk = CASSOrchestrator::evaluate_risk("execute_python", Some(&json!(args)), &config);
     assert_eq!(
         risk as u8,
-        llm_secure_cli::security::cass::RiskLevel::High as u8,
-        "execute_python should be high risk with dual_llm enabled"
+        llm_secure_cli::security::cass::RiskLevel::Low as u8,
+        "CASS always returns Low; risk assessment delegated to Dual LLM Verifier"
     );
 
-    // List files should be low risk
     let risk = CASSOrchestrator::evaluate_risk("list_files", None, &config);
     assert_eq!(
         risk as u8,
         llm_secure_cli::security::cass::RiskLevel::Low as u8,
-        "list_files should be low risk by default"
+        "CASS always returns Low"
     );
 }
 
@@ -259,16 +252,24 @@ fn test_path_validator_blocks_escape_attempts() {
 
 #[test]
 fn test_validate_security_config_accepts_valid_defaults() {
-    // Default config must pass validation
-    let _cfg = SecurityConfig::default();
-    // We can't call validate_security_config directly (private),
-    // but ConfigManager::get_config() will call it. We test that
-    // the default config loads successfully.
-    let result = llm_secure_cli::config::ConfigManager::new().get_config();
+    // Default SecurityConfig must pass validation
+    let cfg = SecurityConfig::default();
+    let errors = cfg.validate();
     assert!(
-        result.is_ok(),
+        errors.is_empty(),
         "Default SecurityConfig should pass validation: {:?}",
-        result.err()
+        errors
+    );
+
+    // Also verify individual fields make sense
+    assert!(
+        !cfg.allowed_paths.is_empty(),
+        "allowed_paths should not be empty"
+    );
+    assert_eq!(
+        cfg.security_level,
+        SecurityLevel::High,
+        "default security level should be high"
     );
 }
 

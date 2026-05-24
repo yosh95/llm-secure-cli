@@ -77,25 +77,23 @@ fn test_merkle_audit_integrity() {
 fn test_cass_risk_scaling() {
     let config = SecurityConfig::default();
 
-    // 1. Test Low Risk Tool (default)
-    let level_low = CASSOrchestrator::evaluate_risk("read_file", None, &config);
-    assert!(level_low <= RiskLevel::Medium);
+    // Risk-level-based scaling is discontinued.
+    // CASSOrchestrator::evaluate_risk always returns Low.
+    let level = CASSOrchestrator::evaluate_risk("read_file", None, &config);
+    assert_eq!(level, RiskLevel::Low);
 
-    // 2. Test Critical Risk Tool
-    let level_crit = CASSOrchestrator::evaluate_risk("execute_python", None, &config);
-    assert_eq!(level_crit, RiskLevel::Critical);
+    let level = CASSOrchestrator::evaluate_risk("execute_python", None, &config);
+    assert_eq!(level, RiskLevel::Low);
 
-    // 3. Test Argument-based escalation
     let config_with_patterns = SecurityConfig {
         scaling_patterns: vec!["/etc/shadow".to_string()],
         ..SecurityConfig::default()
     };
 
-    let sensitive_read = CASSOrchestrator::evaluate_risk(
+    let level = CASSOrchestrator::evaluate_risk(
         "read_file",
         Some(&json!({"path": "/etc/shadow"})),
         &config_with_patterns,
     );
-
-    assert!(sensitive_read >= RiskLevel::High);
+    assert_eq!(level, RiskLevel::Low);
 }

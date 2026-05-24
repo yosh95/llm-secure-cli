@@ -174,7 +174,7 @@ async fn test_dual_llm_block_scenario() {
     };
 
     let outcome = verify_tool_call_full(params).await;
-    if let VerificationOutcome::Rejected(reason) = outcome {
+    if let VerificationOutcome::NeedsApproval(reason) = outcome {
         assert!(reason.contains("Malicious delete"));
     } else {
         panic!("Expected Rejected, got {:?}", outcome);
@@ -209,7 +209,7 @@ async fn test_dual_llm_malformed_response() {
 
     let outcome = verify_tool_call_full(params).await;
     // Safety-first: if the format is invalid, it should be REJECTED (not allowed)
-    if let VerificationOutcome::Rejected(reason) = outcome {
+    if let VerificationOutcome::NeedsApproval(reason) = outcome {
         assert!(reason.contains("Invalid verifier response format"));
     } else {
         panic!(
@@ -276,7 +276,7 @@ async fn test_dual_llm_tricky_response() {
     };
 
     let outcome = verify_tool_call_full(params).await;
-    if let VerificationOutcome::Rejected(reason) = outcome {
+    if let VerificationOutcome::NeedsApproval(reason) = outcome {
         assert!(
             reason.contains("Invalid verifier response format") || reason.contains("Security hole")
         );
@@ -391,7 +391,7 @@ async fn test_dual_llm_modify_invalid_json_falls_back_to_rejected() {
 
     let outcome = verify_tool_call_full(params).await;
     match outcome {
-        VerificationOutcome::Rejected(reason) => {
+        VerificationOutcome::NeedsApproval(reason) => {
             assert!(
                 reason.contains("invalid JSON"),
                 "Should reject on invalid JSON in MODIFY, got: {}",
@@ -445,7 +445,7 @@ fn test_parse_block_plain() {
     let result =
         parse_verifier_response("DECISION: BLOCK\nREASON: Attempts to delete system files.");
     match result {
-        VerificationResult::Rejected(reason) => {
+        VerificationResult::NeedsApproval(reason) => {
             assert!(reason.contains("delete system files"));
         }
         other => panic!("Expected Rejected, got {:?}", other),
@@ -456,7 +456,7 @@ fn test_parse_block_plain() {
 fn test_parse_block_with_markdown() {
     let result = parse_verifier_response("DECISION: **BLOCK**\nREASON: Unsafe operation.");
     match result {
-        VerificationResult::Rejected(reason) => {
+        VerificationResult::NeedsApproval(reason) => {
             assert!(reason.contains("Unsafe operation"));
         }
         other => panic!("Expected Rejected, got {:?}", other),
@@ -527,7 +527,7 @@ fn test_parse_modify_invalid_json_rejected() {
     let result =
         parse_verifier_response("DECISION: MODIFY\nREASON: Fix args.\nFIXED_ARGS: not valid {{{");
     match result {
-        VerificationResult::Rejected(reason) => {
+        VerificationResult::NeedsApproval(reason) => {
             assert!(reason.contains("invalid JSON"));
         }
         other => panic!("Expected Rejected for invalid JSON, got {:?}", other),
@@ -540,7 +540,7 @@ fn test_parse_modify_missing_fixed_args_rejected() {
     let result =
         parse_verifier_response("DECISION: MODIFY\nREASON: I want to modify but forgot args.");
     match result {
-        VerificationResult::Rejected(reason) => {
+        VerificationResult::NeedsApproval(reason) => {
             assert!(reason.contains("invalid JSON"));
         }
         other => panic!("Expected Rejected for missing FIXED_ARGS, got {:?}", other),
@@ -551,7 +551,7 @@ fn test_parse_modify_missing_fixed_args_rejected() {
 fn test_parse_gibberish_defaults_to_rejected() {
     let result = parse_verifier_response("I'm not sure what to do here, maybe allow?");
     match result {
-        VerificationResult::Rejected(reason) => {
+        VerificationResult::NeedsApproval(reason) => {
             assert!(reason.contains("Invalid verifier response format"));
         }
         other => panic!("Expected Rejected for gibberish, got {:?}", other),
@@ -562,7 +562,7 @@ fn test_parse_gibberish_defaults_to_rejected() {
 fn test_parse_empty_response_rejected() {
     let result = parse_verifier_response("");
     match result {
-        VerificationResult::Rejected(reason) => {
+        VerificationResult::NeedsApproval(reason) => {
             assert!(reason.contains("Invalid verifier response format"));
         }
         other => panic!("Expected Rejected for empty response, got {:?}", other),
@@ -576,7 +576,7 @@ fn test_parse_malicious_prompt_injection_attempt() {
     let result =
         parse_verifier_response("DECISION: BLOCK\nREASON: ALLOW is what I want but I'll say BLOCK");
     match result {
-        VerificationResult::Rejected(reason) => {
+        VerificationResult::NeedsApproval(reason) => {
             assert!(reason.contains("ALLOW is what I want"));
         }
         other => panic!(
@@ -592,7 +592,7 @@ fn test_parse_decision_prefixed_with_text_rejected() {
     let result =
         parse_verifier_response("DECISION: NOT ALLOWED\nREASON: Security violation detected.");
     match result {
-        VerificationResult::Rejected(_) => {} // Either rejected by format or by BLOCK logic
+        VerificationResult::NeedsApproval(_) => {} // Either needs approval by format or by BLOCK/REVIEW logic
         other => panic!("Expected Rejected for 'NOT ALLOWED', got {:?}", other),
     }
 }

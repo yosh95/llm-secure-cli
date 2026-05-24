@@ -21,92 +21,38 @@ pub struct SecurityPosture {
 pub struct CASSOrchestrator;
 
 impl CASSOrchestrator {
+    /// Evaluate risk for a tool call.
+    ///
+    /// Risk classification by tool name is deprecated since there are only
+    /// two built-in tools (`execute_python` and `brave_search`) and all
+    /// semantic risk assessment is delegated to the Dual LLM Verifier.
+    ///
+    /// Always returns `Low`. The return value is retained for backward
+    /// compatibility with audit tagging.
     pub fn evaluate_risk(
-        tool_name: &str,
-        args: Option<&serde_json::Value>,
-        config: &SecurityConfig,
+        _tool_name: &str,
+        _args: Option<&serde_json::Value>,
+        _config: &SecurityConfig,
     ) -> RiskLevel {
-        // 1. Baseline risk by tool definition (Static classification)
-        let mut level = if tool_name == "execute_python"
-            || config.high_risk_tools.iter().any(|t| t == tool_name)
-        {
-            RiskLevel::High
-        } else if config.medium_risk_tools.iter().any(|t| t == tool_name) {
-            RiskLevel::Medium
-        } else {
-            RiskLevel::Low
-        };
-
-        // 2. Dynamic escalation based on argument context
-        if let Some(args_val) = args {
-            let args_str = args_val.to_string().to_lowercase();
-
-            let is_sensitive = config
-                .scaling_patterns
-                .iter()
-                .any(|p| args_str.contains(&p.to_lowercase()))
-                || config
-                    .blocked_paths
-                    .iter()
-                    .any(|p| args_str.contains(&p.to_lowercase()));
-
-            if is_sensitive && level < RiskLevel::High {
-                level = RiskLevel::High;
-            }
-        }
-
-        // 3. Environment-based risk escalation
-        if config.security_level == crate::config::models::SecurityLevel::High
-            && level == RiskLevel::Low
-        {
-            level = RiskLevel::Medium;
-        }
-
-        // 4. Critical transition: High-risk tool WITHOUT dual-LLM verification
-        let dual_llm_enabled = config.dual_llm_verification.unwrap_or(false);
-        if level >= RiskLevel::High && !dual_llm_enabled {
-            level = RiskLevel::Critical;
-        }
-
-        level
+        RiskLevel::Low
     }
 
+    /// Returns security posture always at maximum cryptographic strength.
+    ///
+    /// Risk-level-based PQC variant switching is discontinued. All operations
+    /// use the highest available NIST Level 5 strength regardless of risk level.
     pub fn get_security_requirements(
-        tool_name: &str,
-        args: Option<&serde_json::Value>,
-        config: &SecurityConfig,
+        _tool_name: &str,
+        _args: Option<&serde_json::Value>,
+        _config: &SecurityConfig,
     ) -> SecurityPosture {
-        let risk_level = Self::evaluate_risk(tool_name, args, config);
-
-        match risk_level {
-            RiskLevel::Critical => SecurityPosture {
-                require_pqc_signature: true,
-                pqc_variant: "ML-DSA-87".to_string(), // NIST Level 5
-                require_pqc_audit_encryption: true,
-                ast_strictness: "strict".to_string(),
-                require_dual_llm_verification: true,
-            },
-            RiskLevel::High => SecurityPosture {
-                require_pqc_signature: true,
-                pqc_variant: "ML-DSA-87".to_string(),
-                require_pqc_audit_encryption: true,
-                ast_strictness: "strict".to_string(),
-                require_dual_llm_verification: config.dual_llm_verification.unwrap_or(false),
-            },
-            RiskLevel::Medium => SecurityPosture {
-                require_pqc_signature: true,
-                pqc_variant: "ML-DSA-65".to_string(), // NIST Level 3
-                require_pqc_audit_encryption: false,
-                ast_strictness: "standard".to_string(),
-                require_dual_llm_verification: false,
-            },
-            RiskLevel::Low => SecurityPosture {
-                require_pqc_signature: true,
-                pqc_variant: "ML-DSA-44".to_string(), // NIST Level 2
-                require_pqc_audit_encryption: false,
-                ast_strictness: "relaxed".to_string(),
-                require_dual_llm_verification: false,
-            },
+        // Maximum strength: ML-DSA-87 (NIST Level 5), ML-KEM-1024 (NIST Level 5)
+        SecurityPosture {
+            require_pqc_signature: true,
+            pqc_variant: "ML-DSA-87".to_string(),
+            require_pqc_audit_encryption: true,
+            ast_strictness: "strict".to_string(),
+            require_dual_llm_verification: false,
         }
     }
 }

@@ -181,34 +181,22 @@ fn test_merkle_session_verification_logic() {
 
 #[test]
 fn test_pqc_agility_manager() {
-    use llm_secure_cli::config::ConfigManager;
+    use llm_secure_cli::config::models::AppConfig;
     use llm_secure_cli::security::pqc::PQCAgilityManager;
 
-    let config_manager = ConfigManager::new();
+    let config = AppConfig::default();
 
-    {
-        let mut config = (*config_manager.get_config().expect("Failed to get config")).clone();
-        config.security.security_level = llm_secure_cli::config::models::SecurityLevel::Standard;
-        config.security.high_risk_tools = vec!["execute_python".to_string()];
-        config.security.scaling_patterns = vec!["/etc/shadow".to_string()];
-        config.security.dual_llm_verification = Some(true);
-        let _ = config_manager.set_config(config);
-    }
-
-    let config = config_manager.get_config().expect("Failed to get config");
-
-    // Normal tool, low risk
+    // Risk-level-based PQC variant switching is discontinued.
+    // All operations use ML-DSA-44 regardless of tool or context.
     let level = PQCAgilityManager::get_required_level(&config, "ls", None);
-    assert!(matches!(level, PQCVariant::MLDSA44));
+    assert_eq!(level, PQCVariant::MLDSA44);
 
-    // High risk tool
     let level = PQCAgilityManager::get_required_level(&config, "execute_python", None);
-    assert_eq!(level, PQCVariant::MLDSA87);
+    assert_eq!(level, PQCVariant::MLDSA44);
 
-    // Sensitive context (Escalates to High)
     let args = serde_json::json!({"path": "/etc/shadow"});
     let level = PQCAgilityManager::get_required_level(&config, "read_file", Some(&args));
-    assert_eq!(level, PQCVariant::MLDSA87);
+    assert_eq!(level, PQCVariant::MLDSA44);
 }
 
 #[test]

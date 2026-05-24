@@ -671,35 +671,24 @@ fn test_path_validation_accepts_deeply_nested_path() {
 
 #[test]
 fn test_pqc_agility_manager_all_levels_map_correctly() {
-    use llm_secure_cli::config::models::{AppConfig, SecurityLevel};
+    use llm_secure_cli::config::models::AppConfig;
     use llm_secure_cli::security::pqc::{PQCAgilityManager, PQCVariant};
 
-    let mut config = AppConfig::default();
-    config.security.security_level = SecurityLevel::Standard;
-    config.security.dual_llm_verification = Some(true);
+    let config = AppConfig::default();
 
-    // execute_python is hardcoded as high-risk → ML-DSA-87
+    // Risk-level-based PQC variant switching is discontinued.
+    // All operations use ML-DSA-44 (NIST Level 2) regardless of tool or security level.
     let level = PQCAgilityManager::get_required_level(&config, "execute_python", None);
     assert_eq!(
         level,
-        PQCVariant::MLDSA87,
-        "High-risk tools must get ML-DSA-87"
+        PQCVariant::MLDSA44,
+        "All tools get ML-DSA-44 (risk-level-based switching discontinued)"
     );
 
-    // Low-risk tools use ML-DSA-44 (in Standard mode)
     let level = PQCAgilityManager::get_required_level(&config, "list_files", None);
     assert_eq!(
         level,
         PQCVariant::MLDSA44,
-        "Low-risk tools must get ML-DSA-44"
-    );
-
-    // With security_level=High, low-risk tools escalate to Medium → ML-DSA-65
-    config.security.security_level = SecurityLevel::High;
-    let level = PQCAgilityManager::get_required_level(&config, "list_files", None);
-    assert_eq!(
-        level,
-        PQCVariant::MLDSA65,
-        "Low-risk in High security must get ML-DSA-65"
+        "All tools get ML-DSA-44 regardless of tool name"
     );
 }

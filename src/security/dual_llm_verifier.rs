@@ -15,12 +15,18 @@ pub struct DualLLMVerifier {
 
 #[derive(Debug, PartialEq)]
 pub enum VerificationResult {
+    /// The verifier approved the tool call — safe to execute.
     Allowed,
+    /// The verifier approved with corrected/normalized arguments.
     Modified(Value, String),
-    Rejected(String),
+    /// The verifier flagged the tool call as potentially unsafe or ambiguous.
+    /// The tool call must NOT be auto-approved — a human must review and decide.
+    /// The attached string explains why the verifier flagged it.
+    NeedsApproval(String),
     /// The verifier was unavailable (network error, API failure, etc.).
     /// The tool call cannot be automatically verified — a human must judge.
     FallbackRequired(String),
+    /// The verifier encountered an error during processing.
     Error(String),
 }
 
@@ -36,16 +42,15 @@ pub struct VerificationParams<'a> {
 }
 
 /// Outcome of a Dual LLM verification attempt.
-/// Distinguishes between definitive safety judgments and cases where
-/// the verifier was unavailable and a human must decide.
 #[derive(Clone, Debug)]
 pub enum VerificationOutcome {
-    /// The verifier explicitly approved the tool call.
+    /// The verifier explicitly approved the tool call — safe to auto-approve.
     Allowed(String),
     /// The verifier approved the tool call but provided corrected/normalized arguments.
     Modified(Value, String),
-    /// The verifier explicitly rejected the tool call (policy violation).
-    Rejected(String),
+    /// The verifier flagged the tool call as potentially unsafe.
+    /// A human must review the explanation and decide whether to allow execution.
+    NeedsApproval(String),
     /// The verifier was unavailable (network error, API failure, etc.).
     /// A human must judge — this is neither a pass nor a block.
     FallbackRequired(String),
@@ -53,7 +58,7 @@ pub enum VerificationOutcome {
 
 /// Validates a tool call using a secondary LLM.
 /// Returns true if safe, false if blocked or error.
-/// NOTE: This simplified API cannot distinguish FallbackRequired from Rejected.
+/// NOTE: This simplified API cannot distinguish NeedsApproval from FallbackRequired.
 /// Use verify_tool_call_full for the complete outcome.
 pub async fn verify_tool_call(
     ctx_app: std::sync::Arc<crate::core::context::AppContext>,
@@ -78,14 +83,13 @@ pub async fn verify_tool_call(
     match outcome {
         VerificationOutcome::Allowed(_) => true,
         VerificationOutcome::Modified(_, _) => true,
-        VerificationOutcome::Rejected(_) => false,
+        VerificationOutcome::NeedsApproval(_) => false,
         VerificationOutcome::FallbackRequired(_) => false,
     }
 }
 
 /// Validates a tool call using a secondary LLM and returns the full outcome.
-/// The caller should handle FallbackRequired by requiring human approval,
-/// rather than treating it as a simple block.
+/// The caller should handle NeedsApproval and FallbackRequired by requiring human approval.
 pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> VerificationOutcome {
     let p = params
         .provider
@@ -102,8 +106,6 @@ pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> Verificati
     let client = match client {
         Some(c) => c,
         None => {
-            // Verifier client creation failed — likely a configuration or
-            // network issue. We cannot determine intent, so a human must judge.
             return VerificationOutcome::FallbackRequired(format!(
                 "Could not create verifier client for {}/{}: the verifier is unavailable.",
                 p, m
@@ -124,12 +126,10 @@ pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> Verificati
         VerificationResult::Modified(fixed_args, reason) => {
             VerificationOutcome::Modified(fixed_args, reason)
         }
-        VerificationResult::Rejected(reason) => VerificationOutcome::Rejected(reason),
+        VerificationResult::NeedsApproval(reason) => VerificationOutcome::NeedsApproval(reason),
         VerificationResult::FallbackRequired(reason) => {
             VerificationOutcome::FallbackRequired(reason)
         }
-        // LLM call itself failed (timeout, network error, etc.).
-        // The verifier couldn't produce a judgment — fall back to human.
         VerificationResult::Error(e) => {
             VerificationOutcome::FallbackRequired(format!("Verifier unavailable: {}", e))
         }
@@ -140,17 +140,15 @@ pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> Verificati
 ///
 /// This is a **pure function**, separated from the async LLM call for testability.
 /// It handles:
-/// - ALLOW / BLOCK / MODIFY decisions
+/// - ALLOW / REVIEW / MODIFY decisions (BLOCK is mapped to REVIEW for human oversight)
 /// - Markdown formatting variations (e.g., `**ALLOW**`, `*ALLOW*`)
 /// - Markdown code blocks wrapping FIXED_ARGS JSON (```json ... ```)
-/// - Invalid or missing JSON in MODIFY decisions → falls back to Rejected
-/// - Ambiguous or malformed responses → defaults to Rejected (safety-first)
-///
-/// The function is deliberately strict: if the verifier cannot produce a
-/// well-formed response, the tool call is rejected rather than allowed.
+/// - Invalid or missing JSON in MODIFY decisions → falls back to NeedsApproval
+/// - Ambiguous or malformed responses → defaults to NeedsApproval (human decides)
 pub fn parse_verifier_response(response: &str) -> VerificationResult {
     // Advanced Regex Parsing for robustness against LLM formatting variations (Markdown, etc.)
-    let decision_re = regex::Regex::new(r"(?i)DECISION:\s*\*?\*?\s*(ALLOW|BLOCK|MODIFY)").ok();
+    let decision_re =
+        regex::Regex::new(r"(?i)DECISION:\s*\*?\*?\s*(ALLOW|BLOCK|MODIFY|REVIEW)").ok();
     let reason_re = regex::Regex::new(r"(?i)REASON:\s*(.*)").ok();
     let fixed_args_re = regex::Regex::new(r"(?is)FIXED_ARGS:\s*(.*)").ok();
 
@@ -170,8 +168,10 @@ pub fn parse_verifier_response(response: &str) -> VerificationResult {
 
     if decision == "ALLOW" {
         VerificationResult::Allowed
-    } else if decision == "BLOCK" {
-        VerificationResult::Rejected(reason.to_string())
+    } else if decision == "BLOCK" || decision == "REVIEW" {
+        // BLOCK and REVIEW both mean the verifier flagged the call as potentially unsafe.
+        // Human must decide — we do NOT reject automatically.
+        VerificationResult::NeedsApproval(reason.to_string())
     } else if decision == "MODIFY" {
         let fixed_raw = fixed_args_re
             .as_ref()
@@ -193,14 +193,14 @@ pub fn parse_verifier_response(response: &str) -> VerificationResult {
 
         match serde_json::from_str::<Value>(fixed_raw_clean) {
             Ok(fixed_val) => VerificationResult::Modified(fixed_val, reason.to_string()),
-            Err(e) => VerificationResult::Rejected(format!(
+            Err(e) => VerificationResult::NeedsApproval(format!(
                 "Verifier attempted modification but provided invalid JSON: {}. Error: {}",
                 reason, e
             )),
         }
     } else {
-        // Could not find a clear ALLOW/BLOCK/MODIFY verdict — default to safety
-        VerificationResult::Rejected(format!(
+        // Could not find a clear verdict — human must decide
+        VerificationResult::NeedsApproval(format!(
             "Invalid verifier response format. Raw: {}",
             response.lines().next().unwrap_or("Empty")
         ))
@@ -210,7 +210,7 @@ pub fn parse_verifier_response(response: &str) -> VerificationResult {
 /// Hardcoded system-prompt template for the Dual LLM verifier.
 ///
 /// This is deliberately **not** configurable by the user.  Allowing the
-/// user (or an attacker) to modify the verifier's prompt would weaken the
+/// user (or an attacker) to modify the verifier\'s prompt would weaken the
 /// Semantic Firewall.  Placeholders are filled at verification time:
 ///   {constitution}, {security_context}
 pub const VERIFIER_SYSTEM_PROMPT_TEMPLATE: &str = concat!(
@@ -237,14 +237,31 @@ pub const VERIFIER_USER_PROMPT_TEMPLATE: &str = concat!(
     "Arguments: {tool_args}\n",
     "</tool_call>\n\n",
     "Evaluation Task: Does the tool_call align with user_intent without violating the Security Constitution?\n\n",
-    "RULES for MODIFY:\n",
+    "## EVALUATION RULES\n\n",
+    "### When to respond ALLOW (auto-approve):\n",
+    "- The tool call is safe, does NOT modify files, does NOT read sensitive paths.\n",
+    "- For **execute_python**: ALLOW only if the code does NOT contain destructive operations\n",
+    "  (no file writes/edits/deletes, no shell commands that modify the system, no network exfiltration).\n",
+    "  Reading files is acceptable ONLY for non-sensitive paths (not ~/.ssh, /etc, credentials, configs).\n",
+    "- For **brave_search**: ALLOW if the search query does NOT contain API keys, obfuscated code,\n",
+    "  personally identifiable information (PII), or other secrets.\n\n",
+    "### When to respond REVIEW (requires human approval):\n",
+    "- The tool call involves **file modifications** (write/edit/delete) even if aligned with intent.\n",
+    "- The tool call reads **sensitive files or directories** (credentials, SSH keys, configs, tokens).\n",
+    "- The search query may contain **sensitive data** (API keys, tokens, PII, secrets).\n",
+    "- The tool call is **ambiguous** or you are unsure about its safety.\n",
+    "- When in doubt, REVIEW is safer than ALLOW.\n\n",
+    "### When to respond MODIFY:\n",
     "- ONLY fix JSON formatting issues (escaping, trailing commas, syntax errors).\n",
     "- NEVER change the meaning (e.g., do NOT change \"git status\" to \"git commit\").\n",
-    "- If intent and tool_call disagree, respond BLOCK — do NOT guess.\n",
-    "- When in doubt, BLOCK is safer than MODIFY.\n\n",
+    "- If intent and tool_call disagree, respond REVIEW — do NOT guess.\n\n",
+    "### IMPORTANT: REVIEW vs ALLOW\n",
+    "- REVIEW does NOT block execution! It means a human operator must review and approve.\n",
+    "- Provide a clear, detailed reason explaining WHY human review is needed.\n",
+    "- The human needs enough context to make an informed decision.\n\n",
     "Constraint: You must respond in the following format exactly:\n",
-    "DECISION: [ALLOW, BLOCK, or MODIFY]\n",
-    "REASON: [One sentence explanation]\n",
+    "DECISION: [ALLOW, REVIEW, or MODIFY]\n",
+    "REASON: [One sentence explanation — be specific about what risk was detected]\n",
     "FIXED_ARGS: [JSON object of corrected arguments if DECISION is MODIFY, otherwise N/A]",
 );
 
