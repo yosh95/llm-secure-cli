@@ -54,6 +54,7 @@ impl ChatCompleter {
                 "/verifier",
                 "/template",
                 "/t",
+                "/view",
             ],
             current_provider,
             ctx,
@@ -206,7 +207,7 @@ impl Completer for ChatCompleter {
                             return Ok((session_start, matches));
                         }
                     }
-                    "/save" | "/attach" | "/edit" | "/e" => {
+                    "/save" | "/attach" | "/edit" | "/e" | "/view" => {
                         return self.file_completer.complete(line, pos, ctx);
                     }
                     "/provider" | "/p" | "/vprovider" | "/vp" => {

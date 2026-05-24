@@ -184,6 +184,10 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
                 }
             }
         }
+        "view" => {
+            handle_view_cmd(session, args).await;
+            CommandResult::Handled
+        }
         _ => {
             ui::report_error(&format!("Unknown command: /{}", cmd));
             CommandResult::Handled
@@ -924,6 +928,73 @@ pub async fn handle_summarize(session: &mut ActiveSession) {
     }
 }
 
+pub async fn handle_view_cmd(session: &mut ActiveSession, args: &str) {
+    let config = match session.ctx.config_manager.get_config() {
+        Ok(c) => c,
+        Err(e) => {
+            ui::report_error(&format!("Failed to load config: {}", e));
+            return;
+        }
+    };
+
+    let save_dir = std::path::Path::new(&config.general.image_save_path);
+
+    if args.is_empty() {
+        // No argument: find the most recently saved media file
+        match crate::utils::media::find_latest_media(save_dir) {
+            Some(latest) => match crate::utils::media::open_file_with_default_app(&latest) {
+                Ok(_) => ui::report_success(&format!("Opened: {}", latest.display())),
+                Err(e) => ui::report_error(&e.to_string()),
+            },
+            None => {
+                ui::report_error(&format!(
+                    "No saved media found in {}. Generate an image first.",
+                    save_dir.display()
+                ));
+            }
+        }
+    } else {
+        // Argument: treat as a file path
+        let path = std::path::Path::new(args);
+        let path = if path.is_relative() {
+            // Try relative to CWD, then relative to the save directory
+            let cwd_path = std::env::current_dir().unwrap_or_default().join(args);
+            if cwd_path.exists() {
+                cwd_path
+            } else {
+                save_dir.join(args)
+            }
+        } else {
+            path.to_path_buf()
+        };
+
+        // Expand ~ if present
+        let path = if path.starts_with("~") {
+            if let Some(home) = dirs::home_dir() {
+                if let Ok(stripped) = path.strip_prefix("~") {
+                    home.join(stripped)
+                } else {
+                    path
+                }
+            } else {
+                path
+            }
+        } else {
+            path
+        };
+
+        if !path.exists() {
+            ui::report_error(&format!("File not found: {}", path.display()));
+            return;
+        }
+
+        match crate::utils::media::open_file_with_default_app(&path) {
+            Ok(_) => ui::report_success(&format!("Opened: {}", path.display())),
+            Err(e) => ui::report_error(&e.to_string()),
+        }
+    }
+}
+
 fn print_help() {
     ui::print_rule(Some("Interactive Commands"), Some("cyan"));
     println!("  /h, /help          Show this help message");
@@ -944,6 +1015,9 @@ fn print_help() {
     println!("  /alias [-d <name>] [<name> <target>]  List/create/delete model aliases");
     println!("  /s, /summarize     Summarize history and clear it");
     println!("  /t, /template [<name>]  List templates or insert one into prompt");
+    println!(
+        "  /view [<path>]      Open saved image or file with system default app (no arg = latest)"
+    );
     println!("  /raw               Show raw conversation history");
     println!("  /dump              Dump conversation history as TOML");
     ui::print_rule(None, Some("cyan"));

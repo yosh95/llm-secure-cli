@@ -263,3 +263,44 @@ pub fn save_media(b64_data: &str, mime_type: &str, save_path: &str) -> anyhow::R
 
     Ok(full_path.to_string_lossy().to_string())
 }
+
+/// Find the most recently modified file in the given directory.
+/// Returns `None` if the directory does not exist or contains no files.
+pub fn find_latest_media(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    let dir = if dir.starts_with("~") {
+        let home = dirs::home_dir()?;
+        let stripped = dir.strip_prefix("~").ok()?;
+        home.join(stripped)
+    } else {
+        dir.to_path_buf()
+    };
+
+    let entries = std::fs::read_dir(&dir).ok()?;
+    entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .max_by(|a, b| {
+            let a_mtime = std::fs::metadata(a).ok().and_then(|m| m.modified().ok());
+            let b_mtime = std::fs::metadata(b).ok().and_then(|m| m.modified().ok());
+            a_mtime.cmp(&b_mtime)
+        })
+}
+
+/// Open a file using the system's default application.
+///
+/// Uses the `open` crate, which delegates to:
+/// - `xdg-open` on Linux
+/// - `open` on macOS
+/// - `start` on Windows
+///
+/// Returns an error with a platform-not-supported message if opening fails.
+pub fn open_file_with_default_app(path: &std::path::Path) -> anyhow::Result<()> {
+    let path_str = path.to_string_lossy();
+    open::that(path)
+        .map_err(|e| anyhow::anyhow!(
+            "Failed to open file: {}\n             Your platform may not support opening files via command line.\n             You can manually open the file at: {}",
+            e,
+            path_str
+        ))
+}
