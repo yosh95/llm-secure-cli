@@ -88,7 +88,7 @@ Every MCP tool call is accompanied by a cryptographically signed identity
 token encoded as a **COSE_Sign** structure (CBOR tag 98, RFC 9052).
 
 **Native implementation:** The COSE layer is implemented directly using
-Rust-native crates (e.g., `ed25519-dalek`, `ciborium`, `saorsa-pqc`) — no external Python dependency. This makes custom algorithm identifiers (ML-DSA alg `−48`, IANA-pending per *draft-ietf-cose-dilithium*) fully auditable without registry injection.
+Rust-native crates (`ed25519-dalek`, `ciborium`, `fips203`/`fips204`) — no external Python dependency. This makes custom algorithm identifiers (ML-DSA alg `−48`, IANA-pending per *draft-ietf-cose-dilithium*) fully auditable without registry injection.
 
 **Token structure:**
 
@@ -267,7 +267,7 @@ shared secrets:
 | ML-KEM-768 | FIPS 203 | Level 3 | pk=1 184 B, sk=2 400 B, ct=1 088 B | Audit encryption |
 | ML-KEM-1024 | FIPS 203 | Level 5 | pk=1 568 B, sk=3 168 B, ct=1 568 B | — |
 
-Implementation: Rust-native `saorsa-pqc` crate (ML-DSA/ML-KEM) — FIPS-compliant reference implementations.
+Implementation: Rust-native `fips203`/`fips204` crates (ML-KEM/ML-DSA) — FIPS-compliant reference implementations.
 
 ### Classical Cryptography
 
@@ -409,7 +409,7 @@ static_analysis_is_error = true
 | Package | Purpose | Notes |
 |---|---|---|
 | `ed25519-dalek` | Ed25519 signatures, key serialization | Rust-native; monitor upstream advisories |
-| `saorsa-pqc` | ML-DSA / ML-KEM | FIPS-compliant implementations |
+| `fips203`/`fips204` | ML-KEM / ML-DSA | FIPS-compliant implementations |
 | `ciborium` | CBOR serialization for COSE tokens | Rust-native CBOR implementation |
 | `aes-gcm` | AES-256-GCM for audit log encryption | Used with ML-KEM for hybrid encryption |
 | `sha2` | SHA-256 for integrity hashing | Standard cryptographic hash |
@@ -436,7 +436,7 @@ The ML-DSA algorithm identifier used in COSE tokens (`-48`) is provisional
 (IANA pending per *draft-ietf-cose-dilithium*).  Until the IANA assignment
 is finalized, interoperability with third-party COSE implementations that
 use a different provisional identifier is not guaranteed.  `llsc` pins the
-`saorsa-pqc` crate version to maintain consistency.
+`fips203`/`fips204` crate versions to maintain consistency.
 
 ---
 

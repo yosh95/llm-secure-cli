@@ -4,12 +4,18 @@ use aes_gcm::{
 };
 use anyhow::{Result, anyhow};
 use rand::RngCore;
-use saorsa_pqc::api::{
-    MlDsa, MlDsaPublicKey, MlDsaSecretKey, MlDsaSignature, MlDsaVariant as SaorsaMldsaVariant,
-    MlKem, MlKemCiphertext, MlKemPublicKey, MlKemSecretKey, MlKemVariant as SaorsaMlkemVariant,
-};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+
+// ── FIPS 203: ML-KEM ──
+use fips203::ml_kem_768;
+use fips203::traits::{Decaps, Encaps, KeyGen as KemKeyGen, SerDes as KemSerDes};
+
+// ── FIPS 204: ML-DSA ──
+use fips204::ml_dsa_44;
+use fips204::ml_dsa_65;
+use fips204::ml_dsa_87;
+use fips204::traits::{KeyGen as DsaKeyGen, SerDes as DsaSerDes, Signer, Verifier};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PQCVariant {
@@ -63,49 +69,91 @@ pub type MlkemVariant = KEMVariant;
 pub struct PqcProvider;
 
 impl PqcProvider {
-    fn map_mldsa_variant(v: PQCVariant) -> SaorsaMldsaVariant {
-        match v {
-            PQCVariant::MLDSA44 => SaorsaMldsaVariant::MlDsa44,
-            PQCVariant::MLDSA65 => SaorsaMldsaVariant::MlDsa65,
-            PQCVariant::MLDSA87 => SaorsaMldsaVariant::MlDsa87,
-        }
-    }
-
-    fn map_mlkem_variant(v: KEMVariant) -> SaorsaMlkemVariant {
-        match v {
-            KEMVariant::MLKEM512 => SaorsaMlkemVariant::MlKem512,
-            KEMVariant::MLKEM768 => SaorsaMlkemVariant::MlKem768,
-            KEMVariant::MLKEM1024 => SaorsaMlkemVariant::MlKem1024,
-        }
-    }
+    // ── ML-DSA key generation ──
 
     pub fn generate_keypair(variant: PQCVariant) -> Result<(Vec<u8>, Vec<u8>)> {
-        let v = Self::map_mldsa_variant(variant);
-        let ops = MlDsa::new(v);
-        let (pk, sk) = ops
-            .generate_keypair()
-            .map_err(|_| anyhow!("PQC keygen failed"))?;
-        Ok((pk.to_bytes(), sk.to_bytes()))
+        match variant {
+            PQCVariant::MLDSA44 => {
+                let (pk, sk) = ml_dsa_44::KG::try_keygen()
+                    .map_err(|e| anyhow!("ML-DSA-44 keygen failed: {}", e))?;
+                Ok((pk.into_bytes().to_vec(), sk.into_bytes().to_vec()))
+            }
+            PQCVariant::MLDSA65 => {
+                let (pk, sk) = ml_dsa_65::KG::try_keygen()
+                    .map_err(|e| anyhow!("ML-DSA-65 keygen failed: {}", e))?;
+                Ok((pk.into_bytes().to_vec(), sk.into_bytes().to_vec()))
+            }
+            PQCVariant::MLDSA87 => {
+                let (pk, sk) = ml_dsa_87::KG::try_keygen()
+                    .map_err(|e| anyhow!("ML-DSA-87 keygen failed: {}", e))?;
+                Ok((pk.into_bytes().to_vec(), sk.into_bytes().to_vec()))
+            }
+        }
     }
+
+    // ── ML-KEM key generation ──
 
     pub fn generate_kem_keypair(variant: KEMVariant) -> Result<(Vec<u8>, Vec<u8>)> {
-        let v = Self::map_mlkem_variant(variant);
-        let ops = MlKem::new(v);
-        let (pk, sk) = ops
-            .generate_keypair()
-            .map_err(|_| anyhow!("PQC KEM keygen failed"))?;
-        Ok((pk.to_bytes(), sk.to_bytes()))
+        match variant {
+            KEMVariant::MLKEM512 => {
+                let (pk, sk) = fips203::ml_kem_512::KG::try_keygen()
+                    .map_err(|e| anyhow!("ML-KEM-512 keygen failed: {}", e))?;
+                Ok((pk.into_bytes().to_vec(), sk.into_bytes().to_vec()))
+            }
+            KEMVariant::MLKEM768 => {
+                let (pk, sk) = ml_kem_768::KG::try_keygen()
+                    .map_err(|e| anyhow!("ML-KEM-768 keygen failed: {}", e))?;
+                Ok((pk.into_bytes().to_vec(), sk.into_bytes().to_vec()))
+            }
+            KEMVariant::MLKEM1024 => {
+                let (pk, sk) = fips203::ml_kem_1024::KG::try_keygen()
+                    .map_err(|e| anyhow!("ML-KEM-1024 keygen failed: {}", e))?;
+                Ok((pk.into_bytes().to_vec(), sk.into_bytes().to_vec()))
+            }
+        }
     }
 
+    // ── ML-DSA sign ──
+
     pub fn sign(variant: PQCVariant, sk_bytes: &[u8], message: &[u8]) -> Result<Vec<u8>> {
-        let v = Self::map_mldsa_variant(variant);
-        let ops = MlDsa::new(v);
-        let sk = MlDsaSecretKey::from_bytes(v, sk_bytes).map_err(|_| anyhow!("Invalid PQC sk"))?;
-        let sig = ops
-            .sign(&sk, message)
-            .map_err(|_| anyhow!("PQC sign failed"))?;
-        Ok(sig.to_bytes())
+        match variant {
+            PQCVariant::MLDSA44 => {
+                let sk_arr: [u8; ml_dsa_44::SK_LEN] = sk_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-DSA-44 secret key length"))?;
+                let sk = ml_dsa_44::PrivateKey::try_from_bytes(sk_arr)
+                    .map_err(|e| anyhow!("Invalid ML-DSA-44 sk: {}", e))?;
+                let sig = sk
+                    .try_sign(message, &[])
+                    .map_err(|e| anyhow!("ML-DSA-44 sign failed: {}", e))?;
+                Ok(sig.to_vec())
+            }
+            PQCVariant::MLDSA65 => {
+                let sk_arr: [u8; ml_dsa_65::SK_LEN] = sk_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-DSA-65 secret key length"))?;
+                let sk = ml_dsa_65::PrivateKey::try_from_bytes(sk_arr)
+                    .map_err(|e| anyhow!("Invalid ML-DSA-65 sk: {}", e))?;
+                let sig = sk
+                    .try_sign(message, &[])
+                    .map_err(|e| anyhow!("ML-DSA-65 sign failed: {}", e))?;
+                Ok(sig.to_vec())
+            }
+            PQCVariant::MLDSA87 => {
+                let sk_arr: [u8; ml_dsa_87::SK_LEN] = sk_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-DSA-87 secret key length"))?;
+                let sk = ml_dsa_87::PrivateKey::try_from_bytes(sk_arr)
+                    .map_err(|e| anyhow!("Invalid ML-DSA-87 sk: {}", e))?;
+                let sig = sk
+                    .try_sign(message, &[])
+                    .map_err(|e| anyhow!("ML-DSA-87 sign failed: {}", e))?;
+                Ok(sig.to_vec())
+            }
+        }
     }
+
+    // ── ML-DSA verify ──
 
     pub fn verify(
         variant: PQCVariant,
@@ -113,19 +161,50 @@ impl PqcProvider {
         message: &[u8],
         sig_bytes: &[u8],
     ) -> Result<()> {
-        let v = Self::map_mldsa_variant(variant);
-        let ops = MlDsa::new(v);
-        let pk = MlDsaPublicKey::from_bytes(v, pk_bytes).map_err(|_| anyhow!("Invalid PQC pk"))?;
-        let sig =
-            MlDsaSignature::from_bytes(v, sig_bytes).map_err(|_| anyhow!("Invalid PQC sig"))?;
-        if ops.verify(&pk, message, &sig).unwrap_or(false) {
+        let ok = match variant {
+            PQCVariant::MLDSA44 => {
+                let pk_arr: [u8; ml_dsa_44::PK_LEN] = pk_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-DSA-44 public key length"))?;
+                let sig_arr: [u8; ml_dsa_44::SIG_LEN] = sig_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-DSA-44 signature length"))?;
+                let pk = ml_dsa_44::PublicKey::try_from_bytes(pk_arr)
+                    .map_err(|e| anyhow!("Invalid ML-DSA-44 pk: {}", e))?;
+                pk.verify(message, &sig_arr, &[])
+            }
+            PQCVariant::MLDSA65 => {
+                let pk_arr: [u8; ml_dsa_65::PK_LEN] = pk_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-DSA-65 public key length"))?;
+                let sig_arr: [u8; ml_dsa_65::SIG_LEN] = sig_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-DSA-65 signature length"))?;
+                let pk = ml_dsa_65::PublicKey::try_from_bytes(pk_arr)
+                    .map_err(|e| anyhow!("Invalid ML-DSA-65 pk: {}", e))?;
+                pk.verify(message, &sig_arr, &[])
+            }
+            PQCVariant::MLDSA87 => {
+                let pk_arr: [u8; ml_dsa_87::PK_LEN] = pk_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-DSA-87 public key length"))?;
+                let sig_arr: [u8; ml_dsa_87::SIG_LEN] = sig_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-DSA-87 signature length"))?;
+                let pk = ml_dsa_87::PublicKey::try_from_bytes(pk_arr)
+                    .map_err(|e| anyhow!("Invalid ML-DSA-87 pk: {}", e))?;
+                pk.verify(message, &sig_arr, &[])
+            }
+        };
+        if ok {
             Ok(())
         } else {
             Err(anyhow!("PQC Verification failed"))
         }
     }
 
-    // Existing code fallback
+    // ── Legacy ML-DSA wrappers ──
+
     pub fn sign_mldsa(message: &[u8], sk_bytes: &[u8], variant: PQCVariant) -> Result<Vec<u8>> {
         Self::sign(variant, sk_bytes, message)
     }
@@ -139,25 +218,99 @@ impl PqcProvider {
         Self::verify(variant, pk_bytes, message, sig_bytes).is_ok()
     }
 
+    // ── ML-KEM encapsulate ──
+
     pub fn encapsulate(variant: KEMVariant, pk_bytes: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
-        let v = Self::map_mlkem_variant(variant);
-        let ops = MlKem::new(v);
-        let pk = MlKemPublicKey::from_bytes(v, pk_bytes).map_err(|_| anyhow!("Invalid PQC pk"))?;
-        let (ss, ct) = ops
-            .encapsulate(&pk)
-            .map_err(|_| anyhow!("PQC encapsulate failed"))?;
-        Ok((ss.to_bytes().to_vec(), ct.to_bytes().to_vec()))
+        match variant {
+            KEMVariant::MLKEM512 => {
+                let pk_arr: [u8; fips203::ml_kem_512::EK_LEN] = pk_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-KEM-512 public key length"))?;
+                let ek = fips203::ml_kem_512::EncapsKey::try_from_bytes(pk_arr)
+                    .map_err(|e| anyhow!("Invalid ML-KEM-512 pk: {}", e))?;
+                let (ss, ct) = ek
+                    .try_encaps()
+                    .map_err(|e| anyhow!("ML-KEM-512 encapsulate failed: {}", e))?;
+                Ok((ss.into_bytes().to_vec(), ct.into_bytes().to_vec()))
+            }
+            KEMVariant::MLKEM768 => {
+                let pk_arr: [u8; ml_kem_768::EK_LEN] = pk_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-KEM-768 public key length"))?;
+                let ek = ml_kem_768::EncapsKey::try_from_bytes(pk_arr)
+                    .map_err(|e| anyhow!("Invalid ML-KEM-768 pk: {}", e))?;
+                let (ss, ct) = ek
+                    .try_encaps()
+                    .map_err(|e| anyhow!("ML-KEM-768 encapsulate failed: {}", e))?;
+                Ok((ss.into_bytes().to_vec(), ct.into_bytes().to_vec()))
+            }
+            KEMVariant::MLKEM1024 => {
+                let pk_arr: [u8; fips203::ml_kem_1024::EK_LEN] = pk_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-KEM-1024 public key length"))?;
+                let ek = fips203::ml_kem_1024::EncapsKey::try_from_bytes(pk_arr)
+                    .map_err(|e| anyhow!("Invalid ML-KEM-1024 pk: {}", e))?;
+                let (ss, ct) = ek
+                    .try_encaps()
+                    .map_err(|e| anyhow!("ML-KEM-1024 encapsulate failed: {}", e))?;
+                Ok((ss.into_bytes().to_vec(), ct.into_bytes().to_vec()))
+            }
+        }
     }
 
+    // ── ML-KEM decapsulate ──
+
     pub fn decapsulate(variant: KEMVariant, ct_bytes: &[u8], sk_bytes: &[u8]) -> Result<Vec<u8>> {
-        let v = Self::map_mlkem_variant(variant);
-        let ops = MlKem::new(v);
-        let sk = MlKemSecretKey::from_bytes(v, sk_bytes).map_err(|_| anyhow!("Invalid PQC sk"))?;
-        let ct = MlKemCiphertext::from_bytes(v, ct_bytes).map_err(|_| anyhow!("Invalid PQC ct"))?;
-        let ss = ops
-            .decapsulate(&sk, &ct)
-            .map_err(|_| anyhow!("PQC decapsulate failed"))?;
-        Ok(ss.to_bytes().to_vec())
+        match variant {
+            KEMVariant::MLKEM512 => {
+                let dk_arr: [u8; fips203::ml_kem_512::DK_LEN] = sk_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-KEM-512 secret key length"))?;
+                let ct_arr: [u8; fips203::ml_kem_512::CT_LEN] = ct_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-KEM-512 ciphertext length"))?;
+                let dk = fips203::ml_kem_512::DecapsKey::try_from_bytes(dk_arr)
+                    .map_err(|e| anyhow!("Invalid ML-KEM-512 dk: {}", e))?;
+                let ct = fips203::ml_kem_512::CipherText::try_from_bytes(ct_arr)
+                    .map_err(|e| anyhow!("Invalid ML-KEM-512 ct: {}", e))?;
+                let ss = dk
+                    .try_decaps(&ct)
+                    .map_err(|e| anyhow!("ML-KEM-512 decapsulate failed: {}", e))?;
+                Ok(ss.into_bytes().to_vec())
+            }
+            KEMVariant::MLKEM768 => {
+                let dk_arr: [u8; ml_kem_768::DK_LEN] = sk_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-KEM-768 secret key length"))?;
+                let ct_arr: [u8; ml_kem_768::CT_LEN] = ct_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-KEM-768 ciphertext length"))?;
+                let dk = ml_kem_768::DecapsKey::try_from_bytes(dk_arr)
+                    .map_err(|e| anyhow!("Invalid ML-KEM-768 dk: {}", e))?;
+                let ct = ml_kem_768::CipherText::try_from_bytes(ct_arr)
+                    .map_err(|e| anyhow!("Invalid ML-KEM-768 ct: {}", e))?;
+                let ss = dk
+                    .try_decaps(&ct)
+                    .map_err(|e| anyhow!("ML-KEM-768 decapsulate failed: {}", e))?;
+                Ok(ss.into_bytes().to_vec())
+            }
+            KEMVariant::MLKEM1024 => {
+                let dk_arr: [u8; fips203::ml_kem_1024::DK_LEN] = sk_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-KEM-1024 secret key length"))?;
+                let ct_arr: [u8; fips203::ml_kem_1024::CT_LEN] = ct_bytes
+                    .try_into()
+                    .map_err(|_| anyhow!("Invalid ML-KEM-1024 ciphertext length"))?;
+                let dk = fips203::ml_kem_1024::DecapsKey::try_from_bytes(dk_arr)
+                    .map_err(|e| anyhow!("Invalid ML-KEM-1024 dk: {}", e))?;
+                let ct = fips203::ml_kem_1024::CipherText::try_from_bytes(ct_arr)
+                    .map_err(|e| anyhow!("Invalid ML-KEM-1024 ct: {}", e))?;
+                let ss = dk
+                    .try_decaps(&ct)
+                    .map_err(|e| anyhow!("ML-KEM-1024 decapsulate failed: {}", e))?;
+                Ok(ss.into_bytes().to_vec())
+            }
+        }
     }
 
     #[deprecated(note = "Use encapsulate instead")]

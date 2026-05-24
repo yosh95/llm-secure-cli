@@ -3,6 +3,8 @@ use crate::security::pqc_cose::HybridSigner;
 use anyhow::{Result, anyhow};
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
+use fips203::traits::KeyGen;
+use fips203::traits::SerDes;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -194,16 +196,13 @@ impl IdentityManager {
             }
         }
 
-        // ML-KEM
+        // ML-KEM (FIPS 203)
         let kem_path = dir.join("id_kem768");
         if !kem_path.exists() {
-            let v = saorsa_pqc::api::MlKemVariant::MlKem768;
-            let ops = saorsa_pqc::api::MlKem::new(v);
-            let (pk, sk) = ops
-                .generate_keypair()
-                .map_err(|_| anyhow!("KEM keygen failed"))?;
-            store.save_private_key(&kem_path, &sk.to_bytes(), passphrase.as_deref())?;
-            fs::write(dir.join("id_kem768.pub"), pk.to_bytes())?;
+            let (pk, sk) = fips203::ml_kem_768::KG::try_keygen()
+                .map_err(|e| anyhow!("KEM keygen failed: {}", e))?;
+            store.save_private_key(&kem_path, &sk.into_bytes(), passphrase.as_deref())?;
+            fs::write(dir.join("id_kem768.pub"), pk.into_bytes())?;
         }
 
         Ok(())

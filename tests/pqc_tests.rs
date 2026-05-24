@@ -1,3 +1,5 @@
+use fips203::traits::KeyGen;
+use fips203::traits::SerDes;
 use llm_secure_cli::security::pqc::{
     MldsaVariant, PQCVariant, PqcProvider, ResponseSigner, SecureStorage,
 };
@@ -43,16 +45,12 @@ fn test_mldsa_sign_verify_all_variants() {
 
 #[test]
 fn test_mlkem_encaps_decaps() {
-    // We use the provider's specific ML-KEM-768 implementation
-    let v = saorsa_pqc::api::MlKemVariant::MlKem768;
+    // Generate ML-KEM-768 key pair using fips203 directly
+    let (pk, sk) = fips203::ml_kem_768::KG::try_keygen().expect("ML-KEM-768 keygen failed");
+    let pk_bytes = pk.clone().into_bytes();
+    let sk_bytes = sk.clone().into_bytes();
 
-    // We need the secret key as bytes for the provider
-    let (pk_gen, sk_gen) = saorsa_pqc::api::MlKem::new(v)
-        .generate_keypair()
-        .expect("keygen failed");
-    let pk_bytes = pk_gen.to_bytes();
-    let sk_bytes = sk_gen.to_bytes();
-
+    // Encapsulate using PqcProvider (which wraps fips203)
     let (ss_enc, ct) = PqcProvider::encapsulate(
         llm_secure_cli::security::pqc::KEMVariant::MLKEM768,
         &pk_bytes,
@@ -74,15 +72,14 @@ fn test_mlkem_encaps_decaps() {
 
 #[test]
 fn test_secure_storage_hybrid_encryption() {
-    let v = saorsa_pqc::api::MlKemVariant::MlKem768;
-    let (pk, sk) = saorsa_pqc::api::MlKem::new(v)
-        .generate_keypair()
-        .expect("KEM keygen failed");
+    // Generate ML-KEM-768 key pair using fips203 directly
+    let (pk, sk) = fips203::ml_kem_768::KG::try_keygen().expect("ML-KEM-768 keygen failed");
     let original_data = b"Sensitive post-quantum data content";
 
-    let packet = SecureStorage::encrypt(original_data, &pk.to_bytes()).expect("Encryption failed");
+    let packet =
+        SecureStorage::encrypt(original_data, &pk.clone().into_bytes()).expect("Encryption failed");
     let decrypted_data =
-        SecureStorage::decrypt(&packet, &sk.to_bytes()).expect("Decryption failed");
+        SecureStorage::decrypt(&packet, &sk.into_bytes()).expect("Decryption failed");
 
     assert_eq!(
         original_data.to_vec(),
