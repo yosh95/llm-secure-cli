@@ -1,6 +1,6 @@
 use crate::consts::{config_file_path, get_base_dir};
 use crate::security::identity::IdentityManager;
-use crate::security::pqc::{MldsaVariant, PqcProvider};
+use crate::security::pqc::PqcProvider;
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
@@ -89,10 +89,14 @@ impl IntegrityVerifier {
         let json_data = serde_json::to_string(&data_to_sign)?;
 
         // 1. Sign with PQC (ML-DSA)
-        let sk_pqc = IdentityManager::get_pqc_private_key(MldsaVariant::MLDSA65)
-            .map_err(|_| anyhow!("Identity keys not found. Run 'keygen' first."))?;
-        let pqc_sig =
-            PqcProvider::sign_mldsa(json_data.as_bytes(), &sk_pqc, MldsaVariant::MLDSA65)?;
+        let sk_pqc =
+            IdentityManager::get_pqc_private_key(crate::security::pqc::DEFAULT_PQC_VARIANT)
+                .map_err(|_| anyhow!("Identity keys not found. Run 'keygen' first."))?;
+        let pqc_sig = PqcProvider::sign_mldsa(
+            json_data.as_bytes(),
+            &sk_pqc,
+            crate::security::pqc::DEFAULT_PQC_VARIANT,
+        )?;
 
         // 2. Sign with Ed25519 (Classical)
         let classical_priv_pem = IdentityManager::get_classical_private_key_pem()?;
@@ -104,7 +108,9 @@ impl IntegrityVerifier {
             binary_hash,
             config_hash,
             pqc_signature: general_purpose::STANDARD.encode(pqc_sig),
-            pqc_algorithm: "ML-DSA-65".to_string(),
+            pqc_algorithm: crate::security::pqc::DEFAULT_PQC_VARIANT
+                .to_str()
+                .to_string(),
             classical_signature: Some(general_purpose::STANDARD.encode(classical_sig.to_vec())),
         };
 
@@ -134,14 +140,15 @@ impl IntegrityVerifier {
         data_to_verify.insert("config_hash", &manifest.config_hash);
         let json_data = serde_json::to_string(&data_to_verify)?;
 
-        let pk_pqc = IdentityManager::get_pqc_public_key(MldsaVariant::MLDSA65)?;
+        let pk_pqc =
+            IdentityManager::get_pqc_public_key(crate::security::pqc::DEFAULT_PQC_VARIANT)?;
         let signature_pqc = general_purpose::STANDARD.decode(&manifest.pqc_signature)?;
 
         if !PqcProvider::verify_mldsa(
             json_data.as_bytes(),
             &signature_pqc,
             &pk_pqc,
-            MldsaVariant::MLDSA65,
+            crate::security::pqc::DEFAULT_PQC_VARIANT,
         ) {
             return Ok(false);
         }

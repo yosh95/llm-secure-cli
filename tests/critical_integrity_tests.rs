@@ -677,12 +677,12 @@ fn test_pqc_agility_manager_all_levels_map_correctly() {
     let config = AppConfig::default();
 
     // Risk-level-based PQC variant switching is discontinued.
-    // All operations use ML-DSA-44 (NIST Level 2) regardless of tool or security level.
+    // All operations use the highest NIST Level 5 strength regardless of tool or security level.
     let level = PQCAgilityManager::get_required_level(&config, "execute_python", None);
     assert_eq!(
         level,
-        PQCVariant::MLDSA44,
-        "All tools get ML-DSA-44 (risk-level-based switching discontinued)"
+        PQCVariant::MLDSA87,
+        "All tools get ML-DSA-87 (highest NIST Level 5 strength)"
     );
 
     let level = PQCAgilityManager::get_required_level(&config, "list_files", None);

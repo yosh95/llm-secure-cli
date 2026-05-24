@@ -123,7 +123,7 @@ impl IdentityManager {
     pub fn has_keys() -> bool {
         // Accept both raw and LKEF-magic encrypted key files.
         let dir = Self::get_key_dir("self", "me");
-        (dir.join("id_ed25519").exists()) && (dir.join("id_mldsa65").exists())
+        (dir.join("id_ed25519").exists()) && (dir.join("id_mldsa87").exists())
     }
 
     // ── Key generation ──
@@ -149,7 +149,7 @@ impl IdentityManager {
         }
 
         // If keys already exist, do nothing.
-        if dir.join("id_ed25519").exists() && dir.join("id_mldsa65").exists() {
+        if dir.join("id_ed25519").exists() && dir.join("id_mldsa87").exists() {
             return Ok(());
         }
 
@@ -323,11 +323,15 @@ impl IdentityManager {
         let ed_sk =
             store.load_private_key(&store.base_dir().join("self").join("me").join("id_ed25519"))?;
         let pqc_sk =
-            store.load_private_key(&store.base_dir().join("self").join("me").join("id_mldsa65"))?;
+            store.load_private_key(&store.base_dir().join("self").join("me").join("id_mldsa87"))?;
 
         // Create Hybrid COSE Token
-        let cose_token =
-            HybridSigner::create_hybrid_token(&payload, &ed_sk, &pqc_sk, PQCVariant::MLDSA65)?;
+        let cose_token = HybridSigner::create_hybrid_token(
+            &payload,
+            &ed_sk,
+            &pqc_sk,
+            crate::security::pqc::DEFAULT_PQC_VARIANT,
+        )?;
 
         // Base64url encode for transport
         Ok(base64::Engine::encode(

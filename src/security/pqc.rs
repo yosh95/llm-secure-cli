@@ -66,6 +66,14 @@ impl FromStr for PQCVariant {
 pub type MldsaVariant = PQCVariant;
 pub type MlkemVariant = KEMVariant;
 
+/// The single post-quantum signature algorithm used throughout the application.
+/// All operations use ML-DSA-87 (NIST Level 5) — the highest available strength.
+pub const DEFAULT_PQC_VARIANT: PQCVariant = PQCVariant::MLDSA87;
+
+/// The single post-quantum KEM algorithm used throughout the application.
+/// All operations use ML-KEM-1024 (NIST Level 5) — the highest available strength.
+pub const DEFAULT_KEM_VARIANT: KEMVariant = KEMVariant::MLKEM1024;
+
 pub struct PqcProvider;
 
 impl PqcProvider {
@@ -401,18 +409,14 @@ impl SecureStorage {
 pub struct PQCAgilityManager;
 
 impl PQCAgilityManager {
+    /// Always returns [`DEFAULT_PQC_VARIANT`] (ML-DSA-87).
+    /// Risk-level-based variant switching is discontinued.
     pub fn get_required_level(
-        config: &crate::config::models::AppConfig,
-        tool_name: &str,
-        args: Option<&serde_json::Value>,
+        _config: &crate::config::models::AppConfig,
+        _tool_name: &str,
+        _args: Option<&serde_json::Value>,
     ) -> PQCVariant {
-        use crate::security::cass::{CASSOrchestrator, RiskLevel};
-        let risk = CASSOrchestrator::evaluate_risk(tool_name, args, &config.security);
-        match risk {
-            RiskLevel::Critical | RiskLevel::High => PQCVariant::MLDSA87,
-            RiskLevel::Medium => PQCVariant::MLDSA65,
-            _ => PQCVariant::MLDSA44,
-        }
+        DEFAULT_PQC_VARIANT
     }
 }
 

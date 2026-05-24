@@ -2,7 +2,7 @@ use crate::consts::audit_log_path;
 use crate::security::audit::AuditEntry;
 use crate::security::identity::IdentityManager;
 use crate::security::merkle::MerkleTree;
-use crate::security::pqc::{MldsaVariant, PQCVariant, PqcProvider};
+use crate::security::pqc::{MldsaVariant, PqcProvider};
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
@@ -136,7 +136,7 @@ impl SessionAnchorManager {
         };
 
         // Sign with PQC
-        let variant = PQCVariant::MLDSA65;
+        let variant = crate::security::pqc::DEFAULT_PQC_VARIANT;
         if let Ok(sk) = IdentityManager::get_pqc_private_key(variant) {
             let message = serde_json::to_string(&anchor)?;
             let sig = PqcProvider::sign(variant, &sk, message.as_bytes())?;
@@ -180,7 +180,8 @@ impl SessionAnchorManager {
         // 1. Verify PQC Signature
         if let (Some(sig_b64), Some(algo_str)) = (&anchor.pqc_signature, &anchor.pqc_algorithm) {
             use std::str::FromStr;
-            let variant = MldsaVariant::from_str(algo_str).unwrap_or(MldsaVariant::MLDSA65);
+            let variant = MldsaVariant::from_str(algo_str)
+                .unwrap_or(crate::security::pqc::DEFAULT_PQC_VARIANT);
             let pk = IdentityManager::get_pqc_public_key(variant)?;
 
             let mut anchor_copy = anchor.clone();

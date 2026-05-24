@@ -187,16 +187,16 @@ fn test_pqc_agility_manager() {
     let config = AppConfig::default();
 
     // Risk-level-based PQC variant switching is discontinued.
-    // All operations use ML-DSA-44 regardless of tool or context.
+    // All operations use ML-DSA-87 (NIST Level 5) — the highest available strength.
     let level = PQCAgilityManager::get_required_level(&config, "ls", None);
-    assert_eq!(level, PQCVariant::MLDSA44);
+    assert_eq!(level, PQCVariant::MLDSA87);
 
     let level = PQCAgilityManager::get_required_level(&config, "execute_python", None);
-    assert_eq!(level, PQCVariant::MLDSA44);
+    assert_eq!(level, PQCVariant::MLDSA87);
 
     let args = serde_json::json!({"path": "/etc/shadow"});
     let level = PQCAgilityManager::get_required_level(&config, "read_file", Some(&args));
-    assert_eq!(level, PQCVariant::MLDSA44);
+    assert_eq!(level, PQCVariant::MLDSA87);
 }
 
 #[test]
