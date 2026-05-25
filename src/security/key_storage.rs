@@ -307,75 +307,79 @@ fn set_permissions(_path: &std::path::Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::unwrap_used)]
     use super::*;
     use tempfile::tempdir;
 
     #[test]
-    fn test_save_and_load_raw() {
-        let dir = tempdir().expect("tempdir");
+    fn test_save_and_load_raw() -> Result<()> {
+        let dir = tempdir()?;
         let path = dir.path().join("test_key");
         let key_data = b"this-is-a-test-key-32-bytes!!";
 
-        save_key(&path, key_data, None).expect("save raw key");
+        save_key(&path, key_data, None)?;
         assert!(path.exists(), "Raw key file must exist");
 
-        let loaded = load_key(&path).expect("load raw key");
+        let loaded = load_key(&path)?;
         assert_eq!(loaded, key_data, "Raw key data must match after load");
         assert!(!is_encrypted(&path), "Raw key must not be marked encrypted");
+        Ok(())
     }
 
     #[test]
-    fn test_save_and_load_encrypted_with_passphrase() {
-        let dir = tempdir().expect("tempdir");
+    fn test_save_and_load_encrypted_with_passphrase() -> Result<()> {
+        let dir = tempdir()?;
         let path = dir.path().join("test_key_enc");
         let key_data = b"test-key-data-for-encryption";
         let passphrase = "test-passphrase-123";
 
-        save_key(&path, key_data, Some(passphrase)).expect("save encrypted key");
+        save_key(&path, key_data, Some(passphrase))?;
         assert!(path.exists(), "Encrypted key file must exist");
         assert!(is_encrypted(&path), "Key must be marked encrypted");
 
-        let file_bytes = std::fs::read(&path).expect("read encrypted key file");
-        let loaded = load_encrypted_key_data(&file_bytes, passphrase)
-            .expect("load encrypted key with passphrase");
+        let file_bytes = std::fs::read(&path)?;
+        let loaded = load_encrypted_key_data(&file_bytes, passphrase)?;
         assert_eq!(
             loaded, key_data,
             "Encrypted key data must match after load/decrypt"
         );
+        Ok(())
     }
 
     #[test]
-    fn test_encrypted_wrong_passphrase_rejected() {
-        let dir = tempdir().expect("tempdir");
+    fn test_encrypted_wrong_passphrase_rejected() -> Result<()> {
+        let dir = tempdir()?;
         let path = dir.path().join("test_key_wrong_pw");
         let key_data = b"test-key-data-for-wrong-passphrase";
         let correct_pw = "correct-passphrase";
         let wrong_pw = "wrong-passphrase";
 
-        save_key(&path, key_data, Some(correct_pw)).expect("save encrypted key");
+        save_key(&path, key_data, Some(correct_pw))?;
 
-        let file_bytes = std::fs::read(&path).expect("read encrypted key file");
-        let result = load_encrypted_key_data(&file_bytes, wrong_pw);
-        assert!(result.is_err(), "Wrong passphrase must fail decryption");
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("incorrect passphrase"),
-            "Error must mention incorrect passphrase, got: {}",
-            err_msg
-        );
+        let file_bytes = std::fs::read(&path)?;
+        match load_encrypted_key_data(&file_bytes, wrong_pw) {
+            Err(e) => {
+                let err_msg = e.to_string();
+                assert!(
+                    err_msg.contains("incorrect passphrase"),
+                    "Error must mention incorrect passphrase, got: {}",
+                    err_msg
+                );
+            }
+            Ok(_) => panic!("Wrong passphrase must fail decryption"),
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_encrypted_file_format() {
-        let dir = tempdir().expect("tempdir");
+    fn test_encrypted_file_format() -> Result<()> {
+        let dir = tempdir()?;
         let path = dir.path().join("test_key_format");
         let key_data = b"test-key-data-for-format-check";
         let passphrase = "correct-passphrase";
 
-        save_key(&path, key_data, Some(passphrase)).expect("save encrypted key");
+        save_key(&path, key_data, Some(passphrase))?;
 
-        let file_bytes = std::fs::read(&path).expect("read encrypted key file");
+        let file_bytes = std::fs::read(&path)?;
         assert!(
             file_bytes.starts_with(b"LKEF"),
             "File must start with LKEF magic"
@@ -388,31 +392,33 @@ mod tests {
             expected_len,
             file_bytes.len()
         );
+        Ok(())
     }
 
     #[test]
-    fn test_empty_passphrase_treated_as_raw() {
-        let dir = tempdir().expect("tempdir");
+    fn test_empty_passphrase_treated_as_raw() -> Result<()> {
+        let dir = tempdir()?;
         let path = dir.path().join("test_key_empty_pw");
         let key_data = b"test-key-data";
 
-        save_key(&path, key_data, Some("")).expect("save with empty passphrase");
+        save_key(&path, key_data, Some(""))?;
         assert!(!is_encrypted(&path), "Empty passphrase should not encrypt");
 
-        let loaded = load_key(&path).expect("load raw key");
+        let loaded = load_key(&path)?;
         assert_eq!(loaded, key_data);
+        Ok(())
     }
 
     #[test]
-    fn test_encrypted_corrupted_file_rejected() {
-        let dir = tempdir().expect("tempdir");
+    fn test_encrypted_corrupted_file_rejected() -> Result<()> {
+        let dir = tempdir()?;
         let path = dir.path().join("test_key_corrupt");
         let key_data = b"test-key-data";
         let passphrase = "test-passphrase";
 
-        save_key(&path, key_data, Some(passphrase)).expect("save encrypted key");
+        save_key(&path, key_data, Some(passphrase))?;
 
-        let mut file_bytes = std::fs::read(&path).expect("read encrypted key file");
+        let mut file_bytes = std::fs::read(&path)?;
         let corrupt_pos = file_bytes.len() - 10;
         file_bytes[corrupt_pos] ^= 0xFF;
 
@@ -421,15 +427,21 @@ mod tests {
             result.is_err(),
             "Corrupted encrypted key must fail decryption"
         );
+        Ok(())
     }
 
     #[test]
-    fn test_encrypted_too_short_data_rejected() {
-        let result = load_encrypted_key_data(b"LKEF", "passphrase");
-        assert!(result.is_err(), "Too short encrypted data must be rejected");
-        assert!(
-            result.unwrap_err().to_string().contains("too short"),
-            "Error must mention too short"
-        );
+    fn test_encrypted_too_short_data_rejected() -> Result<()> {
+        match load_encrypted_key_data(b"LKEF", "passphrase") {
+            Err(e) => {
+                assert!(
+                    e.to_string().contains("too short"),
+                    "Error must mention too short, got: {}",
+                    e
+                );
+            }
+            Ok(_) => panic!("Too short encrypted data must be rejected"),
+        }
+        Ok(())
     }
 }
