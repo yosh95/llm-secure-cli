@@ -1,5 +1,4 @@
 use crate::config::models::AppConfig;
-use colored::Colorize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -122,7 +121,6 @@ pub async fn execute_python(
             line = stdout_reader.next_line(), if !stdout_done => {
                 match line {
                     Ok(Some(l)) => {
-                        eprintln!("      {}", l.dimmed());
                         stdout_res.push_str(&l);
                         stdout_res.push('\n');
                     }
@@ -133,7 +131,6 @@ pub async fn execute_python(
             line = stderr_reader.next_line(), if !stderr_done => {
                 match line {
                     Ok(Some(l)) => {
-                        eprintln!("      {}", l.red());
                         stderr_res.push_str(&l);
                         stderr_res.push('\n');
                     }
