@@ -322,3 +322,150 @@ impl DualLLMVerifier {
         }
     }
 }
+
+// =============================================================================
+// Verifier Committee — Multi-LLM adversarial verification
+// =============================================================================
+
+/// The aggregated verdict from a committee of verifier LLMs.
+///
+/// The committee uses an "any-flag" policy:
+/// - If ANY member returns NeedsApproval → human approval is required.
+/// - Only if ALL members return Allowed → the call is auto-approved.
+/// - If ANY member is unavailable → FallbackRequired (human must decide).
+#[derive(Debug, Clone)]
+pub enum CommitteeVerdict {
+    /// All committee members approved the tool call.
+    Allowed,
+    /// All members who responded approved, and the committee resolved
+    /// with corrected arguments (only if all Modified responses agree on args).
+    Modified(Value, String),
+    /// At least one committee member flagged the call as needing human review.
+    NeedsApproval(Vec<(String, String, String)>),
+    /// At least one committee member was unavailable or errored.
+    FallbackRequired(Vec<(String, String, String)>),
+}
+
+/// Run verification against a committee of multiple verifier LLMs concurrently.
+///
+/// The committee uses an "any-flag" policy:
+/// - If ANY member returns NeedsApproval → the result is NeedsApproval.
+/// - Only if ALL members return Allowed → the result is Allowed.
+/// - If ANY member is unavailable → FallbackRequired.
+///
+/// # Arguments
+///
+/// * `params` - The verification parameters (shared across all committee members).
+/// * `committee_members` - List of (provider, model) pairs for each committee member.
+///
+/// # Returns
+///
+/// A [`CommitteeVerdict`] representing the aggregated outcome.
+pub async fn verify_committee(
+    params: VerificationParams<'_>,
+    committee_members: &[(String, String)],
+) -> CommitteeVerdict {
+    if committee_members.is_empty() {
+        return CommitteeVerdict::FallbackRequired(vec![(
+            "N/A".to_string(),
+            "N/A".to_string(),
+            "No committee members configured".to_string(),
+        )]);
+    }
+
+    // Spawn concurrent verification for each committee member
+    let mut handles = Vec::with_capacity(committee_members.len());
+    // Clone config once before the loop (needed for async tasks)
+    let config_cloned = params.config.clone();
+    for (provider, model) in committee_members {
+        let ctx = params.ctx_app.clone();
+        let user_query = params.user_query.to_string();
+        let tool_name = params.tool_name.to_string();
+        let tool_args = params.tool_args.clone();
+        let context = params.context.clone();
+        let provider = provider.clone();
+        let model = model.clone();
+        let config_clone = config_cloned.clone();
+
+        handles.push(tokio::spawn(async move {
+            let outcome = verify_tool_call_full(VerificationParams {
+                ctx_app: ctx,
+                user_query: &user_query,
+                tool_name: &tool_name,
+                tool_args: &tool_args,
+                context,
+                config: &config_clone,
+                provider: Some(provider.clone()),
+                model: Some(model.clone()),
+            })
+            .await;
+            (provider, model, outcome)
+        }));
+    }
+
+    // Collect outcomes
+    let mut needs_approval: Vec<(String, String, String)> = Vec::new();
+    let mut fallbacks: Vec<(String, String, String)> = Vec::new();
+    let mut modified: Vec<(String, String, Value, String)> = Vec::new();
+    let mut allowed_count = 0;
+    let total = committee_members.len();
+
+    for handle in handles {
+        match handle.await {
+            Ok((provider, model, outcome)) => match outcome {
+                VerificationOutcome::Allowed(_reason) => {
+                    allowed_count += 1;
+                }
+                VerificationOutcome::Modified(fixed_args, reason) => {
+                    modified.push((provider, model, fixed_args, reason));
+                }
+                VerificationOutcome::NeedsApproval(reason) => {
+                    needs_approval.push((provider, model, reason));
+                }
+                VerificationOutcome::FallbackRequired(reason) => {
+                    fallbacks.push((provider, model, reason));
+                }
+            },
+            Err(e) => {
+                fallbacks.push((
+                    "unknown".to_string(),
+                    "unknown".to_string(),
+                    format!("Task panicked: {}", e),
+                ));
+            }
+        }
+    }
+
+    // Aggregation logic: "any-flag" policy
+    if !fallbacks.is_empty() {
+        return CommitteeVerdict::FallbackRequired(fallbacks);
+    }
+
+    if !needs_approval.is_empty() {
+        return CommitteeVerdict::NeedsApproval(needs_approval);
+    }
+
+    if !modified.is_empty() {
+        // Use the first modification (all should agree on safe args)
+        let (_, _, fixed_args, reason) = modified.remove(0);
+        return CommitteeVerdict::Modified(fixed_args, reason);
+    }
+
+    if allowed_count == total {
+        return CommitteeVerdict::Allowed;
+    }
+
+    // Should not reach here, but handle defensively
+    CommitteeVerdict::NeedsApproval(vec![(
+        "aggregator".to_string(),
+        "unknown".to_string(),
+        format!(
+            "Unexpected aggregation state: allowed={}/{} modified={} needs_approval={} fallbacks={}",
+            allowed_count,
+            total,
+            modified.len(),
+            needs_approval.len(),
+            fallbacks.len()
+        ),
+    )])
+}

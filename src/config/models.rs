@@ -112,51 +112,6 @@ impl<'de> Deserialize<'de> for AutoApprovalLevel {
     }
 }
 
-/// Verifier fallback policy when the Dual LLM Verifier is unavailable.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum VerifierFallback {
-    /// Force human approval for every tool call (fail-safe).
-    #[default]
-    RequireApproval,
-    /// Block all tool calls when the verifier is down (maximum safety).
-    Block,
-}
-
-impl VerifierFallback {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            VerifierFallback::RequireApproval => "require_approval",
-            VerifierFallback::Block => "block",
-        }
-    }
-}
-
-impl std::fmt::Display for VerifierFallback {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl Serialize for VerifierFallback {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for VerifierFallback {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let s = String::deserialize(d)?;
-        match s.as_str() {
-            "require_approval" => Ok(VerifierFallback::RequireApproval),
-            "block" => Ok(VerifierFallback::Block),
-            other => Err(serde::de::Error::unknown_variant(
-                other,
-                &["require_approval", "block"],
-            )),
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GeneralConfig {
     pub system_prompt: Option<String>,
@@ -271,10 +226,33 @@ pub struct ModelAlias {
     pub target: String,
 }
 
+/// A single member of the verifier committee.
+///
+/// Each committee member is an independent LLM that evaluates tool call safety.
+/// The committee uses an "any-flag" model: if **any** member returns NeedsApproval,
+/// the call requires human approval. Only if **all** members return Allowed is the
+/// call auto-approved.
+///
+/// # Backward Compatibility
+///
+/// If `dual_llm_provider` and `dual_llm_model` are set (the legacy single-verifier
+/// config), that pair is treated as the first committee member. Additional members
+/// can be added via `verifier_committee` without removing the legacy fields.
+///
+/// # Default
+///
+/// When neither legacy fields nor `verifier_committee` are configured, the verifier
+/// is disabled and falls back to manual human approval for all tool calls.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CommitteeMemberConfig {
+    /// The provider name (e.g. "ollama", "openrouter", "openai").
+    pub provider: String,
+    /// The model name (e.g. "gemma4:e2b", "gpt-4o", "claude-3-opus").
+    pub model: String,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SecurityConfig {
-    #[serde(default = "default_allowed_paths")]
-    pub allowed_paths: Vec<String>,
     #[serde(default)]
     pub blocked_paths: Vec<String>,
     #[serde(default)]
@@ -283,8 +261,6 @@ pub struct SecurityConfig {
     pub medium_risk_tools: Vec<String>,
     #[serde(default)]
     pub low_risk_tools: Vec<String>,
-    #[serde(default)]
-    pub allowed_tools: Option<Vec<String>>,
     #[serde(default = "default_true")]
     pub static_analysis_is_error: bool,
     #[serde(default)]
@@ -301,19 +277,53 @@ pub struct SecurityConfig {
     pub dual_llm_confidence_threshold: f64,
     #[serde(default)]
     pub security_level: SecurityLevel,
+    /// Additional verifier committee members beyond the primary (dual_llm_provider/model).
+    ///
+    /// When configured, the verifier runs ALL members (including the primary legacy pair)
+    /// concurrently. If ANY member flags the call as NeedsApproval, human approval is required.
+    /// Only if ALL members return Allowed is the call auto-approved.
+    ///
+    /// To use committee mode, add entries like:
+    /// ```toml
+    /// [security.verifier_committee]
+    /// members = [
+    ///   { provider = "openai", model = "gpt-4o" },
+    ///   { provider = "anthropic", model = "claude-3-opus" },
+    /// ]
+    /// ```
     #[serde(default)]
-    pub verifier_fallback: VerifierFallback,
+    pub verifier_committee: VerifierCommitteeConfig,
 }
 
-fn default_allowed_paths() -> Vec<String> {
-    vec![".".to_string()]
-}
 fn default_dual_llm_model() -> String {
     "".to_string()
 }
 fn default_unified_provider() -> String {
     "".to_string()
 }
+/// Configuration for the verifier committee.
+///
+/// The committee runs multiple independent LLM verifiers concurrently.
+/// The "any-flag" policy means: if ANY member flags a call as NeedsApproval,
+/// human approval is required. Only if ALL members return Allowed is the call
+/// auto-approved.
+///
+/// # Examples
+///
+/// ```toml
+/// [security.verifier_committee]
+/// members = [
+///   { provider = "ollama", model = "gemma4:e2b" },
+///   { provider = "openai", model = "gpt-4o-mini" },
+/// ]
+/// ```
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct VerifierCommitteeConfig {
+    /// List of committee members (provider/model pairs).
+    #[serde(default)]
+    pub members: Vec<CommitteeMemberConfig>,
+}
+
 fn default_confidence_threshold() -> f64 {
     0.7
 }
@@ -321,12 +331,10 @@ fn default_confidence_threshold() -> f64 {
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
-            allowed_paths: default_allowed_paths(),
             blocked_paths: Vec::new(),
             high_risk_tools: Vec::new(),
             medium_risk_tools: Vec::new(),
             low_risk_tools: Vec::new(),
-            allowed_tools: None,
             static_analysis_is_error: true,
             scaling_patterns: Vec::new(),
             auto_approval_level: None,
@@ -335,7 +343,7 @@ impl Default for SecurityConfig {
             dual_llm_model: default_dual_llm_model(),
             dual_llm_confidence_threshold: default_confidence_threshold(),
             security_level: SecurityLevel::High,
-            verifier_fallback: VerifierFallback::RequireApproval,
+            verifier_committee: VerifierCommitteeConfig::default(),
         }
     }
 }
@@ -369,10 +377,6 @@ impl SecurityConfig {
         // No runtime check needed: invalid values are rejected at
         // deserialization time by the AutoApprovalLevel custom Deserialize impl.
 
-        // --- verifier_fallback ---
-        // No runtime check needed: invalid values are rejected at
-        // deserialization time by the VerifierFallback custom Deserialize impl.
-
         // --- dual_llm_confidence_threshold ---
         let threshold = self.dual_llm_confidence_threshold;
         if threshold <= 0.0 || threshold > 1.0 {
@@ -386,29 +390,45 @@ impl SecurityConfig {
         // No runtime check needed: invalid values are rejected at
         // deserialization time by the SecurityLevel custom Deserialize impl.
 
-        // --- allowed_paths must not be empty ---
-        if self.allowed_paths.is_empty() {
-            errors.push(ValidationError {
-                field: "allowed_paths".to_string(),
-                message: "must contain at least one path".to_string(),
-            });
+        // --- cross-field: dual_llm_verification enabled but nothing configured ---
+        if self.dual_llm_verification.unwrap_or(false) {
+            let has_legacy = !self.dual_llm_provider.is_empty() && !self.dual_llm_model.is_empty();
+            let has_committee = !self.verifier_committee.members.is_empty();
+            if !has_legacy && !has_committee {
+                errors.push(ValidationError {
+                    field: "dual_llm_verification".to_string(),
+                    message: "dual_llm_verification is enabled but neither legacy provider/model nor verifier_committee members are configured. Set dual_llm_provider/model or add verifier_committee.members.".to_string(),
+                });
+            }
+            // Warn if legacy is partially configured
+            if self.dual_llm_provider.is_empty() && !self.dual_llm_model.is_empty() {
+                errors.push(ValidationError {
+                    field: "dual_llm_provider".to_string(),
+                    message: "dual_llm_provider is empty but dual_llm_model is set. Both or neither must be set.".to_string(),
+                });
+            }
+            if !self.dual_llm_provider.is_empty() && self.dual_llm_model.is_empty() {
+                errors.push(ValidationError {
+                    field: "dual_llm_model".to_string(),
+                    message: "dual_llm_model is empty but dual_llm_provider is set. Both or neither must be set.".to_string(),
+                });
+            }
         }
 
-        // --- cross-field: dual_llm_verification enabled but no provider ---
-        if self.dual_llm_verification.unwrap_or(false) && self.dual_llm_provider.is_empty() {
-            errors.push(ValidationError {
-                field: "dual_llm_provider".to_string(),
-                message: "dual_llm_verification is enabled but dual_llm_provider is empty"
-                    .to_string(),
-            });
-        }
-
-        // --- cross-field: dual_llm_verification enabled but no model ---
-        if self.dual_llm_verification.unwrap_or(false) && self.dual_llm_model.is_empty() {
-            errors.push(ValidationError {
-                field: "dual_llm_model".to_string(),
-                message: "dual_llm_verification is enabled but dual_llm_model is empty".to_string(),
-            });
+        // --- cross-field: committee members with empty provider/model ---
+        for (idx, member) in self.verifier_committee.members.iter().enumerate() {
+            if member.provider.is_empty() {
+                errors.push(ValidationError {
+                    field: format!("verifier_committee[{}].provider", idx),
+                    message: "committee member provider must not be empty".to_string(),
+                });
+            }
+            if member.model.is_empty() {
+                errors.push(ValidationError {
+                    field: format!("verifier_committee[{}].model", idx),
+                    message: "committee member model must not be empty".to_string(),
+                });
+            }
         }
 
         errors

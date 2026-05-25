@@ -152,28 +152,8 @@ pub async fn initialize_remote_tools(
 ) -> anyhow::Result<()> {
     let tools = mcp_manager.initialize_servers(config_manager).await?;
 
-    let config = config_manager.get_config()?;
-    let allowed_tools = config.security.allowed_tools.as_ref();
-
     let mut registry = registry.write().await;
     for tool in tools {
-        if let Some(allowed) = allowed_tools {
-            let name = tool["name"].as_str().unwrap_or_default();
-            if allowed.is_empty() {
-                continue; // Empty list disables all tools
-            }
-            if !allowed.iter().any(|pattern| {
-                if pattern == "*" {
-                    true
-                } else if pattern.ends_with('*') {
-                    name.starts_with(pattern.trim_end_matches('*'))
-                } else {
-                    pattern == name
-                }
-            }) {
-                continue;
-            }
-        }
         registry.register_remote_tool(&tool);
     }
 
@@ -181,30 +161,8 @@ pub async fn initialize_remote_tools(
 }
 
 pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::config::ConfigManager) {
-    let allowed_tools = if let Ok(config) = config_manager.get_config() {
-        config.security.allowed_tools.clone()
-    } else {
-        None
-    };
-
     let maybe_register =
         |r: &mut ToolRegistry, name: &str, description: &str, parameters: Value, func: ToolFunc| {
-            if let Some(ref allowed) = allowed_tools {
-                if allowed.is_empty() {
-                    return;
-                }
-                if !allowed.iter().any(|pattern| {
-                    if pattern == "*" {
-                        true
-                    } else if pattern.ends_with('*') {
-                        name.starts_with(pattern.trim_end_matches('*'))
-                    } else {
-                        pattern == name
-                    }
-                }) {
-                    return;
-                }
-            }
             r.register(name, description, parameters, func, true);
         };
 

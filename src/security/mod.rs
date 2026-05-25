@@ -6,7 +6,6 @@ pub mod integrity;
 pub mod key_storage;
 pub mod merkle;
 pub mod merkle_anchor;
-pub mod path_validator;
 pub mod permissions;
 pub mod policy;
 pub mod pqc;

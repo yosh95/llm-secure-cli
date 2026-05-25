@@ -1,7 +1,9 @@
 use crate::config::models::AutoApprovalLevel;
 use crate::core::session::ActiveSession;
 use crate::security::cass::RiskLevel;
-use crate::security::dual_llm_verifier::{VerificationOutcome, VerificationParams};
+use crate::security::dual_llm_verifier::{
+    CommitteeVerdict, VerificationOutcome, VerificationParams,
+};
 use serde_json::Value;
 
 impl ActiveSession {
@@ -48,28 +50,41 @@ impl ActiveSession {
             }
         }
 
-        // 2e. Check if Dual LLM Verifier is enabled and configured
-        let verifier_available = config.security.dual_llm_verification.unwrap_or(false)
-            && !self.ctx.config_manager.get_dual_llm_settings().0.is_empty()
-            && !self.ctx.config_manager.get_dual_llm_settings().1.is_empty();
+        // 2e. Check if Verifier Committee is enabled and resolve members
+        let (committee_members, verifier_available) =
+            self.ctx.config_manager.get_verifier_committee();
 
-        if verifier_available {
-            // Verifier is on: spawn the verifier task, defer human approval to Phase 3.
-            // We do NOT ask the human yet — the verifier outcome will decide.
-            let (v_provider, v_model) = self.ctx.config_manager.get_dual_llm_settings();
-            let verifier_handle = Some(self.spawn_verifier_task(name, args, v_provider, v_model));
-            // Return approved=false — actual approval happens in Phase 3.
-            Ok((risk_level, false, verifier_handle, None))
+        if verifier_available && !committee_members.is_empty() {
+            if committee_members.len() == 1 {
+                // Single verifier (legacy mode) — spawn one task as before.
+                let (v_provider, v_model) = &committee_members[0];
+                let verifier_handle =
+                    Some(self.spawn_verifier_task(name, args, v_provider.clone(), v_model.clone()));
+                self.ctx.ui.report_info(&format!(
+                    "Verifier: {} (single-member committee)",
+                    committee_members[0].1,
+                ));
+                Ok((risk_level, false, verifier_handle, None))
+            } else {
+                // Multi-member committee — spawn aggregated committee task.
+                let member_count = committee_members.len();
+                let verifier_handle =
+                    Some(self.spawn_committee_task(name, args, committee_members));
+                self.ctx.ui.report_info(&format!(
+                    "Verifier Committee: {} members (any-flag policy)",
+                    member_count,
+                ));
+                Ok((risk_level, false, verifier_handle, None))
+            }
         } else {
             // Verifier is off or not configured: fall back to human approval.
             if config.security.dual_llm_verification.unwrap_or(false) {
                 self.ctx.ui.report_warning(
-                    "Dual LLM verification is enabled, but provider/model is not set. \
-                     Falling back to manual approval.",
+                    "Dual LLM verification is enabled, but no verifier committee members are configured.                      Falling back to manual approval.",
                 );
                 self.ctx
                     .ui
-                    .report_info("Hint: Use /vp and /vm to set the verifier LLM.");
+                    .report_info("Hint: Use /vp and /vm to set the primary verifier, or add [security.verifier_committee] members.");
             }
             // Show the tool call with pager (HITL — human needs to review the details)
             self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
@@ -162,6 +177,83 @@ impl ActiveSession {
                 model: Some(model),
             })
             .await
+        })
+    }
+
+    /// Spawns the aggregated committee verification task.
+    ///
+    /// Runs ALL committee members concurrently and aggregates their verdicts
+    /// using the "any-flag" policy:
+    /// - If ANY member flags NeedsApproval → the aggregated result is NeedsApproval.
+    /// - Only if ALL members return Allowed → the result is Allowed.
+    /// - If ANY member is unavailable → FallbackRequired.
+    fn spawn_committee_task(
+        &self,
+        name: &str,
+        args: &serde_json::Map<String, Value>,
+        committee_members: Vec<(String, String)>,
+    ) -> tokio::task::JoinHandle<VerificationOutcome> {
+        let ctx_clone = self.ctx.clone();
+        let config_clone = match self.ctx.config_manager.get_config() {
+            Ok(c) => c.security.clone(),
+            Err(_) => crate::config::models::SecurityConfig::default(),
+        };
+        let intent_context = self.get_intent_context();
+        let name_clone = name.to_string();
+        let args_clone = serde_json::json!(args);
+
+        tokio::spawn(async move {
+            let committee_verdict = crate::security::dual_llm_verifier::verify_committee(
+                VerificationParams {
+                    ctx_app: ctx_clone,
+                    user_query: &intent_context,
+                    tool_name: &name_clone,
+                    tool_args: &args_clone,
+                    context: None,
+                    config: &config_clone,
+                    provider: None,
+                    model: None,
+                },
+                &committee_members,
+            )
+            .await;
+
+            // Convert CommitteeVerdict → VerificationOutcome for backward-compatible Phase 3
+            match committee_verdict {
+                CommitteeVerdict::Allowed => {
+                    VerificationOutcome::Allowed("All committee members approved.".to_string())
+                }
+                CommitteeVerdict::Modified(fixed_args, reason) => {
+                    VerificationOutcome::Modified(fixed_args, reason)
+                }
+                CommitteeVerdict::NeedsApproval(details) => {
+                    // Encode which members flagged the call
+                    let summary: Vec<String> = details
+                        .iter()
+                        .map(|(provider, model, reason)| {
+                            format!("[{}@{}] {}", provider, model, reason)
+                        })
+                        .collect();
+                    VerificationOutcome::NeedsApproval(format!(
+                        "Committee flagged by {} member(s): {}",
+                        details.len(),
+                        summary.join(" | ")
+                    ))
+                }
+                CommitteeVerdict::FallbackRequired(details) => {
+                    let summary: Vec<String> = details
+                        .iter()
+                        .map(|(provider, model, reason)| {
+                            format!("[{}@{}] {}", provider, model, reason)
+                        })
+                        .collect();
+                    VerificationOutcome::FallbackRequired(format!(
+                        "Committee fallback for {} member(s): {}",
+                        details.len(),
+                        summary.join(" | ")
+                    ))
+                }
+            }
         })
     }
 

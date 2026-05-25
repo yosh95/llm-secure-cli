@@ -1,4 +1,4 @@
-use llm_secure_cli::config::models::{AppConfig, SecurityConfig, SecurityLevel, VerifierFallback};
+use llm_secure_cli::config::models::{AppConfig, SecurityConfig, SecurityLevel};
 use llm_secure_cli::security::validate_tool_call;
 use serde_json::json;
 
@@ -16,8 +16,7 @@ fn test_config_merge_nested_objects_preserve_existing_keys() {
             "request_timeout": 1800
         },
         "security": {
-            "security_level": "high",
-            "allowed_paths": ["."]
+            "security_level": "high"
         }
     });
 
@@ -42,9 +41,6 @@ fn test_config_merge_nested_objects_preserve_existing_keys() {
 fn test_security_config_default_values_are_sane() {
     let cfg = SecurityConfig::default();
     assert_eq!(cfg.security_level, SecurityLevel::High);
-    assert!(!cfg.allowed_paths.is_empty());
-    assert_eq!(cfg.allowed_paths[0], ".");
-    assert_eq!(cfg.verifier_fallback, VerifierFallback::RequireApproval);
     assert!(cfg.static_analysis_is_error);
     assert!(cfg.dual_llm_confidence_threshold > 0.0);
     assert!(cfg.dual_llm_confidence_threshold <= 1.0);
@@ -156,10 +152,6 @@ fn test_app_config_round_trip_via_toml() {
         roundtripped.security.security_level,
         original.security.security_level
     );
-    assert_eq!(
-        roundtripped.security.verifier_fallback,
-        original.security.verifier_fallback
-    );
 }
 
 #[test]
@@ -167,13 +159,9 @@ fn test_app_config_deserializes_minimal_toml() {
     let minimal = r#"
 [general]
 pdf_as_base64 = false
-
-[security]
-allowed_paths = ["/tmp"]
 "#;
     let cfg: AppConfig = toml::from_str(minimal).expect("Minimal TOML should parse");
     assert!(!cfg.general.pdf_as_base64);
-    assert_eq!(cfg.security.allowed_paths, vec!["/tmp"]);
     // Fields not specified should take their defaults
     assert_eq!(cfg.security.security_level, SecurityLevel::High);
 }
@@ -211,41 +199,6 @@ fn test_cass_risk_levels_are_mutually_exclusive_in_defaults() {
 // Path validator edge cases
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_path_validator_allows_new_file_in_allowed_directory() {
-    use llm_secure_cli::security::path_validator::validate_path;
-
-    let config = SecurityConfig {
-        allowed_paths: vec![".".to_string()],
-        ..Default::default()
-    };
-
-    // Existing file
-    assert!(validate_path("Cargo.toml", &config).is_ok());
-
-    // New file in current directory (should be allowed if parent is allowed)
-    let result = validate_path("new_file_that_does_not_exist.txt", &config);
-    assert!(
-        result.is_ok(),
-        "New file in allowed dir should be allowed: {:?}",
-        result
-    );
-}
-
-#[test]
-fn test_path_validator_blocks_escape_attempts() {
-    use llm_secure_cli::security::path_validator::validate_path;
-
-    let config = SecurityConfig {
-        allowed_paths: vec![".".to_string()],
-        ..Default::default()
-    };
-
-    // Symlink escape via ../
-    assert!(validate_path("../etc/passwd", &config).is_err());
-    assert!(validate_path("../../root/.ssh/id_rsa", &config).is_err());
-}
-
 // ---------------------------------------------------------------------------
 // Security config validation tests
 // ---------------------------------------------------------------------------
@@ -262,10 +215,6 @@ fn test_validate_security_config_accepts_valid_defaults() {
     );
 
     // Also verify individual fields make sense
-    assert!(
-        !cfg.allowed_paths.is_empty(),
-        "allowed_paths should not be empty"
-    );
     assert_eq!(
         cfg.security_level,
         SecurityLevel::High,
@@ -335,21 +284,6 @@ security_level = "paranoid"
 }
 
 #[test]
-fn test_security_config_rejects_invalid_verifier_fallback() {
-    // With the typed enum, invalid verifier_fallback values are
-    // rejected at TOML deserialization time.
-    let toml_str = r#"
-[security]
-verifier_fallback = "allow"
-"#;
-    let cfg: Result<AppConfig, _> = toml::from_str(toml_str);
-    assert!(
-        cfg.is_err(),
-        "TOML parse should fail for invalid verifier_fallback value"
-    );
-}
-
-#[test]
 fn test_security_config_validate_warnings_high_without_dual_llm() {
     // Default config has security_level="high" but dual_llm_verification=None
     let cfg = SecurityConfig::default();
@@ -375,20 +309,9 @@ fn test_security_config_no_warnings_when_dual_llm_enabled() {
 }
 
 #[test]
-fn test_security_config_validate_errors_for_empty_allowed_paths() {
-    let cfg = SecurityConfig {
-        allowed_paths: vec![],
-        ..Default::default()
-    };
-    let errors = cfg.validate();
-    assert!(
-        errors.iter().any(|e| e.field == "allowed_paths"),
-        "Should report error for empty allowed_paths"
-    );
-}
-
-#[test]
 fn test_security_config_validate_errors_for_dual_llm_without_provider() {
+    // dual_llm is enabled with legacy backward-compat, but neither
+    // legacy provider/model nor verifier_committee members are set.
     let cfg = SecurityConfig {
         dual_llm_verification: Some(true),
         dual_llm_provider: "".to_string(),
@@ -396,8 +319,8 @@ fn test_security_config_validate_errors_for_dual_llm_without_provider() {
     };
     let errors = cfg.validate();
     assert!(
-        errors.iter().any(|e| e.field == "dual_llm_provider"),
-        "Should report error for dual_llm enabled without provider"
+        errors.iter().any(|e| e.field == "dual_llm_verification"),
+        "Should report error on dual_llm_verification when enabled without any provider/committee config"
     );
 }
 

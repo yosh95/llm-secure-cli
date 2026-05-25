@@ -1,54 +1,9 @@
 use llm_secure_cli::config::models::SecurityConfig;
-use llm_secure_cli::security::path_validator::validate_path;
-use std::env;
 use std::fs;
 use std::sync::Mutex;
 use tempfile::tempdir;
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
-
-#[test]
-fn test_path_validation() {
-    let _lock = TEST_LOCK.lock().expect("Failed to acquire test lock");
-    let dir = tempdir().expect("Failed to create temp dir");
-    let original_dir = env::current_dir().expect("Failed to get current dir");
-    env::set_current_dir(dir.path()).expect("Failed to set current dir");
-
-    let config = SecurityConfig {
-        allowed_paths: vec![".".to_string()],
-        ..SecurityConfig::default()
-    };
-
-    // 1. Allowed path (current directory)
-    let res = validate_path("test.txt", &config);
-    assert!(
-        res.is_ok(),
-        "Should allow test.txt in CWD, got {:?}",
-        res.err()
-    );
-
-    // 2. Traversal path (normalized and then checked against allowed_paths)
-    let res = validate_path("../outside.txt", &config);
-    // Should now return Err because it resolves to a path outside current directory
-    assert!(res.is_err());
-
-    // 3. Absolute path
-    let res = validate_path("/etc/passwd", &config);
-    // Should now return Err because it's not within "." (current directory)
-    assert!(res.is_err());
-
-    // 4. Normalization
-    let res = validate_path("  'sub/dir/'  ", &config);
-    assert!(res.is_ok());
-    let path_str = res
-        .expect("path should be valid")
-        .to_str()
-        .expect("path should be valid UTF-8")
-        .replace("\\", "/");
-    assert!(path_str.contains("sub/dir"));
-
-    env::set_current_dir(original_dir).expect("Failed to restore current dir");
-}
 
 #[test]
 fn test_audit_entry_serialization() {

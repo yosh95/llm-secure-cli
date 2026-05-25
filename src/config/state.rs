@@ -166,4 +166,60 @@ impl ConfigManager {
 
         (provider, model)
     }
+
+    /// Resolve the full verifier committee configuration.
+    ///
+    /// Returns a tuple of:
+    /// - The legacy primary (provider, model) — may be empty if only committee is used.
+    /// - A list of additional committee members from `verifier_committee.members`.
+    ///
+    /// The primary (if configured) is used as the first committee member.
+    /// All members are verified concurrently with an "any-flag" policy.
+    pub fn get_verifier_committee(&self) -> (Vec<(String, String)>, bool) {
+        let state = self.get_state().unwrap_or_else(|_| Default::default());
+        let config = self.get_config().ok();
+        let mut members: Vec<(String, String)> = Vec::new();
+
+        // 1. Legacy primary verifier (from state or config)
+        let primary_provider = state
+            .last_used_v_provider
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                config
+                    .as_ref()
+                    .map(|c| c.security.dual_llm_provider.clone())
+            })
+            .unwrap_or_default();
+
+        let primary_model = state
+            .last_used_v_model
+            .filter(|s| !s.is_empty())
+            .or_else(|| config.as_ref().map(|c| c.security.dual_llm_model.clone()))
+            .unwrap_or_default();
+
+        if !primary_provider.is_empty() && !primary_model.is_empty() {
+            members.push((primary_provider, primary_model));
+        }
+
+        // 2. Additional committee members from verifier_committee config
+        if let Some(ref cfg) = config {
+            for member in &cfg.security.verifier_committee.members {
+                if !member.provider.is_empty() && !member.model.is_empty() {
+                    // Avoid duplicate if the primary happens to be the same
+                    let pair = (member.provider.clone(), member.model.clone());
+                    if !members.contains(&pair) {
+                        members.push(pair);
+                    }
+                }
+            }
+        }
+
+        let enabled = config
+            .as_ref()
+            .and_then(|c| c.security.dual_llm_verification)
+            .unwrap_or(false)
+            && !members.is_empty();
+
+        (members, enabled)
+    }
 }

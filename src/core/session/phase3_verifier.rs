@@ -1,4 +1,3 @@
-use crate::config::models::VerifierFallback;
 use crate::core::session::ActiveSession;
 use crate::security::dual_llm_verifier::VerificationOutcome;
 use serde_json::Value;
@@ -29,8 +28,6 @@ impl ActiveSession {
         match outcome {
             VerificationOutcome::Allowed(reason) => {
                 // Verifier says it's safe → auto-approve.
-                // Show tool call directly (no pager — already approved, no need to block).
-                // This appears AFTER "Finalizing intent verification... done".
                 self.ctx
                     .ui
                     .print_tool_call_direct(name, &serde_json::json!(args));
@@ -57,7 +54,6 @@ impl ActiveSession {
             }
             VerificationOutcome::NeedsApproval(reason) => {
                 // Verifier flagged as potentially unsafe.
-                // Show tool call with pager (AFTER "Finalizing...done") so user reviews once.
                 self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
                 self.ctx
                     .ui
@@ -70,8 +66,7 @@ impl ActiveSession {
                 }
             }
             VerificationOutcome::FallbackRequired(reason) => {
-                // Verifier unavailable.
-                // Show tool call with pager (AFTER "Finalizing...done") so user reviews once.
+                // Verifier unavailable — always ask for human approval.
                 self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
                 if !self.handle_verifier_fallback(name, &reason).await {
                     return Err(anyhow::anyhow!(
@@ -129,30 +124,18 @@ impl ActiveSession {
         )
     }
 
+    /// Handle verifier fallback (verifier unavailable).
+    /// Always asks for human approval — the "block" option has been removed.
     async fn handle_verifier_fallback(&self, name: &str, reason: &str) -> bool {
-        let config = match self.ctx.config_manager.get_config() {
-            Ok(c) => c,
-            Err(_) => return false,
-        };
-        match config.security.verifier_fallback {
-            VerifierFallback::Block => {
-                self.ctx
-                    .ui
-                    .report_error(&format!("Verifier unavailable — blocked: {}", reason));
-                false
-            }
-            _ => {
-                self.ctx
-                    .ui
-                    .report_warning(&format!("Verifier unavailable: {}", reason));
-                matches!(
-                    self.ctx
-                        .ui
-                        .ask_confirm(&format!("Execute {} (Manual confirmation required)", name))
-                        .await,
-                    Some(crate::cli::ui::ConfirmResult::Yes)
-                )
-            }
-        }
+        self.ctx
+            .ui
+            .report_warning(&format!("Verifier unavailable: {}", reason));
+        matches!(
+            self.ctx
+                .ui
+                .ask_confirm(&format!("Execute {} (Manual confirmation required)", name))
+                .await,
+            Some(crate::cli::ui::ConfirmResult::Yes)
+        )
     }
 }

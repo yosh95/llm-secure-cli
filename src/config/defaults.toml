@@ -53,19 +53,17 @@ security_level = "high"
 dual_llm_verification = true
 dual_llm_provider = "ollama"
 dual_llm_model = "gemma4:e2b"
-
-# Verifier Fallback Policy (when the Dual LLM Verifier is unavailable)
-# - "require_approval" (default): Ask the human for confirmation.
-# - "block":                  Deny all tool calls when verifier is down (maximum safety).
-verifier_fallback = "require_approval"
-
-# Path-based access control (Basic Whitelist)
-allowed_paths = ["."]
-
-# Whitelist-based Tool Loading
-allowed_tools = ["*"]
-
-# =============================================================================
+# Verifier Committee — additional LLMs that participate in tool-call verification.
+# When configured, ALL committee members (including the primary dual_llm_provider/model)
+# verify each tool call concurrently. The "any-flag" policy applies:
+# if ANY member flags a call, human approval is required.
+#
+# Examples:
+# [security.verifier_committee]
+# members = [
+#   { provider = "openai", model = "gpt-4o-mini" },
+#   { provider = "openrouter", model = "anthropic/claude-3-haiku" },
+# ]
 # Post-Quantum Cryptography (PQC) Algorithm Selection
 # =============================================================================
 # These settings control which NIST-standardized PQC algorithms are used for

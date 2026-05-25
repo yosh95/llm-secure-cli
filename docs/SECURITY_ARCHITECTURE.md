@@ -52,9 +52,9 @@ Instead of fragile, platform-dependent regex patterns (e.g., `rm -rf /` or Windo
 `llm-secure-cli` is designed to be run within isolated environments.
 - **Docker-native Posture**: Running the agent inside a Docker container provides a physical boundary between the AI and the host system. This makes the security posture uniform across Windows, Linux, and macOS by standardizing on a Linux container environment.
 
-### Path Guardrails (Simplified)
+### Path Guardrails (Dual LLM based)
 
-Paths are normalized to absolute form and validated against a basic whitelist (`allowed_paths`). Complex OS-specific blacklists are deprecated in favor of the Semantic Policy Engine, which recognizes sensitive paths like `C:\Windows` or `/etc` based on its inherent knowledge and the provided context.
+Path validation is now handled entirely by the Dual LLM Semantic Firewall. The static path whitelist (`allowed_paths`) has been removed — the verifier LLM uses its inherent knowledge of sensitive paths (like `C:\Windows` or `/etc`) together with the user's intent context to determine whether a file access is safe.
 
 ### Environment Isolation (MCP)
 
@@ -185,14 +185,9 @@ user's intent.
 Implementation: `src/security/dual_llm_verifier.rs`.
 Enable via `defaults.toml`: `dual_llm_verification = true`.
 
-### Verifier Fallback Policy
+### Verifier Fallback (Always Require Approval)
 
-When the Dual LLM Verifier is unavailable (network error, API failure, etc.), the system follows a configurable fallback policy via `verifier_fallback`:
-
-| Policy | Behavior |
-|---|---|
-| `require_approval` (default) | Force human approval for every tool call. This is the fail-safe choice. |
-| `block` | Block all tool calls when the verifier is down. Maximum safety, but may cause excessive disruption. |
+When the Dual LLM Verifier is unavailable (network error, API failure, etc.), the system always asks for human approval before executing the tool call. The previously configurable `block` policy has been removed — the system now consistently requires manual confirmation as the only fallback behavior.
 
 ### Auto-Approval Levels
 
@@ -372,17 +367,8 @@ max_chat_archives = 5
 # Security Level: "high" (Default) | "standard"
 security_level = "high"
 
-# Workspace scope
-allowed_paths = ["."]
-
 # Auto-Approval Policy: "none" (default) | "low" | "medium"
 auto_approval_level = "none"
-
-# Tool whitelist
-allowed_tools = [
-    "brave_search",
-    "execute_python"
-]
 
 # Risk classification
 high_risk_tools = ["execute_python", "brave_search"]
@@ -394,9 +380,6 @@ dual_llm_verification = true
 dual_llm_provider = "ollama"
 dual_llm_model = "gemma4:e2b"
 dual_llm_confidence_threshold = 0.7
-
-# Verifier Fallback Policy: "require_approval" (default) | "block"
-verifier_fallback = "require_approval"
 
 # Static analysis errors block execution
 static_analysis_is_error = true
