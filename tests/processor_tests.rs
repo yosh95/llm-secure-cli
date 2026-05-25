@@ -104,7 +104,6 @@ impl LlmClient for MockProcessorClient {
                             .get("name")
                             .and_then(|v| v.as_str())
                             .map(|s| s.to_string()),
-                        tool_args: fc.get("arguments").map(|v| v.to_string()),
                         ..Default::default()
                     });
                 }
@@ -123,7 +122,6 @@ impl LlmClient for MockProcessorClient {
         Ok(llm_secure_cli::llm::models::LlmResponse {
             content: text,
             tool_name: None,
-            tool_args: None,
             ..Default::default()
         })
     }

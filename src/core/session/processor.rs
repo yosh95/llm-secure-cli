@@ -91,11 +91,6 @@ impl ActiveSession {
             );
         }
 
-        if let Some(redirect) = &result.tool_args {
-            use colored::*;
-            println!("{}", redirect.dimmed());
-        }
-
         Ok((result.content, None))
     }
 

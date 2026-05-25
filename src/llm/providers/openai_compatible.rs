@@ -234,17 +234,6 @@ impl LlmClient for OpenAiCompatibleClient {
             return Err(anyhow::anyhow!("API Error: {}", err));
         }
 
-        // Report if the model changed (e.g. via OpenRouter fallback)
-        let mut redirect_msg = None;
-        if let Some(resp_model) = resp_json.get("model").and_then(|v| v.as_str())
-            && resp_model != self.base.state.model
-        {
-            redirect_msg = Some(format!(
-                "Model redirected from '{}' to '{}'",
-                self.base.state.model, resp_model
-            ));
-        }
-
         let choice = &resp_json["choices"][0];
         let msg = &choice["message"];
 
@@ -264,7 +253,6 @@ impl LlmClient for OpenAiCompatibleClient {
         Ok(crate::llm::models::LlmResponse {
             content: parsed.text,
             tool_name: None,
-            tool_args: redirect_msg,
             usage,
         })
     }

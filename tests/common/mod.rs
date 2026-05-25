@@ -217,7 +217,6 @@ impl MockLlmClient {
                 let llm_resp = LlmResponse {
                     content: Some(text.clone()),
                     tool_name: None,
-                    tool_args: None,
                     usage: None,
                 };
                 (msg, llm_resp)
@@ -238,12 +237,11 @@ impl MockLlmClient {
                 let llm_resp = LlmResponse {
                     content: None,
                     tool_name: Some(name.clone()),
-                    tool_args: Some(arguments.to_string()),
                     usage: None,
                 };
                 (msg, llm_resp)
             }
-            MockResponse::Error(err) => {
+            MockResponse::Error(_err) => {
                 let msg = Message {
                     role: Role::Assistant,
                     parts: vec![],
@@ -251,7 +249,6 @@ impl MockLlmClient {
                 let llm_resp = LlmResponse {
                     content: None,
                     tool_name: None,
-                    tool_args: Some(err.clone()),
                     usage: None,
                 };
                 (msg, llm_resp)

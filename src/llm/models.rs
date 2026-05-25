@@ -85,7 +85,6 @@ pub struct Usage {
 pub struct LlmResponse {
     pub content: Option<String>,
     pub tool_name: Option<String>,
-    pub tool_args: Option<String>,
     pub usage: Option<Usage>,
 }
 

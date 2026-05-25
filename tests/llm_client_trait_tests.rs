@@ -162,7 +162,6 @@ async fn test_send_tool_call_response() {
         "Tool call responses have no content"
     );
     assert_eq!(response.tool_name.as_deref(), Some("list_files"));
-    assert!(response.tool_args.is_some());
 }
 
 #[tokio::test]
