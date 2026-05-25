@@ -1,4 +1,3 @@
-use crate::security::pqc::PQCVariant;
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -375,18 +374,8 @@ impl FastMcp {
                                                     HybridSigner::verify_hybrid_token(
                                                         &token_bytes,
                                                         &cpk,
-                                                        |v| {
-                                                            let filename = match v {
-                                                                PQCVariant::MLDSA44 => {
-                                                                    "id_mldsa44.pub"
-                                                                }
-                                                                PQCVariant::MLDSA65 => {
-                                                                    "id_mldsa65.pub"
-                                                                }
-                                                                PQCVariant::MLDSA87 => {
-                                                                    "id_mldsa87.pub"
-                                                                }
-                                                            };
+                                                        |_v| {
+                                                            let filename = "id_mldsa87.pub";
                                                             IdentityManager::get_public_key_for(
                                                                 "clients", client_id, filename,
                                                             )

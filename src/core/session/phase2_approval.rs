@@ -34,10 +34,7 @@ impl ActiveSession {
         // 2b. Zero Trust enforcement for MCP servers
         let _force_manual = self.check_zero_trust(name, &config.mcp_servers);
 
-        // 2c. Print the tool call to the UI
-        self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
-
-        // 2d. Generate identity token for Zero Trust MCP calls (if applicable)
+        // 2c. Generate identity token for Zero Trust MCP calls (if applicable)
         if self.check_zero_trust(name, &config.mcp_servers) {
             match crate::security::identity::IdentityManager::generate_token(Some(name)) {
                 Ok(_token) => self

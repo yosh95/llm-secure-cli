@@ -470,12 +470,55 @@ pub struct McpServerConfig {
     pub zero_trust: bool,
 }
 
+/// Post-Quantum Cryptography algorithm selection.
+///
+/// These settings control which NIST-standardized PQC algorithms the application
+/// uses for digital signatures (ML-DSA) and key encapsulation (ML-KEM).
+///
+/// Currently supported:
+/// - ML-DSA: "ML-DSA-87" (NIST Level 5, the highest security level)
+/// - ML-KEM: "ML-KEM-1024" (NIST Level 5, the highest security level)
+///
+/// To change algorithms (e.g., for enterprise compliance), update these values
+/// in config.toml and ensure the corresponding crate features are enabled.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PqcConfig {
+    /// ML-DSA algorithm variant for digital signatures.
+    /// Supported: "ML-DSA-87"
+    #[serde(default = "default_ml_dsa_algorithm")]
+    pub ml_dsa_algorithm: String,
+
+    /// ML-KEM algorithm variant for key encapsulation.
+    /// Supported: "ML-KEM-1024"
+    #[serde(default = "default_ml_kem_algorithm")]
+    pub ml_kem_algorithm: String,
+}
+
+fn default_ml_dsa_algorithm() -> String {
+    "ML-DSA-87".to_string()
+}
+
+fn default_ml_kem_algorithm() -> String {
+    "ML-KEM-1024".to_string()
+}
+
+impl Default for PqcConfig {
+    fn default() -> Self {
+        Self {
+            ml_dsa_algorithm: default_ml_dsa_algorithm(),
+            ml_kem_algorithm: default_ml_kem_algorithm(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct AppConfig {
     #[serde(default)]
     pub general: GeneralConfig,
     #[serde(default)]
     pub security: SecurityConfig,
+    #[serde(default)]
+    pub pqc: PqcConfig,
     #[serde(default)]
     pub brave_search: BraveSearchConfig,
     #[serde(default)]

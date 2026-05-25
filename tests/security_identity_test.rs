@@ -58,11 +58,8 @@ mod tests {
     fn test_pqc_variants_sign_verify() {
         let message = b"Critical security operation: format drive";
 
-        for variant in [
-            PQCVariant::MLDSA44,
-            PQCVariant::MLDSA65,
-            PQCVariant::MLDSA87,
-        ] {
+        {
+            let variant = PQCVariant::MLDSA87;
             // Generate
             let (pk, sk) = PqcProvider::generate_keypair(variant).expect("Keygen failed");
 

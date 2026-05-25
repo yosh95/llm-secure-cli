@@ -461,14 +461,6 @@ use std::str::FromStr;
 #[test]
 fn test_pqc_variant_from_str_standard_names() {
     assert_eq!(
-        PQCVariant::from_str("ML-DSA-44").unwrap(),
-        PQCVariant::MLDSA44
-    );
-    assert_eq!(
-        PQCVariant::from_str("ML-DSA-65").unwrap(),
-        PQCVariant::MLDSA65
-    );
-    assert_eq!(
         PQCVariant::from_str("ML-DSA-87").unwrap(),
         PQCVariant::MLDSA87
     );
@@ -478,14 +470,6 @@ fn test_pqc_variant_from_str_standard_names() {
 fn test_pqc_variant_from_str_compact_names() {
     // The code also handles compact forms (without hyphens)
     assert_eq!(
-        PQCVariant::from_str("MLDSA44").unwrap(),
-        PQCVariant::MLDSA44
-    );
-    assert_eq!(
-        PQCVariant::from_str("MLDSA65").unwrap(),
-        PQCVariant::MLDSA65
-    );
-    assert_eq!(
         PQCVariant::from_str("MLDSA87").unwrap(),
         PQCVariant::MLDSA87
     );
@@ -494,8 +478,8 @@ fn test_pqc_variant_from_str_compact_names() {
 #[test]
 fn test_pqc_variant_from_str_case_insensitive() {
     assert_eq!(
-        PQCVariant::from_str("ml-dsa-44").unwrap(),
-        PQCVariant::MLDSA44
+        PQCVariant::from_str("ml-dsa-87").unwrap(),
+        PQCVariant::MLDSA87
     );
     assert_eq!(
         PQCVariant::from_str("mldsa87").unwrap(),
@@ -506,14 +490,14 @@ fn test_pqc_variant_from_str_case_insensitive() {
 #[test]
 fn test_pqc_variant_from_str_invalid() {
     assert!(PQCVariant::from_str("ML-DSA-128").is_err());
+    assert!(PQCVariant::from_str("ML-DSA-44").is_err());
+    assert!(PQCVariant::from_str("ML-DSA-65").is_err());
     assert!(PQCVariant::from_str("RSA-2048").is_err());
     assert!(PQCVariant::from_str("").is_err());
 }
 
 #[test]
 fn test_pqc_variant_to_str() {
-    assert_eq!(PQCVariant::MLDSA44.to_str(), "ML-DSA-44");
-    assert_eq!(PQCVariant::MLDSA65.to_str(), "ML-DSA-65");
     assert_eq!(PQCVariant::MLDSA87.to_str(), "ML-DSA-87");
 }
 

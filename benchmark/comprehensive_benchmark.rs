@@ -110,7 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         100,
     );
     println!(
-        "Token Gen (ML-DSA-65)      : {:.2} ms  (σ={:.2} ms, n=100)",
+        "Token Gen (ML-DSA-87)      : {:.2} ms  (σ={:.2} ms, n=100)",
         gen_mean, gen_std
     );
 
@@ -123,8 +123,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  {:-<12}-+-{:-<12}-+-{:-<12}-+-{:-<12}", "", "", "", "");
 
     for variant in [
-        MldsaVariant::MLDSA44,
-        MldsaVariant::MLDSA65,
         MldsaVariant::MLDSA87,
     ] {
         let (kg_mean, _) = timeit(|| PqcProvider::generate_keypair(variant).unwrap(), 10);
@@ -148,8 +146,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("  {:-<12}-+-{:-<12}-+-{:-<12}-+-{:-<12}", "", "", "", "");
     for variant in [
-        MlkemVariant::MLKEM512,
-        MlkemVariant::MLKEM768,
         MlkemVariant::MLKEM1024,
     ] {
         let (kg_mean, _) = timeit(|| PqcProvider::generate_kem_keypair(variant).unwrap(), 10);

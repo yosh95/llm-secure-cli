@@ -52,8 +52,8 @@ rustyline = { version = "18.0", default-features = false, features = ["custom-bi
 mime_guess = { version = "2.0", default-features = false }
 pdf-extract = { version = "0.10", default-features = false }
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
-fips203 = { version = "0.4", default-features = false, features = ["ml-kem-512", "ml-kem-768", "ml-kem-1024", "default-rng"] }
-fips204 = { version = "0.4", default-features = false, features = ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87", "default-rng"] }
+fips203 = { version = "0.4", default-features = false, features = ["ml-kem-1024", "default-rng"] }
+fips204 = { version = "0.4", default-features = false, features = ["ml-dsa-87", "default-rng"] }
 ciborium = { version = "0.2", default-features = false }
 ed25519-dalek = { version = "2.2", features = ["pkcs8", "rand_core"] }
 pkcs8 = { version = "0.10", default-features = false, features = ["pem"] }

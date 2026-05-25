@@ -158,7 +158,7 @@ impl McpManager {
 
             // 2. Encrypt arguments with PQC using server's specific key
             if let Ok(pk) =
-                IdentityManager::get_public_key_for("servers", server_name, "id_kem768.pub")
+                IdentityManager::get_public_key_for("servers", server_name, "id_kem1024.pub")
             {
                 let args_bytes = serde_json::to_vec(&tool_args)?;
                 let encrypted_packet = SecureStorage::encrypt(&args_bytes, &pk)?;

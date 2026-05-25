@@ -7,11 +7,7 @@ fn main() -> anyhow::Result<()> {
 
     // 1. PQC Primitives (Primary Security Layer)
     println!("\n[1] Post-Quantum Cryptography (ML-DSA / ML-KEM)");
-    for variant in [
-        MldsaVariant::MLDSA44,
-        MldsaVariant::MLDSA65,
-        MldsaVariant::MLDSA87,
-    ] {
+    for variant in [MldsaVariant::MLDSA87] {
         let name = variant.to_str();
 
         // Keygen
@@ -53,21 +49,21 @@ fn main() -> anyhow::Result<()> {
     // Encaps
     let start = Instant::now();
     for _ in 0..1000 {
-        let _ = PqcProvider::encapsulate(KEMVariant::MLKEM768, &pk_dummy);
+        let _ = PqcProvider::encapsulate(KEMVariant::MLKEM1024, &pk_dummy);
     }
     let elapsed = start.elapsed();
-    let (_ss, ct) = PqcProvider::encapsulate(KEMVariant::MLKEM768, &pk_dummy)?;
-    println!("ML-KEM-768 Encaps (1000 runs): {:?}", elapsed);
-    println!("ML-KEM-768 Encaps (avg): {:?} per run", elapsed / 1000);
+    let (_ss, ct) = PqcProvider::encapsulate(KEMVariant::MLKEM1024, &pk_dummy)?;
+    println!("ML-KEM-1024 Encaps (1000 runs): {:?}", elapsed);
+    println!("ML-KEM-1024 Encaps (avg): {:?} per run", elapsed / 1000);
 
     // Decaps
     let start = Instant::now();
     for _ in 0..1000 {
-        let _ = PqcProvider::decapsulate(KEMVariant::MLKEM768, &ct, &sk_dummy);
+        let _ = PqcProvider::decapsulate(KEMVariant::MLKEM1024, &ct, &sk_dummy);
     }
     let elapsed = start.elapsed();
-    println!("ML-KEM-768 Decaps (1000 runs): {:?}", elapsed);
-    println!("ML-KEM-768 Decaps (avg): {:?} per run", elapsed / 1000);
+    println!("ML-KEM-1024 Decaps (1000 runs): {:?}", elapsed);
+    println!("ML-KEM-1024 Decaps (avg): {:?} per run", elapsed / 1000);
 
     // 2. Minimalist Fast-Fail (Deterministic Secondary Layer)
     println!("\n[2] Minimalist Fast-Fail (Static Analysis)");

@@ -6,11 +6,7 @@ use llm_secure_cli::security::pqc::{
 
 #[test]
 fn test_mldsa_sign_verify_all_variants() {
-    let variants = [
-        MldsaVariant::MLDSA44,
-        MldsaVariant::MLDSA65,
-        MldsaVariant::MLDSA87,
-    ];
+    let variants = [MldsaVariant::MLDSA87];
     let message = b"Post-quantum security is essential for 2026.";
 
     for variant in variants {
@@ -45,19 +41,19 @@ fn test_mldsa_sign_verify_all_variants() {
 
 #[test]
 fn test_mlkem_encaps_decaps() {
-    // Generate ML-KEM-768 key pair using fips203 directly
-    let (pk, sk) = fips203::ml_kem_768::KG::try_keygen().expect("ML-KEM-768 keygen failed");
+    // Generate ML-KEM-1024 key pair using fips203 directly
+    let (pk, sk) = fips203::ml_kem_1024::KG::try_keygen().expect("ML-KEM-1024 keygen failed");
     let pk_bytes = pk.clone().into_bytes();
     let sk_bytes = sk.clone().into_bytes();
 
     // Encapsulate using PqcProvider (which wraps fips203)
     let (ss_enc, ct) = PqcProvider::encapsulate(
-        llm_secure_cli::security::pqc::KEMVariant::MLKEM768,
+        llm_secure_cli::security::pqc::KEMVariant::MLKEM1024,
         &pk_bytes,
     )
     .expect("Encapsulation failed");
     let ss_dec = PqcProvider::decapsulate(
-        llm_secure_cli::security::pqc::KEMVariant::MLKEM768,
+        llm_secure_cli::security::pqc::KEMVariant::MLKEM1024,
         &ct,
         &sk_bytes,
     )
@@ -72,8 +68,8 @@ fn test_mlkem_encaps_decaps() {
 
 #[test]
 fn test_secure_storage_hybrid_encryption() {
-    // Generate ML-KEM-768 key pair using fips203 directly
-    let (pk, sk) = fips203::ml_kem_768::KG::try_keygen().expect("ML-KEM-768 keygen failed");
+    // Generate ML-KEM-1024 key pair using fips203 directly
+    let (pk, sk) = fips203::ml_kem_1024::KG::try_keygen().expect("ML-KEM-1024 keygen failed");
     let original_data = b"Sensitive post-quantum data content";
 
     let packet =
@@ -86,12 +82,12 @@ fn test_secure_storage_hybrid_encryption() {
         decrypted_data,
         "Decrypted data does not match original"
     );
-    assert_eq!(packet.algo, "ML-KEM-768/AES-256-GCM");
+    assert_eq!(packet.algo, "ML-KEM-1024/AES-256-GCM");
 }
 
 #[test]
 fn test_response_signer() {
-    let variant = MldsaVariant::MLDSA65;
+    let variant = MldsaVariant::MLDSA87;
     let (pk, sk) = PqcProvider::generate_keypair(variant).expect("Keygen failed");
     let response_text = "The quick brown fox jumps over the lazy dog";
     let verification_id = "test-v-id-123";
@@ -205,7 +201,7 @@ fn test_hybrid_cose_signer() {
     use llm_secure_cli::security::pqc_cose::HybridSigner;
     use rand::rngs::OsRng;
 
-    let variant = MldsaVariant::MLDSA65;
+    let variant = MldsaVariant::MLDSA87;
 
     // Generate keys in memory for the test to avoid filesystem side effects
     let mut rng = OsRng;

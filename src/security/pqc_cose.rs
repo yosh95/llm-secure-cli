@@ -34,8 +34,6 @@ impl HybridSigner {
 
         // 3. Signer 1: ML-DSA
         let pqc_alg_id = match variant {
-            PQCVariant::MLDSA44 => -44,
-            PQCVariant::MLDSA65 => -65,
             PQCVariant::MLDSA87 => -87,
         };
         let pqc_header = vec![(Value::Integer(1.into()), Value::Integer(pqc_alg_id.into()))];
@@ -170,8 +168,6 @@ impl HybridSigner {
         };
 
         let variant = match pqc_alg_id {
-            -44 => PQCVariant::MLDSA44,
-            -65 => PQCVariant::MLDSA65,
             -87 => PQCVariant::MLDSA87,
             _ => return None,
         };

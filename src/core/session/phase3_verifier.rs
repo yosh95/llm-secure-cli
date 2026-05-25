@@ -28,8 +28,9 @@ impl ActiveSession {
         let outcome = self.resolve_verifier_outcome(handle).await?;
         match outcome {
             VerificationOutcome::Allowed(reason) => {
-                // Verifier says it's safe → auto-approve
-                // Show tool call directly without pager (no need to block on approved calls)
+                // Verifier says it's safe → auto-approve.
+                // Show tool call directly (no pager — already approved, no need to block).
+                // This appears AFTER "Finalizing intent verification... done".
                 self.ctx
                     .ui
                     .print_tool_call_direct(name, &serde_json::json!(args));
@@ -39,8 +40,7 @@ impl ActiveSession {
                 Ok((args.clone(), true))
             }
             VerificationOutcome::Modified(fixed_args, reason) => {
-                // Verifier says it's safe with corrections → auto-approve with corrected args
-                // Show tool call directly without pager (no need to block on approved calls)
+                // Verifier says it's safe with corrections → auto-approve with corrected args.
                 self.ctx
                     .ui
                     .print_tool_call_direct(name, &serde_json::json!(args));
@@ -56,7 +56,8 @@ impl ActiveSession {
                 Ok((effective_args, true))
             }
             VerificationOutcome::NeedsApproval(reason) => {
-                // Verifier flagged as potentially unsafe → show tool call with pager, ask human
+                // Verifier flagged as potentially unsafe.
+                // Show tool call with pager (AFTER "Finalizing...done") so user reviews once.
                 self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
                 self.ctx
                     .ui
@@ -69,7 +70,8 @@ impl ActiveSession {
                 }
             }
             VerificationOutcome::FallbackRequired(reason) => {
-                // Verifier unavailable → show tool call with pager, show reason, ask human
+                // Verifier unavailable.
+                // Show tool call with pager (AFTER "Finalizing...done") so user reviews once.
                 self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
                 if !self.handle_verifier_fallback(name, &reason).await {
                     return Err(anyhow::anyhow!(
@@ -95,14 +97,16 @@ impl ActiveSession {
         let res = tokio::select! {
             res = handle => res.unwrap_or(VerificationOutcome::FallbackRequired("Task Panicked".into())),
             _ = tokio::time::sleep(std::time::Duration::from_secs(VERIFIER_TIMEOUT_SECS)) => {
-                println!("\nVerifier timed out after {}s.", VERIFIER_TIMEOUT_SECS);
+                println!("
+        Verifier timed out after {}s.", VERIFIER_TIMEOUT_SECS);
                 VerificationOutcome::FallbackRequired(format!(
                     "Verifier timed out after {}s",
                     VERIFIER_TIMEOUT_SECS
                 ))
             }
             _ = tokio::signal::ctrl_c() => {
-                println!("\n^C - Interrupted.");
+                println!("
+        ^C - Interrupted.");
                 self.handle_interruption();
                 return Err(anyhow::anyhow!("Interrupted during verification"));
             }

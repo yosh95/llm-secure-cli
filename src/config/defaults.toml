@@ -66,6 +66,22 @@ allowed_paths = ["."]
 allowed_tools = ["*"]
 
 # =============================================================================
+# Post-Quantum Cryptography (PQC) Algorithm Selection
+# =============================================================================
+# These settings control which NIST-standardized PQC algorithms are used for
+# signing (ML-DSA) and key encapsulation (ML-KEM).
+#
+# Currently supported ML-DSA variants:  ML-DSA-87
+# Currently supported ML-KEM variants:  ML-KEM-1024
+#
+# To change algorithms in the future (e.g., for enterprise compliance), update
+# these values and ensure the corresponding crate features are enabled.
+[pqc]
+ml_dsa_algorithm = "ML-DSA-87"
+ml_kem_algorithm = "ML-KEM-1024"
+
+
+# =============================================================================
 # OpenAI Compatible Providers
 # =============================================================================
 

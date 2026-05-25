@@ -169,40 +169,20 @@ impl IdentityManager {
         }
 
         // ML-DSA variants
-        let pqc_variants = [
-            PQCVariant::MLDSA44,
-            PQCVariant::MLDSA65,
-            PQCVariant::MLDSA87,
-        ];
-        for variant in pqc_variants {
-            let pqc_path = dir.join(match variant {
-                PQCVariant::MLDSA44 => "id_mldsa44",
-                PQCVariant::MLDSA65 => "id_mldsa65",
-                PQCVariant::MLDSA87 => "id_mldsa87",
-            });
-            if !pqc_path.exists() {
-                let (pk, sk) = PqcProvider::generate_keypair(variant)?;
-                store.save_private_key(&pqc_path, &sk, passphrase.as_deref())?;
-
-                let pub_filename = format!(
-                    "id_mldsa{}.pub",
-                    match variant {
-                        PQCVariant::MLDSA44 => "44",
-                        PQCVariant::MLDSA65 => "65",
-                        PQCVariant::MLDSA87 => "87",
-                    }
-                );
-                fs::write(dir.join(pub_filename), pk)?;
-            }
+        let pqc_path = dir.join("id_mldsa87");
+        if !pqc_path.exists() {
+            let (pk, sk) = PqcProvider::generate_keypair(PQCVariant::MLDSA87)?;
+            store.save_private_key(&pqc_path, &sk, passphrase.as_deref())?;
+            fs::write(dir.join("id_mldsa87.pub"), pk)?;
         }
 
         // ML-KEM (FIPS 203)
-        let kem_path = dir.join("id_kem768");
+        let kem_path = dir.join("id_kem1024");
         if !kem_path.exists() {
-            let (pk, sk) = fips203::ml_kem_768::KG::try_keygen()
+            let (pk, sk) = fips203::ml_kem_1024::KG::try_keygen()
                 .map_err(|e| anyhow!("KEM keygen failed: {}", e))?;
             store.save_private_key(&kem_path, &sk.into_bytes(), passphrase.as_deref())?;
-            fs::write(dir.join("id_kem768.pub"), pk.into_bytes())?;
+            fs::write(dir.join("id_kem1024.pub"), pk.into_bytes())?;
         }
 
         Ok(())
@@ -222,18 +202,13 @@ impl IdentityManager {
         Self::get_public_key_for("self", "me", "id_ed25519.pub")
     }
 
-    pub fn get_pqc_public_key(variant: PQCVariant) -> Result<Vec<u8>> {
-        let filename = match variant {
-            PQCVariant::MLDSA44 => "id_mldsa44.pub",
-            PQCVariant::MLDSA65 => "id_mldsa65.pub",
-            PQCVariant::MLDSA87 => "id_mldsa87.pub",
-        };
-        Self::get_public_key_for("self", "me", filename)
+    pub fn get_pqc_public_key(_variant: PQCVariant) -> Result<Vec<u8>> {
+        Self::get_public_key_for("self", "me", "id_mldsa87.pub")
     }
 
     pub fn get_kem_public_key() -> Result<Vec<u8>> {
         Ok(fs::read(
-            Self::get_key_dir("self", "me").join("id_kem768.pub"),
+            Self::get_key_dir("self", "me").join("id_kem1024.pub"),
         )?)
     }
 
@@ -259,22 +234,17 @@ impl IdentityManager {
     /// Load an ML-DSA private key (raw or encrypted).
     ///
     /// Uses the default [`FileSystemKeyStore`].
-    pub fn get_pqc_private_key(variant: PQCVariant) -> Result<Vec<u8>> {
+    pub fn get_pqc_private_key(_variant: PQCVariant) -> Result<Vec<u8>> {
         let store = FileSystemKeyStore;
-        Self::get_pqc_private_key_with_store(&store, variant)
+        Self::get_pqc_private_key_with_store(&store, PQCVariant::MLDSA87)
     }
 
     /// Load an ML-DSA private key using a custom [`KeyStore`].
     pub fn get_pqc_private_key_with_store(
         store: &dyn KeyStore,
-        variant: PQCVariant,
+        _variant: PQCVariant,
     ) -> Result<Vec<u8>> {
-        let filename = match variant {
-            PQCVariant::MLDSA44 => "id_mldsa44",
-            PQCVariant::MLDSA65 => "id_mldsa65",
-            PQCVariant::MLDSA87 => "id_mldsa87",
-        };
-        let path = store.base_dir().join("self").join("me").join(filename);
+        let path = store.base_dir().join("self").join("me").join("id_mldsa87");
         store.load_private_key(&path)
     }
 
@@ -288,7 +258,7 @@ impl IdentityManager {
 
     /// Load the ML-KEM-768 private key using a custom [`KeyStore`].
     pub fn get_kem_private_key_with_store(store: &dyn KeyStore) -> Result<Vec<u8>> {
-        let path = store.base_dir().join("self").join("me").join("id_kem768");
+        let path = store.base_dir().join("self").join("me").join("id_kem1024");
         store.load_private_key(&path)
     }
 
