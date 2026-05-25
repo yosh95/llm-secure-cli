@@ -27,7 +27,65 @@ The accompanying [Technical Report](paper/comprehensive_framework/paper.pdf) det
 ---
 
 <p align="center">
-  <img src="images/architecture.png" width="800" alt="llm-secure-cli Simplified Architecture Flow" />
+
+```mermaid
+flowchart TB
+    subgraph UI["💻 User Interface"]
+        A["Terminal / CLI"]
+        B["User Prompt & Context"]
+    end
+
+    subgraph Core["⚙️ Core Orchestration"]
+        C["Unified Client<br/>(Provider Registry)"]
+        D["Chat Session<br/>(ReAct Loop)"]
+    end
+
+    subgraph Providers["LLM Providers"]
+        E1["OpenAI"]
+        E2["Google Gemini"]
+        E3["Anthropic Claude"]
+        E4["Ollama (Local)"]
+    end
+
+    subgraph Security["🔒 Triple-Lock Security Framework"]
+        subgraph T1["Tier 1: Space"]
+            F1["Static Analysis<br/>(Control char / Null-byte check)"]
+        end
+        subgraph T2["Tier 2: Behavior"]
+            F2["Verifier Committee<br/>(N-member, any-flag policy)<br/>ABAC / Zero Trust / Semantic Firewall"]
+        end
+        subgraph T3["Tier 3: Time"]
+            F3["PQC (ML-DSA-87 / ML-KEM-1024)<br/>Tamper-evident Audit / Merkle Anchor"]
+        end
+    end
+
+    subgraph Execution["Secure Execution"]
+        G["Secure Tool Executor<br/>(Human-in-the-Loop)"]
+    end
+
+    subgraph Tools["External Tools"]
+        H1["execute_python<br/>(Universal Executor)"]
+        H2["brave_search<br/>(Web Search)"]
+        H3["MCP Servers<br/>(Remote / Custom)"]
+    end
+
+    A --> B
+    B --> C
+    C --> D
+    C -.-> Providers
+    
+    D -->|"Tool Call"| Security
+    F1 --> G
+    F2 --> G
+    F3 --> G
+    
+    G --> H1
+    G --> H2
+    G --> H3
+    
+    H1 & H2 & H3 -->|"Observations / Results"| D
+```
+
   <br>
   <em>Simplified Architecture Flow</em>
 </p>
@@ -100,7 +158,7 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 - **Autonomous Agent**: A streamlined set of built-in tools for complex automation:
     - **Universal Executor**: `execute_python` — run arbitrary Python code for any file operation, data processing, or computation task.
     - **Web Search**: `brave_search` — Brave LLM Context API for grounded, pre-extracted web content (LLM-optimized).
-- **High-Assurance via Verifier Committee**: Every non-auto-approved tool call is verified by a secondary LLM as a Semantic Firewall to ensure intent alignment.
+- **High-Assurance via Verifier Committee**: Every tool call is verified by the **Verifier Committee** — N independent LLMs operating concurrently under an "any-flag" policy — as a Semantic Firewall to ensure intent alignment.
 - **MCP (Model Context Protocol)**: Connect to remote resources or services via custom servers.
 - **Operational Stability**: A clean, flicker-free UI designed for long-term "Deep Work" sessions.
 - **Human-in-the-Loop**: Configurable `auto_approval_level` (none/low/medium) to balance speed and safety.
@@ -114,13 +172,14 @@ The AI agent autonomously selects tools to perform tasks. For example, it can se
 
 As a tool designed with **CISSP/CISA/CCSP** principles in mind, `llm-secure-cli` implements a multi-layered security architecture to mitigate the risks associated with autonomous AI agents.
 
-### 1. Access Control (AI-native ABAC & Semantic Guardrails)
+### 1. Access Control (AI-native ABAC & Verifier Committee)
 `llm-secure-cli` implements a modern **Attribute-Based Access Control (ABAC)**, moving away from fragile, platform-dependent static rules.
-- **AI-native Policy Engine (Verifier Committee)**: Replaces complex regex blocklists with a hardcoded **Security Constitution**. The system automatically gathers context (OS, User, Directory, Git status) and uses a secondary LLM to judge risks semantically using structured verdicts (ALLOW/BLOCK). This avoids the quagmire of platform-dependent static rules.
-- **Path Guardrails (Physical Boundary)**: Paths are recursively normalized and validated against a whitelist. Even for new files, the system resolves the physical parent directory to prevent symlink-based escapes.
-- **Risk-based Scaling (CASS)**: Security requirements (PQC signature level, audit encryption) automatically scale based on the tool's risk level (CRITICAL/HIGH/MEDIUM/LOW) via the **CASS (Context-Adaptive Security Scaling)** orchestrator.
-- **Intent Verification**: Every action requiring human-in-the-loop (non-auto-approved) is cross-verified by a separate, lightweight "Verifier" LLM. This acts as a **Semantic Firewall**, ensuring the proposed tool call aligns with the user's original intent and providing corrected arguments if small discrepancies are detected.
-- **Minimalist Fast-fail**: A lightweight syntactic check still blocks obviously malicious characters and shell invocation patterns in **nanoseconds**, while the heavy lifting of security judgment is shifted to the Verifier Committee.
+- **AI-native Policy Engine (Verifier Committee)**: Replaces complex regex blocklists with a hardcoded **Security Constitution**. The system automatically gathers context (OS, User, Directory, Git status) and uses N independent LLM verifiers to judge risks semantically using structured verdicts (ALLOW/REVIEW). This avoids the quagmire of platform-dependent static rules.
+- **Any-Flag Policy**: The Verifier Committee runs ALL members concurrently. If ANY member flags a call as requiring review, human approval is mandatory. Only if ALL members approve is the call auto-approved.
+- **Path Guardrails (Verifier-based)**: Path validation is handled entirely by the Verifier Committee. The static path whitelist has been removed — the verifier LLM uses its inherent knowledge of sensitive paths (like `C:\Windows` or `/etc`) together with the user's intent context to determine whether a file access is safe.
+- **PQC at Maximum Strength (CASS)**: Security requirements (PQC signature level, audit encryption) are fixed at the highest available NIST Level 5 (**ML-DSA-87** for signing, **ML-KEM-1024** for encryption). Risk-level-based variant switching has been discontinued.
+- **Intent Verification**: Every tool call is verified by the Verifier Committee. This acts as a **Semantic Firewall**, ensuring the proposed tool call aligns with the user's original intent and providing corrected arguments if small discrepancies are detected.
+- **Minimalist Fast-fail**: A lightweight syntactic check blocks only control characters and NULL bytes in **nanoseconds**, while the heavy lifting of security judgment is shifted to the Verifier Committee. Shell invocation pattern detection has been removed as redundant — the Verifier Committee handles all semantic analysis.
 - **Verifier Fallback**: When the verifier is unavailable (network error, API failure), the system always asks for human approval. The `block` option has been removed — the verifier fallback now always requires manual confirmation.
 - **Auto-Approval Levels**: The `auto_approval_level` setting controls which tool calls can proceed without human intervention: `none` (default, all require approval), `low` (auto-approve low-risk), `medium` (auto-approve low and medium-risk).
 - **Physical Isolation (Docker)**: The agent can be run inside a Docker container to provide a hard boundary between the AI and the host system.
@@ -196,6 +255,24 @@ Inside the `llsc` interactive session:
 ## Security Configuration Reference
 
 The primary security configuration is in `src/config/defaults.toml` (overridden by `~/.llm_secure_cli/config.toml`):
+
+### Verifier Committee Configuration
+The Verifier Committee uses N independent LLM verifiers with an "any-flag" policy:
+
+```toml
+[security]
+# Verifier Committee (AI-native ABAC / Semantic Firewall)
+verifier_enabled = true
+verifier_provider = "ollama"
+verifier_model = "gemma4:e2b"
+
+# Additional committee members (optional)
+[security.verifier_committee]
+members = [
+  { provider = "openai", model = "gpt-4o-mini" },
+  { provider = "openrouter", model = "anthropic/claude-3-haiku" },
+]
+```
 
 ### MCP Server Configuration
 Configure remote MCP servers in `config.toml`:

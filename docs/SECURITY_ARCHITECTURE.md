@@ -21,40 +21,43 @@ adjusts security posture based on each tool call's risk profile.
  Agent Tool Request
         │
         ▼
-  ┌─────────────┐
-  │    CASS     │  ← Context-Adaptive Security Scaling
-  └──┬──┬──┬───┘
-     │  │  │
-     ▼  ▼  ▼
-  T1  T2  T3
-Space Beh Time
-  │   │   │
-  └───┴───┘
-       │
-       ▼
-  Secure Tool Execution
+  ┌──────────────────────────────┐
+  │   Verifier Committee         │  ← N-member, any-flag policy
+  │   (Semantic Firewall)        │     + CASS (max-strength PQC)
+  └──────┬───────┬───────┬──────┘
+         │       │       │
+         ▼       ▼       ▼
+      T1       T2       T3
+    Space    Behav.    Time
+  (Static   (Verifier  (PQC Audit/
+   Anlys)    Comm.)    Merkle)
+         │       │       │
+         └───────┴───────┘
+                 │
+                 ▼
+        Secure Tool Execution
 ```
 
 ---
 
 ## Tier 1 — Structural Guardrails (Space)
 
-### AI-native Policy Engine (Semantic Guardrails & Verifier Committee)
+### Tier 1 — Structural Guardrails (Space)
 
-Instead of fragile, platform-dependent regex patterns (e.g., `rm -rf /` or Windows-specific commands), `llm-secure-cli` uses an **AI-native Policy Engine** powered by a **Verifier Committee**.
-- **Security Constitution**: A hardcoded, immutable system instruction that the auditor LLM must follow.
-- **Structured Verdicts**: The auditor provides a structured decision (ALLOW/BLOCK) using function calling, preventing parsing errors.
-- **CASS Orchestration**: The **Context-Adaptive Security Scaling** engine determines the risk level and required PQC strength before any tool is executed.
-- **Semantic Analysis**: The auditor understands the *impact* of a command in context, catching novel or obfuscated attacks that would bypass static analysis.
+#### Static Analysis (Minimalist Fast-Fail)
+A lightweight, deterministic check that blocks only **control characters and NULL bytes** which could destabilize the execution engine or corrupt audit logs. This is not a security boundary — it is a stability boundary. Complex intent judgment and risk assessment are entirely delegated to the Verifier Committee (Tier 2).
 
-### Physical Isolation (Docker / WSL2)
+**Implementation**: `src/security/static_analyzer.rs`
 
+#### Physical Isolation (Docker / WSL2)
 `llm-secure-cli` is designed to be run within isolated environments.
 - **Docker-native Posture**: Running the agent inside a Docker container provides a physical boundary between the AI and the host system. This makes the security posture uniform across Windows, Linux, and macOS by standardizing on a Linux container environment.
 
-### Path Guardrails (Verifier based)
+#### Path Guardrails (Verifier-based)
+Path validation is handled entirely by the Verifier Committee. The static path whitelist (`allowed_paths`) has been removed — the verifier LLM uses its inherent knowledge of sensitive paths (like `C:\Windows` or `/etc`) together with the user's intent context to determine whether a file access is safe.
 
-Path validation is now handled entirely by the Verifier Committee. The static path whitelist (`allowed_paths`) has been removed — the verifier LLM uses its inherent knowledge of sensitive paths (like `C:\Windows` or `/etc`) together with the user's intent context to determine whether a file access is safe.
+#### Environment Isolation (MCP)
+High-risk tool execution is delegated to remote MCP servers running inside VMs or Docker containers (Shared-Nothing architecture).  Even if a generated script bypasses static analysis, any malicious activity is contained within a disposable, restricted environment with no access to the host's filesystem or credentials.
 
 ### Environment Isolation (MCP)
 
@@ -104,7 +107,7 @@ COSE_Sign [CBOR tag 98]
     │       signature   : Ed25519 over Sig_Structure
     └── [1] COSE_Signature   alg = -48   (ML-DSA)
             protected   : cbor2.dumps({1: -48})
-            unprotected : {4: b"ML-DSA-65"}   ← kid = variant name (agility)
+            unprotected : {4: b"ML-DSA-87"}   ← kid = variant name
             signature   : ML-DSA variant over Sig_Structure
 ```
 
@@ -161,33 +164,35 @@ medium_risk_tools = []
 
 Implementation: `src/security/cass.rs`.
 
-### Verifier Committee (Dynamic Intent Check)
+### Verifier Committee (Dynamic Intent Check — N-Member, Any-Flag Policy)
 
 To prevent sophisticated Prompt Injection (especially indirect injection),
-`llm-secure-cli` implements a **Verifier Committee** pattern. Whenever a 
-tool execution requires manual approval (based on the `auto_approval_level`), 
-the system intercepts the execution and consults a separate, lightweight 
-"Verifier" model.
+`llm-secure-cli` implements a **Verifier Committee** pattern with N independent
+LLM members operating under an **"any-flag" policy**.
 
-The Verifier is provided only with the **User's Original Prompt** and the
-**Proposed Tool Call** (excluding potentially tainted intermediate reasoning
-or large external data). It must confirm that the action aligns with the
-user's intent.
+**How it works:**
+1. ALL configured verifier members (including the primary `verifier_provider`/`verifier_model`) are consulted **concurrently**.
+2. Each member receives only the **User's Original Prompt** and the **Proposed Tool Call** (excluding potentially tainted intermediate reasoning or large external data).
+3. If ANY member flags the call as requiring review → human approval is mandatory.
+4. Only if ALL members return ALLOW is the call auto-approved.
+5. If ANY member is unavailable → FallbackRequired (human must decide).
 
 | Feature | Implementation |
 |---|---|
-| Trigger | Any tool call requiring manual approval (Configurable via `auto_approval_level`) |
-| Isolation | Verifier is stateless and has no tool access (function calling OFF, except verdict tool) |
-| Models | Configurable via `verifier_provider` and `verifier_model` in `defaults.toml` |
-| Verdict | Structured ALLOW/BLOCK/MODIFY with reason |
-| Fallback | When verifier is unavailable: `require_approval` (default) or `block` |
+| Trigger | Every tool call (configurable via `verifier_enabled`) |
+| Policy | "Any-flag" — one flag = human reviews, unanimous ALLOW = auto-approve |
+| Isolation | Verifiers are stateless and have no tool access (function calling OFF) |
+| Members | Primary: `verifier_provider` + `verifier_model` in `defaults.toml` |
+|  | Additional: `[security.verifier_committee] members = [...]` |
+| Verdict | Structured ALLOW/REVIEW/MODIFY with reason (BLOCK mapped to REVIEW) |
+| Fallback | When any verifier is unavailable → always require human approval (`block` option removed) |
 
 Implementation: `src/security/verifier.rs`.
 Enable via `defaults.toml`: `verifier_enabled = true`.
 
 ### Verifier Fallback (Always Require Approval)
 
-When the Verifier is unavailable (network error, API failure, etc.), the system always asks for human approval before executing the tool call. The previously configurable `block` policy has been removed — the system now consistently requires manual confirmation as the only fallback behavior.
+When any Verifier Committee member is unavailable (network error, API failure, etc.), the system always asks for human approval before executing the tool call. The previously configurable `block` policy has been removed — the system now consistently requires manual confirmation as the only fallback behavior. This applies to ALL committee members: if one member fails, the entire committee falls back to human review.
 
 ### Auto-Approval Levels
 
@@ -255,12 +260,9 @@ shared secrets:
 
 | Algorithm | NIST FIPS | Security Level | Key / Sig Sizes | Default use |
 |---|---|---|---|---|
-| ML-DSA-44 | FIPS 204 | Level 2 | pk=1 312 B, sk=2 528 B, sig=2 420 B | Low-risk tools |
-| ML-DSA-65 | FIPS 204 | Level 3 | pk=1 952 B, sk=4 032 B, sig=3 293 B | Standard identity |
-| ML-DSA-87 | FIPS 204 | Level 5 | pk=2 592 B, sk=4 896 B, sig=4 595 B | High-risk / Critical tools |
-| ML-KEM-512 | FIPS 203 | Level 1 | pk=800 B, sk=1 632 B, ct=768 B | — |
-| ML-KEM-768 | FIPS 203 | Level 3 | pk=1 184 B, sk=2 400 B, ct=1 088 B | Audit encryption |
-| ML-KEM-1024 | FIPS 203 | Level 5 | pk=1 568 B, sk=3 168 B, ct=1 568 B | — |
+| ML-DSA-87 | FIPS 204 | Level 5 | pk=2 592 B, sk=4 896 B, sig=4 595 B | All signing operations |
+| ML-KEM-1024 | FIPS 203 | Level 5 | pk=1 568 B, sk=3 168 B, ct=1 568 B | All audit encryption |
+| Ed25519 | RFC 8032 | 128-bit classical | pk=32 B, sk=32 B, sig=64 B | Identity tokens (pair with ML-DSA) |
 
 Implementation: Rust-native `fips203`/`fips204` crates (ML-KEM/ML-DSA) — FIPS-compliant reference implementations.
 
@@ -270,29 +272,27 @@ Implementation: Rust-native `fips203`/`fips204` crates (ML-KEM/ML-DSA) — FIPS-
 |---|---|---|
 | Ed25519 | Identity tokens, manifest signing | `ed25519-dalek` crate |
 
-The hybrid token scheme uses **Ed25519** (classical) + **ML-DSA-65** (post-quantum) as the default signing pair, replacing the earlier RS256 designation.
+The hybrid token scheme uses **Ed25519** (classical) + **ML-DSA-87** (post-quantum) as the default signing pair, replacing the earlier RS256 designation.
 
-### PQC Agility (CASS)
+### PQC at Maximum Strength (CASS)
 
-CASS selects the ML-DSA variant based on tool risk at runtime. This agility
-applies both to identity tokens and audit signatures. Three physically
-separate key pairs are provisioned on disk:
+Risk-level-based PQC variant switching has been **discontinued**. All operations
+use the highest available NIST Level 5 strength regardless of tool risk level:
 
-| File | Location | Variant | NIST Level |
-|---|---|---|---|
-| `id_pqc_l2.key` / `id_pqc_l2.pub` | `~/.llm_secure_cli/keys/` | ML-DSA-44 | 2 |
-| `id_pqc_l3.key` / `id_pqc_l3.pub` | `~/.llm_secure_cli/keys/` | ML-DSA-65 | 3 |
-| `id_pqc_l5.key` / `id_pqc_l5.pub` | `~/.llm_secure_cli/keys/` | ML-DSA-87 | 5 |
+| Algorithm | NIST FIPS | Security Level | Key / Sig Sizes | Use |
+|---|---|---|---|---|
+| ML-DSA-87 | FIPS 204 | Level 5 | pk=2 592 B, sk=4 896 B, sig=4 595 B | All signing operations |
+| ML-KEM-1024 | FIPS 203 | Level 5 | pk=1 568 B, sk=3 168 B, ct=1 568 B | All audit encryption |
 
-Implementation: `PQCAgilityManager.get_required_level()` in `src/security/pqc.rs`.
+**Key files provisioned on disk:**
 
-Additionally, classical Ed25519 keys are stored as:
-- `id_ed25519` (private key, PEM format)
-- `id_ed25519.pub` (public key, PEM format)
+| File | Location | Algorithm |
+|---|---|---|
+| `id_pqc.key` / `id_pqc.pub` | `~/.llm_secure_cli/keys/` | ML-DSA-87 |
+| `id_ed25519` / `id_ed25519.pub` | `~/.llm_secure_cli/keys/` | Ed25519 (classical) |
+| `id_kem.key` / `id_kem.pub` | `~/.llm_secure_cli/keys/` | ML-KEM-1024 |
 
-And ML-KEM keys:
-- `id_kem.key` (private key)
-- `id_kem.pub` (public key)
+Implementation: `CASSOrchestrator::get_security_requirements()` in `src/security/cass.rs`.
 
 ### Remote Attestation
 
@@ -315,7 +315,7 @@ llsc identity manifest
 - **Chained hashing** — each log entry includes a SHA-256 of the previous entry's hash, creating a tamper-evident chain.
 - **Snapshot anchors** — on log rotation, a signed anchor entry records `snapshot_prev_hash` and `snapshot_first_hash` to maintain verifiability across file boundaries.
 - **Merkle Tree anchoring** — a binary Merkle Root is computed over all entries on rotation and recorded in the security log.  This root can be submitted to an external immutable ledger (blockchain, transparency log) for public verification.
-- **ML-KEM hybrid encryption** — audit logs are optionally encrypted with ML-KEM-768 + AES-256-GCM to guarantee future quantum confidentiality. Decrypt with:
+- **ML-KEM hybrid encryption** — audit logs are optionally encrypted with ML-KEM-1024 + AES-256-GCM to guarantee future quantum confidentiality. Decrypt with:
 
   ```bash
   llsc decrypt-log ~/.llm_secure_cli/logs/audit.jsonl -o decrypted.jsonl
@@ -334,11 +334,10 @@ Measured using the Rust implementation on reference hardware.
 
 | Tier | Component | Algorithm | Avg Latency (ms) |
 |---|---|---|---|
-| Tier 1 | Pattern-based Static Analysis | — | < 0.01 |
+| Tier 1 | Minimalist Static Analysis | — | < 0.01 |
 | Tier 2 | Identity Generation (Ed25519) | Ed25519 | < 0.1 |
-| Tier 2 | Identity Generation | ML-DSA-44 | 0.68 |
 | Tier 2 | Identity Generation | ML-DSA-87 | 1.26 |
-| Tier 3 | Audit Encryption | ML-KEM-768 | 0.09 |
+| Tier 3 | Audit Encryption | ML-KEM-1024 | 0.09 |
 
 ### 2. Intent Verification Latency (Verifier Committee)
 Latency varies based on the provider and network conditions. We recommend lightweight "verifier" models to minimize the "Security Speed Bump."
@@ -365,24 +364,34 @@ max_chat_archives = 5
 
 [security]
 # Security Level: "high" (Default) | "standard"
+# - high: Strict PQC enforcement (ML-DSA-87, ML-KEM-1024).
+# - standard: Compatibility mode; warnings instead of blocks for integrity checks.
 security_level = "high"
 
 # Auto-Approval Policy: "none" (default) | "low" | "medium"
 auto_approval_level = "none"
 
-# Risk classification
-high_risk_tools = ["execute_python", "brave_search"]
-medium_risk_tools = []
-# Low-risk tools → (none)
-
-# Verifier Committee
+# Verifier Committee (AI-native ABAC / Semantic Firewall)
+# Validates ALL tool calls using N independent LLMs with any-flag policy.
 verifier_enabled = true
 verifier_provider = "ollama"
 verifier_model = "gemma4:e2b"
 verifier_confidence_threshold = 0.7
 
+# Verifier Committee — additional members beyond the primary verifier
+# [security.verifier_committee]
+# members = [
+#   { provider = "openai", model = "gpt-4o-mini" },
+#   { provider = "openrouter", model = "anthropic/claude-3-haiku" },
+# ]
+
 # Static analysis errors block execution
 static_analysis_is_error = true
+
+# PQC Algorithm Selection
+# [pqc]
+# ml_dsa_algorithm = "ML-DSA-87"
+# ml_kem_algorithm = "ML-KEM-1024"
 ```
 
 ---
@@ -403,10 +412,11 @@ static_analysis_is_error = true
 
 ## Known Limitations & Security Trade-offs
 
-### 1. Pattern-based Analysis vs. Obfuscation
+### 1. Minimalist Static Analysis
 The current Tier 1 static analysis utilizes a **structural fast-fail mechanism** (`src/security/static_analyzer.rs`). It blocks:
-- **Shell invocation patterns**: `sh -c`, `bash -c`, etc., which would bypass the structural safety of `Command::new` (no-shell execution).
 - **Control characters and null bytes**: Characters that could disrupt the tool execution engine or log output.
+
+Shell invocation pattern detection (`sh -c`, `bash -c`, etc.) has been **removed** as redundant — all semantic risk assessment is delegated to the Verifier Committee (Tier 2). The `Command::new` API already provides structural safety against shell injection by design.
 
 While highly efficient (<0.01ms), this layer is intentionally minimal. **Real-world security relies on the Defense-in-Depth provided by Tier 2 (Verifier Committee) and Tier 3 (Audit Trail).** Complex intent analysis and semantic risk assessment are entirely delegated to the Verifier Committee.
 

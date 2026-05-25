@@ -12,15 +12,15 @@
 ]
 
     % CASS Orchestrator
-    \node [cass] (cass) {\textbf{CASS} \\ Orchestrator \\ \scriptsize(Risk-Adaptive)};
+    \node [cass] (cass) {\textbf{CASS} \\ Orchestrator \\ \scriptsize(Max-Strength PQC)};
     
     % Input
     \node [data, above=of cass] (request) {Agent Tool Request};
     \path [line] (request) -- (cass);
 
     % Tiers (arranged to avoid overlap)
-    \node [tier2, below=of cass] (t2) {\textbf{Tier 2: Behavior} \\ Zero-Trust \& ABAC};
-    \node [tier1, left=of t2] (t1) {\textbf{Tier 1: Space} \\ Structural Guardrails};
+    \node [tier2, below=of cass] (t2) {\textbf{Tier 2: Behavior} \\ Verifier Committee \\ \scriptsize(any-flag)~~\&~Zero-Trust};
+    \node [tier1, left=of t2] (t1) {\textbf{Tier 1: Space} \\ Minimal Static Anlys};
     \node [tier3, right=of t2] (t3) {\textbf{Tier 3: Time} \\ PQC Resilience};
 
     % CASS Routing
