@@ -357,7 +357,7 @@ pub fn print_tool_result(result: &str) {
         }
 
         // Special handling for command execution results
-        if let (Some(_stdout), Some(_stderr), Some(exit_code)) = (
+        if let (Some(stdout), Some(stderr), Some(exit_code)) = (
             v.get("stdout").and_then(|v| v.as_str()),
             v.get("stderr").and_then(|v| v.as_str()),
             v.get("exit_code").and_then(|v| v.as_i64()),
@@ -367,6 +367,23 @@ pub fn print_tool_result(result: &str) {
             } else {
                 "red"
             };
+
+            // Display stdout if present
+            if !stdout.is_empty() {
+                push_line(&mut out, &format!("    {}:", "STDOUT".bold()));
+                for line in stdout.lines() {
+                    push_line(&mut out, &format!("      {}", line.dimmed()));
+                }
+            }
+
+            // Display stderr if present
+            if !stderr.is_empty() {
+                push_line(&mut out, &format!("    {}:", "STDERR".bold()));
+                for line in stderr.lines() {
+                    push_line(&mut out, &format!("      {}", line.red().dimmed()));
+                }
+            }
+
             push_line(
                 &mut out,
                 &format!(
