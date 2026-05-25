@@ -1,6 +1,5 @@
 pub mod audit;
 pub mod cass;
-pub mod dual_llm_verifier;
 pub mod identity;
 pub mod integrity;
 pub mod key_storage;
@@ -12,6 +11,7 @@ pub mod pqc;
 pub mod pqc_cose;
 pub mod skill_verifier;
 pub mod static_analyzer;
+pub mod verifier;
 
 // Re-export AuditStatus for downstream convenience
 pub use audit::AuditStatus;
@@ -29,7 +29,7 @@ pub use crate::config::models::ValidationError;
 /// engine or corrupt audit logs, regardless of semantic intent.
 ///
 /// Complex intent judgment and risk assessment are delegated to
-/// Phase 2 (CASS) and Phase 3 (Dual LLM Verifier).
+/// Phase 2 (CASS) and Phase 3 (Verifier Committee).
 pub fn validate_tool_call(
     name: &str,
     args: &serde_json::Map<String, serde_json::Value>,

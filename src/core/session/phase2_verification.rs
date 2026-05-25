@@ -1,7 +1,5 @@
 use crate::core::session::ActiveSession;
-use crate::security::dual_llm_verifier::{
-    CommitteeVerdict, VerificationOutcome, VerificationParams,
-};
+use crate::security::verifier::{CommitteeVerdict, VerificationOutcome, VerificationParams};
 use serde_json::Value;
 use std::io::Write;
 
@@ -65,9 +63,9 @@ impl ActiveSession {
                 .await
         } else {
             // Verifier is off or not configured: fall back to human approval.
-            if config.security.dual_llm_verification.unwrap_or(false) {
+            if config.security.verifier_enabled.unwrap_or(false) {
                 self.ctx.ui.report_warning(
-                    "Dual LLM verification is enabled, but no verifier committee members are configured.                      Falling back to manual approval.",
+                    "Verifier is enabled, but no verifier committee members are configured.                      Falling back to manual approval.",
                 );
                 self.ctx
                     .ui
@@ -272,7 +270,7 @@ impl ActiveSession {
         }
     }
 
-    /// Spawns the Dual LLM Verification task.
+    /// Spawns the Verifier Committee task.
     fn spawn_verifier_task(
         &self,
         name: &str,
@@ -290,7 +288,7 @@ impl ActiveSession {
         let args_clone = serde_json::json!(args);
 
         tokio::spawn(async move {
-            crate::security::dual_llm_verifier::verify_tool_call_full(VerificationParams {
+            crate::security::verifier::verify_tool_call_full(VerificationParams {
                 ctx_app: ctx_clone,
                 user_query: &intent_context,
                 tool_name: &name_clone,
@@ -327,7 +325,7 @@ impl ActiveSession {
         let args_clone = serde_json::json!(args);
 
         tokio::spawn(async move {
-            let committee_verdict = crate::security::dual_llm_verifier::verify_committee(
+            let committee_verdict = crate::security::verifier::verify_committee(
                 VerificationParams {
                     ctx_app: ctx_clone,
                     user_query: &intent_context,

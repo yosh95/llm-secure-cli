@@ -15,8 +15,8 @@ path = "benchmark/benchmark_local.rs"
 harness = false
 
 [[bench]]
-name = "benchmark_dual_llm"
-path = "benchmark/benchmark_dual_llm.rs"
+name = "benchmark_verifier"
+path = "benchmark/benchmark_verifier.rs"
 harness = false
 
 [target.'cfg(target_os = "android")'.dependencies]

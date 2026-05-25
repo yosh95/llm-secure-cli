@@ -15,7 +15,7 @@ pub struct SecurityPosture {
     pub pqc_variant: String,
     pub require_pqc_audit_encryption: bool,
     pub ast_strictness: String,
-    pub require_dual_llm_verification: bool,
+    pub require_verifier: bool,
 }
 
 pub struct CASSOrchestrator;
@@ -25,7 +25,7 @@ impl CASSOrchestrator {
     ///
     /// Risk classification by tool name is deprecated since there are only
     /// two built-in tools (`execute_python` and `brave_search`) and all
-    /// semantic risk assessment is delegated to the Dual LLM Verifier.
+    /// semantic risk assessment is delegated to the Verifier Committee.
     ///
     /// Always returns `Low`. The return value is retained for backward
     /// compatibility with audit tagging.
@@ -52,7 +52,7 @@ impl CASSOrchestrator {
             pqc_variant: "ML-DSA-87".to_string(),
             require_pqc_audit_encryption: true,
             ast_strictness: "strict".to_string(),
-            require_dual_llm_verification: false,
+            require_verifier: false,
         }
     }
 }

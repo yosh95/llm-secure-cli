@@ -100,7 +100,7 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 - **Autonomous Agent**: A streamlined set of built-in tools for complex automation:
     - **Universal Executor**: `execute_python` — run arbitrary Python code for any file operation, data processing, or computation task.
     - **Web Search**: `brave_search` — Brave LLM Context API for grounded, pre-extracted web content (LLM-optimized).
-- **High-Assurance via Dual LLM**: Every non-auto-approved tool call is verified by a secondary LLM as a Semantic Firewall to ensure intent alignment.
+- **High-Assurance via Verifier Committee**: Every non-auto-approved tool call is verified by a secondary LLM as a Semantic Firewall to ensure intent alignment.
 - **MCP (Model Context Protocol)**: Connect to remote resources or services via custom servers.
 - **Operational Stability**: A clean, flicker-free UI designed for long-term "Deep Work" sessions.
 - **Human-in-the-Loop**: Configurable `auto_approval_level` (none/low/medium) to balance speed and safety.
@@ -116,12 +116,12 @@ As a tool designed with **CISSP/CISA/CCSP** principles in mind, `llm-secure-cli`
 
 ### 1. Access Control (AI-native ABAC & Semantic Guardrails)
 `llm-secure-cli` implements a modern **Attribute-Based Access Control (ABAC)**, moving away from fragile, platform-dependent static rules.
-- **AI-native Policy Engine (Dual LLM)**: Replaces complex regex blocklists with a hardcoded **Security Constitution**. The system automatically gathers context (OS, User, Directory, Git status) and uses a secondary LLM to judge risks semantically using structured verdicts (ALLOW/BLOCK). This avoids the quagmire of platform-dependent static rules.
+- **AI-native Policy Engine (Verifier Committee)**: Replaces complex regex blocklists with a hardcoded **Security Constitution**. The system automatically gathers context (OS, User, Directory, Git status) and uses a secondary LLM to judge risks semantically using structured verdicts (ALLOW/BLOCK). This avoids the quagmire of platform-dependent static rules.
 - **Path Guardrails (Physical Boundary)**: Paths are recursively normalized and validated against a whitelist. Even for new files, the system resolves the physical parent directory to prevent symlink-based escapes.
 - **Risk-based Scaling (CASS)**: Security requirements (PQC signature level, audit encryption) automatically scale based on the tool's risk level (CRITICAL/HIGH/MEDIUM/LOW) via the **CASS (Context-Adaptive Security Scaling)** orchestrator.
 - **Intent Verification**: Every action requiring human-in-the-loop (non-auto-approved) is cross-verified by a separate, lightweight "Verifier" LLM. This acts as a **Semantic Firewall**, ensuring the proposed tool call aligns with the user's original intent and providing corrected arguments if small discrepancies are detected.
-- **Minimalist Fast-fail**: A lightweight syntactic check still blocks obviously malicious characters and shell invocation patterns in **nanoseconds**, while the heavy lifting of security judgment is shifted to the Dual LLM.
-- **Verifier Fallback**: When the dual LLM verifier is unavailable (network error, API failure), the system always asks for human approval. The `block` option has been removed — the verifier fallback now always requires manual confirmation.
+- **Minimalist Fast-fail**: A lightweight syntactic check still blocks obviously malicious characters and shell invocation patterns in **nanoseconds**, while the heavy lifting of security judgment is shifted to the Verifier Committee.
+- **Verifier Fallback**: When the verifier is unavailable (network error, API failure), the system always asks for human approval. The `block` option has been removed — the verifier fallback now always requires manual confirmation.
 - **Auto-Approval Levels**: The `auto_approval_level` setting controls which tool calls can proceed without human intervention: `none` (default, all require approval), `low` (auto-approve low-risk), `medium` (auto-approve low and medium-risk).
 - **Physical Isolation (Docker)**: The agent can be run inside a Docker container to provide a hard boundary between the AI and the host system.
 
@@ -166,7 +166,7 @@ llsc verify-skill <path>             # Verify Agent Skills for safety (structura
 Inside the `llsc` interactive session:
 - `/help`, `/h`: Show help message.
 - `/quit`, `/q`: Exit the application.
-- `/verify [on|off]`: Show or toggle dual-LLM verification status.
+- `/verify [on|off]`: Show or toggle verifier status.
 - `/edit`, `/e`: Edit current buffer in external editor.
 - `/clear`, `/c`: Clear conversation history.
 - `/info`, `/i`: Show session info, integrity, and security status.
@@ -176,7 +176,7 @@ Inside the `llsc` interactive session:
 - `/attach <path/URL>`: Add a file or website content to the context.
 - `/tools [on|off]`: Show or toggle autonomous tool use status.
 - `/model`, `/m [-u] [<alias>]`: List models for current provider. Use `-u`/`--update` to refresh the cache. Specify an alias or model name to switch.
-- `/vmodel`, `/vm [-u] [<name>]`: List models for the verifier (dual-LLM). Use `-u`/`--update` to refresh the cache.
+- `/vmodel`, `/vm [-u] [<name>]`: List models for the verifier. Use `-u`/`--update` to refresh the cache.
 - `/alias` — list all; `/alias <name>` — show one; `/alias <name> <target>` — create/update; `/alias -d <name>` — delete.
 - `/provider`, `/p [<name>]`: Switch or list providers.
 - `/summarize`, `/s`: Summarize history and clear it (context preservation).
@@ -212,7 +212,7 @@ zero_trust = true
 
 ## Agent Skill Verification
 
-`llsc` provides a **three-tier verification pipeline** for [Agent Skills](https://agentskills.io/specification) — structural validation, Ed25519/ML-DSA signature verification, and Dual LLM Semantic Firewall analysis — that audits skills before installation without executing them.  See **[docs/AGENT_SKILLS.md](docs/AGENT_SKILLS.md)** for the full rationale, usage, and threat model.
+`llsc` provides a **three-tier verification pipeline** for [Agent Skills](https://agentskills.io/specification) — structural validation, Ed25519/ML-DSA signature verification, and Verifier Committee Semantic Firewall analysis — that audits skills before installation without executing them.  See **[docs/AGENT_SKILLS.md](docs/AGENT_SKILLS.md)** for the full rationale, usage, and threat model.
 
 ```bash
 llsc verify-skill ./path/to/skill/           # Human-readable report
@@ -226,19 +226,19 @@ To run the local security primitive benchmarks (Static Analysis, PQC Keygen/Sign
 cargo bench --bench benchmark_local
 ```
 
-To run the internal Dual LLM verification scenarios (requires API keys):
+To run the internal Verifier benchmark scenarios (requires API keys):
 ```bash
 # Basic usage
-cargo bench --bench benchmark_dual_llm -- <provider> <model>
+cargo bench --bench benchmark_verifier -- <provider> <model>
 
 # Example: Run with OpenRouter
-cargo bench --bench benchmark_dual_llm -- openrouter amazon/nova-2-lite-v1
+cargo bench --bench benchmark_verifier -- openrouter amazon/nova-2-lite-v1
 
 # Example: Run with Ollama
-cargo bench --bench benchmark_dual_llm -- ollama llama3
+cargo bench --bench benchmark_verifier -- ollama llama3
 
 # Or with a custom scenarios JSON file:
-cargo bench --bench benchmark_dual_llm -- <provider> <model> path/to/your_scenarios.json
+cargo bench --bench benchmark_verifier -- <provider> <model> path/to/your_scenarios.json
 ```
 
 ##  Development
@@ -292,8 +292,8 @@ CI runs on every push and pull request via [GitHub Actions](.github/workflows/ci
 # Local security primitive benchmarks
 just bench-local
 
-# Dual LLM verification benchmarks (requires API keys)
-just bench-dual openrouter google/gemini-3.1-flash-lite
+# Verifier benchmarks (requires API keys)
+just bench-verifier openrouter google/gemini-3.1-flash-lite
 ```
 
 ##  License

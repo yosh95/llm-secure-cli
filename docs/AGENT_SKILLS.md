@@ -45,7 +45,7 @@ flowchart TD
     B -->|PASS| C
     C["✍️ Tier 2: Signature<br/>Ed25519 / ML-DSA COSE<br/>signature verification"]
     C -->|"optional --semantic"| D
-    D["🔥 Tier 3: Semantic Firewall<br/>Dual LLM analysis for:<br/>hidden instructions, data exfiltration,<br/>obfuscated payloads, social engineering"]
+    D["🔥 Tier 3: Semantic Firewall<br/>Verifier Committee analysis for:<br/>hidden instructions, data exfiltration,<br/>obfuscated payloads, social engineering"]
     D --> E
     E["🏁 VERDICT<br/>SAFE / SUSPICIOUS / DANGEROUS"]
 ```
@@ -61,7 +61,7 @@ alongside the skill.  If present, it verifies the signature using the
 project's Ed25519 identity key or a full COSE hybrid token
 (Ed25519 + ML-DSA).  Unsigned skills are flagged as `SUSPICIOUS`.
 
-**Tier 3 — Semantic Firewall** sends the skill's content to the Dual LLM
+**Tier 3 — Semantic Firewall** sends the skill's content to the Verifier Committee
 Verifier (the same Semantic Firewall used for tool-call verification) with a
 *purpose-built security constitution* — the `SKILL_SECURITY_CONSTITUTION`.
 The verifier analyzes the body for:
@@ -87,7 +87,7 @@ llsc verify-skill ./path/to/some-skill/ --json
 # Recursive batch scan of all skills under a directory
 llsc verify-skill ~/.claude/skills/ --recursive
 
-# Semantic Firewall analysis (requires configured Dual LLM verifier)
+# Semantic Firewall analysis (requires configured verifier)
 llsc verify-skill ./suspicious-skill/ --semantic
 
 # Override the verifier provider/model
@@ -147,7 +147,7 @@ follow the same principle: **trust nothing, verify everything.**
 
 ## Current Limitations & Roadmap
 
-- **Semantic Firewall requires a configured Dual LLM verifier.**  Without
+- **Semantic Firewall requires a configured verifier.**  Without
   `--semantic`, malicious skills with valid structure will be flagged only
   as `SUSPICIOUS` (unsigned), not `DANGEROUS`.  This is by design: the
   structural and signature tiers are deterministic; intent analysis

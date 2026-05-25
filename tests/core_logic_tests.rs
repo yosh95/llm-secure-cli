@@ -42,8 +42,8 @@ fn test_security_config_default_values_are_sane() {
     let cfg = SecurityConfig::default();
     assert_eq!(cfg.security_level, SecurityLevel::High);
     assert!(cfg.static_analysis_is_error);
-    assert!(cfg.dual_llm_confidence_threshold > 0.0);
-    assert!(cfg.dual_llm_confidence_threshold <= 1.0);
+    assert!(cfg.verifier_confidence_threshold > 0.0);
+    assert!(cfg.verifier_confidence_threshold <= 1.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -174,7 +174,7 @@ pdf_as_base64 = false
 fn test_cass_risk_levels_are_mutually_exclusive_in_defaults() {
     use llm_secure_cli::security::cass::CASSOrchestrator;
     // CASS risk evaluation is deprecated: all tools return Low.
-    // The Dual LLM Verifier handles all risk assessment.
+    // The Verifier Committee handles all risk assessment.
     let config = SecurityConfig::default();
 
     // Every tool now returns Low — CASS delegates all risk to the Verifier
@@ -184,7 +184,7 @@ fn test_cass_risk_levels_are_mutually_exclusive_in_defaults() {
     assert_eq!(
         risk as u8,
         llm_secure_cli::security::cass::RiskLevel::Low as u8,
-        "CASS always returns Low; risk assessment delegated to Dual LLM Verifier"
+        "CASS always returns Low; risk assessment delegated to Verifier Committee"
     );
 
     let risk = CASSOrchestrator::evaluate_risk("list_files", None, &config);
@@ -241,14 +241,14 @@ security_level = "high"
 #[test]
 fn test_security_config_rejects_invalid_confidence_threshold() {
     let cfg = SecurityConfig {
-        dual_llm_confidence_threshold: 1.5,
+        verifier_confidence_threshold: 1.5,
         ..Default::default()
     };
     let errors = cfg.validate();
     assert!(
         errors
             .iter()
-            .any(|e| e.field == "dual_llm_confidence_threshold"),
+            .any(|e| e.field == "verifier_confidence_threshold"),
         "Should report error for confidence_threshold > 1.0"
     );
 }
@@ -256,14 +256,14 @@ fn test_security_config_rejects_invalid_confidence_threshold() {
 #[test]
 fn test_security_config_rejects_negative_threshold() {
     let cfg = SecurityConfig {
-        dual_llm_confidence_threshold: -0.1,
+        verifier_confidence_threshold: -0.1,
         ..Default::default()
     };
     let errors = cfg.validate();
     assert!(
         errors
             .iter()
-            .any(|e| e.field == "dual_llm_confidence_threshold"),
+            .any(|e| e.field == "verifier_confidence_threshold"),
         "Should report error for negative confidence_threshold"
     );
 }
@@ -284,43 +284,43 @@ security_level = "paranoid"
 }
 
 #[test]
-fn test_security_config_validate_warnings_high_without_dual_llm() {
-    // Default config has security_level="high" but dual_llm_verification=None
+fn test_security_config_validate_warnings_high_without_verifier() {
+    // Default config has security_level="high" but verifier_enabled=None
     let cfg = SecurityConfig::default();
     let warnings = cfg.validate_warnings();
     assert!(
         warnings.iter().any(|w| w.field == "security_level"),
-        "Default config should warn about high security without dual_llm_verification"
+        "Default config should warn about high security without verifier_enabled"
     );
 }
 
 #[test]
-fn test_security_config_no_warnings_when_dual_llm_enabled() {
+fn test_security_config_no_warnings_when_verifier_enabled() {
     let cfg = SecurityConfig {
-        dual_llm_verification: Some(true),
+        verifier_enabled: Some(true),
         ..Default::default()
     };
     let warnings = cfg.validate_warnings();
     assert!(
         warnings.is_empty(),
-        "Config with dual_llm enabled should have no warnings, got: {:?}",
+        "Config with verifier enabled should have no warnings, got: {:?}",
         warnings
     );
 }
 
 #[test]
-fn test_security_config_validate_errors_for_dual_llm_without_provider() {
-    // dual_llm is enabled with legacy backward-compat, but neither
+fn test_security_config_validate_errors_for_verifier_without_provider() {
+    // verifier_enabled is enabled, but neither
     // legacy provider/model nor verifier_committee members are set.
     let cfg = SecurityConfig {
-        dual_llm_verification: Some(true),
-        dual_llm_provider: "".to_string(),
+        verifier_enabled: Some(true),
+        verifier_provider: "".to_string(),
         ..Default::default()
     };
     let errors = cfg.validate();
     assert!(
-        errors.iter().any(|e| e.field == "dual_llm_verification"),
-        "Should report error on dual_llm_verification when enabled without any provider/committee config"
+        errors.iter().any(|e| e.field == "verifier_enabled"),
+        "Should report error on verifier_enabled when enabled without any provider/committee config"
     );
 }
 

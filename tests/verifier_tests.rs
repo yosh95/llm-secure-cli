@@ -3,7 +3,7 @@ use llm_secure_cli::cli::ui::{ConfirmResult, UserInterface};
 use llm_secure_cli::core::context::AppContext;
 use llm_secure_cli::llm::base::LlmClient;
 use llm_secure_cli::llm::models::{ClientState, DataSource, LlmResponse};
-use llm_secure_cli::security::dual_llm_verifier::{
+use llm_secure_cli::security::verifier::{
     VerificationOutcome, VerificationParams, verify_tool_call_full,
 };
 use serde_json::json;
@@ -121,7 +121,7 @@ async fn register_mock(
 }
 
 #[tokio::test]
-async fn test_dual_llm_allow_scenario() {
+async fn test_verifier_allow_scenario() {
     let ctx = create_test_context();
     register_mock(
         &ctx,
@@ -150,7 +150,7 @@ async fn test_dual_llm_allow_scenario() {
 }
 
 #[tokio::test]
-async fn test_dual_llm_block_scenario() {
+async fn test_verifier_block_scenario() {
     let ctx = create_test_context();
     register_mock(
         &ctx,
@@ -183,7 +183,7 @@ async fn test_dual_llm_block_scenario() {
 }
 
 #[tokio::test]
-async fn test_dual_llm_malformed_response() {
+async fn test_verifier_malformed_response() {
     let ctx = create_test_context();
     // LLM returns gibberish that doesn't follow "DECISION: ALLOW/BLOCK"
     register_mock(
@@ -221,7 +221,7 @@ async fn test_dual_llm_malformed_response() {
 }
 
 #[tokio::test]
-async fn test_dual_llm_api_error_fallback() {
+async fn test_verifier_api_error_fallback() {
     let ctx = create_test_context();
     // Simulate a network/API error
     register_mock(&ctx, "mock_error", Err("Connection Timeout".to_string())).await;
@@ -251,7 +251,7 @@ async fn test_dual_llm_api_error_fallback() {
 }
 
 #[tokio::test]
-async fn test_dual_llm_tricky_response() {
+async fn test_verifier_tricky_response() {
     let ctx = create_test_context();
     // The word "ALLOW" is present but it's preceded by "NOT".
     register_mock(
@@ -287,7 +287,7 @@ async fn test_dual_llm_tricky_response() {
 }
 
 #[tokio::test]
-async fn test_dual_llm_modify_scenario() {
+async fn test_verifier_modify_scenario() {
     let ctx = create_test_context();
     // Verifier returns MODIFY with corrected JSON arguments
     register_mock(
@@ -326,7 +326,7 @@ async fn test_dual_llm_modify_scenario() {
 }
 
 #[tokio::test]
-async fn test_dual_llm_modify_with_markdown_code_block() {
+async fn test_verifier_modify_with_markdown_code_block() {
     let ctx = create_test_context();
     // Verifier returns MODIFY with JSON wrapped in a markdown code block
     register_mock(
@@ -365,7 +365,7 @@ async fn test_dual_llm_modify_with_markdown_code_block() {
 }
 
 #[tokio::test]
-async fn test_dual_llm_modify_invalid_json_falls_back_to_rejected() {
+async fn test_verifier_modify_invalid_json_falls_back_to_rejected() {
     let ctx = create_test_context();
     // Verifier tries MODIFY but provides invalid JSON — should be rejected
     register_mock(
@@ -407,7 +407,7 @@ async fn test_dual_llm_modify_invalid_json_falls_back_to_rejected() {
 // Unit tests for parse_verifier_response (pure-function, no LLM dependency)
 // =============================================================================
 
-use llm_secure_cli::security::dual_llm_verifier::{VerificationResult, parse_verifier_response};
+use llm_secure_cli::security::verifier::{VerificationResult, parse_verifier_response};
 
 #[test]
 fn test_parse_allow_plain() {

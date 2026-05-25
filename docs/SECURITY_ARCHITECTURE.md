@@ -39,9 +39,9 @@ Space Beh Time
 
 ## Tier 1 — Structural Guardrails (Space)
 
-### AI-native Policy Engine (Semantic Guardrails & Dual LLM)
+### AI-native Policy Engine (Semantic Guardrails & Verifier Committee)
 
-Instead of fragile, platform-dependent regex patterns (e.g., `rm -rf /` or Windows-specific commands), `llm-secure-cli` uses an **AI-native Policy Engine** powered by a **Dual LLM Verifier**.
+Instead of fragile, platform-dependent regex patterns (e.g., `rm -rf /` or Windows-specific commands), `llm-secure-cli` uses an **AI-native Policy Engine** powered by a **Verifier Committee**.
 - **Security Constitution**: A hardcoded, immutable system instruction that the auditor LLM must follow.
 - **Structured Verdicts**: The auditor provides a structured decision (ALLOW/BLOCK) using function calling, preventing parsing errors.
 - **CASS Orchestration**: The **Context-Adaptive Security Scaling** engine determines the risk level and required PQC strength before any tool is executed.
@@ -52,9 +52,9 @@ Instead of fragile, platform-dependent regex patterns (e.g., `rm -rf /` or Windo
 `llm-secure-cli` is designed to be run within isolated environments.
 - **Docker-native Posture**: Running the agent inside a Docker container provides a physical boundary between the AI and the host system. This makes the security posture uniform across Windows, Linux, and macOS by standardizing on a Linux container environment.
 
-### Path Guardrails (Dual LLM based)
+### Path Guardrails (Verifier based)
 
-Path validation is now handled entirely by the Dual LLM Semantic Firewall. The static path whitelist (`allowed_paths`) has been removed — the verifier LLM uses its inherent knowledge of sensitive paths (like `C:\Windows` or `/etc`) together with the user's intent context to determine whether a file access is safe.
+Path validation is now handled entirely by the Verifier Committee. The static path whitelist (`allowed_paths`) has been removed — the verifier LLM uses its inherent knowledge of sensitive paths (like `C:\Windows` or `/etc`) together with the user's intent context to determine whether a file access is safe.
 
 ### Environment Isolation (MCP)
 
@@ -145,9 +145,9 @@ cbor2.dumps(["Signature", body_protected, sign_protected, b"", payload])
 - `container_mode`: Whether Docker isolation is active.
 - `is_git_repo`: Whether the session is inside a Git repository.
 
-These attributes are bundled into a **Security Context** and verified by the Dual LLM against the **Security Constitution** (a hardcoded, non-overridable policy set in the code). This allows for dynamic, context-aware decisions like "Allow deletions only if running inside a container" without complex manual configuration or OS-dependent static rules.
+These attributes are bundled into a **Security Context** and verified by the Verifier Committee against the **Security Constitution** (a hardcoded, non-overridable policy set in the code). This allows for dynamic, context-aware decisions like "Allow deletions only if running inside a container" without complex manual configuration or OS-dependent static rules.
 
-Implementation: `src/security/policy.rs` and `src/security/dual_llm_verifier.rs`.
+Implementation: `src/security/policy.rs` and `src/security/verifier.rs`.
 
 Risk-level classification in `defaults.toml`:
 
@@ -156,15 +156,15 @@ Risk-level classification in `defaults.toml`:
 high_risk_tools   = ["execute_python", "brave_search"]
 medium_risk_tools = []
 # Low-risk tools → (none)
-# Critical risk → execute_python when Dual LLM is disabled
+# Critical risk → execute_python when Verifier is disabled
 ```
 
 Implementation: `src/security/cass.rs`.
 
-### Dual LLM Verification (Dynamic Intent Check)
+### Verifier Committee (Dynamic Intent Check)
 
 To prevent sophisticated Prompt Injection (especially indirect injection),
-`llm-secure-cli` implements a **Dual LLM Verification** pattern. Whenever a 
+`llm-secure-cli` implements a **Verifier Committee** pattern. Whenever a 
 tool execution requires manual approval (based on the `auto_approval_level`), 
 the system intercepts the execution and consults a separate, lightweight 
 "Verifier" model.
@@ -178,16 +178,16 @@ user's intent.
 |---|---|
 | Trigger | Any tool call requiring manual approval (Configurable via `auto_approval_level`) |
 | Isolation | Verifier is stateless and has no tool access (function calling OFF, except verdict tool) |
-| Models | Configurable via `dual_llm_provider` and `dual_llm_model` in `defaults.toml` |
+| Models | Configurable via `verifier_provider` and `verifier_model` in `defaults.toml` |
 | Verdict | Structured ALLOW/BLOCK/MODIFY with reason |
 | Fallback | When verifier is unavailable: `require_approval` (default) or `block` |
 
-Implementation: `src/security/dual_llm_verifier.rs`.
-Enable via `defaults.toml`: `dual_llm_verification = true`.
+Implementation: `src/security/verifier.rs`.
+Enable via `defaults.toml`: `verifier_enabled = true`.
 
 ### Verifier Fallback (Always Require Approval)
 
-When the Dual LLM Verifier is unavailable (network error, API failure, etc.), the system always asks for human approval before executing the tool call. The previously configurable `block` policy has been removed — the system now consistently requires manual confirmation as the only fallback behavior.
+When the Verifier is unavailable (network error, API failure, etc.), the system always asks for human approval before executing the tool call. The previously configurable `block` policy has been removed — the system now consistently requires manual confirmation as the only fallback behavior.
 
 ### Auto-Approval Levels
 
@@ -199,7 +199,7 @@ The `auto_approval_level` setting controls which tool calls can bypass human app
 | `low` | Only low-risk tools (currently none). |
 | `medium` | Low and medium-risk tools. High-risk tools still require approval. |
 
-> **Note:** Any `BLOCK` verdict from the Dual LLM auditor will always force manual intervention, regardless of the auto-approval level.
+> **Note:** Any `BLOCK` verdict from the verifier will always force manual intervention, regardless of the auto-approval level.
 
 ### Compatibility & Interoperability (Security Levels)
 
@@ -340,10 +340,10 @@ Measured using the Rust implementation on reference hardware.
 | Tier 2 | Identity Generation | ML-DSA-87 | 1.26 |
 | Tier 3 | Audit Encryption | ML-KEM-768 | 0.09 |
 
-### 2. Intent Verification Latency (Dual LLM)
+### 2. Intent Verification Latency (Verifier Committee)
 Latency varies based on the provider and network conditions. We recommend lightweight "verifier" models to minimize the "Security Speed Bump."
 
-The default verifier configuration uses `ollama` provider with `default` model. This can be overridden in `config.toml` via `dual_llm_provider` and `dual_llm_model`.
+The default verifier configuration uses `ollama` provider with `default` model. This can be overridden in `config.toml` via `verifier_provider` and `verifier_model`.
 
 ---
 
@@ -375,11 +375,11 @@ high_risk_tools = ["execute_python", "brave_search"]
 medium_risk_tools = []
 # Low-risk tools → (none)
 
-# Dual LLM Verification
-dual_llm_verification = true
-dual_llm_provider = "ollama"
-dual_llm_model = "gemma4:e2b"
-dual_llm_confidence_threshold = 0.7
+# Verifier Committee
+verifier_enabled = true
+verifier_provider = "ollama"
+verifier_model = "gemma4:e2b"
+verifier_confidence_threshold = 0.7
 
 # Static analysis errors block execution
 static_analysis_is_error = true
@@ -408,10 +408,10 @@ The current Tier 1 static analysis utilizes a **structural fast-fail mechanism**
 - **Shell invocation patterns**: `sh -c`, `bash -c`, etc., which would bypass the structural safety of `Command::new` (no-shell execution).
 - **Control characters and null bytes**: Characters that could disrupt the tool execution engine or log output.
 
-While highly efficient (<0.01ms), this layer is intentionally minimal. **Real-world security relies on the Defense-in-Depth provided by Tier 2 (Dual LLM Verification) and Tier 3 (Audit Trail).** Complex intent analysis and semantic risk assessment are entirely delegated to the Dual LLM Verifier.
+While highly efficient (<0.01ms), this layer is intentionally minimal. **Real-world security relies on the Defense-in-Depth provided by Tier 2 (Verifier Committee) and Tier 3 (Audit Trail).** Complex intent analysis and semantic risk assessment are entirely delegated to the Verifier Committee.
 
 ### 2. Probabilistic Intent Verification
-Dual LLM Verification is a **probabilistic** defense. While it can achieve high accuracy with well-chosen verifier models, LLMs can hallucinate or fail to catch "jailbreak" style prompt injections. The confidence threshold setting (`dual_llm_confidence_threshold`) is important for balancing security and usability.
+Verifier Committee is a **probabilistic** defense. While it can achieve high accuracy with well-chosen verifier models, LLMs can hallucinate or fail to catch "jailbreak" style prompt injections. The confidence threshold setting (`verifier_confidence_threshold`) is important for balancing security and usability.
 
 ### 3. ML-DSA COSE algorithm identifier (`alg=−48`)
 
@@ -529,10 +529,10 @@ against a trusted root rather than the project's own key.
 
 ### Tier 3 — Semantic Firewall (src/security/skill_verifier.rs)
 
-**Type**: Probabilistic, LLM-dependent, requires configured Dual LLM
+**Type**: Probabilistic, LLM-dependent, requires configured Verifier
 verifier.
 
-This is the same Dual LLM architecture used for tool-call verification,
+This is the same Verifier Committee architecture used for tool-call verification,
 repurposed with a **skill-specific security constitution**
 (`SKILL_SECURITY_CONSTITUTION`).  The verifier LLM receives:
 
@@ -608,7 +608,7 @@ principles to content the agent *might* consume:
 | Tier | Existing (Tool Execution) | New (Skill Verification) |
 |---|---|---|
 | T1 — Space | Path guardrails, static analysis | YAML structural validation |
-| T2 — Behavior | Dual LLM intent verification, ABAC | Signature verification (Ed25519/ML-DSA) |
+| T2 — Behavior | Verifier Committee intent verification, ABAC | Signature verification (Ed25519/ML-DSA) |
 | T3 — Time | PQC audit trail, Merkle anchoring | Semantic Firewall for skill content |
 | T4 — Supply Chain | — *(new)* | Three-tier skill safety audit |
 

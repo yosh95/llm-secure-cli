@@ -31,7 +31,7 @@ pub fn init_config() {
     commented_lines.push_str("#   export OPENROUTER_API_KEY='your-key-here'\n");
     commented_lines.push_str("#\n");
     commented_lines.push_str(
-        "# For Dual LLM Verification, ensure you have keys for TWO different providers.\n",
+        "# For Verifier Committee, ensure you have keys for the providers you configure.\n",
     );
     commented_lines.push_str(&sep);
     commented_lines.push_str("\n# Other settings can be customized below.\n\n");

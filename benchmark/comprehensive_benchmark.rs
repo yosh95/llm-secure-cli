@@ -1,6 +1,6 @@
 use colored::Colorize;
 use llm_secure_cli::core::context::AppContext;
-use llm_secure_cli::security::dual_llm_verifier::verify_tool_call;
+use llm_secure_cli::security::verifier::verify_tool_call;
 use llm_secure_cli::security::identity::IdentityManager;
 use llm_secure_cli::security::pqc::{MldsaVariant, MlkemVariant, PqcProvider};
 use llm_secure_cli::security::static_analyzer::StaticAnalyzer;
@@ -163,7 +163,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Phase 4
-    section("Phase 4: Intent Verification (Dual LLM)");
+    section("Phase 4: Intent Verification (Verifier Committee)");
     let providers = [
         ("google", "lite"),
         ("openai", "nano"),
@@ -184,8 +184,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Use set_config to update provider and model for verification
         {
             let mut config = ctx.config_manager.get_config();
-            config.security.dual_llm_provider = provider.to_string();
-            config.security.dual_llm_model = model.to_string();
+            config.security.verifier_provider = provider.to_string();
+            config.security.verifier_model = model.to_string();
             ctx.config_manager.set_config(config);
         }
 

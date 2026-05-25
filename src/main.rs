@@ -69,16 +69,16 @@ enum Commands {
         /// Recursively scan for skill directories
         #[clap(short, long)]
         recursive: bool,
-        /// Run Semantic Firewall analysis (requires a configured Dual LLM verifier)
+        /// Run Semantic Firewall analysis (requires a configured verifier)
         #[clap(short, long)]
         semantic: bool,
         /// Output results as JSON
         #[clap(long)]
         json: bool,
-        /// Override the Dual LLM provider for semantic analysis
+        /// Override the verifier provider for semantic analysis
         #[clap(long)]
         provider: Option<String>,
-        /// Override the Dual LLM model for semantic analysis
+        /// Override the verifier model for semantic analysis
         #[clap(long)]
         model: Option<String>,
     },

@@ -142,9 +142,9 @@ impl ConfigManager {
         Ok(existed)
     }
 
-    /// Resolve the dual LLM provider and model, prioritizing AppState (state.toml)
+    /// Resolve the verifier provider and model, prioritizing AppState (state.toml)
     /// but falling back to AppConfig (config.toml).
-    pub fn get_dual_llm_settings(&self) -> (String, String) {
+    pub fn get_verifier_settings(&self) -> (String, String) {
         let state = self.get_state().unwrap_or_else(|_| Default::default());
         let config = self.get_config().ok();
 
@@ -154,14 +154,14 @@ impl ConfigManager {
             .or_else(|| {
                 config
                     .as_ref()
-                    .map(|c| c.security.dual_llm_provider.clone())
+                    .map(|c| c.security.verifier_provider.clone())
             })
             .unwrap_or_default();
 
         let model = state
             .last_used_v_model
             .filter(|s| !s.is_empty())
-            .or_else(|| config.as_ref().map(|c| c.security.dual_llm_model.clone()))
+            .or_else(|| config.as_ref().map(|c| c.security.verifier_model.clone()))
             .unwrap_or_default();
 
         (provider, model)
@@ -187,14 +187,14 @@ impl ConfigManager {
             .or_else(|| {
                 config
                     .as_ref()
-                    .map(|c| c.security.dual_llm_provider.clone())
+                    .map(|c| c.security.verifier_provider.clone())
             })
             .unwrap_or_default();
 
         let primary_model = state
             .last_used_v_model
             .filter(|s| !s.is_empty())
-            .or_else(|| config.as_ref().map(|c| c.security.dual_llm_model.clone()))
+            .or_else(|| config.as_ref().map(|c| c.security.verifier_model.clone()))
             .unwrap_or_default();
 
         if !primary_provider.is_empty() && !primary_model.is_empty() {
@@ -216,7 +216,7 @@ impl ConfigManager {
 
         let enabled = config
             .as_ref()
-            .and_then(|c| c.security.dual_llm_verification)
+            .and_then(|c| c.security.verifier_enabled)
             .unwrap_or(false)
             && !members.is_empty();
 

@@ -15,7 +15,7 @@ use std::sync::{Arc, OnceLock, RwLock};
 /// Thread-safe configuration manager.
 ///
 /// **`AppConfig`** is stored in a `RwLock` because it can be mutated at runtime
-/// (e.g., toggling Dual LLM Verification via `/verify on|off`).  The previous
+/// (e.g., toggling Verifier via `/verify on|off`).  The previous
 /// double-check locking pattern — acquire read lock, check, drop, acquire write
 /// lock, check again — was prone to TOCTOU races.  The current implementation
 /// eliminates that pattern by always acquiring the write lock for the first

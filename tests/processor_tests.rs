@@ -155,8 +155,8 @@ async fn test_processor_tool_execution_flow() {
     config.security.auto_approval_level =
         Some(llm_secure_cli::config::models::AutoApprovalLevel::Medium);
     config.security.low_risk_tools = vec!["list_files".to_string()];
-    config.security.dual_llm_verification = Some(true);
-    config.security.dual_llm_provider = "mock".to_string();
+    config.security.verifier_enabled = Some(true);
+    config.security.verifier_provider = "mock".to_string();
     let _ = ctx.config_manager.set_config(config);
     let ctx = Arc::new(ctx);
 

@@ -78,10 +78,10 @@ default: list
 @bench-local:
     cargo bench --bench benchmark_local
 
-# Run Dual LLM verification benchmarks (requires API keys)
-# Usage: just bench-dual openrouter amazon/nova-2-lite-v1
-@bench-dual provider model:
-    cargo bench --bench benchmark_dual_llm -- {{provider}} {{model}}
+# Run Verifier Committee benchmarks (requires API keys)
+# Usage: just bench-verifier openrouter amazon/nova-2-lite-v1
+@bench-verifier provider model:
+    cargo bench --bench benchmark_verifier -- {{provider}} {{model}}
 
 # ──── Documentation ────────────────────────────────────────────────────────
 

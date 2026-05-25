@@ -4,7 +4,7 @@
 /// This tool adopts "AI-native ABAC" and does not maintain platform-dependent static
 /// rules (e.g., banning specific command names like curl), which leads to maintenance
 /// quagmires. Complex intent judgment and risk assessment are delegated entirely to
-/// Phase 2: "Dual LLM Verifier".
+/// Phase 2: "Verifier Committee".
 pub struct StaticAnalyzer;
 
 impl StaticAnalyzer {

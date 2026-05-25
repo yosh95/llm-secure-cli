@@ -235,7 +235,7 @@ pub struct ModelAlias {
 ///
 /// # Backward Compatibility
 ///
-/// If `dual_llm_provider` and `dual_llm_model` are set (the legacy single-verifier
+/// If `verifier_provider` and `verifier_model` are set (the legacy single-verifier
 /// config), that pair is treated as the first committee member. Additional members
 /// can be added via `verifier_committee` without removing the legacy fields.
 ///
@@ -268,16 +268,16 @@ pub struct SecurityConfig {
     #[serde(default)]
     pub auto_approval_level: Option<AutoApprovalLevel>,
     #[serde(default)]
-    pub dual_llm_verification: Option<bool>,
+    pub verifier_enabled: Option<bool>,
     #[serde(default = "default_unified_provider")]
-    pub dual_llm_provider: String,
-    #[serde(default = "default_dual_llm_model")]
-    pub dual_llm_model: String,
+    pub verifier_provider: String,
+    #[serde(default = "default_verifier_model")]
+    pub verifier_model: String,
     #[serde(default = "default_confidence_threshold")]
-    pub dual_llm_confidence_threshold: f64,
+    pub verifier_confidence_threshold: f64,
     #[serde(default)]
     pub security_level: SecurityLevel,
-    /// Additional verifier committee members beyond the primary (dual_llm_provider/model).
+    /// Additional verifier committee members beyond the primary (verifier_provider/model).
     ///
     /// When configured, the verifier runs ALL members (including the primary legacy pair)
     /// concurrently. If ANY member flags the call as NeedsApproval, human approval is required.
@@ -295,7 +295,7 @@ pub struct SecurityConfig {
     pub verifier_committee: VerifierCommitteeConfig,
 }
 
-fn default_dual_llm_model() -> String {
+fn default_verifier_model() -> String {
     "".to_string()
 }
 fn default_unified_provider() -> String {
@@ -338,10 +338,10 @@ impl Default for SecurityConfig {
             static_analysis_is_error: true,
             scaling_patterns: Vec::new(),
             auto_approval_level: None,
-            dual_llm_verification: None,
-            dual_llm_provider: default_unified_provider(),
-            dual_llm_model: default_dual_llm_model(),
-            dual_llm_confidence_threshold: default_confidence_threshold(),
+            verifier_enabled: None,
+            verifier_provider: default_unified_provider(),
+            verifier_model: default_verifier_model(),
+            verifier_confidence_threshold: default_confidence_threshold(),
             security_level: SecurityLevel::High,
             verifier_committee: VerifierCommitteeConfig::default(),
         }
@@ -377,11 +377,11 @@ impl SecurityConfig {
         // No runtime check needed: invalid values are rejected at
         // deserialization time by the AutoApprovalLevel custom Deserialize impl.
 
-        // --- dual_llm_confidence_threshold ---
-        let threshold = self.dual_llm_confidence_threshold;
+        // --- verifier_confidence_threshold ---
+        let threshold = self.verifier_confidence_threshold;
         if threshold <= 0.0 || threshold > 1.0 {
             errors.push(ValidationError {
-                field: "dual_llm_confidence_threshold".to_string(),
+                field: "verifier_confidence_threshold".to_string(),
                 message: format!("must be in range (0.0, 1.0], got {}", threshold),
             });
         }
@@ -390,27 +390,27 @@ impl SecurityConfig {
         // No runtime check needed: invalid values are rejected at
         // deserialization time by the SecurityLevel custom Deserialize impl.
 
-        // --- cross-field: dual_llm_verification enabled but nothing configured ---
-        if self.dual_llm_verification.unwrap_or(false) {
-            let has_legacy = !self.dual_llm_provider.is_empty() && !self.dual_llm_model.is_empty();
+        // --- cross-field: verifier_enabled enabled but nothing configured ---
+        if self.verifier_enabled.unwrap_or(false) {
+            let has_legacy = !self.verifier_provider.is_empty() && !self.verifier_model.is_empty();
             let has_committee = !self.verifier_committee.members.is_empty();
             if !has_legacy && !has_committee {
                 errors.push(ValidationError {
-                    field: "dual_llm_verification".to_string(),
-                    message: "dual_llm_verification is enabled but neither legacy provider/model nor verifier_committee members are configured. Set dual_llm_provider/model or add verifier_committee.members.".to_string(),
+                    field: "verifier_enabled".to_string(),
+                    message: "verifier_enabled is enabled but neither legacy provider/model nor verifier_committee members are configured. Set verifier_provider/model or add verifier_committee.members.".to_string(),
                 });
             }
             // Warn if legacy is partially configured
-            if self.dual_llm_provider.is_empty() && !self.dual_llm_model.is_empty() {
+            if self.verifier_provider.is_empty() && !self.verifier_model.is_empty() {
                 errors.push(ValidationError {
-                    field: "dual_llm_provider".to_string(),
-                    message: "dual_llm_provider is empty but dual_llm_model is set. Both or neither must be set.".to_string(),
+                    field: "verifier_provider".to_string(),
+                    message: "verifier_provider is empty but verifier_model is set. Both or neither must be set.".to_string(),
                 });
             }
-            if !self.dual_llm_provider.is_empty() && self.dual_llm_model.is_empty() {
+            if !self.verifier_provider.is_empty() && self.verifier_model.is_empty() {
                 errors.push(ValidationError {
-                    field: "dual_llm_model".to_string(),
-                    message: "dual_llm_model is empty but dual_llm_provider is set. Both or neither must be set.".to_string(),
+                    field: "verifier_model".to_string(),
+                    message: "verifier_model is empty but verifier_provider is set. Both or neither must be set.".to_string(),
                 });
             }
         }
@@ -440,23 +440,21 @@ impl SecurityConfig {
     pub fn validate_warnings(&self) -> Vec<ValidationError> {
         let mut warnings = Vec::new();
 
-        // --- cross-field: high security without dual_llm ---
-        if self.security_level == SecurityLevel::High
-            && !self.dual_llm_verification.unwrap_or(false)
-        {
+        // --- cross-field: high security without verifier ---
+        if self.security_level == SecurityLevel::High && !self.verifier_enabled.unwrap_or(false) {
             warnings.push(ValidationError {
                 field: "security_level".to_string(),
-                message: "security_level 'high' is set but dual_llm_verification is not enabled — high-risk tools will escalate to Critical".to_string(),
+                message: "security_level 'high' is set but verifier_enabled is not enabled — high-risk tools will escalate to Critical".to_string(),
             });
         }
 
-        // --- cross-field: auto_approval medium with dual_llm off ---
+        // --- cross-field: auto_approval medium with verifier off ---
         if self.auto_approval_level == Some(AutoApprovalLevel::Medium)
-            && !self.dual_llm_verification.unwrap_or(false)
+            && !self.verifier_enabled.unwrap_or(false)
         {
             warnings.push(ValidationError {
                 field: "auto_approval_level".to_string(),
-                message: "auto_approval_level 'medium' without dual_llm_verification is not recommended — high-risk tools lack semantic verification".to_string(),
+                message: "auto_approval_level 'medium' without verifier_enabled is not recommended — high-risk tools lack semantic verification".to_string(),
             });
         }
 

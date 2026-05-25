@@ -3,13 +3,13 @@ use crate::llm::models::DataSource;
 use crate::security::policy::{SECURITY_CONSTITUTION, SecurityContext};
 use serde_json::{Value, json};
 
-/// DualLLMVerifier implements the "Intent and Policy Verification" logic.
+/// Verifier implements the "Intent and Policy Verification" logic.
 /// It uses a secondary LLM to judge if a tool call is safe based on the user's intent
 /// and the system's hardcoded Security Constitution.
 ///
 /// NOTE: The Verifier LLM must NOT be configured with any tools itself (except the verdict tool)
 /// to prevent secondary prompt injection risks.
-pub struct DualLLMVerifier {
+pub struct Verifier {
     verifier_llm: Box<dyn LlmClient>,
 }
 
@@ -41,7 +41,7 @@ pub struct VerificationParams<'a> {
     pub model: Option<String>,
 }
 
-/// Outcome of a Dual LLM verification attempt.
+/// Outcome of a verifier committee verification attempt.
 #[derive(Clone, Debug)]
 pub enum VerificationOutcome {
     /// The verifier explicitly approved the tool call — safe to auto-approve.
@@ -93,10 +93,10 @@ pub async fn verify_tool_call(
 pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> VerificationOutcome {
     let p = params
         .provider
-        .unwrap_or_else(|| params.config.dual_llm_provider.clone());
+        .unwrap_or_else(|| params.config.verifier_provider.clone());
     let m = params
         .model
-        .unwrap_or_else(|| params.config.dual_llm_model.clone());
+        .unwrap_or_else(|| params.config.verifier_model.clone());
 
     let client = {
         let registry = params.ctx_app.client_registry.lock().await;
@@ -117,7 +117,7 @@ pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> Verificati
         .context
         .unwrap_or_else(|| SecurityContext::gather(params.config.security_level.as_str()));
 
-    let mut verifier = DualLLMVerifier::new(client);
+    let mut verifier = Verifier::new(client);
     match verifier
         .verify(params.user_query, params.tool_name, params.tool_args, &ctx)
         .await
@@ -207,7 +207,7 @@ pub fn parse_verifier_response(response: &str) -> VerificationResult {
     }
 }
 
-/// Hardcoded system-prompt template for the Dual LLM verifier.
+/// Hardcoded system-prompt template for the verifier.
 ///
 /// This is deliberately **not** configurable by the user.  Allowing the
 /// user (or an attacker) to modify the verifier\'s prompt would weaken the
@@ -221,7 +221,7 @@ pub const VERIFIER_SYSTEM_PROMPT_TEMPLATE: &str = concat!(
     "```",
 );
 
-/// Hardcoded user-prompt template for the Dual LLM verifier.
+/// Hardcoded user-prompt template for the verifier.
 ///
 /// Deliberately **not** configurable — see [`VERIFIER_SYSTEM_PROMPT_TEMPLATE`].
 /// Placeholders are filled at verification time:
@@ -265,7 +265,7 @@ pub const VERIFIER_USER_PROMPT_TEMPLATE: &str = concat!(
     "FIXED_ARGS: [JSON object of corrected arguments if DECISION is MODIFY, otherwise N/A]",
 );
 
-impl DualLLMVerifier {
+impl Verifier {
     pub fn new(llm: Box<dyn LlmClient>) -> Self {
         Self { verifier_llm: llm }
     }

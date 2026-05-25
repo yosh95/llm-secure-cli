@@ -628,7 +628,7 @@ Attackers can distribute malicious skills that:
 6. Does the skill attempt to disable or bypass security controls?
 "#;
 
-/// Runs the Semantic Firewall analysis on a skill using the Dual LLM verifier.
+/// Runs the Semantic Firewall analysis on a skill using the verifier.
 ///
 /// This sends the skill's content to the verifier LLM for semantic analysis.
 /// Always returns a [`SkillSemanticVerdict`]; errors are captured in the
@@ -650,12 +650,12 @@ pub async fn analyze_skill_semantic(
         }
     };
 
-    let p = provider.unwrap_or(&config.dual_llm_provider);
-    let m = model.unwrap_or(&config.dual_llm_model);
+    let p = provider.unwrap_or(&config.verifier_provider);
+    let m = model.unwrap_or(&config.verifier_model);
 
     if p.is_empty() || m.is_empty() {
         return SkillSemanticVerdict::Error {
-            message: "Dual LLM provider/model not configured. Set dual_llm_provider and dual_llm_model in config.toml, or use --provider/--model flags.".to_string(),
+            message: "Verifier provider/model not configured. Set verifier_provider and verifier_model in config.toml, or use --provider/--model flags.".to_string(),
         };
     }
 

@@ -24,8 +24,8 @@ pub fn is_python_available() -> bool {
 /// The code is written to a temporary file and executed via `python3`.
 /// Security is provided by:
 ///   1. Docker container isolation (the primary sandbox)
-///   2. Dual LLM semantic verification (Phase 3)
-///   3. CASS risk classification (Critical → always requires Dual LLM)
+///   2. Verifier Committee semantic verification (Phase 3)
+///   3. CASS risk classification (Critical → always requires Verifier)
 ///
 /// No AST-level sandboxing, no restricted builtins, no blocked modules —
 /// those approaches proved brittle and incomplete in practice.

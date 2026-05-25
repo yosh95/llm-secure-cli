@@ -282,7 +282,7 @@ impl Completer for ChatCompleter {
                             matches.sort_by(|a, b| a.display.cmp(&b.display));
                             return Ok((start, matches));
                         }
-                        let (v_p, _) = self.ctx.config_manager.get_dual_llm_settings();
+                        let (v_p, _) = self.ctx.config_manager.get_verifier_settings();
                         if !v_p.is_empty()
                             && let Some(models) = models_map.get(&v_p)
                         {

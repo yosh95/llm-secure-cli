@@ -13,7 +13,7 @@
 //! | Phase | Module | Description |
 //! |-------|--------|-------------|
 //! | 1 — Static analysis | [`security::static_analyzer`] | Deterministic fast-fail for null bytes / control chars |
-//! | 2 — Verification & approval | [`core::session::phase2_verification`] | Zero Trust, Dual LLM verifier committee, human-in-the-loop |
+//! | 2 — Verification & approval | [`core::session::phase2_verification`] | Zero Trust, Verifier Committee, human-in-the-loop |
 //! | 3 — Execution & audit | [`core::session::phase3_execution`] | Tool execution with cryptographic audit logging |
 //!
 //! ## Key modules

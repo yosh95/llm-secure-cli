@@ -360,8 +360,8 @@ pub fn handle_info(session: &ActiveSession) {
     ui::print_key_value("Provider", &state.provider);
 
     // Validator Info
-    let (v_provider, v_model_raw) = session.ctx.config_manager.get_dual_llm_settings();
-    let v_enabled = config.security.dual_llm_verification.unwrap_or(false);
+    let (v_provider, v_model_raw) = session.ctx.config_manager.get_verifier_settings();
+    let v_enabled = config.security.verifier_enabled.unwrap_or(false);
 
     let v_model = if v_model_raw.is_empty() {
         if v_enabled {
@@ -601,25 +601,25 @@ pub fn handle_verify_cmd(session: &mut ActiveSession, args: &str) {
         }
     };
 
-    let current = config.security.dual_llm_verification.unwrap_or(false);
+    let current = config.security.verifier_enabled.unwrap_or(false);
 
     match args.to_lowercase().as_str() {
         "on" => {
             let mut new_config = (*config).clone();
-            new_config.security.dual_llm_verification = Some(true);
+            new_config.security.verifier_enabled = Some(true);
             if let Err(e) = session.ctx.config_manager.set_config(new_config) {
                 ui::report_error(&format!("Failed to update config: {}", e));
             } else {
-                ui::report_success("Dual LLM Verification enabled.");
+                ui::report_success("Verifier enabled.");
             }
         }
         "off" => {
             let mut new_config = (*config).clone();
-            new_config.security.dual_llm_verification = Some(false);
+            new_config.security.verifier_enabled = Some(false);
             if let Err(e) = session.ctx.config_manager.set_config(new_config) {
                 ui::report_error(&format!("Failed to update config: {}", e));
             } else {
-                ui::report_success("Dual LLM Verification disabled.");
+                ui::report_success("Verifier disabled.");
             }
         }
         "" => {
@@ -628,9 +628,9 @@ pub fn handle_verify_cmd(session: &mut ActiveSession, args: &str) {
             } else {
                 "DISABLED".yellow()
             };
-            println!("Dual LLM Verification Status: {}", status);
+            println!("Verifier Status: {}", status);
 
-            let (v_provider, v_model) = session.ctx.config_manager.get_dual_llm_settings();
+            let (v_provider, v_model) = session.ctx.config_manager.get_verifier_settings();
             if current {
                 if v_provider.is_empty() || v_model.is_empty() {
                     ui::report_warning(
@@ -769,7 +769,7 @@ pub async fn handle_provider_cmd(session: &mut ActiveSession, args: &str) {
 }
 
 pub async fn handle_vmodel_cmd(session: &mut ActiveSession, args: &str) {
-    let (current_provider, current_model) = session.ctx.config_manager.get_dual_llm_settings();
+    let (current_provider, current_model) = session.ctx.config_manager.get_verifier_settings();
 
     let args_trimmed = args.trim();
 
@@ -844,7 +844,7 @@ pub async fn handle_vmodel_cmd(session: &mut ActiveSession, args: &str) {
 }
 
 pub async fn handle_vprovider_cmd(session: &mut ActiveSession, args: &str) {
-    let (current_provider, _) = session.ctx.config_manager.get_dual_llm_settings();
+    let (current_provider, _) = session.ctx.config_manager.get_verifier_settings();
 
     if args.is_empty() {
         ui::print_rule(Some("Available Providers for Verifier"), Some("cyan"));
@@ -1007,8 +1007,8 @@ fn print_help() {
     println!("  /m, /model [-u] [<name>]  List models (/model -u to refresh cache) or switch");
     println!("  /p, /provider <n>  Switch LLM provider");
     println!("  /vm, /vmodel [-u] [<name>] List verifier models (-u to refresh) or set");
-    println!("  /vp, /vprovider <n> Set provider for dual-LLM verification");
-    println!("  /verify [on|off]   Toggle or show status of dual-LLM verification");
+    println!("  /vp, /vprovider <n> Set provider for verifier");
+    println!("  /verify [on|off]   Toggle or show status of verifier");
     println!("  /alias [-d <name>] [<name> <target>]  List/create/delete model aliases");
     println!("  /s, /summarize     Summarize history and clear it");
     println!("  /t, /template [<name>]  List templates or insert one into prompt");

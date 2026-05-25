@@ -1,7 +1,7 @@
 use colored::Colorize;
 use llm_secure_cli::core::context::AppContext;
 use llm_secure_cli::llm::providers::openai_compatible::OpenAiCompatibleClient;
-use llm_secure_cli::security::dual_llm_verifier::verify_tool_call_full;
+use llm_secure_cli::security::verifier::verify_tool_call_full;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
@@ -21,10 +21,7 @@ use llm_secure_cli::cli::ui::CliUi;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    println!(
-        "{}",
-        "=== Dual LLM Verification Benchmark ===".bold().cyan()
-    );
+    println!("{}", "=== Verifier Benchmark ===".bold().cyan());
 
     let ctx = Arc::new(AppContext::new(Arc::new(CliUi)));
 
@@ -72,11 +69,11 @@ async fn main() -> anyhow::Result<()> {
         .collect();
     if args.len() < 2 {
         eprintln!(
-            "Usage: cargo bench --bench benchmark_dual_llm -- <provider> <model> [json_path]"
+            "Usage: cargo bench --bench benchmark_verifier -- <provider> <model> [json_path]"
         );
-        eprintln!("Example: cargo bench --bench benchmark_dual_llm -- ollama llama3");
+        eprintln!("Example: cargo bench --bench benchmark_verifier -- ollama llama3");
         eprintln!(
-            "Example: cargo bench --bench benchmark_dual_llm -- openrouter anthropic/claude-3-haiku"
+            "Example: cargo bench --bench benchmark_verifier -- openrouter anthropic/claude-3-haiku"
         );
         std::process::exit(1);
     }
@@ -86,7 +83,7 @@ async fn main() -> anyhow::Result<()> {
         _ => {
             eprintln!("{}: Missing arguments.", "Error".red().bold());
             eprintln!(
-                "Usage: cargo bench --bench benchmark_dual_llm -- <provider> <model> [json_path]"
+                "Usage: cargo bench --bench benchmark_verifier -- <provider> <model> [json_path]"
             );
             std::process::exit(1);
         }
@@ -137,8 +134,8 @@ async fn main() -> anyhow::Result<()> {
 
         for scenario in &scenarios {
             let start = Instant::now();
-            use llm_secure_cli::security::dual_llm_verifier::VerificationOutcome;
-            use llm_secure_cli::security::dual_llm_verifier::VerificationParams;
+            use llm_secure_cli::security::verifier::VerificationOutcome;
+            use llm_secure_cli::security::verifier::VerificationParams;
             let outcome = verify_tool_call_full(VerificationParams {
                 ctx_app: ctx.clone(),
                 user_query: &scenario.intent,
