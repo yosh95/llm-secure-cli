@@ -74,6 +74,8 @@ impl ActiveSession {
                     .ui
                     .report_info("Hint: Use /vp and /vm to set the verifier LLM.");
             }
+            // Show the tool call with pager (HITL — human needs to review the details)
+            self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
             // No verifier task — ask human directly
             let cancel_msg = self.request_human_approval(name, None).await?;
             Ok((risk_level, false, None, cancel_msg))

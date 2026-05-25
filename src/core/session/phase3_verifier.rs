@@ -29,6 +29,10 @@ impl ActiveSession {
         match outcome {
             VerificationOutcome::Allowed(reason) => {
                 // Verifier says it's safe → auto-approve
+                // Show tool call directly without pager (no need to block on approved calls)
+                self.ctx
+                    .ui
+                    .print_tool_call_direct(name, &serde_json::json!(args));
                 self.ctx
                     .ui
                     .report_success(&format!("Intent Verified (Auto-Approved): {}", reason));
@@ -36,6 +40,10 @@ impl ActiveSession {
             }
             VerificationOutcome::Modified(fixed_args, reason) => {
                 // Verifier says it's safe with corrections → auto-approve with corrected args
+                // Show tool call directly without pager (no need to block on approved calls)
+                self.ctx
+                    .ui
+                    .print_tool_call_direct(name, &serde_json::json!(args));
                 self.ctx.ui.report_success(&format!(
                     "Intent Verified & Corrected (Auto-Approved): {}",
                     reason
@@ -48,7 +56,8 @@ impl ActiveSession {
                 Ok((effective_args, true))
             }
             VerificationOutcome::NeedsApproval(reason) => {
-                // Verifier flagged as potentially unsafe → show reason, ask human
+                // Verifier flagged as potentially unsafe → show tool call with pager, ask human
+                self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
                 self.ctx
                     .ui
                     .report_warning("Verifier flagged this tool call as requiring review.");
@@ -60,7 +69,8 @@ impl ActiveSession {
                 }
             }
             VerificationOutcome::FallbackRequired(reason) => {
-                // Verifier unavailable → show reason, ask human
+                // Verifier unavailable → show tool call with pager, show reason, ask human
+                self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
                 if !self.handle_verifier_fallback(name, &reason).await {
                     return Err(anyhow::anyhow!(
                         "Blocked (Verifier Unavailable): {}",

@@ -22,7 +22,7 @@ impl ActiveSession {
         name: &str,
         args: &serde_json::Map<String, Value>,
         _risk_level: RiskLevel,
-        approved: bool,
+        _approved: bool,
     ) -> Value {
         let config = match self.ctx.config_manager.get_config() {
             Ok(c) => c,
@@ -48,7 +48,6 @@ impl ActiveSession {
             "user_id": user_id
         });
 
-        let mut is_error = false;
         let name_owned = name.to_string();
         let mut final_v = match result {
             Ok(v) => {
@@ -78,7 +77,6 @@ impl ActiveSession {
                 v
             }
             Err(e) => {
-                is_error = true;
                 let err_msg = e.to_string();
                 let err_msg_for_closure = err_msg.clone();
                 let c = config.clone();
@@ -116,24 +114,16 @@ impl ActiveSession {
         // Calculate and display stats
         let stats = crate::cli::stats::get_tool_result_stats(name, &final_v);
 
-        // Display result if it was not auto-approved OR if an error occurred.
-        // This ensures that auto-approved successful calls don't clutter the UI with output (like stdout),
-        // but failures are always shown. The tool call itself is always printed above.
-        if !approved || is_error {
-            let display_str = final_v
-                .as_str()
-                .map(|s| s.to_owned())
-                .unwrap_or_else(|| final_v.to_string());
-            self.ctx.ui.print_tool_result(&display_str);
+        // Always display the tool result to the user.
+        // (Verifier auto-approved calls also show results — the user should see what happened.)
+        let display_str = final_v
+            .as_str()
+            .map(|s| s.to_owned())
+            .unwrap_or_else(|| final_v.to_string());
+        self.ctx.ui.print_tool_result(&display_str);
 
-            // If we already printed common tool result UI, we don't want to re-print stderr in stats
-            let mut quiet_stats = stats.clone();
-            quiet_stats.stderr = None;
-            crate::cli::stats::print_tool_stats(&quiet_stats);
-        } else {
-            // Even if auto-approved, we show stats and stderr if present
-            crate::cli::stats::print_tool_stats(&stats);
-        }
+        // Show stats (stderr info included)
+        crate::cli::stats::print_tool_stats(&stats);
 
         // Convert to human-readable string for the LLM
         let human_result = crate::tools::executor_utils::humanize_tool_result(name, &final_v);

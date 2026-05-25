@@ -10,6 +10,7 @@ pub trait UserInterface: Send + Sync {
     fn print_block(&self, content: &str, title: Option<&str>, style: Option<&str>);
     fn print_rule(&self, title: Option<&str>, style: Option<&str>);
     fn print_tool_call(&self, name: &str, args: &serde_json::Value);
+    fn print_tool_call_direct(&self, name: &str, args: &serde_json::Value);
     fn print_tool_result(&self, result: &str);
     fn report_error(&self, message: &str);
     fn report_info(&self, message: &str);
@@ -31,6 +32,9 @@ impl UserInterface for CliUi {
     }
     fn print_tool_call(&self, name: &str, args: &serde_json::Value) {
         print_tool_call(name, args);
+    }
+    fn print_tool_call_direct(&self, name: &str, args: &serde_json::Value) {
+        print_tool_call_direct(name, args);
     }
     fn print_tool_result(&self, result: &str) {
         print_tool_result(result);
@@ -112,10 +116,9 @@ pub fn print_key_value(key: &str, value: &str) {
     println!("  {:15} {}", key.bold().cyan(), value);
 }
 
-pub fn print_tool_call(name: &str, args: &serde_json::Value) {
-    let term = Term::stdout();
-    let (term_height, width) = term.size();
-    let width = (width as usize).min(140);
+/// Format a tool call display string (header + args + footer).
+/// Returns the formatted string without printing.
+fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> String {
     let color = "yellow";
 
     let mut buf = String::new();
@@ -271,8 +274,25 @@ pub fn print_tool_call(name: &str, args: &serde_json::Value) {
     }
 
     buf.push_str(&format!("{}\n", "\u{2500}".repeat(width).color(color)));
+    buf
+}
 
+/// Print a tool call with pager (less) if output exceeds terminal height.
+pub fn print_tool_call(name: &str, args: &serde_json::Value) {
+    let term = Term::stdout();
+    let (term_height, width) = term.size();
+    let width = (width as usize).min(140);
+    let buf = format_tool_call(name, args, width);
     crate::cli::pager::page_output(&buf, term_height);
+}
+
+/// Print a tool call directly without pager (no less even if long).
+pub fn print_tool_call_direct(name: &str, args: &serde_json::Value) {
+    let term = Term::stdout();
+    let (_, width) = term.size();
+    let width = (width as usize).min(140);
+    let buf = format_tool_call(name, args, width);
+    print!("{buf}");
 }
 
 pub fn print_tool_result(result: &str) {

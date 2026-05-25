@@ -18,6 +18,7 @@ impl UserInterface for MockUi {
     fn print_block(&self, _content: &str, _title: Option<&str>, _style: Option<&str>) {}
     fn print_rule(&self, _title: Option<&str>, _style: Option<&str>) {}
     fn print_tool_call(&self, _name: &str, _args: &serde_json::Value) {}
+    fn print_tool_call_direct(&self, _name: &str, _args: &serde_json::Value) {}
     fn print_tool_result(&self, _result: &str) {}
     fn report_error(&self, _message: &str) {}
     fn report_info(&self, _message: &str) {}
