@@ -206,7 +206,7 @@ impl ActiveSession {
     }
 
     /// The Multi-Phase Security Workflow for a single tool call.
-    /// Delegates to four distinct phases for clarity and maintainability.
+    /// Delegates to three distinct phases for clarity and maintainability.
     async fn verify_and_execute_tool_workflow(
         &mut self,
         name: &str,
@@ -217,25 +217,18 @@ impl ActiveSession {
         // Phase 1: Static analysis — fast-fail deterministic checks
         self.phase1_static_check(name, args, &config)?;
 
-        // Phase 2: Risk assessment, Zero Trust, verifier spawn
-        let (risk_level, _approved, verifier_handle, cancel_msg) =
-            self.phase2_risk_and_approval(name, args, &config).await?;
+        // Phase 2: Verification & Approval — Zero Trust, Verifier LLM, human-in-the-loop
+        let (effective_args, auto_approved, cancel_msg) =
+            self.phase2_verification(name, args, &config).await?;
 
-        // If the user cancelled with feedback (verifier off path), return the cancel message directly
+        // If the user cancelled with feedback, return the cancel message directly
         if let Some(msg) = cancel_msg {
             return Ok((msg, false));
         }
 
-        // Phase 3: Dual LLM semantic verification
-        // Returns (effective_args, auto_approved) where auto_approved=true means
-        // the verifier greenlit the call and no human intervention was needed.
-        let (effective_args, auto_approved) = self
-            .phase3_dual_llm_verification(name, args, verifier_handle)
-            .await?;
-
-        // Phase 4: Execution and audit logging
+        // Phase 3: Execution and audit logging
         let result = self
-            .phase4_execute_and_audit(name, &effective_args, risk_level, auto_approved)
+            .phase3_execute_and_audit(name, &effective_args, auto_approved)
             .await;
         Ok((result, auto_approved))
     }

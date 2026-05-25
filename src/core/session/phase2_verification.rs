@@ -1,42 +1,29 @@
-use crate::config::models::AutoApprovalLevel;
 use crate::core::session::ActiveSession;
-use crate::security::cass::RiskLevel;
 use crate::security::dual_llm_verifier::{
     CommitteeVerdict, VerificationOutcome, VerificationParams,
 };
 use serde_json::Value;
+use std::io::Write;
 
 impl ActiveSession {
-    /// Phase 2: CASS risk evaluation, Zero Trust check, auto-approval determination,
-    /// and verifier spawning. Human approval may be deferred to Phase 3.
+    /// Phase 2: Verification & Approval
+    ///
+    /// Combines Zero Trust enforcement, verifier committee resolution & spawning,
+    /// and verifier outcome resolution into a single phase.  The Verifier LLM
+    /// handles all risk judgements — the old CASS-based approach has been removed.
     ///
     /// Returns:
-    ///   - `RiskLevel`: always Low (CASS is deprecated; Verifier handles all risk)
-    ///   - `bool`: `true` if the tool was auto-approved by the old CASS-based system
-    ///   - `Option<JoinHandle>`: a running verifier task if verification is enabled
-    ///   - `Option<Value>`: cancel message if the user rejected (only when verifier is off)
-    pub(crate) async fn phase2_risk_and_approval(
+    ///   - `(effective_args, auto_approved, cancel_msg)` where:
+    ///     - `effective_args` are the (possibly corrected) tool arguments
+    ///     - `auto_approved` is `true` if the verifier greenlit the call
+    ///     - `cancel_msg` is `Some(...)` with user feedback if rejected, or `None`
+    pub(crate) async fn phase2_verification(
         &mut self,
         name: &str,
         args: &serde_json::Map<String, Value>,
         config: &crate::config::models::AppConfig,
-    ) -> anyhow::Result<(
-        RiskLevel,
-        bool,
-        Option<tokio::task::JoinHandle<VerificationOutcome>>,
-        Option<Value>,
-    )> {
-        // 2a. CASS risk evaluation (always Low now)
-        let risk_level = crate::security::cass::CASSOrchestrator::evaluate_risk(
-            name,
-            Some(&serde_json::json!(args)),
-            &config.security,
-        );
-
-        // 2b. Zero Trust enforcement for MCP servers
-        let _force_manual = self.check_zero_trust(name, &config.mcp_servers);
-
-        // 2c. Generate identity token for Zero Trust MCP calls (if applicable)
+    ) -> anyhow::Result<(serde_json::Map<String, Value>, bool, Option<Value>)> {
+        // 2a. Zero Trust enforcement for MCP servers
         if self.check_zero_trust(name, &config.mcp_servers) {
             match crate::security::identity::IdentityManager::generate_token(Some(name)) {
                 Ok(_token) => self
@@ -50,32 +37,32 @@ impl ActiveSession {
             }
         }
 
-        // 2e. Check if Verifier Committee is enabled and resolve members
+        // 2b. Resolve Verifier Committee members
         let (committee_members, verifier_available) =
             self.ctx.config_manager.get_verifier_committee();
 
         if verifier_available && !committee_members.is_empty() {
-            if committee_members.len() == 1 {
-                // Single verifier (legacy mode) — spawn one task as before.
+            // Spawn verifier task(s) and resolve outcome
+            let verifier_handle = if committee_members.len() == 1 {
+                // Single verifier (legacy mode)
                 let (v_provider, v_model) = &committee_members[0];
-                let verifier_handle =
-                    Some(self.spawn_verifier_task(name, args, v_provider.clone(), v_model.clone()));
                 self.ctx.ui.report_info(&format!(
                     "Verifier: {} (single-member committee)",
                     committee_members[0].1,
                 ));
-                Ok((risk_level, false, verifier_handle, None))
+                Some(self.spawn_verifier_task(name, args, v_provider.clone(), v_model.clone()))
             } else {
-                // Multi-member committee — spawn aggregated committee task.
+                // Multi-member committee — any-flag policy
                 let member_count = committee_members.len();
-                let verifier_handle =
-                    Some(self.spawn_committee_task(name, args, committee_members));
                 self.ctx.ui.report_info(&format!(
                     "Verifier Committee: {} members (any-flag policy)",
                     member_count,
                 ));
-                Ok((risk_level, false, verifier_handle, None))
-            }
+                Some(self.spawn_committee_task(name, args, committee_members))
+            };
+
+            self.resolve_verifier_outcome(name, args, verifier_handle)
+                .await
         } else {
             // Verifier is off or not configured: fall back to human approval.
             if config.security.dual_llm_verification.unwrap_or(false) {
@@ -86,15 +73,127 @@ impl ActiveSession {
                     .ui
                     .report_info("Hint: Use /vp and /vm to set the primary verifier, or add [security.verifier_committee] members.");
             }
-            // Show the tool call with pager (HITL — human needs to review the details)
+            // Show the tool call — human needs to review
             self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
             // No verifier task — ask human directly
-            let cancel_msg = self.request_human_approval(name, None).await?;
-            Ok((risk_level, false, None, cancel_msg))
+            let cancel_msg = self.request_human_approval(name).await?;
+            if let Some(msg) = cancel_msg {
+                Ok((args.clone(), false, Some(msg)))
+            } else {
+                Ok((args.clone(), false, None))
+            }
         }
     }
 
-    /// Check whether a Zero Trust MCP policy forces manual approval for this tool.
+    /// Resolve the verifier outcome: wait for the spawned task, interpret the result,
+    /// and either auto-approve or ask the human for approval.
+    async fn resolve_verifier_outcome(
+        &mut self,
+        name: &str,
+        args: &serde_json::Map<String, Value>,
+        verifier_handle: Option<tokio::task::JoinHandle<VerificationOutcome>>,
+    ) -> anyhow::Result<(serde_json::Map<String, Value>, bool, Option<Value>)> {
+        let handle = match verifier_handle {
+            Some(h) => h,
+            None => {
+                // Shouldn't happen, but handle gracefully
+                return Ok((args.clone(), false, None));
+            }
+        };
+
+        let outcome = self.wait_for_verifier(handle).await?;
+        match outcome {
+            VerificationOutcome::Allowed(reason) => {
+                // Verifier says it's safe → auto-approve.
+                self.ctx
+                    .ui
+                    .print_tool_call_direct(name, &serde_json::json!(args));
+                self.ctx
+                    .ui
+                    .report_success(&format!("Intent Verified (Auto-Approved): {}", reason));
+                Ok((args.clone(), true, None))
+            }
+            VerificationOutcome::Modified(fixed_args, reason) => {
+                // Verifier says it's safe with corrections → auto-approve with corrected args.
+                self.ctx
+                    .ui
+                    .print_tool_call_direct(name, &serde_json::json!(args));
+                self.ctx.ui.report_success(&format!(
+                    "Intent Verified & Corrected (Auto-Approved): {}",
+                    reason
+                ));
+                let effective_args = if let Some(obj) = fixed_args.as_object() {
+                    obj.clone()
+                } else {
+                    args.clone()
+                };
+                Ok((effective_args, true, None))
+            }
+            VerificationOutcome::NeedsApproval(reason) => {
+                // Verifier flagged as potentially unsafe.
+                // Ask human for approval with feedback support.
+                // The verifier task has already completed, so no abort is needed.
+                self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
+                self.ctx
+                    .ui
+                    .report_warning("Verifier flagged this tool call as requiring review.");
+                self.ctx.ui.report_info(&format!("Reason: {}", reason));
+                let cancel_msg = self.request_human_approval(name).await?;
+                if let Some(msg) = cancel_msg {
+                    // User rejected with feedback — return it as cancel message
+                    Ok((args.clone(), false, Some(msg)))
+                } else {
+                    // User approved
+                    Ok((args.clone(), false, None))
+                }
+            }
+            VerificationOutcome::FallbackRequired(reason) => {
+                // Verifier unavailable — ask for human approval with feedback support.
+                // The verifier task has already completed (or timed out), so no abort is needed.
+                self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
+                self.ctx
+                    .ui
+                    .report_warning(&format!("Verifier unavailable: {}", reason));
+                let cancel_msg = self.request_human_approval(name).await?;
+                if let Some(msg) = cancel_msg {
+                    Ok((args.clone(), false, Some(msg)))
+                } else {
+                    Ok((args.clone(), false, None))
+                }
+            }
+        }
+    }
+
+    /// Wait for the verifier task to complete, with timeout and interrupt support.
+    async fn wait_for_verifier(
+        &mut self,
+        handle: tokio::task::JoinHandle<VerificationOutcome>,
+    ) -> anyhow::Result<VerificationOutcome> {
+        print!("Finalizing intent verification... ");
+        std::io::stdout().flush().ok();
+
+        const VERIFIER_TIMEOUT_SECS: u64 = 60;
+
+        let res = tokio::select! {
+            res = handle => res.unwrap_or(VerificationOutcome::FallbackRequired("Task Panicked".into())),
+            _ = tokio::time::sleep(std::time::Duration::from_secs(VERIFIER_TIMEOUT_SECS)) => {
+                println!("\n\tVerifier timed out after {}s.", VERIFIER_TIMEOUT_SECS);
+                VerificationOutcome::FallbackRequired(format!(
+                    "Verifier timed out after {}s",
+                    VERIFIER_TIMEOUT_SECS
+                ))
+            }
+            _ = tokio::signal::ctrl_c() => {
+                println!("\n\t^C - Interrupted.");
+                self.handle_interruption();
+                return Err(anyhow::anyhow!("Interrupted during verification"));
+            }
+        };
+        println!("done");
+        Ok(res)
+    }
+
+    /// Check whether a Zero Trust MCP policy applies for this tool.
     fn check_zero_trust(
         &self,
         name: &str,
@@ -117,20 +216,14 @@ impl ActiveSession {
         }
     }
 
-    /// Request human approval for a tool call. Used when verifier is off/unavailable.
-    /// Returns Ok(Some(cancel_message)) if rejected with feedback,
-    /// Ok(None) if approved, or Err if interrupted.
-    async fn request_human_approval(
-        &mut self,
-        name: &str,
-        verifier_handle: Option<&tokio::task::JoinHandle<VerificationOutcome>>,
-    ) -> anyhow::Result<Option<Value>> {
+    /// Request human approval for a tool call.
+    ///
+    /// Returns `Ok(None)` if approved, `Ok(Some(cancel_message))` if rejected
+    /// with optional feedback, or `Err` if interrupted.
+    async fn request_human_approval(&mut self, name: &str) -> anyhow::Result<Option<Value>> {
         match self.ctx.ui.ask_confirm(&format!("Execute {}", name)).await {
             Some(crate::cli::ui::ConfirmResult::Yes) => Ok(None),
             Some(res) => {
-                if let Some(h) = verifier_handle {
-                    h.abort();
-                }
                 let feedback = match res {
                     crate::cli::ui::ConfirmResult::Feedback(f) => Some(f),
                     _ => None,
@@ -139,9 +232,40 @@ impl ActiveSession {
                 Ok(Some(cancel_msg))
             }
             None => {
-                if let Some(h) = verifier_handle {
-                    h.abort();
+                self.handle_interruption();
+                Err(anyhow::anyhow!("Interrupted"))
+            }
+        }
+    }
+
+    /// Handle feedback from user when they reject a tool call.
+    /// Returns a Value that can be passed back to the LLM as a tool result.
+    pub(crate) fn handle_rejection_feedback(
+        &mut self,
+        feedback: Option<String>,
+    ) -> anyhow::Result<Value> {
+        self.ctx.ui.report_warning("Execution cancelled by user.");
+        let feedback = match feedback {
+            Some(f) => Some(f),
+            None => {
+                let f = crate::cli::ui::get_user_input("Provide feedback (optional): ");
+                if let Some(ref content) = f
+                    && !content.trim().is_empty()
+                {
+                    use colored::*;
+                    println!("  {}", format!("Feedback: {}", content).dimmed());
                 }
+                f
+            }
+        };
+
+        match feedback {
+            Some(f) if !f.trim().is_empty() => Ok(Value::String(format!(
+                "Error: Cancelled by user. Feedback: {}",
+                f
+            ))),
+            Some(_) => Ok(Value::String("Error: Cancelled by user.".into())),
+            None => {
                 self.handle_interruption();
                 Err(anyhow::anyhow!("Interrupted"))
             }
@@ -218,7 +342,7 @@ impl ActiveSession {
             )
             .await;
 
-            // Convert CommitteeVerdict → VerificationOutcome for backward-compatible Phase 3
+            // Convert CommitteeVerdict → VerificationOutcome for backward compatibility
             match committee_verdict {
                 CommitteeVerdict::Allowed => {
                     VerificationOutcome::Allowed("All committee members approved.".to_string())
@@ -227,7 +351,6 @@ impl ActiveSession {
                     VerificationOutcome::Modified(fixed_args, reason)
                 }
                 CommitteeVerdict::NeedsApproval(details) => {
-                    // Encode which members flagged the call
                     let summary: Vec<String> = details
                         .iter()
                         .map(|(provider, model, reason)| {
@@ -255,27 +378,6 @@ impl ActiveSession {
                 }
             }
         })
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn is_auto_approved(&self, _name: &str, risk: RiskLevel) -> bool {
-        let config = match self.ctx.config_manager.get_config() {
-            Ok(c) => c,
-            Err(_) => return false,
-        };
-        let policy = config.security.auto_approval_level.unwrap_or_default();
-
-        match policy {
-            AutoApprovalLevel::Low if risk == RiskLevel::Low => {
-                self.ctx.ui.report_success("Auto-approved (Low Risk)");
-                true
-            }
-            AutoApprovalLevel::Medium if risk == RiskLevel::Low || risk == RiskLevel::Medium => {
-                self.ctx.ui.report_success("Auto-approved (Medium Risk)");
-                true
-            }
-            _ => false,
-        }
     }
 
     /// Extract the user's intent context from recent conversation history.
@@ -322,39 +424,6 @@ impl ActiveSession {
         match context.char_indices().nth(MAX_TOTAL_CHARS) {
             Some((cut_at, _)) => context[..cut_at].to_string(),
             None => context,
-        }
-    }
-
-    /// Handle feedback from user when they reject a tool call.
-    pub(crate) fn handle_rejection_feedback(
-        &mut self,
-        feedback: Option<String>,
-    ) -> anyhow::Result<Value> {
-        self.ctx.ui.report_warning("Execution cancelled by user.");
-        let feedback = match feedback {
-            Some(f) => Some(f),
-            None => {
-                let f = crate::cli::ui::get_user_input("Provide feedback (optional): ");
-                if let Some(ref content) = f
-                    && !content.trim().is_empty()
-                {
-                    use colored::*;
-                    println!("  {}", format!("Feedback: {}", content).dimmed());
-                }
-                f
-            }
-        };
-
-        match feedback {
-            Some(f) if !f.trim().is_empty() => Ok(Value::String(format!(
-                "Error: Cancelled by user. Feedback: {}",
-                f
-            ))),
-            Some(_) => Ok(Value::String("Error: Cancelled by user.".into())),
-            None => {
-                self.handle_interruption();
-                Err(anyhow::anyhow!("Interrupted"))
-            }
         }
     }
 }

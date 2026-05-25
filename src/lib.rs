@@ -7,15 +7,14 @@
 //!
 //! ## Architecture overview
 //!
-//! The security framework is organized into four phases executed for every
+//! The security framework is organized into three phases executed for every
 //! autonomous tool call:
 //!
 //! | Phase | Module | Description |
 //! |-------|--------|-------------|
 //! | 1 — Static analysis | [`security::static_analyzer`] | Deterministic fast-fail for null bytes / control chars |
-//! | 2 — Risk & approval | [`core::session::phase2_approval`] | CASS risk evaluation, Zero Trust, human-in-the-loop |
-//! | 3 — Dual LLM verification | [`core::session::phase3_verifier`] | Semantic firewall via secondary LLM |
-//! | 4 — Execution & audit | [`core::session::phase4_execution`] | Tool execution with cryptographic audit logging |
+//! | 2 — Verification & approval | [`core::session::phase2_verification`] | Zero Trust, Dual LLM verifier committee, human-in-the-loop |
+//! | 3 — Execution & audit | [`core::session::phase3_execution`] | Tool execution with cryptographic audit logging |
 //!
 //! ## Key modules
 //!

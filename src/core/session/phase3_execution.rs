@@ -1,19 +1,16 @@
 use crate::core::session::ActiveSession;
-use crate::security::cass::RiskLevel;
 use serde_json::Value;
 use std::collections::HashMap;
 
 impl ActiveSession {
     /// Phase 4: Tool execution with audit logging and result display.
-    pub(crate) async fn phase4_execute_and_audit(
+    pub(crate) async fn phase3_execute_and_audit(
         &mut self,
         name: &str,
         args: &serde_json::Map<String, Value>,
-        risk_level: RiskLevel,
         approved: bool,
     ) -> Value {
-        self.execute_and_audit_tool(name, args, risk_level, approved)
-            .await
+        self.execute_and_audit_tool(name, args, approved).await
     }
 
     /// Internal execution and audit logging logic.
@@ -21,7 +18,6 @@ impl ActiveSession {
         &mut self,
         name: &str,
         args: &serde_json::Map<String, Value>,
-        _risk_level: RiskLevel,
         _approved: bool,
     ) -> Value {
         let config = match self.ctx.config_manager.get_config() {
