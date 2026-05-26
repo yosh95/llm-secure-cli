@@ -202,7 +202,7 @@ async fn main() -> anyhow::Result<()> {
 
         let total = scenarios.len() as f64;
         println!("{:-<100}", "");
-        println!("Summary for {}:", p_alias.bold());
+        println!("Summary for {} ({}):", p_alias.bold(), p_model.bold());
         println!(
             "  Accuracy : {:.2}% ({}/{})",
             (correct as f64 / total) * 100.0,
