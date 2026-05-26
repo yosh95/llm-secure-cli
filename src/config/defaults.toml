@@ -14,10 +14,9 @@ freshness = ""
 [general]
 pdf_as_base64 = true
 request_timeout = 1800
-command_timeout = 300
-max_security_log_lines = 1000
+command_timeout = 3600
+image_save_path = "~/Pictures/llsc"
 max_audit_log_lines = 10000
-max_audit_archives = 10
 max_chat_log_lines = 5000
 max_chat_archives = 5
 max_output_lines = 5000
@@ -64,20 +63,6 @@ verifier_model = "gemma4:e2b"
 #   { provider = "openai", model = "gpt-4o-mini" },
 #   { provider = "openrouter", model = "anthropic/claude-3-haiku" },
 # ]
-# Post-Quantum Cryptography (PQC) Algorithm Selection
-# =============================================================================
-# These settings control which NIST-standardized PQC algorithms are used for
-# signing (ML-DSA) and key encapsulation (ML-KEM).
-#
-# Currently supported ML-DSA variants:  ML-DSA-87
-# Currently supported ML-KEM variants:  ML-KEM-1024
-#
-# To change algorithms in the future (e.g., for enterprise compliance), update
-# these values and ensure the corresponding crate features are enabled.
-[pqc]
-ml_dsa_algorithm = "ML-DSA-87"
-ml_kem_algorithm = "ML-KEM-1024"
-
 
 # =============================================================================
 # OpenAI Compatible Providers
@@ -86,10 +71,6 @@ ml_kem_algorithm = "ML-KEM-1024"
 [ollama]
 # Ollama (Local)
 api_url = "http://localhost:11434/v1"
-
-[ollama_cloud]
-# Ollama (Cloud)
-api_url = "https://ollama.com/v1"
 
 # OpenRouter (Aggregation service)
 [openrouter]

@@ -63,55 +63,6 @@ impl TryFrom<&str> for SecurityLevel {
     }
 }
 
-/// Auto-approval level — controls which tool calls bypass human approval.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum AutoApprovalLevel {
-    /// All tools require manual approval (safest).
-    #[default]
-    None,
-    /// Only low-risk tools are auto-approved.
-    Low,
-    /// Low and medium-risk tools are auto-approved.
-    Medium,
-}
-
-impl AutoApprovalLevel {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            AutoApprovalLevel::None => "none",
-            AutoApprovalLevel::Low => "low",
-            AutoApprovalLevel::Medium => "medium",
-        }
-    }
-}
-
-impl std::fmt::Display for AutoApprovalLevel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl Serialize for AutoApprovalLevel {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for AutoApprovalLevel {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let s = String::deserialize(d)?;
-        match s.as_str() {
-            "none" => Ok(AutoApprovalLevel::None),
-            "low" => Ok(AutoApprovalLevel::Low),
-            "medium" => Ok(AutoApprovalLevel::Medium),
-            other => Err(serde::de::Error::unknown_variant(
-                other,
-                &["none", "low", "medium"],
-            )),
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GeneralConfig {
     pub system_prompt: Option<String>,
@@ -121,12 +72,8 @@ pub struct GeneralConfig {
     pub request_timeout: u64,
     #[serde(default = "default_command_timeout")]
     pub command_timeout: u64,
-    #[serde(default = "default_max_security_log")]
-    pub max_security_log_lines: usize,
     #[serde(default = "default_max_audit_log")]
     pub max_audit_log_lines: usize,
-    #[serde(default = "default_max_audit_archives")]
-    pub max_audit_archives: usize,
     #[serde(default = "default_max_chat_log")]
     pub max_chat_log_lines: usize,
     #[serde(default = "default_max_chat_archives")]
@@ -152,14 +99,8 @@ fn default_request_timeout() -> u64 {
 fn default_command_timeout() -> u64 {
     300
 }
-fn default_max_security_log() -> usize {
-    1000
-}
 fn default_max_audit_log() -> usize {
     10000
-}
-fn default_max_audit_archives() -> usize {
-    10
 }
 fn default_max_chat_log() -> usize {
     5000
@@ -184,9 +125,7 @@ impl Default for GeneralConfig {
             pdf_as_base64: default_true(),
             request_timeout: default_request_timeout(),
             command_timeout: default_command_timeout(),
-            max_security_log_lines: default_max_security_log(),
             max_audit_log_lines: default_max_audit_log(),
-            max_audit_archives: default_max_audit_archives(),
             max_chat_log_lines: default_max_chat_log(),
             max_chat_archives: default_max_chat_archives(),
             image_save_path: default_image_save_path(),
@@ -254,27 +193,11 @@ pub struct CommitteeMemberConfig {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SecurityConfig {
     #[serde(default)]
-    pub blocked_paths: Vec<String>,
-    #[serde(default)]
-    pub high_risk_tools: Vec<String>,
-    #[serde(default)]
-    pub medium_risk_tools: Vec<String>,
-    #[serde(default)]
-    pub low_risk_tools: Vec<String>,
-    #[serde(default = "default_true")]
-    pub static_analysis_is_error: bool,
-    #[serde(default)]
-    pub scaling_patterns: Vec<String>,
-    #[serde(default)]
-    pub auto_approval_level: Option<AutoApprovalLevel>,
-    #[serde(default)]
     pub verifier_enabled: Option<bool>,
     #[serde(default = "default_unified_provider")]
     pub verifier_provider: String,
     #[serde(default = "default_verifier_model")]
     pub verifier_model: String,
-    #[serde(default = "default_confidence_threshold")]
-    pub verifier_confidence_threshold: f64,
     #[serde(default)]
     pub security_level: SecurityLevel,
     /// Additional verifier committee members beyond the primary (verifier_provider/model).
@@ -324,24 +247,12 @@ pub struct VerifierCommitteeConfig {
     pub members: Vec<CommitteeMemberConfig>,
 }
 
-fn default_confidence_threshold() -> f64 {
-    0.7
-}
-
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
-            blocked_paths: Vec::new(),
-            high_risk_tools: Vec::new(),
-            medium_risk_tools: Vec::new(),
-            low_risk_tools: Vec::new(),
-            static_analysis_is_error: true,
-            scaling_patterns: Vec::new(),
-            auto_approval_level: None,
             verifier_enabled: None,
             verifier_provider: default_unified_provider(),
             verifier_model: default_verifier_model(),
-            verifier_confidence_threshold: default_confidence_threshold(),
             security_level: SecurityLevel::High,
             verifier_committee: VerifierCommitteeConfig::default(),
         }
@@ -372,19 +283,6 @@ impl SecurityConfig {
     /// block configuration loading but are worth surfacing to the user.
     pub fn validate(&self) -> Vec<ValidationError> {
         let mut errors = Vec::new();
-
-        // --- auto_approval_level ---
-        // No runtime check needed: invalid values are rejected at
-        // deserialization time by the AutoApprovalLevel custom Deserialize impl.
-
-        // --- verifier_confidence_threshold ---
-        let threshold = self.verifier_confidence_threshold;
-        if threshold <= 0.0 || threshold > 1.0 {
-            errors.push(ValidationError {
-                field: "verifier_confidence_threshold".to_string(),
-                message: format!("must be in range (0.0, 1.0], got {}", threshold),
-            });
-        }
 
         // --- security_level ---
         // No runtime check needed: invalid values are rejected at
@@ -448,16 +346,6 @@ impl SecurityConfig {
             });
         }
 
-        // --- cross-field: auto_approval medium with verifier off ---
-        if self.auto_approval_level == Some(AutoApprovalLevel::Medium)
-            && !self.verifier_enabled.unwrap_or(false)
-        {
-            warnings.push(ValidationError {
-                field: "auto_approval_level".to_string(),
-                message: "auto_approval_level 'medium' without verifier_enabled is not recommended — high-risk tools lack semantic verification".to_string(),
-            });
-        }
-
         warnings
     }
 
@@ -488,55 +376,12 @@ pub struct McpServerConfig {
     pub zero_trust: bool,
 }
 
-/// Post-Quantum Cryptography algorithm selection.
-///
-/// These settings control which NIST-standardized PQC algorithms the application
-/// uses for digital signatures (ML-DSA) and key encapsulation (ML-KEM).
-///
-/// Currently supported:
-/// - ML-DSA: "ML-DSA-87" (NIST Level 5, the highest security level)
-/// - ML-KEM: "ML-KEM-1024" (NIST Level 5, the highest security level)
-///
-/// To change algorithms (e.g., for enterprise compliance), update these values
-/// in config.toml and ensure the corresponding crate features are enabled.
-#[derive(Serialize, Deserialize, Clone)]
-pub struct PqcConfig {
-    /// ML-DSA algorithm variant for digital signatures.
-    /// Supported: "ML-DSA-87"
-    #[serde(default = "default_ml_dsa_algorithm")]
-    pub ml_dsa_algorithm: String,
-
-    /// ML-KEM algorithm variant for key encapsulation.
-    /// Supported: "ML-KEM-1024"
-    #[serde(default = "default_ml_kem_algorithm")]
-    pub ml_kem_algorithm: String,
-}
-
-fn default_ml_dsa_algorithm() -> String {
-    "ML-DSA-87".to_string()
-}
-
-fn default_ml_kem_algorithm() -> String {
-    "ML-KEM-1024".to_string()
-}
-
-impl Default for PqcConfig {
-    fn default() -> Self {
-        Self {
-            ml_dsa_algorithm: default_ml_dsa_algorithm(),
-            ml_kem_algorithm: default_ml_kem_algorithm(),
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct AppConfig {
     #[serde(default)]
     pub general: GeneralConfig,
     #[serde(default)]
     pub security: SecurityConfig,
-    #[serde(default)]
-    pub pqc: PqcConfig,
     #[serde(default)]
     pub brave_search: BraveSearchConfig,
     #[serde(default)]

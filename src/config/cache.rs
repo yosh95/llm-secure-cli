@@ -189,7 +189,6 @@ impl ConfigManager {
                 "openai" => url = "https://api.openai.com/v1".to_string(),
                 "openrouter" => url = "https://openrouter.ai/api/v1".to_string(),
                 "ollama" => url = "http://localhost:11434/v1".to_string(),
-                "ollama_cloud" => url = "https://ollama.com/v1".to_string(),
                 _ => return Err(anyhow::anyhow!("No API URL for provider")),
             }
         }

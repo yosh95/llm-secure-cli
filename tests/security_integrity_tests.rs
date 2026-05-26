@@ -1,7 +1,6 @@
 use llm_secure_cli::config::models::SecurityConfig;
 use llm_secure_cli::security::cass::{CASSOrchestrator, RiskLevel};
 use llm_secure_cli::security::merkle::MerkleTree;
-use serde_json::json;
 
 #[test]
 fn test_merkle_audit_integrity() {
@@ -37,17 +36,5 @@ fn test_cass_risk_scaling() {
     assert_eq!(level, RiskLevel::Low);
 
     let level = CASSOrchestrator::evaluate_risk("execute_python", None, &config);
-    assert_eq!(level, RiskLevel::Low);
-
-    let config_with_patterns = SecurityConfig {
-        scaling_patterns: vec!["/etc/shadow".to_string()],
-        ..SecurityConfig::default()
-    };
-
-    let level = CASSOrchestrator::evaluate_risk(
-        "read_file",
-        Some(&json!({"path": "/etc/shadow"})),
-        &config_with_patterns,
-    );
     assert_eq!(level, RiskLevel::Low);
 }

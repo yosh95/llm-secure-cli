@@ -31,7 +31,7 @@ fn test_config_merging_from_current_dir() {
     // Write config to the actual base directory where ConfigManager will look.
     let custom_config = r#"
 [security]
-auto_approval_level = "low"
+verifier_enabled = false
 "#;
     let config_path = actual_base_dir.join("config.toml");
     fs::write(&config_path, custom_config).expect("Failed to write mock config");
@@ -39,12 +39,8 @@ auto_approval_level = "low"
     let manager = ConfigManager::new();
     let config = manager.get_config().expect("Failed to load config");
 
-    // Default is "none", so "low" indicates it was merged from our file.
-    use llm_secure_cli::config::models::AutoApprovalLevel;
-    assert_eq!(
-        config.security.auto_approval_level,
-        Some(AutoApprovalLevel::Low)
-    );
+    // Default is true, so false indicates it was merged from our file.
+    assert_eq!(config.security.verifier_enabled, Some(false));
 
     // Clean up
     let _ = fs::remove_file(config_path);

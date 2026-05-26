@@ -150,9 +150,7 @@ async fn test_processor_tool_execution_flow() {
         .expect("Failed to get config"))
     .clone();
     config.security.security_level = llm_secure_cli::config::models::SecurityLevel::Standard;
-    config.security.auto_approval_level =
-        Some(llm_secure_cli::config::models::AutoApprovalLevel::Medium);
-    config.security.low_risk_tools = vec!["list_files".to_string()];
+
     config.security.verifier_enabled = Some(true);
     config.security.verifier_provider = "mock".to_string();
     let _ = ctx.config_manager.set_config(config);
@@ -243,9 +241,7 @@ async fn test_processor_pqc_blocking_in_high_security() {
         .expect("Failed to get config"))
     .clone();
     config.security.security_level = llm_secure_cli::config::models::SecurityLevel::High;
-    config.security.auto_approval_level =
-        Some(llm_secure_cli::config::models::AutoApprovalLevel::Low);
-    config.security.low_risk_tools = vec!["list_files".to_string()];
+
     let _ = ctx.config_manager.set_config(config);
     let ctx = Arc::new(ctx);
 

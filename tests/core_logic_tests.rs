@@ -41,9 +41,6 @@ fn test_config_merge_nested_objects_preserve_existing_keys() {
 fn test_security_config_default_values_are_sane() {
     let cfg = SecurityConfig::default();
     assert_eq!(cfg.security_level, SecurityLevel::High);
-    assert!(cfg.static_analysis_is_error);
-    assert!(cfg.verifier_confidence_threshold > 0.0);
-    assert!(cfg.verifier_confidence_threshold <= 1.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -219,52 +216,6 @@ fn test_validate_security_config_accepts_valid_defaults() {
         cfg.security_level,
         SecurityLevel::High,
         "default security level should be high"
-    );
-}
-
-#[test]
-fn test_security_config_rejects_invalid_auto_approval_level() {
-    // With the typed enum, invalid auto_approval_level values are
-    // rejected at TOML deserialization time, not at runtime validation.
-    let toml_str = r#"
-[security]
-auto_approval_level = "full"
-security_level = "high"
-"#;
-    let cfg: Result<AppConfig, _> = toml::from_str(toml_str);
-    assert!(
-        cfg.is_err(),
-        "TOML parse should fail for invalid auto_approval_level value"
-    );
-}
-
-#[test]
-fn test_security_config_rejects_invalid_confidence_threshold() {
-    let cfg = SecurityConfig {
-        verifier_confidence_threshold: 1.5,
-        ..Default::default()
-    };
-    let errors = cfg.validate();
-    assert!(
-        errors
-            .iter()
-            .any(|e| e.field == "verifier_confidence_threshold"),
-        "Should report error for confidence_threshold > 1.0"
-    );
-}
-
-#[test]
-fn test_security_config_rejects_negative_threshold() {
-    let cfg = SecurityConfig {
-        verifier_confidence_threshold: -0.1,
-        ..Default::default()
-    };
-    let errors = cfg.validate();
-    assert!(
-        errors
-            .iter()
-            .any(|e| e.field == "verifier_confidence_threshold"),
-        "Should report error for negative confidence_threshold"
     );
 }
 
