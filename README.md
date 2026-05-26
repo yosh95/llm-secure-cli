@@ -109,16 +109,20 @@ flowchart TB
     # Generic provider name support
     # ANYNAME_API_KEY can be used if you define [ANYNAME] in config.toml
     ```
+
 ### 3. **Chat**: Type `llsc` to start an interactive session.
-    *   **Automatic Initialization**: On the first run, `~/.llm_secure_cli/config.toml` is automatically created.
-    *   **Model Setup**: By default, no model is selected. Use `/model <model_name>` (e.g., `/model llama3`) to set one before your first request.
-    *   **Brave Search**: Built-in support for the Brave Search API is available for comprehensive searching across all providers (requires `BRAVE_API_KEY`).
-    *   **File/URL Attachment**: Use `/attach <path|URL>` to quickly add local files or web content to your conversation.
-4.  **Configure (Optional)**: Ollama is the default provider. To use OpenRouter or others, edit the configuration file:
+
+1.   **Automatic Initialization**: On the first run, `~/.llm_secure_cli/config.toml` is automatically created.
+2.   **Model Setup**: By default, no model is selected. Use `/model <model_name>` (e.g., `/model llama3`) to set one before your first request.
+3.   **Brave Search**: Built-in support for the Brave Search API is available for comprehensive searching across all providers (requires `BRAVE_API_KEY`).
+4.   **File/URL Attachment**: Use `/attach <path|URL>` to quickly add local files or web content to your conversation.
+5.  **Configure (Optional)**: Ollama is the default provider. To use OpenRouter or others, edit the configuration file:
+
     ```bash
     # Edit ~/.llm_secure_cli/config.toml
     ```
-5.  **Help**: Type `/help` inside the chat to see all commands.
+
+6.  **Help**: Type `/help` inside the chat to see all commands.
 
 ### Docker Isolation (Optional)
 Run the agent in a completely isolated container to protect your host system. In `high` security mode (default), you must initialize the integrity manifest within the mounted volume.
