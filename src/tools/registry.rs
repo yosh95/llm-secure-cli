@@ -197,7 +197,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
                 "properties": {
                     "code": {
                         "type": "string",
-                        "description": "Python source code to execute. Can use any standard library or installed third-party package. Use print() for output. For multi-line strings, use triple quotes (\"\"\") instead of embedding literal newlines inside single-line string literals."
+                        "description": "Python source code to execute. Can use any standard library or installed third-party package. **Always include all necessary import statements** (e.g., `import requests`, `import json`, `import re`, `from pathlib import Path`). Use print() for output. For multi-line strings, use triple quotes (\"\"\") instead of embedding literal newlines inside single-line string literals."
                     }
                 },
                 "required": ["code"]
