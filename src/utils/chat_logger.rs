@@ -23,12 +23,16 @@ pub fn log_chat(
     if let Some(parent) = path.parent()
         && !parent.exists()
     {
-        let _ = fs::create_dir_all(parent);
+        if let Err(e) = fs::create_dir_all(parent) {
+            tracing::error!("Failed to create chat log directory: {}", e);
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            if let Some(p) = path.parent() {
-                let _ = fs::set_permissions(p, fs::Permissions::from_mode(0o700));
+            if let Some(p) = path.parent()
+                && let Err(e) = fs::set_permissions(p, fs::Permissions::from_mode(0o700))
+            {
+                tracing::warn!("Failed to set permissions on {:?}: {}", p, e);
             }
         }
     }
@@ -56,8 +60,10 @@ pub fn log_chat(
         options.mode(0o600);
     }
 
-    if let Ok(mut file) = options.open(path) {
-        let _ = file.write_all(log_entry.as_bytes());
+    if let Ok(mut file) = options.open(path)
+        && let Err(e) = file.write_all(log_entry.as_bytes())
+    {
+        tracing::error!("Failed to write chat log entry: {}", e);
     }
 
     // Rotation
@@ -91,14 +97,18 @@ fn trim_chat_log(config_manager: &ConfigManager, path: &std::path::Path, max_lin
     };
     let max_archives = config.general.max_chat_archives;
 
-    if max_archives > 0 {
-        let _ = crate::utils::logging::rotate_file(path, max_archives);
+    if max_archives > 0
+        && let Err(e) = crate::utils::logging::rotate_file(path, max_archives)
+    {
+        tracing::warn!("Failed to rotate chat log: {}", e);
     }
 
     let kept_lines = &lines[lines.len() - max_lines..];
     if let Ok(mut file) = std::fs::File::create(path) {
         for line in kept_lines {
-            let _ = writeln!(file, "{}", line);
+            if let Err(e) = writeln!(file, "{}", line) {
+                tracing::warn!("Failed to write chat log line: {}", e);
+            }
         }
     }
 }

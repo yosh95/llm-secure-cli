@@ -139,9 +139,13 @@ pub async fn execute_python(
                 }
             }
             _ = &mut sleep => {
-                let _ = child.kill().await;
+                if let Err(e) = child.kill().await {
+                    tracing::warn!("Failed to kill python subprocess: {}", e);
+                }
                 // Clean up the temp file on timeout
-                let _ = std::fs::remove_file(&tmp_path);
+                if let Err(e) = std::fs::remove_file(&tmp_path) {
+                    tracing::warn!("Failed to remove temp file {:?}: {}", tmp_path, e);
+                }
                 return Err(anyhow::anyhow!(
                     "Python execution timed out after {} seconds",
                     timeout_secs
@@ -151,7 +155,9 @@ pub async fn execute_python(
     }
 
     // Clean up temp file after execution
-    let _ = std::fs::remove_file(&tmp_path);
+    if let Err(e) = std::fs::remove_file(&tmp_path) {
+        tracing::warn!("Failed to remove temp file {:?}: {}", tmp_path, e);
+    }
 
     match child.wait().await {
         Ok(status) => Ok(json!({

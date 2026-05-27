@@ -29,7 +29,9 @@ static PAGER_CONFIG: OnceLock<PagerConfig> = OnceLock::new();
 
 /// Set the global pager configuration.  Called once during initialisation.
 pub fn set_pager_config(config: PagerConfig) {
-    let _ = PAGER_CONFIG.set(config);
+    if PAGER_CONFIG.set(config).is_err() {
+        tracing::warn!("PAGER_CONFIG already initialized — ignoring duplicate set");
+    }
 }
 
 /// Get the current pager configuration.
@@ -135,7 +137,9 @@ fn try_less_pager(content: &str) -> bool {
 
     if let Some(mut stdin) = child.stdin.take() {
         if stdin.write_all(content.as_bytes()).is_err() {
-            let _ = child.wait();
+            if let Err(e) = child.wait() {
+                tracing::warn!("Failed to wait for pager child process: {}", e);
+            }
             return false;
         }
         drop(stdin);
@@ -169,7 +173,9 @@ fn try_external_pager(cmd: &str, content: &str) -> bool {
     if let Some(mut stdin) = child.stdin.take() {
         if stdin.write_all(content.as_bytes()).is_err() {
             // Pipe write failed — the pager may have exited early.
-            let _ = child.wait();
+            if let Err(e) = child.wait() {
+                tracing::warn!("Failed to wait for pager child process: {}", e);
+            }
             return false;
         }
         // Drop stdin to close the pipe and let the pager know we're done.

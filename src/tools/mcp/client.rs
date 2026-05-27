@@ -145,10 +145,14 @@ impl ClientSession {
                                             && let Some(tx) = pending_requests.remove(&id) {
                                                 if let Some(error) = message.get("error") {
                                                     let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-                                                    let _ = tx.send(Err(anyhow!("{}", msg)));
+                                                    if let Err(e) = tx.send(Err(anyhow!("{}", msg))) {
+                                                        tracing::warn!("Failed to send error response to MCP request: {:?}", e);
+                                                    }
                                                 } else {
                                                     let result = message.get("result").cloned().unwrap_or(Value::Null);
-                                                    let _ = tx.send(Ok(result));
+                                                    if let Err(e) = tx.send(Ok(result)) {
+                                                        tracing::warn!("Failed to send success response to MCP request: {:?}", e);
+                                                    }
                                                 }
                                             }
                             }

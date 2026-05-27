@@ -46,10 +46,13 @@ pub async fn switch_model(
 
     if let Some(new_client) = client {
         session.switch_client(new_client);
-        let _ = session
+        if let Err(e) = session
             .ctx
             .config_manager
-            .update_state(&target_provider, &target_model);
+            .update_state(&target_provider, &target_model)
+        {
+            tracing::warn!("Failed to persist state update: {}", e);
+        }
         Ok(())
     } else {
         anyhow::bail!("Failed to create client for model: {}", target_model)
@@ -75,7 +78,9 @@ pub async fn switch_provider(session: &mut ActiveSession, provider: &str) -> any
 
     if let Some(new_client) = client {
         session.switch_client(new_client);
-        let _ = session.ctx.config_manager.update_state(provider, "default");
+        if let Err(e) = session.ctx.config_manager.update_state(provider, "default") {
+            tracing::warn!("Failed to persist state update: {}", e);
+        }
         Ok(())
     } else {
         anyhow::bail!("Failed to create client for provider: {}", provider)
@@ -116,12 +121,15 @@ pub async fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<Ap
     }
 
     // 5. Initialize Remote Tools (MCP)
-    let _ = crate::tools::registry::initialize_remote_tools(
+    if let Err(e) = crate::tools::registry::initialize_remote_tools(
         ctx.tool_registry.clone(),
         &ctx.config_manager,
         &ctx.mcp_manager,
     )
-    .await;
+    .await
+    {
+        tracing::warn!("Failed to initialize remote tools: {}", e);
+    }
 
     // 6. Register LLM Clients
     register_clients(&ctx).await;

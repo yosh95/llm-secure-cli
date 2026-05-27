@@ -25,14 +25,22 @@ pub fn fix_all_permissions() {
     // 1. Set 600 for .env files in root and base_dir
     let dotenv_paths = [Path::new(".env").to_owned(), base_dir.join(".env")];
     for path in dotenv_paths {
-        if path.exists() {
-            let _ = set_private_permissions(&path);
+        if path.exists()
+            && let Err(e) = set_private_permissions(&path)
+        {
+            tracing::warn!("Failed to set private permissions on {:?}: {}", path, e);
         }
     }
 
     // 2. Recursively set permissions for base_dir
     if base_dir.exists() {
-        let _ = set_dir_private_permissions(base_dir);
+        if let Err(e) = set_dir_private_permissions(base_dir) {
+            tracing::warn!(
+                "Failed to set directory permissions on {:?}: {}",
+                base_dir,
+                e
+            );
+        }
         recursive_set_permissions(base_dir);
     }
 }
@@ -42,10 +50,14 @@ fn recursive_set_permissions(dir: &Path) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                let _ = set_dir_private_permissions(&path);
+                if let Err(e) = set_dir_private_permissions(&path) {
+                    tracing::warn!("Failed to set directory permissions on {:?}: {}", path, e);
+                }
                 recursive_set_permissions(&path);
             } else {
-                let _ = set_private_permissions(&path);
+                if let Err(e) = set_private_permissions(&path) {
+                    tracing::warn!("Failed to set private permissions on {:?}: {}", path, e);
+                }
             }
         }
     }

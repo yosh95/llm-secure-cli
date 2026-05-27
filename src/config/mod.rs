@@ -276,7 +276,9 @@ impl ConfigManager {
     pub fn set_config(&self, config: AppConfig) -> anyhow::Result<()> {
         // Ensure config is marked as initialized so future get_config() calls
         // don't try to reload from disk.
-        let _ = self.config_init_error.set(None);
+        if self.config_init_error.set(None).is_err() {
+            tracing::warn!("config_init_error already set");
+        }
         let mut write = self
             .app_config
             .write()

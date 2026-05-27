@@ -9,7 +9,7 @@ use std::fs;
 use std::io::{IsTerminal, stdin};
 use std::path::Path;
 use std::sync::Mutex;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 /// Header magic bytes to identify encrypted key files.
 const ENCRYPTED_KEY_MAGIC: &[u8; 4] = b"LKEF";
@@ -17,7 +17,10 @@ const HEADER_SIZE: usize = 4 + 16 + 12; // magic(4) + salt(16) + nonce(12) = 32
 
 /// Thread-local cache for passphrase during a session.
 /// Set once on first key access, reused for all subsequent key reads.
-static PASSPHRASE_CACHE: Mutex<Option<String>> = Mutex::new(None);
+/// Thread-local cache for passphrase during a session.
+/// Set once on first key access, reused for all subsequent key reads.
+/// Uses `Zeroizing<String>` to ensure the passphrase is zeroed in memory on drop.
+static PASSPHRASE_CACHE: Mutex<Option<Zeroizing<String>>> = Mutex::new(None);
 
 // ─────────────────────────────────────────────
 // Public API
@@ -68,13 +71,9 @@ pub fn load_key(path: &Path) -> Result<Vec<u8>> {
 
 /// Purge the passphrase cache (called on session end).
 pub fn purge_passphrase_cache() {
-    if let Ok(mut cache) = PASSPHRASE_CACHE.lock()
-        && let Some(pw) = cache.take()
-    {
-        // Zero the string's backing memory using volatile writes
-        // that the compiler is prohibited from optimizing away.
-        let mut v = pw.into_bytes();
-        v.zeroize();
+    if let Ok(mut cache) = PASSPHRASE_CACHE.lock() {
+        // Drop the cached passphrase; Zeroizing ensures automatic zeroization.
+        cache.take();
     }
 }
 
@@ -161,7 +160,7 @@ fn read_passphrase_or_cached(is_optional: bool) -> Result<String> {
             .lock()
             .map_err(|_| anyhow!("Cache lock poisoned"))?;
         if let Some(ref pw) = *cache {
-            return Ok(pw.clone());
+            return Ok(pw.to_string());
         }
     }
 
@@ -206,7 +205,7 @@ fn read_passphrase_or_cached(is_optional: bool) -> Result<String> {
         let mut cache = PASSPHRASE_CACHE
             .lock()
             .map_err(|_| anyhow!("Cache lock poisoned"))?;
-        *cache = Some(pw.clone());
+        *cache = Some(Zeroizing::new(pw.clone()));
     }
 
     Ok(pw)

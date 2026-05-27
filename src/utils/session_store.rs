@@ -74,7 +74,13 @@ pub fn auto_save(session: &ActiveSession) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+        if let Err(e) = fs::set_permissions(&path, fs::Permissions::from_mode(0o600)) {
+            tracing::warn!(
+                "Failed to set permissions on session file {:?}: {}",
+                path,
+                e
+            );
+        }
     }
 }
 

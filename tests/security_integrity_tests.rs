@@ -1,6 +1,4 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-use llm_secure_cli::config::models::SecurityConfig;
-use llm_secure_cli::security::cass::{CASSOrchestrator, RiskLevel};
 use llm_secure_cli::security::merkle::MerkleTree;
 
 #[test]
@@ -25,17 +23,4 @@ fn test_merkle_audit_integrity() {
         root_before, tree_tampered.root_hex,
         "Tampered log must result in different hash"
     );
-}
-
-#[test]
-fn test_cass_risk_scaling() {
-    let config = SecurityConfig::default();
-
-    // Risk-level-based scaling is discontinued.
-    // CASSOrchestrator::evaluate_risk always returns Low.
-    let level = CASSOrchestrator::evaluate_risk("read_file", None, &config);
-    assert_eq!(level, RiskLevel::Low);
-
-    let level = CASSOrchestrator::evaluate_risk("execute_python", None, &config);
-    assert_eq!(level, RiskLevel::Low);
 }

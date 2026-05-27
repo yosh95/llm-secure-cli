@@ -168,31 +168,6 @@ pdf_as_base64 = false
 // Risk level classification sanity
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_cass_risk_levels_are_mutually_exclusive_in_defaults() {
-    use llm_secure_cli::security::cass::CASSOrchestrator;
-    // CASS risk evaluation is deprecated: all tools return Low.
-    // The Verifier Committee handles all risk assessment.
-    let config = SecurityConfig::default();
-
-    // Every tool now returns Low — CASS delegates all risk to the Verifier
-    let mut args = serde_json::Map::new();
-    args.insert("code".to_string(), json!("print('hello')"));
-    let risk = CASSOrchestrator::evaluate_risk("execute_python", Some(&json!(args)), &config);
-    assert_eq!(
-        risk as u8,
-        llm_secure_cli::security::cass::RiskLevel::Low as u8,
-        "CASS always returns Low; risk assessment delegated to Verifier Committee"
-    );
-
-    let risk = CASSOrchestrator::evaluate_risk("list_files", None, &config);
-    assert_eq!(
-        risk as u8,
-        llm_secure_cli::security::cass::RiskLevel::Low as u8,
-        "CASS always returns Low"
-    );
-}
-
 // ---------------------------------------------------------------------------
 // Path validator edge cases
 // ---------------------------------------------------------------------------

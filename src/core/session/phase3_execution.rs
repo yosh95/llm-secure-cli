@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 impl ActiveSession {
-    /// Phase 4: Tool execution with audit logging and result display.
+    /// Phase 3: Tool execution with audit logging and result display.
     pub(crate) async fn phase3_execute_and_audit(
         &mut self,
         name: &str,

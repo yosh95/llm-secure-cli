@@ -32,7 +32,9 @@ fn load_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::
         if first == "#V2" {
             v2 = true;
         } else {
-            let _ = rl.add_history_entry(&first);
+            if let Err(e) = rl.add_history_entry(&first) {
+                tracing::warn!("Failed to add history entry: {}", e);
+            }
         }
     }
     for line in lines {
@@ -64,7 +66,9 @@ fn load_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::
             }
             line = unescaped;
         }
-        let _ = rl.add_history_entry(&line);
+        if let Err(e) = rl.add_history_entry(&line) {
+            tracing::warn!("Failed to add history entry: {}", e);
+        }
     }
 }
 
@@ -78,8 +82,10 @@ fn save_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::
     }
     // Fallback: write the history using plain file I/O (no flock, no umask).
     // This mirrors rustyline's V2 format.
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+    if let Some(parent) = path.parent()
+        && let Err(e) = std::fs::create_dir_all(parent)
+    {
+        tracing::error!("Failed to create directory {:?}: {}", parent, e);
     }
     // Collect all entries first so we don't hold a borrow on `rl` while
     // doing I/O.
@@ -94,10 +100,14 @@ fn save_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::
         Ok(f) => f,
         Err(_) => return,
     };
-    let _ = file.write_all(b"#V2\n");
+    if let Err(e) = file.write_all(b"#V2\n") {
+        tracing::error!("Failed to write history V2 header: {}", e);
+    }
     for entry in &entries {
         let escaped = entry.replace('\\', "\\\\").replace('\n', "\\n");
-        let _ = writeln!(file, "{}", escaped);
+        if let Err(e) = writeln!(file, "{}", escaped) {
+            tracing::warn!("Failed to write history entry: {}", e);
+        }
     }
 }
 
@@ -211,8 +221,10 @@ impl ActiveSession {
         );
 
         let h_path = history_log_path();
-        if let Some(parent) = h_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+        if let Some(parent) = h_path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            tracing::error!("Failed to create directory {:?}: {}", parent, e);
         }
         load_history_robust(&mut rl, &h_path);
 
@@ -254,19 +266,25 @@ impl ActiveSession {
                             return;
                         }
                         crate::cli::interactive::dispatcher::CommandResult::Handled => {
-                            let _ = rl.add_history_entry(&final_trimmed);
+                            if let Err(e) = rl.add_history_entry(&final_trimmed) {
+                                tracing::warn!("Failed to add history entry: {}", e);
+                            }
                             save_history_robust(&mut rl, &history_log_path());
                             continue;
                         }
                         crate::cli::interactive::dispatcher::CommandResult::NotACommand => {}
                         crate::cli::interactive::dispatcher::CommandResult::Input(text) => {
-                            let _ = rl.add_history_entry(&final_trimmed);
+                            if let Err(e) = rl.add_history_entry(&final_trimmed) {
+                                tracing::warn!("Failed to add history entry: {}", e);
+                            }
                             next_initial_text = Some(text);
                             continue;
                         }
                     };
 
-                    let _ = rl.add_history_entry(&final_trimmed);
+                    if let Err(e) = rl.add_history_entry(&final_trimmed) {
+                        tracing::warn!("Failed to add history entry: {}", e);
+                    }
                     let final_content = final_trimmed.clone();
 
                     if self.intent.is_empty() {
