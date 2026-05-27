@@ -2,7 +2,7 @@
 # See: https://embarkstudios.github.io/cargo-deny/
 
 [graph]
-all-features = false
+all-features = true
 no-default-features = false
 
 [advisories]
@@ -44,10 +44,38 @@ license-files = [
 ]
 
 [bans]
-multiple-versions = "warn"
-wildcards = "allow"
+multiple-versions = "deny"
+wildcards = "deny"
 deny = []
-skip = []
+skip = [
+    # ── windows-sys: multiple semver-incompatible versions from transitive deps ──
+    { name = "windows-sys", version = "=0.52.0" },
+    { name = "windows-sys", version = "=0.59.0" },
+    { name = "windows-sys", version = "=0.60.2" },
+    { name = "windows-targets", version = "=0.52.6" },
+    { name = "windows_x86_64_msvc", version = "=0.52.6" },
+    { name = "windows_x86_64_gnu", version = "=0.52.6" },
+    { name = "windows_x86_64_gnullvm", version = "=0.52.6" },
+    { name = "windows_i686_msvc", version = "=0.52.6" },
+    { name = "windows_i686_gnullvm", version = "=0.52.6" },
+    { name = "windows_i686_gnu", version = "=0.52.6" },
+    { name = "windows_aarch64_msvc", version = "=0.52.6" },
+    { name = "windows_aarch64_gnullvm", version = "=0.52.6" },
+    # ── rand: 0.8 used by project, 0.9 used by lopdf ──
+    { name = "rand", version = "=0.8.6" },
+    { name = "rand_chacha", version = "=0.3.1" },
+    { name = "rand_core", version = "=0.6.4" },
+    # ── getrandom: multiple versions from different deps ──
+    { name = "getrandom", version = "=0.2.17" },
+    { name = "getrandom", version = "=0.3.4" },
+    # ── hashbrown / foldhash: from indexmap/lru ──
+    { name = "hashbrown", version = "=0.15.5" },
+    { name = "foldhash", version = "=0.1.5" },
+    # ── r-efi: platform-specific ──
+    { name = "r-efi", version = "=5.3.0" },
+    # ── wit-bindgen: wasm-related ──
+    { name = "wit-bindgen", version = "=0.51.0" },
+]
 skip-tree = []
 
 [sources]

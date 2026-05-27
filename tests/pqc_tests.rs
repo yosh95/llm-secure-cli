@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use fips203::traits::KeyGen;
 use fips203::traits::SerDes;
 use llm_secure_cli::security::pqc::{

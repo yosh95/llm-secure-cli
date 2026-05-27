@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use llm_secure_cli::config::models::SecurityConfig;
 use std::fs;
 use std::sync::Mutex;
@@ -170,4 +171,298 @@ fn test_validate_unicode_text_passes() {
     let args = make_args(&[("query", json!("日本語テスト 🦀"))]);
     let result = validate_tool_call("brave_search", &args, &config);
     assert!(result.is_ok());
+}
+
+// =============================================================================
+// Additional unit tests for AuditStatus (Display, TryFrom, From)
+// =============================================================================
+
+#[test]
+fn test_audit_status_display_success() {
+    use llm_secure_cli::security::audit::AuditStatus;
+    assert_eq!(AuditStatus::Success.to_string(), "SUCCESS");
+}
+
+#[test]
+fn test_audit_status_display_failed() {
+    use llm_secure_cli::security::audit::AuditStatus;
+    assert_eq!(
+        AuditStatus::Failed("permission denied".to_string()).to_string(),
+        "FAILED: permission denied"
+    );
+}
+
+#[test]
+fn test_audit_status_display_pqc_encryption_failed() {
+    use llm_secure_cli::security::audit::AuditStatus;
+    assert_eq!(
+        AuditStatus::PqcEncryptionFailed("key not found".to_string()).to_string(),
+        "FAILED: key not found; PQC_ENCRYPTION_FAILED"
+    );
+}
+
+#[test]
+fn test_audit_status_display_integrity_failure() {
+    use llm_secure_cli::security::audit::AuditStatus;
+    assert_eq!(
+        AuditStatus::IntegrityFailure("hash mismatch".to_string()).to_string(),
+        "INTEGRITY_FAILURE: hash mismatch"
+    );
+}
+
+#[test]
+fn test_audit_status_display_success_without_signature() {
+    use llm_secure_cli::security::audit::AuditStatus;
+    assert_eq!(
+        AuditStatus::SuccessWithoutSignature.to_string(),
+        "SUCCESS_WITHOUT_SIGNATURE: PQC private key unavailable"
+    );
+}
+
+#[test]
+fn test_audit_status_display_log_rotation_marker() {
+    use llm_secure_cli::security::audit::AuditStatus;
+    assert_eq!(
+        AuditStatus::LogRotationMarker.to_string(),
+        "CONTINUITY_MAINTAINED"
+    );
+}
+
+#[test]
+fn test_audit_status_try_from_success() {
+    use llm_secure_cli::security::audit::AuditStatus;
+    let result: Result<AuditStatus, String> = "SUCCESS".to_string().try_into();
+    assert!(matches!(result, Ok(AuditStatus::Success)));
+}
+
+#[test]
+fn test_audit_status_try_from_failed() {
+    use llm_secure_cli::security::audit::AuditStatus;
+    let result: Result<AuditStatus, String> = "FAILED: something broke".to_string().try_into();
+    assert!(matches!(result, Ok(AuditStatus::Failed(_))));
+}
+
+#[test]
+fn test_audit_status_try_from_integrity_failure() {
+    use llm_secure_cli::security::audit::AuditStatus;
+    let result: Result<AuditStatus, String> =
+        "INTEGRITY_FAILURE: hash mismatch".to_string().try_into();
+    assert!(matches!(result, Ok(AuditStatus::IntegrityFailure(_))));
+}
+
+#[test]
+fn test_audit_status_try_from_pqc_encryption_failed() {
+    use llm_secure_cli::security::audit::AuditStatus;
+    let s = "FAILED: encryption error; PQC_ENCRYPTION_FAILED".to_string();
+    let result: Result<AuditStatus, String> = s.try_into();
+    assert!(matches!(result, Ok(AuditStatus::PqcEncryptionFailed(_))));
+}
+
+#[test]
+fn test_audit_status_try_from_log_rotation() {
+    use llm_secure_cli::security::audit::AuditStatus;
+    let result: Result<AuditStatus, String> = "CONTINUITY_MAINTAINED".to_string().try_into();
+    assert!(matches!(result, Ok(AuditStatus::LogRotationMarker)));
+}
+
+#[test]
+fn test_audit_status_try_from_success_without_sig() {
+    use llm_secure_cli::security::audit::AuditStatus;
+    let result: Result<AuditStatus, String> =
+        "SUCCESS_WITHOUT_SIGNATURE: PQC private key unavailable"
+            .to_string()
+            .try_into();
+    assert!(matches!(result, Ok(AuditStatus::SuccessWithoutSignature)));
+}
+
+#[test]
+fn test_audit_status_try_from_unknown_fallback() {
+    use llm_secure_cli::security::audit::AuditStatus;
+    // Unknown statuses should fall back to Failed (forward-compatible)
+    let result: Result<AuditStatus, String> = "UNKNOWN_STATUS".to_string().try_into();
+    assert!(matches!(result, Ok(AuditStatus::Failed(_))));
+}
+
+#[test]
+fn test_audit_status_roundtrip_serde() {
+    use llm_secure_cli::security::audit::AuditStatus;
+    let variants = vec![
+        AuditStatus::Success,
+        AuditStatus::Failed("error".to_string()),
+        AuditStatus::PqcEncryptionFailed("pqc_err".to_string()),
+        AuditStatus::IntegrityFailure("int_err".to_string()),
+        AuditStatus::SuccessWithoutSignature,
+        AuditStatus::LogRotationMarker,
+    ];
+    for v in variants {
+        let json = serde_json::to_value(&v).expect("serialise");
+        let back: AuditStatus = serde_json::from_value(json).expect("deserialise");
+        assert_eq!(v.to_string(), back.to_string());
+    }
+}
+
+// =============================================================================
+// Tests for AuditParamsBuilder (integration with log_audit_and_return)
+// =============================================================================
+
+#[test]
+fn test_audit_params_builder_produces_valid_log_entry() {
+    let _lock = TEST_LOCK.lock().expect("Failed to acquire test lock");
+    use llm_secure_cli::config::models::AppConfig;
+    use llm_secure_cli::security::audit::{AuditParamsBuilder, AuditStatus};
+
+    let dir = tempdir().expect("Failed to create temp dir");
+    let path = dir.path().join("builder_test.jsonl");
+    let config = AppConfig::default();
+    let ctx = serde_json::json!({"env": "test"});
+
+    let result = AuditParamsBuilder::new("custom_event", "custom_tool", &config)
+        .args(serde_json::json!({"key": "value"}))
+        .output("builder output")
+        .exit_code(0)
+        .context(&ctx)
+        .log_and_return(Some(&path));
+
+    assert!(result.is_some(), "Builder should produce a log entry");
+    let entry = result.unwrap();
+    assert_eq!(entry.event_type, "custom_event");
+    assert!(matches!(entry.status, AuditStatus::Success));
+    assert_eq!(entry.tool, "custom_tool");
+}
+
+#[test]
+fn test_audit_params_builder_with_error() {
+    let _lock = TEST_LOCK.lock().expect("Failed to acquire test lock");
+    use llm_secure_cli::config::models::AppConfig;
+    use llm_secure_cli::security::audit::{AuditParamsBuilder, AuditStatus};
+
+    let dir = tempdir().expect("Failed to create temp dir");
+    let path = dir.path().join("builder_error.jsonl");
+    let config = AppConfig::default();
+
+    let result = AuditParamsBuilder::new("build_event", "failing_tool", &config)
+        .error("something went wrong")
+        .exit_code(1)
+        .log_and_return(Some(&path));
+
+    assert!(result.is_some());
+    let entry = result.unwrap();
+    assert!(matches!(entry.status, AuditStatus::Failed(_)));
+    assert_eq!(entry.exit_code, Some(1));
+}
+
+// =============================================================================
+// Tests for log_audit (non-returning) and log_audit_and_return (error handling)
+// =============================================================================
+
+#[test]
+fn test_log_audit_non_returning() {
+    let _lock = TEST_LOCK.lock().expect("Failed to acquire test lock");
+    use llm_secure_cli::config::models::AppConfig;
+    use llm_secure_cli::security::audit::{AuditParams, log_audit, log_audit_and_return};
+
+    let dir = tempdir().expect("Failed to create temp dir");
+    let path = dir.path().join("audit_nonreturn.jsonl");
+    let config = AppConfig::default();
+
+    // log_audit (non-returning) — verifies it doesn't panic
+    log_audit(AuditParams {
+        event_type: "test_event",
+        tool_name: "test_tool",
+        args: serde_json::json!({"key": "val"}),
+        output: Some("output"),
+        exit_code: Some(0),
+        error: None,
+        context: None,
+        config: &config,
+    });
+
+    // Use log_audit_and_return to verify the file gets created
+    let entry = log_audit_and_return(
+        AuditParams {
+            event_type: "test_event",
+            tool_name: "test_tool",
+            args: serde_json::json!({"key": "val"}),
+            output: Some("output"),
+            exit_code: Some(0),
+            error: None,
+            context: None,
+            config: &config,
+        },
+        Some(&path),
+    );
+    assert!(entry.is_some(), "Should return an audit entry");
+    assert!(path.exists(), "Audit log file should exist");
+    let content = fs::read_to_string(&path).expect("Failed to read audit log");
+    assert!(!content.is_empty(), "Audit log should not be empty");
+    assert!(
+        content.contains("test_event"),
+        "Log should contain event_type"
+    );
+    assert!(
+        content.contains("test_tool"),
+        "Log should contain tool_name"
+    );
+}
+
+#[test]
+fn test_log_audit_and_return_with_error_status() {
+    let _lock = TEST_LOCK.lock().expect("Failed to acquire test lock");
+    use llm_secure_cli::config::models::AppConfig;
+    use llm_secure_cli::security::audit::{AuditParams, AuditStatus, log_audit_and_return};
+
+    let dir = tempdir().expect("Failed to create temp dir");
+    let path = dir.path().join("audit_error.jsonl");
+    let config = AppConfig::default();
+
+    let result = log_audit_and_return(
+        AuditParams {
+            event_type: "tool_call",
+            tool_name: "failing_tool",
+            args: serde_json::json!({"arg": "value"}),
+            output: Some("error: permission denied"),
+            exit_code: Some(1),
+            error: Some("permission denied"),
+            context: None,
+            config: &config,
+        },
+        Some(&path),
+    );
+
+    assert!(result.is_some(), "Should return an AuditEntry");
+    let entry = result.unwrap();
+    assert!(matches!(entry.status, AuditStatus::Failed(_)));
+    assert_eq!(entry.exit_code, Some(1));
+    assert_eq!(entry.tool, "failing_tool");
+}
+
+#[test]
+fn test_log_audit_and_return_with_success_status() {
+    let _lock = TEST_LOCK.lock().expect("Failed to acquire test lock");
+    use llm_secure_cli::config::models::AppConfig;
+    use llm_secure_cli::security::audit::{AuditParams, AuditStatus, log_audit_and_return};
+
+    let dir = tempdir().expect("Failed to create temp dir");
+    let path = dir.path().join("audit_success.jsonl");
+    let config = AppConfig::default();
+
+    let result = log_audit_and_return(
+        AuditParams {
+            event_type: "tool_call",
+            tool_name: "success_tool",
+            args: serde_json::json!({}),
+            output: Some("completed successfully"),
+            exit_code: Some(0),
+            error: None,
+            context: None,
+            config: &config,
+        },
+        Some(&path),
+    );
+
+    assert!(result.is_some(), "Should return an AuditEntry");
+    let entry = result.unwrap();
+    assert!(matches!(entry.status, AuditStatus::Success));
+    assert_eq!(entry.exit_code, Some(0));
+    assert_eq!(entry.tool, "success_tool");
 }

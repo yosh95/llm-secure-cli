@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use llm_secure_cli::config::ConfigManager;
 use std::env;
 use std::fs;

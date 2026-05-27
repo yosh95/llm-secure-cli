@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use async_trait::async_trait;
 use llm_secure_cli::cli::ui::{ConfirmResult, UserInterface};
 use llm_secure_cli::core::context::AppContext;

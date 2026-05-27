@@ -4,6 +4,7 @@
 //! The `parse_assistant_message` function is extracted specifically for
 //! this kind of testing, without requiring an HTTP round-trip.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use llm_secure_cli::llm::providers::response_parser::parse_assistant_message;
 use serde_json::json;
 

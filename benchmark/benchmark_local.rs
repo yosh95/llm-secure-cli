@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use llm_secure_cli::security::pqc::{KEMVariant, MldsaVariant, PqcProvider};
 use llm_secure_cli::security::static_analyzer::StaticAnalyzer;
 use std::time::Instant;

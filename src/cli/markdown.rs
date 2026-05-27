@@ -409,7 +409,9 @@ mod tests {
         let content_line = rendered
             .lines()
             .find(|l| l.contains("Text and `code`"))
-            .expect("Should find content line in markdown table");
+            .unwrap_or_else(|| {
+                panic!("Should find content line in markdown table: {:?}", rendered)
+            });
         let separators = ['│', '┆', '┃', '╽', '╿', '❘', '｜', '|'];
         let pipe_count = content_line
             .chars()

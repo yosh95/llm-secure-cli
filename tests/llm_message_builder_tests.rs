@@ -6,6 +6,7 @@
 //! The `MessageBuilder` is extracted as a standalone struct precisely
 //! for this kind of testing.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use llm_secure_cli::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
 use llm_secure_cli::llm::providers::message_builder::MessageBuilder;
 use llm_secure_cli::llm::providers::payload_formatter::GenericPayloadFormatter;

@@ -5,6 +5,14 @@ edition = "2024"
 autobins = false
 rust-version = "1.95.0"
 
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "warn"
+
 [[bin]]
 name = "llsc"
 path = "src/main.rs"
@@ -47,7 +55,7 @@ regex = { version = "1.11", default-features = false, features = ["std", "perf",
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }
 tempfile = { version = "3.12", default-features = false }
 base64 = { version = "0.22", default-features = false }
-sha2 = { version = "0.11", default-features = false }
+sha2 = { version = "0.10", default-features = false }
 rustyline = { version = "18.0", default-features = false, features = ["custom-bindings", "with-file-history"] }
 mime_guess = { version = "2.0", default-features = false }
 pdf-extract = { version = "0.10", default-features = false }

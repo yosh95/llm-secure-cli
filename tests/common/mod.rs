@@ -25,6 +25,7 @@
 //! frameworks.  Manual mocks give us full control over async behaviour,
 //! are easier to debug, and have zero compile-time overhead.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};

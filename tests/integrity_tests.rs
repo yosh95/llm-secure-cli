@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use llm_secure_cli::security::integrity::IntegrityVerifier;
 use std::sync::Mutex;
 

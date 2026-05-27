@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use colored::Colorize;
 use llm_secure_cli::core::context::AppContext;
 use llm_secure_cli::llm::providers::openai_compatible::OpenAiCompatibleClient;

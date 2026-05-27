@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use llm_secure_cli::config::models::{AppConfig, SecurityConfig, SecurityLevel};
 use llm_secure_cli::security::validate_tool_call;
 use serde_json::json;

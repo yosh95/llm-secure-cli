@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use llm_secure_cli::config::models::SecurityConfig;
 use llm_secure_cli::security::cass::{CASSOrchestrator, RiskLevel};
 use llm_secure_cli::security::merkle::MerkleTree;

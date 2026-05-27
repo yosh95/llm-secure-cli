@@ -6,6 +6,7 @@
 //! - Conversation state management behaves as expected
 //! - The mock client itself works correctly
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 mod common;
 
 use common::*;

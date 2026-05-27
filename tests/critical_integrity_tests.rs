@@ -7,6 +7,7 @@
 //! This is NOT about coverage vanity — each test below guards against a
 //! specific failure mode that was identified through code review.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use llm_secure_cli::tools::executor_utils::{humanize_tool_result, truncate_output};
 use serde_json::json;
 
