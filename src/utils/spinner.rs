@@ -21,10 +21,15 @@ pub struct Spinner {
 
 const SPIN_CHARS: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
+/// ANSI escape: move cursor to column 1 (like `\r` but works in Termux too).
+const CURSOR_TO_COL1: &str = "\x1b[1G";
+/// ANSI escape: erase entire current line.
+const ERASE_LINE: &str = "\x1b[2K";
+
 impl Spinner {
     /// Start a new spinner with the given message.
     ///
-    /// The spinner ticks every 80 ms, overwriting the same line with `\r`,
+    /// The spinner ticks every 80 ms, overwriting the same line,
     /// showing the elapsed time in seconds.
     /// Call [`finish`](Self::finish) or [`stop`](Self::stop) when done.
     pub fn start(msg: &str) -> Self {
@@ -32,7 +37,13 @@ impl Spinner {
         let msg_for_spawn = msg.clone();
         // Print the first frame immediately with spinner char and elapsed time,
         // so the layout is consistent from the start (no rightward shift later).
-        print!("\r{} {} (0.0s)", SPIN_CHARS[0], msg);
+        print!(
+            "{erase}{goto}{sp} {msg} (0.0s)",
+            erase = ERASE_LINE,
+            goto = CURSOR_TO_COL1,
+            sp = SPIN_CHARS[0],
+            msg = msg
+        );
         std::io::stdout().flush().ok();
 
         let handle = tokio::spawn(async move {
@@ -42,10 +53,12 @@ impl Spinner {
                 tokio::time::sleep(Duration::from_millis(80)).await;
                 let elapsed = start.elapsed();
                 print!(
-                    "\r{} {} ({:.1}s)",
-                    SPIN_CHARS[idx],
-                    msg_for_spawn,
-                    elapsed.as_secs_f64()
+                    "{erase}{goto}{sp} {msg} ({elapsed:.1}s)",
+                    erase = ERASE_LINE,
+                    goto = CURSOR_TO_COL1,
+                    sp = SPIN_CHARS[idx],
+                    msg = msg_for_spawn,
+                    elapsed = elapsed.as_secs_f64()
                 );
                 std::io::stdout().flush().ok();
                 idx = (idx + 1) % SPIN_CHARS.len();
@@ -63,9 +76,8 @@ impl Spinner {
         if let Some(h) = self.handle.take() {
             h.abort();
         }
-        // Clear the line (generous width to cover elapsed time display)
-        let width = self.msg.len() + 20;
-        print!("\r{}\r", " ".repeat(width));
+        // Erase the entire line and move cursor to column 1
+        print!("{erase}{goto}", erase = ERASE_LINE, goto = CURSOR_TO_COL1);
         std::io::stdout().flush().ok();
     }
 
@@ -81,8 +93,7 @@ impl Spinner {
             h.abort();
         }
         // Clear the line first to avoid leftover characters from elapsed time display
-        let width = self.msg.len() + 30;
-        print!("\r{}\r", " ".repeat(width));
+        print!("{erase}{goto}", erase = ERASE_LINE, goto = CURSOR_TO_COL1);
         println!("{} {}", self.msg, completion);
         std::io::stdout().flush().ok();
     }
