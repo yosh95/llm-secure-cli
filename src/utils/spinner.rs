@@ -19,49 +19,78 @@ pub struct Spinner {
     msg: String,
 }
 
-const SPIN_CHARS: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+// ── Terminal width ──
+/// Get terminal width via `console::Term`. Falls back to 80.
+fn terminal_width() -> u16 {
+    console::Term::stdout()
+        .size_checked()
+        .map(|(_, cols)| cols)
+        .unwrap_or(80)
+}
 
-/// ANSI escape: move cursor to column 1 (like `\r` but works in Termux too).
-const CURSOR_TO_COL1: &str = "\x1b[1G";
-/// ANSI escape: erase entire current line.
+/// Reserve space for: spinner_char (1-3 chars) + space + " (XX.Xs)" (8 chars)
+const RESERVED_COLS: u16 = 14;
+
+/// Truncate `msg` at the **beginning** so the tail (model name) is preserved.
+/// e.g. "openai/gpt-4o-mini-longname..." → "…/gpt-4o-mini-longname"
+fn truncate_msg(msg: &mut String, term_width: u16) {
+    let max_msg_len = term_width.saturating_sub(RESERVED_COLS) as usize;
+    if msg.len() > max_msg_len && max_msg_len > 3 {
+        let suffix: String = msg.chars().skip(msg.len() - max_msg_len + 1).collect();
+        *msg = "\u{2026}".to_string() + &suffix;
+    }
+}
+
+// ── Spinner characters ──
+/// Modern braille-pattern spinner (works everywhere, including Termux).
+const SPINNER_CHARS: &[&str] = &[
+    "\u{280B}", "\u{2819}", "\u{2839}", "\u{2838}", "\u{283C}", "\u{2834}", "\u{2826}", "\u{2827}",
+    "\u{2807}", "\u{280F}",
+];
+
+// ── Cursor positioning ──
+fn cursor_to_col1() -> &'static str {
+    "\x1b[1G"
+}
+
 const ERASE_LINE: &str = "\x1b[2K";
 
+// ── Implementation ──
 impl Spinner {
-    /// Start a new spinner with the given message.
-    ///
-    /// The spinner ticks every 80 ms, overwriting the same line,
-    /// showing the elapsed time in seconds.
-    /// Call [`finish`](Self::finish) or [`stop`](Self::stop) when done.
     pub fn start(msg: &str) -> Self {
-        let msg = msg.to_string();
+        let mut msg = msg.to_string();
+        let term_w = terminal_width();
+        truncate_msg(&mut msg, term_w);
+
         let msg_for_spawn = msg.clone();
-        // Print the first frame immediately with spinner char and elapsed time,
-        // so the layout is consistent from the start (no rightward shift later).
+        let goto = cursor_to_col1();
+
         print!(
             "{erase}{goto}{sp} {msg} (0.0s)",
             erase = ERASE_LINE,
-            goto = CURSOR_TO_COL1,
-            sp = SPIN_CHARS[0],
+            goto = goto,
+            sp = SPINNER_CHARS[0],
             msg = msg
         );
         std::io::stdout().flush().ok();
 
         let handle = tokio::spawn(async move {
             let start = tokio::time::Instant::now();
-            let mut idx: usize = 1; // index 0 already shown, start from next
+            let mut idx: usize = 1;
+            let goto = cursor_to_col1();
             loop {
                 tokio::time::sleep(Duration::from_millis(80)).await;
                 let elapsed = start.elapsed();
                 print!(
-                    "{erase}{goto}{sp} {msg} ({elapsed:.1}s)",
+                    "{erase}{goto}{sp} {msg} ({elapsed:>4.1}s)",
                     erase = ERASE_LINE,
-                    goto = CURSOR_TO_COL1,
-                    sp = SPIN_CHARS[idx],
+                    goto = goto,
+                    sp = SPINNER_CHARS[idx],
                     msg = msg_for_spawn,
                     elapsed = elapsed.as_secs_f64()
                 );
                 std::io::stdout().flush().ok();
-                idx = (idx + 1) % SPIN_CHARS.len();
+                idx = (idx + 1) % SPINNER_CHARS.len();
             }
         });
 
@@ -71,34 +100,25 @@ impl Spinner {
         }
     }
 
-    /// Stop the spinner and clear the current line completely.
     pub fn stop(&mut self) {
         if let Some(h) = self.handle.take() {
             h.abort();
         }
-        // Erase the entire line and move cursor to column 1
-        print!("{erase}{goto}", erase = ERASE_LINE, goto = CURSOR_TO_COL1);
+        let goto = cursor_to_col1();
+        print!("{erase}{goto}", erase = ERASE_LINE, goto = goto);
         std::io::stdout().flush().ok();
     }
 
-    /// Stop the spinner and write a completion message on the same line.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// spin.finish("done");  // prints "Loading ... done" on the spinner line
-    /// ```
     pub fn finish(&mut self, completion: &str) {
         if let Some(h) = self.handle.take() {
             h.abort();
         }
-        // Clear the line first to avoid leftover characters from elapsed time display
-        print!("{erase}{goto}", erase = ERASE_LINE, goto = CURSOR_TO_COL1);
+        let goto = cursor_to_col1();
+        print!("{erase}{goto}", erase = ERASE_LINE, goto = goto);
         println!("{} {}", self.msg, completion);
         std::io::stdout().flush().ok();
     }
 
-    /// Borrow the spinner message.
     pub fn message(&self) -> &str {
         &self.msg
     }
