@@ -24,7 +24,8 @@ const SPIN_CHARS: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "
 impl Spinner {
     /// Start a new spinner with the given message.
     ///
-    /// The spinner ticks every 80 ms, overwriting the same line with `\r`.
+    /// The spinner ticks every 80 ms, overwriting the same line with `\r`,
+    /// showing the elapsed time in seconds.
     /// Call [`finish`](Self::finish) or [`stop`](Self::stop) when done.
     pub fn start(msg: &str) -> Self {
         let msg = msg.to_string();
@@ -34,10 +35,17 @@ impl Spinner {
         std::io::stdout().flush().ok();
 
         let handle = tokio::spawn(async move {
+            let start = tokio::time::Instant::now();
             let mut idx: usize = 0;
             loop {
                 tokio::time::sleep(Duration::from_millis(80)).await;
-                print!("\r{} {}", SPIN_CHARS[idx], msg_for_spawn);
+                let elapsed = start.elapsed();
+                print!(
+                    "\r{} {} ({:.1}s)",
+                    SPIN_CHARS[idx],
+                    msg_for_spawn,
+                    elapsed.as_secs_f64()
+                );
                 std::io::stdout().flush().ok();
                 idx = (idx + 1) % SPIN_CHARS.len();
             }
@@ -54,8 +62,8 @@ impl Spinner {
         if let Some(h) = self.handle.take() {
             h.abort();
         }
-        // Clear the line
-        let width = self.msg.len() + 3; // spinner char + space + msg
+        // Clear the line (generous width to cover elapsed time display)
+        let width = self.msg.len() + 20;
         print!("\r{}\r", " ".repeat(width));
         std::io::stdout().flush().ok();
     }
