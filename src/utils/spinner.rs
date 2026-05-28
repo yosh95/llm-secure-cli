@@ -30,13 +30,14 @@ impl Spinner {
     pub fn start(msg: &str) -> Self {
         let msg = msg.to_string();
         let msg_for_spawn = msg.clone();
-        // Initial print (no spinner char yet)
-        print!("{}", msg);
+        // Print the first frame immediately with spinner char and elapsed time,
+        // so the layout is consistent from the start (no rightward shift later).
+        print!("\r{} {} (0.0s)", SPIN_CHARS[0], msg);
         std::io::stdout().flush().ok();
 
         let handle = tokio::spawn(async move {
             let start = tokio::time::Instant::now();
-            let mut idx: usize = 0;
+            let mut idx: usize = 1; // index 0 already shown, start from next
             loop {
                 tokio::time::sleep(Duration::from_millis(80)).await;
                 let elapsed = start.elapsed();
@@ -79,7 +80,10 @@ impl Spinner {
         if let Some(h) = self.handle.take() {
             h.abort();
         }
-        print!("\r{} {}\n", self.msg, completion);
+        // Clear the line first to avoid leftover characters from elapsed time display
+        let width = self.msg.len() + 30;
+        print!("\r{}\r", " ".repeat(width));
+        println!("{} {}", self.msg, completion);
         std::io::stdout().flush().ok();
     }
 
