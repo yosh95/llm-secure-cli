@@ -244,7 +244,7 @@ impl ActiveSession {
     ) -> anyhow::Result<VerificationOutcome> {
         const VERIFIER_TIMEOUT_SECS: u64 = 60;
 
-        let mut spin = crate::utils::spinner::Spinner::start("Finalizing intent verification...");
+        let mut spin = crate::utils::spinner::Spinner::start("Finalizing intent verification…");
 
         let res = tokio::select! {
             res = handle => {

@@ -62,7 +62,7 @@ impl ActiveSession {
 
         // Animated spinner to indicate progress and keep SSH alive.
         let mut spin =
-            crate::utils::spinner::Spinner::start(&format!("Thinking ({}) ...", thinking_label));
+            crate::utils::spinner::Spinner::start(&format!("Thinking ({}) …", thinking_label));
 
         let result = tokio::select! {
             res = send_future => {

@@ -8,7 +8,7 @@ use std::time::Duration;
 /// # Example
 ///
 /// ```ignore
-/// let spin = Spinner::start("Loading ...");
+/// let spin = Spinner::start("Loading …");
 /// do_work().await;
 /// spin.finish("done");  // → "Loading ... done"
 /// ```
