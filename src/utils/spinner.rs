@@ -28,8 +28,8 @@ fn terminal_width() -> u16 {
         .unwrap_or(80)
 }
 
-/// Reserve space for: spinner_char (1-3 chars) + space + " (XX.Xs)" (8 chars)
-const RESERVED_COLS: u16 = 14;
+/// Reserve space for: spinner_char (1-3 chars) + space + "XX.Xs" (6 chars)
+const RESERVED_COLS: u16 = 12;
 
 /// Truncate `msg` at the **beginning** so the tail (model name) is preserved.
 /// e.g. "openai/gpt-4o-mini-longname..." → "…/gpt-4o-mini-longname"
@@ -66,7 +66,7 @@ impl Spinner {
         let goto = cursor_to_col1();
 
         print!(
-            "{erase}{goto}{sp} {msg} (0.0s)",
+            "{erase}{goto}{sp} {msg} 0.0s",
             erase = ERASE_LINE,
             goto = goto,
             sp = SPINNER_CHARS[0],
@@ -82,7 +82,7 @@ impl Spinner {
                 tokio::time::sleep(Duration::from_millis(80)).await;
                 let elapsed = start.elapsed();
                 print!(
-                    "{erase}{goto}{sp} {msg} ({elapsed:>4.1}s)",
+                    "{erase}{goto}{sp} {msg} {elapsed:.1}s",
                     erase = ERASE_LINE,
                     goto = goto,
                     sp = SPINNER_CHARS[idx],
