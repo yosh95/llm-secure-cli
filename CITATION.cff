@@ -9,7 +9,7 @@ abstract: "A high-assurance, secure CLI for interacting with LLMs (OpenAI, OpenR
 version: 0.3.0
 date-released: 2026-05-28
 repository-code: "https://github.com/yosh95/llm-secure-cli"
-doi: 10.5281/zenodo.20428940
+doi: 10.5281/zenodo.20428939
 license: Apache-2.0
 keywords:
   - llm
