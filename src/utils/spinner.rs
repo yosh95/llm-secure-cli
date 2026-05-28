@@ -82,7 +82,7 @@ impl Spinner {
                 tokio::time::sleep(Duration::from_millis(80)).await;
                 let elapsed = start.elapsed();
                 print!(
-                    "{erase}{goto}{sp} {msg} {elapsed:.1}s",
+                    "{erase}{goto}{sp} {msg} {elapsed:.1} s",
                     erase = ERASE_LINE,
                     goto = goto,
                     sp = SPINNER_CHARS[idx],

@@ -1,3 +1,4 @@
+use crate::cli::commands::credits;
 use crate::cli::ui;
 use crate::core::session::ActiveSession;
 use crate::llm::models::{DataSource, Message, MessagePart, Role};
@@ -161,6 +162,10 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
         }
         "view" => {
             handle_view_cmd(session, args).await;
+            CommandResult::Handled
+        }
+        "credits" => {
+            credits::run_credits_interactive(session).await;
             CommandResult::Handled
         }
         _ => {
@@ -1014,6 +1019,9 @@ fn print_help() {
     println!("  /t, /template [<name>]  List templates or insert one into prompt");
     println!(
         "  /view [<path>]      Open saved image or file with system default app (no arg = latest)"
+    );
+    println!(
+        "  /credits          Show detailed OpenRouter credit info (uses both /credits and /key APIs)"
     );
     println!("  /raw               Show raw conversation history");
     println!("  /dump              Dump conversation history as TOML");

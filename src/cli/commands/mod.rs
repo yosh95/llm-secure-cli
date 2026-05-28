@@ -1,4 +1,5 @@
 pub mod chat;
+pub mod credits;
 pub mod identity;
 pub mod mcp_server;
 pub mod pqc_decrypt;

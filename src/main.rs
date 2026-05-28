@@ -62,6 +62,12 @@ enum Commands {
         #[clap(short, long)]
         output: Option<String>,
     },
+    /// Check API credits balance (only for OpenRouter provider)
+    Credits {
+        /// Provider to check credits for
+        #[clap(default_value = "openrouter")]
+        provider: String,
+    },
     /// Verify Agent Skills for safety (structural, signature, and semantic checks)
     VerifySkill {
         /// Path to the skill directory or a directory containing multiple skills
@@ -201,6 +207,10 @@ async fn handle_subcommand(
                 input.into(),
                 output.map(|o| o.into()),
             );
+        }
+        Commands::Credits { provider } => {
+            llm_secure_cli::cli::commands::credits::run_credits(&ctx.config_manager, &provider)
+                .await;
         }
         Commands::VerifySkill {
             path,

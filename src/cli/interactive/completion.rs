@@ -51,6 +51,7 @@ impl ChatCompleter {
                 "/template",
                 "/t",
                 "/view",
+                "/credits",
             ],
             current_provider,
             ctx,
