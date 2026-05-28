@@ -22,18 +22,19 @@ pub fn log_chat(
     // Ensure directory exists
     if let Some(parent) = path.parent()
         && !parent.exists()
+        && let Err(e) = fs::create_dir_all(parent)
     {
-        if let Err(e) = fs::create_dir_all(parent) {
-            tracing::error!("Failed to create chat log directory: {}", e);
-        }
-        #[cfg(unix)]
+        tracing::error!("Failed to create chat log directory: {}", e);
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Some(p) = path.parent()
+            && !p.exists()
+            && let Err(e) = fs::set_permissions(p, fs::Permissions::from_mode(0o700))
         {
-            use std::os::unix::fs::PermissionsExt;
-            if let Some(p) = path.parent()
-                && let Err(e) = fs::set_permissions(p, fs::Permissions::from_mode(0o700))
-            {
-                tracing::warn!("Failed to set permissions on {:?}: {}", p, e);
-            }
+            tracing::warn!("Failed to set permissions on {:?}: {}", p, e);
         }
     }
 
