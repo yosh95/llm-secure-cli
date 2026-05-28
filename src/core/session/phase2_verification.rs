@@ -1,7 +1,6 @@
 use crate::core::session::ActiveSession;
 use crate::security::verifier::{CommitteeVerdict, VerificationOutcome, VerificationParams};
 use serde_json::Value;
-use std::io::Write;
 
 impl ActiveSession {
     /// Build a consistent audit context for logging in Phase 2.
@@ -243,29 +242,27 @@ impl ActiveSession {
         &mut self,
         handle: tokio::task::JoinHandle<VerificationOutcome>,
     ) -> anyhow::Result<VerificationOutcome> {
-        print!("Finalizing intent verification... ");
-        std::io::stdout().flush().ok();
-
         const VERIFIER_TIMEOUT_SECS: u64 = 60;
 
+        let mut spin = crate::utils::spinner::Spinner::start("Finalizing intent verification...");
+
         let res = tokio::select! {
-            res = handle => res.unwrap_or(VerificationOutcome::FallbackRequired("Task Panicked".into())),
+            res = handle => {
+                spin.finish("done");
+                res.unwrap_or(VerificationOutcome::FallbackRequired("Task Panicked".into()))
+            }
             _ = tokio::time::sleep(std::time::Duration::from_secs(VERIFIER_TIMEOUT_SECS)) => {
-                println!("
-        Verifier timed out after {}s.", VERIFIER_TIMEOUT_SECS);
-                VerificationOutcome::FallbackRequired(format!(
-                    "Verifier timed out after {}s",
-                    VERIFIER_TIMEOUT_SECS
-                ))
+                spin.stop();
+                eprintln!("Verifier timed out after {}s.", VERIFIER_TIMEOUT_SECS);
+                VerificationOutcome::FallbackRequired(format!("Verifier timed out after {}s", VERIFIER_TIMEOUT_SECS))
             }
             _ = tokio::signal::ctrl_c() => {
-                println!("
-        ^C - Interrupted.");
+                spin.stop();
+                eprintln!("^C - Interrupted.");
                 self.handle_interruption();
                 return Err(anyhow::anyhow!("Interrupted during verification"));
             }
         };
-        println!("done");
         Ok(res)
     }
 

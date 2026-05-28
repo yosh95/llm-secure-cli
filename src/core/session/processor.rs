@@ -3,7 +3,6 @@ use crate::core::session::ActiveSession;
 use crate::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
 use serde_json::{self, Value};
 use std::collections::HashMap;
-use std::io::Write;
 use tokio;
 
 impl ActiveSession {
@@ -54,9 +53,6 @@ impl ActiveSession {
             }
         };
 
-        print!("Thinking ({}) ... ", thinking_label);
-        std::io::stdout().flush().ok();
-
         let tool_schemas = if self.client.get_state().tools_enabled {
             self.ctx.tool_registry.read().await.get_tool_schemas()
         } else {
@@ -64,16 +60,22 @@ impl ActiveSession {
         };
         let send_future = self.client.send(data, tool_schemas);
 
+        // Animated spinner to indicate progress and keep SSH alive.
+        let mut spin =
+            crate::utils::spinner::Spinner::start(&format!("Thinking ({}) ...", thinking_label));
+
         let result = tokio::select! {
-            res = send_future => res?,
+            res = send_future => {
+                spin.finish("done");
+                res?
+            }
             _ = tokio::signal::ctrl_c() => {
-                println!("\n^C - Interrupted.");
+                spin.stop();
+                println!("^C - Interrupted.");
                 self.handle_interruption();
                 return Err(anyhow::anyhow!("Interrupted by user"));
             }
         };
-
-        println!("done");
 
         if let Some(usage) = &result.usage {
             self.total_usage.prompt_tokens += usage.prompt_tokens;
