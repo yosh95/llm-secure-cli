@@ -1,0 +1,24 @@
+{
+  "creators": [
+    {
+      "name": "Ando, Yoshihiro",
+      "affiliation": ""
+    }
+  ],
+  "title": "llm-secure-cli: Unified OpenAI-Compatible CLI for AI Agents",
+  "description": "<p>A high-assurance, secure command-line tool for interacting with LLMs through any OpenAI-compatible API (OpenRouter, OpenAI, Ollama, LiteLLM). Features Verifier Committee multi-LLM validation for safety checks, tamper-evident audit logs protected by chained hashing and PQC signatures (ML-DSA-87 / FIPS-204), PQC encryption (ML-KEM-1024 / FIPS-203), and Zero Trust architecture designed for autonomous AI agent control.</p>",
+  "license": "Apache-2.0",
+  "keywords": [
+    "llm",
+    "cli",
+    "security",
+    "ai-agents",
+    "zero-trust",
+    "post-quantum-cryptography",
+    "audit-logging",
+    "rust",
+    "openai-compatible"
+  ],
+  "access_right": "open",
+  "upload_type": "software"
+}
