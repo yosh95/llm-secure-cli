@@ -313,6 +313,8 @@ impl LlmClient for MockLlmClient {
 pub struct MockUi {
     pub confirmed: Option<bool>,
     pub messages: Arc<Mutex<Vec<String>>>,
+    /// If `Some(...)`, `ask_confirm` returns `Feedback(value)` instead of `Yes`/`No`.
+    pub feedback_text: Option<String>,
 }
 
 impl MockUi {
@@ -328,6 +330,17 @@ impl MockUi {
     pub fn rejecting() -> Self {
         Self {
             confirmed: Some(false),
+            feedback_text: None,
+            ..Default::default()
+        }
+    }
+
+    /// Returns a UI that rejects with the given feedback text.
+    #[allow(dead_code)]
+    pub fn rejecting_with_feedback(feedback: &str) -> Self {
+        Self {
+            confirmed: Some(false),
+            feedback_text: Some(feedback.to_string()),
             ..Default::default()
         }
     }
@@ -368,6 +381,8 @@ impl UserInterface for MockUi {
         self.confirmed.map(|y| {
             if y {
                 ConfirmResult::Yes
+            } else if let Some(ref fb) = self.feedback_text {
+                ConfirmResult::Feedback(fb.clone())
             } else {
                 ConfirmResult::No
             }

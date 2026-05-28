@@ -42,14 +42,14 @@ toml = { version = "1.1", default-features = false, features = ["display", "pars
 dirs = { version = "6.0", default-features = false }
 colored = { version = "3.1.1", default-features = false, features = [] }
 console = { version = "0.16", default-features = false, features = ["std"] }
-textwrap = { version = "0.16", features = ["unicode-width"] }
+textwrap = { version = "0.16", default-features = false, features = ["unicode-width"] }
 pulldown-cmark = { version = "0.13", default-features = false }
 comfy-table = { version = "7.1", default-features = false }
 html-to-markdown-rs = { version = "3.3", default-features = false, features = ["serde"] }
 anyhow = { version = "1.0", default-features = false }
 async-trait = { version = "0.1", default-features = false }
 tracing = { version = "0.1", default-features = false }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "std"] }
 path-clean = { version = "1.0", default-features = false }
 regex = { version = "1.11", default-features = false, features = ["std", "perf", "unicode-perl", "unicode-case"] }
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }
@@ -63,8 +63,8 @@ aes-gcm = { version = "0.10", default-features = false, features = ["aes", "allo
 fips203 = { version = "0.4", default-features = false, features = ["ml-kem-1024", "default-rng"] }
 fips204 = { version = "0.4", default-features = false, features = ["ml-dsa-87", "default-rng"] }
 ciborium = { version = "0.2", default-features = false }
-ed25519-dalek = { version = "2.2", features = ["pkcs8", "rand_core"] }
-pkcs8 = { version = "0.10", default-features = false, features = ["pem"] }
+ed25519-dalek = { version = "2.2", default-features = false, features = ["pem", "rand_core"] }
+pkcs8 = { version = "0.10", default-features = false, features = ["pem", "std"] }
 uuid = { version = "1.10", default-features = false, features = ["v4"] }
 hostname = { version = "0.4", default-features = false }
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng", "getrandom"] }

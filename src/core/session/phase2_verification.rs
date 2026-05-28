@@ -4,6 +4,17 @@ use serde_json::Value;
 use std::io::Write;
 
 impl ActiveSession {
+    /// Build a consistent audit context for logging in Phase 2.
+    fn build_audit_context(&self) -> serde_json::Value {
+        let user_id = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
+        serde_json::json!({
+            "trace_id": self.trace_id,
+            "model": self.client.get_state().model.clone(),
+            "provider": self.client.get_state().provider.clone(),
+            "user_id": user_id
+        })
+    }
+
     /// Phase 2: Verification & Approval
     ///
     /// Combines Zero Trust enforcement, verifier committee resolution & spawning,
@@ -59,7 +70,7 @@ impl ActiveSession {
                 Some(self.spawn_committee_task(name, args, committee_members))
             };
 
-            self.resolve_verifier_outcome(name, args, verifier_handle)
+            self.resolve_verifier_outcome(name, args, config, verifier_handle)
                 .await
         } else {
             // Verifier is off or not configured: fall back to human approval.
@@ -73,8 +84,22 @@ impl ActiveSession {
             }
             // Show the tool call — human needs to review
             self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
+
+            // Audit log: verifier was not available, human will decide
+            let audit_ctx = self.build_audit_context();
+            crate::security::audit::AuditParams::builder("verifier_decision", name, config)
+                .args(serde_json::json!({
+                    "verdict": "NoVerifier",
+                    "reason": "Verifier not configured or unavailable; falling back to manual approval",
+                    "auto_approved": false,
+                }))
+                .context(&audit_ctx)
+                .log();
+
             // No verifier task — ask human directly
-            let cancel_msg = self.request_human_approval(name).await?;
+            let cancel_msg = self
+                .request_human_approval(name, config, "no_verifier")
+                .await?;
             if let Some(msg) = cancel_msg {
                 Ok((args.clone(), false, Some(msg)))
             } else {
@@ -84,11 +109,12 @@ impl ActiveSession {
     }
 
     /// Resolve the verifier outcome: wait for the spawned task, interpret the result,
-    /// and either auto-approve or ask the human for approval.
+    /// log the decision to the audit trail, and either auto-approve or ask the human for approval.
     async fn resolve_verifier_outcome(
         &mut self,
         name: &str,
         args: &serde_json::Map<String, Value>,
+        config: &crate::config::models::AppConfig,
         verifier_handle: Option<tokio::task::JoinHandle<VerificationOutcome>>,
     ) -> anyhow::Result<(serde_json::Map<String, Value>, bool, Option<Value>)> {
         let handle = match verifier_handle {
@@ -100,8 +126,22 @@ impl ActiveSession {
         };
 
         let outcome = self.wait_for_verifier(handle).await?;
+
+        // Construct the audit context once for all branches below
+        let audit_ctx = self.build_audit_context();
+
         match outcome {
             VerificationOutcome::Allowed(reason) => {
+                // Audit log: verifier explicitly allowed the tool call
+                crate::security::audit::AuditParams::builder("verifier_decision", name, config)
+                    .args(serde_json::json!({
+                        "verdict": "Allowed",
+                        "reason": reason,
+                        "auto_approved": true,
+                    }))
+                    .context(&audit_ctx)
+                    .log();
+
                 // Verifier says it's safe → auto-approve.
                 self.ctx
                     .ui
@@ -112,6 +152,18 @@ impl ActiveSession {
                 Ok((args.clone(), true, None))
             }
             VerificationOutcome::Modified(fixed_args, reason) => {
+                // Audit log: verifier approved with corrections
+                crate::security::audit::AuditParams::builder("verifier_decision", name, config)
+                    .args(serde_json::json!({
+                        "verdict": "Modified",
+                        "reason": reason,
+                        "auto_approved": true,
+                        "original_args": args,
+                        "corrected_args": fixed_args,
+                    }))
+                    .context(&audit_ctx)
+                    .log();
+
                 // Verifier says it's safe with corrections → auto-approve with corrected args.
                 self.ctx
                     .ui
@@ -128,6 +180,16 @@ impl ActiveSession {
                 Ok((effective_args, true, None))
             }
             VerificationOutcome::NeedsApproval(reason) => {
+                // Audit log: verifier flagged as potentially unsafe, requires human review
+                crate::security::audit::AuditParams::builder("verifier_decision", name, config)
+                    .args(serde_json::json!({
+                        "verdict": "NeedsApproval",
+                        "reason": reason,
+                        "auto_approved": false,
+                    }))
+                    .context(&audit_ctx)
+                    .log();
+
                 // Verifier flagged as potentially unsafe.
                 // Ask human for approval with feedback support.
                 // The verifier task has already completed, so no abort is needed.
@@ -136,7 +198,9 @@ impl ActiveSession {
                     .ui
                     .report_warning("Verifier flagged this tool call as requiring review.");
                 self.ctx.ui.report_info(&format!("Reason: {}", reason));
-                let cancel_msg = self.request_human_approval(name).await?;
+                let cancel_msg = self
+                    .request_human_approval(name, config, "verifier_needs_approval")
+                    .await?;
                 if let Some(msg) = cancel_msg {
                     // User rejected with feedback — return it as cancel message
                     Ok((args.clone(), false, Some(msg)))
@@ -146,13 +210,25 @@ impl ActiveSession {
                 }
             }
             VerificationOutcome::FallbackRequired(reason) => {
+                // Audit log: verifier was unavailable, human must decide
+                crate::security::audit::AuditParams::builder("verifier_decision", name, config)
+                    .args(serde_json::json!({
+                        "verdict": "FallbackRequired",
+                        "reason": reason,
+                        "auto_approved": false,
+                    }))
+                    .context(&audit_ctx)
+                    .log();
+
                 // Verifier unavailable — ask for human approval with feedback support.
                 // The verifier task has already completed (or timed out), so no abort is needed.
                 self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
                 self.ctx
                     .ui
                     .report_warning(&format!("Verifier unavailable: {}", reason));
-                let cancel_msg = self.request_human_approval(name).await?;
+                let cancel_msg = self
+                    .request_human_approval(name, config, "verifier_fallback")
+                    .await?;
                 if let Some(msg) = cancel_msg {
                     Ok((args.clone(), false, Some(msg)))
                 } else {
@@ -175,14 +251,16 @@ impl ActiveSession {
         let res = tokio::select! {
             res = handle => res.unwrap_or(VerificationOutcome::FallbackRequired("Task Panicked".into())),
             _ = tokio::time::sleep(std::time::Duration::from_secs(VERIFIER_TIMEOUT_SECS)) => {
-                println!("\n\tVerifier timed out after {}s.", VERIFIER_TIMEOUT_SECS);
+                println!("
+        Verifier timed out after {}s.", VERIFIER_TIMEOUT_SECS);
                 VerificationOutcome::FallbackRequired(format!(
                     "Verifier timed out after {}s",
                     VERIFIER_TIMEOUT_SECS
                 ))
             }
             _ = tokio::signal::ctrl_c() => {
-                println!("\n\t^C - Interrupted.");
+                println!("
+        ^C - Interrupted.");
                 self.handle_interruption();
                 return Err(anyhow::anyhow!("Interrupted during verification"));
             }
@@ -218,14 +296,46 @@ impl ActiveSession {
     ///
     /// Returns `Ok(None)` if approved, `Ok(Some(cancel_message))` if rejected
     /// with optional feedback, or `Err` if interrupted.
-    async fn request_human_approval(&mut self, name: &str) -> anyhow::Result<Option<Value>> {
+    ///
+    /// Logs the human approval/rejection decision to the audit trail
+    /// with the given `verifier_context` explaining why HITL was triggered.
+    async fn request_human_approval(
+        &mut self,
+        name: &str,
+        config: &crate::config::models::AppConfig,
+        verifier_context: &str,
+    ) -> anyhow::Result<Option<Value>> {
+        let audit_ctx = self.build_audit_context();
+
         match self.ctx.ui.ask_confirm(&format!("Execute {}", name)).await {
-            Some(crate::cli::ui::ConfirmResult::Yes) => Ok(None),
+            Some(crate::cli::ui::ConfirmResult::Yes) => {
+                // Audit log: human approved the tool call
+                crate::security::audit::AuditParams::builder("human_approval", name, config)
+                    .args(serde_json::json!({
+                        "result": "approved",
+                        "verifier_context": verifier_context,
+                    }))
+                    .context(&audit_ctx)
+                    .log();
+                Ok(None)
+            }
             Some(res) => {
                 let feedback = match res {
                     crate::cli::ui::ConfirmResult::Feedback(f) => Some(f),
                     _ => None,
                 };
+
+                // Audit log: human rejected the tool call, with optional feedback
+                let feedback_text = feedback.clone().unwrap_or_default();
+                crate::security::audit::AuditParams::builder("human_approval", name, config)
+                    .args(serde_json::json!({
+                        "result": "rejected",
+                        "verifier_context": verifier_context,
+                        "feedback": feedback_text,
+                    }))
+                    .context(&audit_ctx)
+                    .log();
+
                 let cancel_msg = self.handle_rejection_feedback(feedback)?;
                 Ok(Some(cancel_msg))
             }
@@ -418,7 +528,11 @@ impl ActiveSession {
             .rev()
             .collect::<Vec<_>>();
 
-        let context = history.join("\n---\n");
+        let context = history.join(
+            "
+---
+",
+        );
         match context.char_indices().nth(MAX_TOTAL_CHARS) {
             Some((cut_at, _)) => context[..cut_at].to_string(),
             None => context,

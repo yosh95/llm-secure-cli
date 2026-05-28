@@ -26,6 +26,19 @@ The accompanying [Technical Report](paper/comprehensive_framework/paper.pdf) det
 
 ---
 
+###  Why Audit Logs? — Why AI Agents Need Auditing
+
+Enterprise adoption of autonomous AI agents is hindered by two fundamental risks: **destructive actions** (unintended file modifications, system changes) and **information leakage** (exfiltration of sensitive data). Large Language Models are inherently black-box, stochastic systems — their behavior cannot be fully controlled or predicted through rules alone.
+
+This tool addresses these challenges through two key mechanisms:
+
+- **Verifier Committee (Multi-LLM Validation)**: Before any tool execution, N independent LLMs concurrently assess the proposed action for validity, safety, and information leakage risk. If any member flags a concern, the system escalates to Human-in-the-Loop (HITL) for approval.
+- **Tamper-Evident Audit Logs**: Every action is recorded with its full reasoning chain — *why* the agent chose a particular tool with particular arguments — protected by chained hashing and PQC signatures (ML-DSA-87) to ensure non-repudiation and auditability.
+
+The design philosophy draws inspiration from corporate governance: **just as artificial persons (corporations) are controlled through mandatory auditing, autonomous AI agents — another form of non-human actor — require audit-based control to be safely entrusted with agency.**
+
+---
+
 <p align="center">
 
 ```mermaid
