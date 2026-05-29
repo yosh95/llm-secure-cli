@@ -58,44 +58,6 @@ pub fn truncate_json_strings(
 /// This is used to provide better output for both humans (CLI) and LLMs.
 pub fn humanize_tool_result(_name: &str, v: &serde_json::Value) -> String {
     if let Some(obj) = v.as_object() {
-        // Special handling for brave_search results
-        if let Some(results) = obj.get("results").and_then(|v| v.as_array())
-            && obj.get("query").is_some()
-        {
-            if results.is_empty() {
-                return "No search results found.".to_string();
-            }
-            let query = obj
-                .get("query")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            let mut output = format!(
-                "Search results for \"{}\" ({} items):\n\n",
-                query,
-                results.len()
-            );
-            for (i, item) in results.iter().enumerate() {
-                let title = item
-                    .get("title")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let url = item.get("url").and_then(|v| v.as_str()).unwrap_or_default();
-                let snippets = item.get("snippets").and_then(|v| v.as_array());
-
-                output.push_str(&format!("{}. {}\n", i + 1, title));
-                output.push_str(&format!("   URL: {}\n", url));
-                if let Some(snip_arr) = snippets {
-                    for snippet in snip_arr {
-                        if let Some(s) = snippet.as_str() {
-                            output.push_str(&format!("   {}\n", s));
-                        }
-                    }
-                }
-                output.push('\n');
-            }
-            return output;
-        }
-
         // Special handling for command execution
         if obj.contains_key("stdout") && obj.contains_key("stderr") && obj.contains_key("exit_code")
         {

@@ -170,7 +170,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
         maybe_register(
             r,
             "brave_search",
-            "Search the web using Brave Search API.",
+            "Search the web using Brave Search API. All optional parameters (count, max_tokens, max_urls, freshness, etc.) use API-side defaults.",
             json!({
                 "type": "object",
                 "properties": {
@@ -178,10 +178,10 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
                 },
                 "required": ["query"]
             }),
-            Arc::new(move |args, config| {
+            Arc::new(move |args, _config| {
                 let key = brave_key.clone();
                 Box::pin(async move {
-                    crate::tools::builtin::web::brave_search(args, config, &key).await
+                    crate::tools::builtin::web::brave_search(args, &key).await
                 })
             }),
         );

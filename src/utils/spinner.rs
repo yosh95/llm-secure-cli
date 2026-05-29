@@ -10,13 +10,14 @@ use std::time::Duration;
 /// ```ignore
 /// let spin = Spinner::start("Loading …");
 /// do_work().await;
-/// spin.finish("done");  // → "Loading ... done"
+/// spin.finish("done");  // → "Loading ... 3.2s done"
 /// ```
 ///
 /// On early returns (e.g. `?` operator), `Drop` automatically cleans up the line.
 pub struct Spinner {
     handle: Option<tokio::task::JoinHandle<()>>,
     msg: String,
+    start: tokio::time::Instant,
 }
 
 // ── Terminal width ──
@@ -82,7 +83,7 @@ impl Spinner {
                 tokio::time::sleep(Duration::from_millis(80)).await;
                 let elapsed = start.elapsed();
                 print!(
-                    "{erase}{goto}{sp} {msg} {elapsed:.1} s",
+                    "{erase}{goto}{sp} {msg} {elapsed:.1}s",
                     erase = ERASE_LINE,
                     goto = goto,
                     sp = SPINNER_CHARS[idx],
@@ -97,6 +98,7 @@ impl Spinner {
         Self {
             handle: Some(handle),
             msg,
+            start: tokio::time::Instant::now(),
         }
     }
 
@@ -113,9 +115,10 @@ impl Spinner {
         if let Some(h) = self.handle.take() {
             h.abort();
         }
+        let elapsed = self.start.elapsed();
         let goto = cursor_to_col1();
         print!("{erase}{goto}", erase = ERASE_LINE, goto = goto);
-        println!("{} {}", self.msg, completion);
+        println!("{} {:.1}s {}", self.msg, elapsed.as_secs_f64(), completion);
         std::io::stdout().flush().ok();
     }
 

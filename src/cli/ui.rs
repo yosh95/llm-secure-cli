@@ -488,41 +488,6 @@ pub fn print_tool_result(result: &str) {
             }
         }
 
-        // Special handling for brave_search results
-        if let Some(results) = v.get("results").and_then(|v| v.as_array())
-            && v.get("query").is_some()
-        {
-            for item in results {
-                let title = item
-                    .get("title")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let url = item.get("url").and_then(|v| v.as_str()).unwrap_or_default();
-                let snippets = item.get("snippets").and_then(|v| v.as_array());
-                push_line(
-                    &mut out,
-                    &format!(
-                        "    {} \x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
-                        "\u{2022}".bright_black(),
-                        url,
-                        title.bold().blue()
-                    ),
-                );
-                if let Some(snip_arr) = snippets {
-                    for snippet in snip_arr {
-                        if let Some(s) = snippet.as_str() {
-                            for line in s.lines() {
-                                push_line(&mut out, &format!("      {}", line.dimmed()));
-                            }
-                        }
-                    }
-                }
-                out.push('\n');
-            }
-            finish_tool_result(out);
-            return;
-        }
-
         if let Ok(pretty) = serde_json::to_string_pretty(&v) {
             // If it's a complex object, show it pretty
             if v.is_object() || v.is_array() {
