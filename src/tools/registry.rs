@@ -191,7 +191,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
         maybe_register(
             r,
             "execute_python",
-            "Execute arbitrary Python code. Multi-purpose tool for: file ops (read/write/edit/list), grep/search (re, fnmatch), web fetching (requests/urllib), PDF text extraction (pdftotext via subprocess), data processing, AND arbitrary shell commands (via subprocess). NOT for web research—use brave_search.",
+            "Execute arbitrary Python code. Multi-purpose tool for: file ops (read/write/edit/list), grep/search (re, fnmatch), web fetching (requests/urllib), PDF text extraction (pdftotext via subprocess), data processing, AND arbitrary shell commands (via subprocess).",
             json!({
                 "type": "object",
                 "properties": {
