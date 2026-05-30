@@ -110,58 +110,13 @@ impl ActiveSession {
         // Calculate and display stats
         let stats = crate::cli::stats::get_tool_result_stats(name, &final_v);
 
-        // Display the tool result to the user.
-        // - Auto-approved (verifier-signed): skip stdout display, but show errors/stderr.
-        // - Manual approval (HITL): show everything as before.
+        // Display the tool result to the user (always shown, same for auto-approve and manual approve)
         let display_str = final_v
             .as_str()
             .map(|s| s.to_owned())
             .unwrap_or_else(|| final_v.to_string());
 
-        if _approved {
-            // Auto-approved: skip stdout display, only show stderr (errors/warnings).
-            // For structured results (JSON with stdout/stderr), extract stderr.
-            // For plain string results, show only if it starts with "Error:" or contains warnings.
-            if let Some(obj) = final_v.as_object() {
-                let stderr = obj
-                    .get("stderr")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let exit_code = obj.get("exit_code").and_then(|v| v.as_i64()).unwrap_or(0);
-                if !stderr.is_empty() || exit_code != 0 {
-                    // Show error output only
-                    let mut err_out = String::from(
-                        "  ── Result ──
-",
-                    );
-                    if !stderr.is_empty() {
-                        err_out.push_str(
-                            "STDERR:
-",
-                        );
-                        err_out.push_str(stderr);
-                        if !stderr.ends_with('\n') {
-                            err_out.push('\n');
-                        }
-                    }
-                    if exit_code != 0 {
-                        err_out.push_str(&format!(
-                            "Exit Code: {}
-",
-                            exit_code
-                        ));
-                    }
-                    self.ctx.ui.print_tool_result(&err_out);
-                }
-                // else: skip display entirely for clean auto-approved calls
-            } else if display_str.starts_with("Error:") {
-                self.ctx.ui.print_tool_result(&display_str);
-            }
-            // else: pure success, no display (stdout would have been shown on demand)
-        } else {
-            // Manual approval: show everything as before
-            self.ctx.ui.print_tool_result(&display_str);
-        }
+        self.ctx.ui.print_tool_result(&display_str);
 
         // Show stats (stderr info included)
         crate::cli::stats::print_tool_stats(&stats);

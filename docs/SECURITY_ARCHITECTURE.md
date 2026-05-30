@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.2.x   | ✅ Active |
-| < 0.2   | ❌ EOL     |
+| 0.4.x   | ✅ Active |
+| < 0.4   | ❌ EOL    |
 
 ---
 
@@ -13,9 +13,8 @@
 
 `llm-secure-cli` implements a **Triple-Lock** security framework across three
 dimensions — Space, Behavior, and Time — designed for autonomous LLM agents
-operating via the Model Context Protocol (MCP).  The central orchestration
-engine is **CASS (Context-Adaptive Security Scaling)**, which dynamically
-adjusts security posture based on each tool call's risk profile.
+operating via the Model Context Protocol (MCP).  The Verifier Committee handles
+all risk judgment — risk-level-based PQC variant switching has been discontinued.
 
 ```
  Agent Tool Request
@@ -23,8 +22,8 @@ adjusts security posture based on each tool call's risk profile.
         ▼
   ┌──────────────────────────────┐
   │   Verifier Committee         │  ← N-member, any-flag policy
-  │   (Semantic Firewall)        │     + CASS (max-strength PQC)
-  └──────┬───────┬───────┬──────┘
+  │   (Semantic Firewall)        │
+  └──────┬───────┬───────┬───────┘
          │       │       │
          ▼       ▼       ▼
       T1       T2       T3
@@ -41,8 +40,6 @@ adjusts security posture based on each tool call's risk profile.
 ---
 
 ## Tier 1 — Structural Guardrails (Space)
-
-### Tier 1 — Structural Guardrails (Space)
 
 #### Static Analysis (Minimalist Fast-Fail)
 A lightweight, deterministic check that blocks only **control characters and NULL bytes** which could destabilize the execution engine or corrupt audit logs. This is not a security boundary — it is a stability boundary. Complex intent judgment and risk assessment are entirely delegated to the Verifier Committee (Tier 2).
@@ -67,19 +64,9 @@ script bypasses static analysis, any malicious activity is contained within a
 disposable, restricted environment with no access to the host's filesystem or
 credentials.
 
-**Least-privilege MCP server configuration:**
-
-```toml
-[[mcp_servers]]
-name   = "my-server"
-command = "ssh"
-args   = ["user@host", "llsc", "--mcp-server"]
-zero_trust = true
-```
-
-**Note:** The MCP server configuration uses a `zero_trust` boolean flag rather than a `roles` field. When `zero_trust = true`, the server operates under a strict zero-trust policy requiring identity verification for all tool calls.
-
-**TCB note:** The server binary / container image and its launch configuration are part of the Trusted Computing Base. Pin Docker image digests and enforce SSH host-key verification.
+**TCB note:** The server binary / container image and its launch configuration
+are part of the Trusted Computing Base. Pin Docker image digests and enforce
+SSH host-key verification.
 
 ---
 
@@ -152,17 +139,9 @@ These attributes are bundled into a **Security Context** and verified by the Ver
 
 Implementation: `src/security/policy.rs` and `src/security/verifier.rs`.
 
-Risk-level classification in `defaults.toml`:
-
-```toml
-[security]
-high_risk_tools   = ["execute_python", "brave_search"]
-medium_risk_tools = []
-# Low-risk tools → (none)
-# Critical risk → execute_python when Verifier is disabled
-```
-
-Implementation: `src/security/cass.rs`.
+Tool call risk classification is handled by the Verifier Committee — there is no separate
+risk-level configuration file. The Verifier evaluates each tool call semantically
+using the Security Constitution.
 
 ### Verifier Committee (Dynamic Intent Check — N-Member, Any-Flag Policy)
 
@@ -194,17 +173,15 @@ Enable via `defaults.toml`: `verifier_enabled = true`.
 
 When any Verifier Committee member is unavailable (network error, API failure, etc.), the system always asks for human approval before executing the tool call. The previously configurable `block` policy has been removed — the system now consistently requires manual confirmation as the only fallback behavior. This applies to ALL committee members: if one member fails, the entire committee falls back to human review.
 
-### Auto-Approval Levels
+### Auto-Approval via Verifier Committee
 
-The `auto_approval_level` setting controls which tool calls can bypass human approval based on their risk level:
+The Verifier Committee determines which tool calls are auto-approved. If ALL committee
+members return ALLOW (or MODIFY with corrections), the call is auto-approved. If ANY member
+flags it as NeedsApproval, human approval is required. When the verifier is unavailable,
+the system always falls back to human-in-the-loop (HITL) approval.
 
-| Level | Auto-Approved Tools |
-|---|---|
-| `none` (default) | No tools are auto-approved; all require human confirmation. |
-| `low` | Only low-risk tools (currently none). |
-| `medium` | Low and medium-risk tools. High-risk tools still require approval. |
-
-> **Note:** Any `BLOCK` verdict from the verifier will always force manual intervention, regardless of the auto-approval level.
+> **Note:** There is no configurable `auto_approval_level` setting. The Verifier Committee's
+> semantic analysis is the sole determinant of whether a tool call is auto-approved.
 
 ### Compatibility & Interoperability (Security Levels)
 
@@ -274,7 +251,7 @@ Implementation: Rust-native `fips203`/`fips204` crates (ML-KEM/ML-DSA) — FIPS-
 
 The hybrid token scheme uses **Ed25519** (classical) + **ML-DSA-87** (post-quantum) as the default signing pair, replacing the earlier RS256 designation.
 
-### PQC at Maximum Strength (CASS)
+### PQC at Maximum Strength
 
 Risk-level-based PQC variant switching has been **discontinued**. All operations
 use the highest available NIST Level 5 strength regardless of tool risk level:
@@ -292,7 +269,7 @@ use the highest available NIST Level 5 strength regardless of tool risk level:
 | `id_ed25519` / `id_ed25519.pub` | `~/.llm_secure_cli/keys/` | Ed25519 (classical) |
 | `id_kem.key` / `id_kem.pub` | `~/.llm_secure_cli/keys/` | ML-KEM-1024 |
 
-Implementation: `CASSOrchestrator::get_security_requirements()` in `src/security/cass.rs`.
+The application always uses ML-DSA-87 (FIPS 204 Level 5) for signing and ML-KEM-1024 (FIPS 203 Level 5) for encryption. There is no runtime variant selection — the highest NIST Level 5 is always used.
 
 ### Remote Attestation
 
@@ -355,43 +332,33 @@ The primary security configuration is in `src/config/defaults.toml`
 [general]
 pdf_as_base64 = true
 request_timeout = 1800
-command_timeout = 300
-max_security_log_lines = 1000
+command_timeout = 3600
+image_save_path = "~/Pictures/llsc"
 max_audit_log_lines = 10000
-max_audit_archives = 10
 max_chat_log_lines = 5000
 max_chat_archives = 5
+max_output_lines = 5000
+max_output_chars = 50000
+
+# Pager: "" (disable), "auto" (try less/built-in), or a specific command
+pager = "auto"
 
 [security]
 # Security Level: "high" (Default) | "standard"
-# - high: Strict PQC enforcement (ML-DSA-87, ML-KEM-1024).
-# - standard: Compatibility mode; warnings instead of blocks for integrity checks.
 security_level = "high"
 
-# Auto-Approval Policy: "none" (default) | "low" | "medium"
-auto_approval_level = "none"
-
 # Verifier Committee (AI-native ABAC / Semantic Firewall)
-# Validates ALL tool calls using N independent LLMs with any-flag policy.
+# N independent LLMs evaluate each tool call with an "any-flag" policy.
 verifier_enabled = true
 verifier_provider = "ollama"
 verifier_model = "gemma4:e2b"
-verifier_confidence_threshold = 0.7
 
-# Verifier Committee — additional members beyond the primary verifier
+# Additional committee members (optional):
 # [security.verifier_committee]
 # members = [
 #   { provider = "openai", model = "gpt-4o-mini" },
 #   { provider = "openrouter", model = "anthropic/claude-3-haiku" },
 # ]
-
-# Static analysis errors block execution
-static_analysis_is_error = true
-
-# PQC Algorithm Selection
-# [pqc]
-# ml_dsa_algorithm = "ML-DSA-87"
-# ml_kem_algorithm = "ML-KEM-1024"
 ```
 
 ---
@@ -421,7 +388,7 @@ Shell invocation pattern detection (`sh -c`, `bash -c`, etc.) has been **removed
 While highly efficient (<0.01ms), this layer is intentionally minimal. **Real-world security relies on the Defense-in-Depth provided by Tier 2 (Verifier Committee) and Tier 3 (Audit Trail).** Complex intent analysis and semantic risk assessment are entirely delegated to the Verifier Committee.
 
 ### 2. Probabilistic Intent Verification
-Verifier Committee is a **probabilistic** defense. While it can achieve high accuracy with well-chosen verifier models, LLMs can hallucinate or fail to catch "jailbreak" style prompt injections. The confidence threshold setting (`verifier_confidence_threshold`) is important for balancing security and usability.
+Verifier Committee is a **probabilistic** defense. While it can achieve high accuracy with well-chosen verifier models, LLMs can hallucinate or fail to catch "jailbreak" style prompt injections. The Verifier Committee's semantic analysis — while highly effective — is probabilistic.  Choosing strong verifier models (e.g., Gemma-4, GPT-4o-mini) is important for balancing security and usability.
 
 ### 3. ML-DSA COSE algorithm identifier (`alg=−48`)
 
@@ -461,9 +428,9 @@ network connectivity.  A malicious npm package can access what Node.js
 allows; a malicious skill inherits the **full permissions of the AI agent**
 it runs inside.
 
-`llsc` already addresses the MCP side of this equation with `zero_trust =
-true`.  The Agent Skill Verification feature (`llsc verify-skill`) extends
-the same Zero Trust philosophy to the Skills layer.
+`llsc` already addresses MCP security through the Verifier Committee and
+PQC signatures.  The Agent Skill Verification feature (`llsc verify-skill`) extends
+the same philosophy to the Skills layer.
 
 ### Architecture: The Three-Tier Verification Pipeline
 
@@ -480,9 +447,9 @@ framework, adapted for static file analysis rather than live tool execution:
         │ Structure│  │ Signature│  │   Semantic   │
         │          │  │          │  │   Firewall   │
         └────┬─────┘  └────┬─────┘  └──────┬───────┘
-             │              │               │
-             └──────────────┼───────────────┘
-                            ▼
+             │             │               │
+             └─────────────┼───────────────┘
+                           ▼
                     ┌──────────────┐
                     │   VERDICT    │
                     │ SAFE / SUSP /│
@@ -606,7 +573,7 @@ analysis has a non-zero cost (API call, latency).
 version adds skill execution, it will be gated behind:
 1. Verified publisher signature (Tier 2)
 2. Clean Semantic Firewall verdict (Tier 3)
-3. CASS risk scaling with mandatory human approval for high-risk operations
+3. Clean Semantic Firewall verdict (Tier 3)
 4. Docker isolation by default
 
 ### Relationship to the Existing Triple-Lock Framework

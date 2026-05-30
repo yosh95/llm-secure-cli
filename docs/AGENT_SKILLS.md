@@ -142,7 +142,7 @@ detailed findings:
 | **Skill safety** | `llsc verify-skill` | *Is this skill safe?* — closes the verification gap in the Skills ecosystem |
 | **Multi-agent** | A2A (Agent-to-Agent) | Agent-to-agent communication and task routing |
 
-MCP has `zero_trust = true`.  Skills now have `llsc verify-skill`.  Both
+MCP servers can be configured in `config.toml`.  Skills now have `llsc verify-skill`.  Both
 follow the same principle: **trust nothing, verify everything.**
 
 ## Current Limitations & Roadmap
@@ -159,8 +159,8 @@ follow the same principle: **trust nothing, verify everything.**
 - **No execution sandbox for skills.**  This is intentional — `llsc`
   verifies, it does not execute.  We believe execution should remain the
   user's conscious, informed choice.  If a future version adds execution
-  support, it will be gated behind verified signatures and CASS risk
-  scaling, and will default to Docker-isolated mode.
+  support, it will be gated behind verified signatures and Verifier Committee
+  analysis, and will default to Docker-isolated mode.
 - **Batch scanning is sequential.**  Each skill's Tier 3 analysis makes
   an independent LLM call.  Parallel scanning may be added in a future
   release for large repositories.

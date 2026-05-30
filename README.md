@@ -175,7 +175,7 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 - High-Assurance via Verifier Committee: Every tool call is verified by the **Verifier Committee** — N independent LLMs operating concurrently under an "any-flag" policy — as a Semantic Firewall to ensure intent alignment.
 - MCP (Model Context Protocol): Connect to remote resources or services via custom servers.
 - Operational Stability: A clean, flicker-free UI designed for long-term "Deep Work" sessions.
-- Human-in-the-Loop: Configurable `auto_approval_level` (none/low/medium) to balance speed and safety.
+- Human-in-the-Loop: The Verifier Committee auto-approves safe tool calls; potentially unsafe calls always require human confirmation.
 
 ### Autonomous Agent Capabilities
 The AI agent autonomously selects tools to perform tasks. For example, it can search for a bug with Python file operations, read the relevant code, and apply a fix — all through `execute_python`. All actions are logged with cryptographic signatures for auditability.
@@ -191,11 +191,10 @@ As a tool designed with **CISSP/CISA/CCSP** principles in mind, `llm-secure-cli`
 - **AI-native Policy Engine (Verifier Committee)**: Replaces complex regex blocklists with a hardcoded **Security Constitution**. The system automatically gathers context (OS, User, Directory, Git status) and uses N independent LLM verifiers to judge risks semantically using structured verdicts (ALLOW/REVIEW). This avoids the quagmire of platform-dependent static rules.
 - **Any-Flag Policy**: The Verifier Committee runs ALL members concurrently. If ANY member flags a call as requiring review, human approval is mandatory. Only if ALL members approve is the call auto-approved.
 - **Path Guardrails (Verifier-based)**: Path validation is handled entirely by the Verifier Committee. The static path whitelist has been removed — the verifier LLM uses its inherent knowledge of sensitive paths (like `C:\Windows` or `/etc`) together with the user's intent context to determine whether a file access is safe.
-- **PQC at Maximum Strength (CASS)**: Security requirements (PQC signature level, audit encryption) are fixed at the highest available NIST Level 5 (ML-DSA-87 for signing, ML-KEM-1024 for encryption). Risk-level-based variant switching has been discontinued.
+- **PQC at Maximum Strength**: Security requirements (PQC signature level, audit encryption) are fixed at the highest available NIST Level 5 (ML-DSA-87 for signing, ML-KEM-1024 for encryption). Risk-level-based variant switching has been discontinued.
 - **Intent Verification**: Every tool call is verified by the Verifier Committee. This acts as a **Semantic Firewall**, ensuring the proposed tool call aligns with the user's original intent and providing corrected arguments if small discrepancies are detected.
 - **Minimalist Fast-fail**: A lightweight syntactic check blocks only control characters and NULL bytes in **nanoseconds**, while the heavy lifting of security judgment is shifted to the Verifier Committee. Shell invocation pattern detection has been removed as redundant — the Verifier Committee handles all semantic analysis.
 - **Verifier Fallback**: When the verifier is unavailable (network error, API failure), the system always asks for human approval. The `block` option has been removed — the verifier fallback now always requires manual confirmation.
-- **Auto-Approval Levels**: The `auto_approval_level` setting controls which tool calls can proceed without human intervention: `none` (default, all require approval), `low` (auto-approve low-risk), `medium` (auto-approve low and medium-risk).
 - **Physical Isolation (Docker)**: The agent can be run inside a Docker container to provide a hard boundary between the AI and the host system.
 
 ### 2. Identity & Non-Repudiation (Experimental Reference)
