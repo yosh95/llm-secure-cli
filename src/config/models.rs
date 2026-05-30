@@ -372,8 +372,12 @@ pub struct McpServerConfig {
     pub command: String,
     #[serde(default)]
     pub args: Vec<String>,
+    /// Transport type: "stdio" (default) or "streamable-http"
     #[serde(default)]
-    pub zero_trust: bool,
+    pub transport: String,
+    /// Base URL for Streamable HTTP transport (e.g., "https://example.com/mcp")
+    #[serde(default)]
+    pub api_url: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]

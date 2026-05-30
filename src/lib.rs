@@ -13,7 +13,7 @@
 //! | Phase | Module | Description |
 //! |-------|--------|-------------|
 //! | 1 — Static analysis | [`security::static_analyzer`] | Deterministic fast-fail for null bytes / control chars |
-//! | 2 — Verification & approval | [`core::session::phase2_verification`] | Zero Trust, Verifier Committee, human-in-the-loop |
+//! | 2 — Verification & approval | [`core::session::phase2_verification`] | Verifier Committee, human-in-the-loop |
 //! | 3 — Execution & audit | [`core::session::phase3_execution`] | Tool execution with cryptographic audit logging |
 //!
 //! ## Key modules
@@ -22,7 +22,7 @@
 //! - [`config`] — TOML-based configuration with defaults and user overrides
 //! - [`core`] — Session lifecycle, input handling, the four-phase security pipeline
 //! - [`llm`] — LLM client abstraction (OpenAI-compatible, Anthropic/Gemini formatters)
-//! - [`security`] — ABAC, PQC, identity, audit, Merkle anchoring, path validation
+//! - [`security`] — PQC, identity, audit, Merkle anchoring, path validation
 //! - [`tools`] — Built-in tool registry (file ops, search, Python execution, web, MCP)
 //! - [`utils`] — Logging, HTTP, chat logging, media handling
 

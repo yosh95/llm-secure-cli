@@ -15,13 +15,11 @@ Enterprise adoption of autonomous AI agents faces a fundamental challenge: how t
 
 This project explores practical solutions to this challenge through working code.
 
-The framework implements CISSP/CISA/CCSP-level security principles (Zero Trust, ABAC, non-repudiation, PQC resilience) applied to the threat surface introduced by autonomous LLM agents. The design focuses on:
+The framework implements CISSP/CISA/CCSP-level security principles (non-repudiation, PQC resilience) applied to the threat surface introduced by autonomous LLM agents. The design focuses on:
 
 - Providing a reference architecture for high-assurance agentic systems.
 - Enabling evaluation of practical trade-offs between AI agent autonomy and security controls.
 - Supporting discussion of agentic AI governance through concrete implementation.
-
-The accompanying [Technical Report](paper/comprehensive_framework/paper.pdf) details the threat model and architectural decisions behind this framework.
 
 ---
 
@@ -64,7 +62,7 @@ flowchart TB
             F1["Static Analysis<br/>(Control char / Null-byte check)"]
         end
         subgraph T2["Tier 2: Behavior"]
-            F2["Verifier Committee<br/>(N-member, any-flag policy)<br/>ABAC / Zero Trust / Semantic Firewall"]
+            F2["Verifier Committee<br/>(N-member, any-flag policy)<br/>Semantic Firewall"]
         end
         subgraph T3["Tier 3: Time"]
             F3["PQC (ML-DSA-87 / ML-KEM-1024)<br/>Tamper-evident Audit / Merkle Anchor"]
@@ -221,7 +219,6 @@ llsc -p <provider>                   # Start with specific provider
 llsc -m <model>                      # Start with specific model alias
 llsc --stdout                        # Non-interactive mode, output to stdout
 llsc --raw                           # Disable Markdown rendering (use with --stdout)
-llsc --mcp-server                    # Run as an MCP server (stdio transport)
 llsc --session <path>                # Load a saved session on startup
 llsc "query"                         # One-shot query
 ```
@@ -287,17 +284,6 @@ members = [
   { provider = "openai", model = "gpt-4o-mini" },
   { provider = "openrouter", model = "anthropic/claude-3-haiku" },
 ]
-```
-
-### MCP Server Configuration
-Configure remote MCP servers in `config.toml`:
-
-```toml
-[[mcp_servers]]
-name   = "my-server"
-command = "ssh"
-args   = ["user@host", "llsc", "--mcp-server"]
-zero_trust = true
 ```
 
 ---
@@ -402,6 +388,4 @@ Users should:
 
 ##  License
 Licensed under [Apache License 2.0](LICENSE). 
-
-For detailed architectural insights and the academic background of our security framework, please refer to the **[Technical Report (Pre-print)](paper/comprehensive_framework/paper.pdf)**.
 

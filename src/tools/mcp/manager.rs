@@ -1,6 +1,7 @@
 use crate::cli::ui;
-use crate::tools::mcp::client::{ClientSession, StdioServerParameters};
+use crate::tools::mcp::client::ClientSession;
 use anyhow::{Result, anyhow};
+use rmcp::model::RawContent;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -50,52 +51,55 @@ impl McpManager {
                 }
             }
 
-            join_set.spawn(async move {
-                ui::report_success(&format!(
-                    "Connecting to MCP server '{}'...",
-                    server_cfg.name
-                ));
+            let server_name = server_cfg.name.clone();
+            let transport = server_cfg.transport.clone();
+            let command = server_cfg.command.clone();
+            let args = server_cfg.args.clone();
+            let api_url = server_cfg.api_url.clone();
 
-                let params = StdioServerParameters {
-                    command: server_cfg.command.clone(),
-                    args: server_cfg.args.clone(),
-                    env: None,
+            join_set.spawn(async move {
+                ui::report_success(&format!("Connecting to MCP server '{}'...", server_name));
+
+                // Determine transport type and connect
+                let session_result = match transport.as_str() {
+                    "streamable-http" | "http" | "https" => {
+                        let url = api_url.ok_or_else(|| {
+                            anyhow!("api_url is required for streamable-http transport")
+                        })?;
+                        ClientSession::start_http(&url).await
+                    }
+                    _ => {
+                        // Default: stdio transport
+                        ClientSession::start_stdio(
+                            crate::tools::mcp::client::StdioServerParameters {
+                                command,
+                                args,
+                                env: None,
+                            },
+                        )
+                        .await
+                    }
                 };
 
-                match ClientSession::start(params, server_cfg.zero_trust).await {
-                    Ok(session) => {
-                        if let Err(e) = session.initialize().await {
-                            return Err(anyhow!(
-                                "Failed to initialize '{}': {}",
-                                server_cfg.name,
-                                e
-                            ));
-                        }
-
-                        match session.list_tools().await {
-                            Ok(result) => {
-                                let mut namespaced_tools = Vec::new();
-                                for tool in result.tools {
-                                    let namespaced_name =
-                                        format!("{}__{}", server_cfg.name, tool.name);
-                                    namespaced_tools.push(json!({
-                                        "name": namespaced_name,
-                                        "original_name": tool.name,
-                                        "server_name": server_cfg.name,
-                                        "description": tool.description,
-                                        "parameters": tool.input_schema,
-                                    }));
-                                }
-                                Ok((server_cfg.name, session, namespaced_tools))
+                match session_result {
+                    Ok(mut session) => match session.list_tools().await {
+                        Ok(tools) => {
+                            let mut namespaced_tools = Vec::new();
+                            for tool in tools {
+                                let namespaced_name = format!("{}__{}", server_name, tool.name);
+                                namespaced_tools.push(json!({
+                                    "name": namespaced_name,
+                                    "original_name": tool.name,
+                                    "server_name": server_name,
+                                    "description": tool.description,
+                                    "parameters": tool.input_schema,
+                                }));
                             }
-                            Err(e) => Err(anyhow!(
-                                "Failed to list tools for '{}': {}",
-                                server_cfg.name,
-                                e
-                            )),
+                            Ok((server_name, session, namespaced_tools))
                         }
-                    }
-                    Err(e) => Err(anyhow!("Failed to connect to '{}': {}", server_cfg.name, e)),
+                        Err(e) => Err(anyhow!("Failed to list tools for '{}': {}", server_name, e)),
+                    },
+                    Err(e) => Err(anyhow!("Failed to connect to '{}': {}", server_name, e)),
                 }
             });
         }
@@ -133,61 +137,36 @@ impl McpManager {
             .get(server_name)
             .ok_or_else(|| anyhow!("MCP server '{}' not connected.", server_name))?;
 
-        // Simplified argument distribution (similar to Python version)
+        // Filter out internal arguments (explanation, __meta)
         let mut tool_args = json!({});
-        let mut metadata = json!({});
-
         if let Some(args_obj) = arguments.as_object() {
             for (key, value) in args_obj {
-                if key == "explanation" || key.starts_with("__") {
-                    metadata[key] = value.clone();
-                } else {
+                if key != "explanation" && !key.starts_with("__") {
                     tool_args[key] = value.clone();
                 }
             }
         }
 
-        // Apply Zero Trust security if enabled for this session
-        if session.is_zero_trust {
-            use crate::security::identity::IdentityManager;
-            use crate::security::pqc::SecureStorage;
-
-            // 1. Generate PQC Signature Token
-            let token = IdentityManager::generate_token(Some(tool_name))?;
-            metadata["auth_token"] = json!(token);
-
-            // 2. Encrypt arguments with PQC using server's specific key
-            if let Ok(pk) =
-                IdentityManager::get_public_key_for("servers", server_name, "id_kem1024.pub")
-            {
-                let args_bytes = serde_json::to_vec(&tool_args)?;
-                let encrypted_packet = SecureStorage::encrypt(&args_bytes, &pk)?;
-                tool_args = json!({
-                    "pqc_encrypted": true,
-                    "data": encrypted_packet
-                });
-            } else {
-                // If ZT is enabled but server key is missing, it's a security risk
-                return Err(anyhow!(
-                    "Zero Trust error: Public key for server '{}' not found in {}/keys/servers/",
-                    server_name,
-                    crate::consts::get_base_dir().to_string_lossy()
-                ));
-            }
-        }
-
-        let result = session
-            .call_tool(tool_name, tool_args, None, Some(metadata))
-            .await?;
+        let result = session.call_tool(tool_name, tool_args).await?;
 
         let mut output = Vec::new();
         for content in result.content {
-            if content.content_type == "text" {
-                if let Some(text) = content.text {
-                    output.push(text);
+            match content.raw {
+                RawContent::Text(ref text) => {
+                    output.push(text.text.clone());
                 }
-            } else {
-                output.push(format!("[Binary/Other content: {}]", content.content_type));
+                RawContent::Image(ref img) => {
+                    output.push(format!("[Image: {}]", img.mime_type));
+                }
+                RawContent::Resource(ref _res) => {
+                    output.push("[Resource]".to_string());
+                }
+                RawContent::Audio(ref audio) => {
+                    output.push(format!("[Audio: {}]", audio.mime_type));
+                }
+                _ => {
+                    output.push("[Other content type]".to_string());
+                }
             }
         }
 

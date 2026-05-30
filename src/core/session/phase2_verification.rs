@@ -31,21 +31,7 @@ impl ActiveSession {
         args: &serde_json::Map<String, Value>,
         config: &crate::config::models::AppConfig,
     ) -> anyhow::Result<(serde_json::Map<String, Value>, bool, Option<Value>)> {
-        // 2a. Zero Trust enforcement for MCP servers
-        if self.check_zero_trust(name, &config.mcp_servers) {
-            match crate::security::identity::IdentityManager::generate_token(Some(name)) {
-                Ok(_token) => self
-                    .ctx
-                    .ui
-                    .report_success("Identity Verified (Hybrid PQC Token generated)"),
-                Err(e) => self
-                    .ctx
-                    .ui
-                    .report_warning(&format!("Identity Verification failed: {}", e)),
-            }
-        }
-
-        // 2b. Resolve Verifier Committee members
+        // 2a. Resolve Verifier Committee members
         let (committee_members, verifier_available) =
             self.ctx.config_manager.get_verifier_committee();
 
@@ -267,28 +253,6 @@ impl ActiveSession {
     }
 
     /// Check whether a Zero Trust MCP policy applies for this tool.
-    fn check_zero_trust(
-        &self,
-        name: &str,
-        mcp_servers: &[crate::config::models::McpServerConfig],
-    ) -> bool {
-        if !name.contains("__") {
-            return false;
-        }
-        let server_name = name.split("__").next().unwrap_or_default();
-        if let Some(mcp_config) = mcp_servers.iter().find(|s| s.name == server_name)
-            && mcp_config.zero_trust
-        {
-            self.ctx.ui.report_info(&format!(
-                "Zero Trust Policy enabled for server '{}'.",
-                server_name
-            ));
-            true
-        } else {
-            false
-        }
-    }
-
     /// Request human approval for a tool call.
     ///
     /// Returns `Ok(None)` if approved, `Ok(Some(cancel_message))` if rejected

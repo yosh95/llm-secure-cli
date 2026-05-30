@@ -30,14 +30,6 @@ struct Args {
     #[clap(long)]
     raw: bool,
 
-    /// Run as an MCP server
-    #[clap(long)]
-    mcp_server: bool,
-
-    /// Run as a Zero Trust MCP server (requires PQC signature and key registration)
-    #[clap(long)]
-    mcp_server_zt: bool,
-
     /// Load a saved session JSON file on startup
     #[clap(long)]
     session: Option<String>,
@@ -139,21 +131,6 @@ async fn main() {
 
     if let Some(command) = args.command {
         handle_subcommand(command, &ctx).await;
-        return;
-    }
-
-    if args.mcp_server || args.mcp_server_zt {
-        if let Err(e) = llm_secure_cli::cli::commands::mcp_server::run_mcp_server(
-            ctx.clone(),
-            args.mcp_server_zt,
-        )
-        .await
-        {
-            ctx.ui.report_error(&format!("MCP Server Error: {}", e));
-            // SAFETY: MCP server mode does not create an ActiveSession,
-            // so no Drop destructors (finalize_audit) will be skipped.
-            process::exit(1);
-        }
         return;
     }
 
