@@ -180,9 +180,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
             }),
             Arc::new(move |args, _config| {
                 let key = brave_key.clone();
-                Box::pin(async move {
-                    crate::tools::builtin::web::brave_search(args, &key).await
-                })
+                Box::pin(async move { crate::tools::builtin::web::brave_search(args, &key).await })
             }),
         );
     }

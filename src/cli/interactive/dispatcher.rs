@@ -66,10 +66,6 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             handle_raw(session);
             CommandResult::Handled
         }
-        "dump" => {
-            handle_dump(session);
-            CommandResult::Handled
-        }
         "edit_history" | "eh" => {
             handle_edit_history(session);
             CommandResult::Handled
@@ -447,27 +443,6 @@ pub fn handle_raw(session: &ActiveSession) {
             Role::Tool => "TOOL",
         };
         println!("[{}]\n{}\n", role, msg.get_text(true));
-    }
-}
-
-pub fn handle_dump(session: &ActiveSession) {
-    let state = session.get_client().get_state();
-
-    let mut conversation = state.conversation.clone();
-    let mut blobs = std::collections::HashMap::new();
-    mask_base64_in_conversation(&mut conversation, &mut blobs);
-
-    let dump = ConversationDump {
-        messages: conversation,
-    };
-
-    match toml::to_string(&dump) {
-        Ok(toml_str) => {
-            ui::print_rule(Some("Conversation Dump (TOML)"), Some("magenta"));
-            print!("{}", toml_str);
-            ui::print_rule(None, Some("magenta"));
-        }
-        Err(e) => ui::report_error(&format!("Failed to dump conversation: {}", e)),
     }
 }
 
@@ -1004,7 +979,9 @@ fn print_help() {
     println!("  /i, /info          Show session and security status");
     println!("  /c, /clear         Clear conversation history");
     println!("  /e, /edit          Open external editor for multi-line input");
-    println!("  /eh, /edit_history Edit the conversation history in TOML format");
+    println!(
+        "  /eh, /edit_history View/edit the conversation history in TOML format (includes full structure)"
+    );
     println!("  /session [load|delete <id>|clear]  List, load, delete, or clear saved sessions");
     println!("  /attach <path|url> Attach a file or URL to the next request");
     println!("  /tools [on|off]    Toggle or show status of tool execution");
@@ -1024,6 +1001,5 @@ fn print_help() {
         "  /credits          Show detailed OpenRouter credit info (uses both /credits and /key APIs)"
     );
     println!("  /raw               Show raw conversation history");
-    println!("  /dump              Dump conversation history as TOML");
     ui::print_rule(None, Some("cyan"));
 }

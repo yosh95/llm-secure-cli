@@ -248,7 +248,6 @@ Inside the `llsc` interactive session:
 - `/clear`, `/c`: Clear conversation history.
 - `/info`, `/i`: Show session info, integrity, and security status.
 - `/raw`: Show conversation as raw text.
-- `/dump`: Dump conversation history as TOML.
 - `/session [load|delete <id>|clear]`: List, load, delete, or clear saved sessions.
 - `/attach <path/URL>`: Add a file or website content to the context.
 - `/tools [on|off]`: Show or toggle autonomous tool use status.

@@ -29,7 +29,6 @@ impl ChatCompleter {
                 "/info",
                 "/i",
                 "/raw",
-                "/dump",
                 "/session",
                 "/attach",
                 "/tools",

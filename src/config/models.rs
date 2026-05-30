@@ -387,4 +387,3 @@ pub struct AppConfig {
     #[serde(flatten)]
     pub providers: HashMap<String, ProviderConfig>,
 }
-

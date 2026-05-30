@@ -19,7 +19,7 @@ use serde_json::json;
 // that the LLM sees as its "observation."  If this function produces garbled,
 // truncated, or wrong output, the LLM will hallucinate incorrect decisions.
 //
-// Each branch (file_ops, grep, search, python, brave_search, etc.) is tested.
+// Each branch (file_ops, grep, search, python, etc.) is tested.
 
 #[test]
 fn test_humanize_python_execution_shows_stdout_stderr() {
@@ -48,45 +48,6 @@ fn test_humanize_python_execution_with_errors() {
     assert!(!output.contains("STDOUT:"));
     assert!(output.contains("STDERR:"));
     assert!(output.contains("NameError"));
-}
-
-#[test]
-fn test_humanize_brave_search_formats_correctly() {
-    let v = json!({
-        "query": "rust programming",
-        "results": [
-            {
-                "title": "Rust Lang",
-                "url": "https://www.rust-lang.org",
-                "snippets": ["A language empowering everyone to build reliable software."]
-            },
-            {
-                "title": "Learn Rust",
-                "url": "https://learn.rust-lang.org",
-                "snippets": ["An interactive book.", "With exercises."]
-            }
-        ]
-    });
-    let output = humanize_tool_result("brave_search", &v);
-    let expected_prefix = "Search results for \"rust programming\" (2 items)";
-    assert!(
-        output.starts_with(expected_prefix),
-        "Expected prefix: {:?}, got: {:?}",
-        expected_prefix,
-        &output[..expected_prefix.len().min(output.len())]
-    );
-    assert!(output.contains("1. Rust Lang"));
-    assert!(output.contains("URL: https://www.rust-lang.org"));
-    assert!(output.contains("2. Learn Rust"));
-    assert!(output.contains("An interactive book."));
-    assert!(output.contains("With exercises."));
-}
-
-#[test]
-fn test_humanize_brave_search_no_results() {
-    let v = json!({"query": "nothing", "results": []});
-    let output = humanize_tool_result("brave_search", &v);
-    assert_eq!(output, "No search results found.");
 }
 
 #[test]

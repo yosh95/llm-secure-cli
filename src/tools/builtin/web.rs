@@ -9,10 +9,7 @@ use std::collections::HashMap;
 ///
 /// The raw API response is returned as-is without any restructuring.
 /// All optional parameters (count, max_tokens, max_urls, freshness, etc.) use API-side defaults.
-pub async fn brave_search(
-    args: HashMap<String, Value>,
-    api_key: &str,
-) -> anyhow::Result<Value> {
+pub async fn brave_search(args: HashMap<String, Value>, api_key: &str) -> anyhow::Result<Value> {
     let query = args
         .get("query")
         .and_then(|v| v.as_str())
@@ -25,10 +22,7 @@ pub async fn brave_search(
 ///
 /// Returns the raw JSON response from the API without any restructuring.
 /// Only sends the query parameter; all other parameters use API-side defaults.
-async fn call_brave_llm_context(
-    query: &str,
-    api_key: &str,
-) -> anyhow::Result<Value> {
+async fn call_brave_llm_context(query: &str, api_key: &str) -> anyhow::Result<Value> {
     let mut body = serde_json::Map::new();
     body.insert("q".to_string(), json!(query));
 
