@@ -9,34 +9,32 @@
 
 ---
 
-###  Purpose & Positioning
+### Purpose & Positioning
 
-Enterprise adoption of autonomous AI agents faces a fundamental, unsolved challenge: **how do you grant an AI meaningful agency while maintaining the security and governance standards that organizations require?** This project is one engineer's attempt to answer that question in working code.
+Enterprise adoption of autonomous AI agents faces a fundamental challenge: how to grant AI meaningful agency while maintaining security and governance standards.
 
-`llm-secure-cli` was built primarily as a **personal daily-use tool** and as a **portfolio artifact** — a concrete demonstration of how CISSP/CISA/CCSP-level security principles (Zero Trust, ABAC, non-repudiation, PQC resilience) can be applied to the novel threat surface introduced by autonomous LLM agents.
+This project explores practical solutions to this challenge through working code.
 
-**This tool is not certified or validated for enterprise production use.** No formal third-party security audit has been conducted, and the PQC primitives rely on Rust implementations that have not undergone independent cryptographic review. Deploying this in a regulated or mission-critical environment without additional validation would be inappropriate.
+The framework implements CISSP/CISA/CCSP-level security principles (Zero Trust, ABAC, non-repudiation, PQC resilience) applied to the threat surface introduced by autonomous LLM agents. The design focuses on:
 
-Instead, its recommended uses are:
-
--  **As a reference architecture** — for security engineers and architects exploring what a high-assurance agentic system *could* look like.
--  **As an evaluation platform** — for studying the practical trade-offs between AI agent autonomy and hybrid high-assurance security controls.
--  **As a design provocation** — a starting point for organizational discussions on agentic AI governance, not a finished answer.
+- Providing a reference architecture for high-assurance agentic systems.
+- Enabling evaluation of practical trade-offs between AI agent autonomy and security controls.
+- Supporting discussion of agentic AI governance through concrete implementation.
 
 The accompanying [Technical Report](paper/comprehensive_framework/paper.pdf) details the threat model and architectural decisions behind this framework.
 
 ---
 
-###  Why Audit Logs? — Why AI Agents Need Auditing
+### Why Audit Logs? — Why AI Agents Need Auditing
 
-Enterprise adoption of autonomous AI agents is hindered by two fundamental risks: **destructive actions** (unintended file modifications, system changes) and **information leakage** (exfiltration of sensitive data). Large Language Models are inherently black-box, stochastic systems — their behavior cannot be fully controlled or predicted through rules alone.
+Enterprise adoption of autonomous AI agents is hindered by two fundamental risks: destructive actions (unintended file modifications, system changes) and information leakage (exfiltration of sensitive data). Large Language Models are inherently black-box, stochastic systems — their behavior cannot be fully controlled or predicted through rules alone.
 
 This tool addresses these challenges through two key mechanisms:
 
-- **Verifier Committee (Multi-LLM Validation)**: Before any tool execution, N independent LLMs concurrently assess the proposed action for validity, safety, and information leakage risk. If any member flags a concern, the system escalates to Human-in-the-Loop (HITL) for approval.
-- **Tamper-Evident Audit Logs**: Every action is recorded with its full reasoning chain — *why* the agent chose a particular tool with particular arguments — protected by chained hashing and PQC signatures (ML-DSA-87) to ensure non-repudiation and auditability.
+- Verifier Committee (Multi-LLM Validation): Before any tool execution, N independent LLMs concurrently assess the proposed action for validity, safety, and information leakage risk. If any member flags a concern, the system escalates to Human-in-the-Loop (HITL) for approval.
+- Tamper-Evident Audit Logs: Every action is recorded with its full reasoning chain — *why* the agent chose a particular tool with particular arguments — protected by chained hashing and PQC signatures (ML-DSA-87) to ensure non-repudiation and auditability.
 
-The design philosophy draws inspiration from corporate governance: **just as artificial persons (corporations) are controlled through mandatory auditing, autonomous AI agents — another form of non-human actor — require audit-based control to be safely entrusted with agency.**
+The design philosophy draws inspiration from corporate governance: just as artificial persons (corporations) are controlled through mandatory auditing, autonomous AI agents — another form of non-human actor — require audit-based control to be safely entrusted with agency.
 
 ---
 
@@ -108,14 +106,14 @@ flowchart TB
 
 ##  Quick Start
 
-1.  **Install**:
+1.  Install:
     ```bash
     # Install from source
     git clone https://github.com/yosh95/llm-secure-cli.git
     cd llm-secure-cli
     cargo install --path .
     ```
-2.  **Set API Keys**: `llsc` uses OpenAI-compatible APIs. Set keys for your chosen provider.
+2.  Set API Keys: `llsc` uses OpenAI-compatible APIs. Set keys for your chosen provider.
     ```bash
     # Example for OpenRouter
     export OPENROUTER_API_KEY="your-api-key"
@@ -124,19 +122,19 @@ flowchart TB
     # ANYNAME_API_KEY can be used if you define [ANYNAME] in config.toml
     ```
 
-### 3. **Chat**: Type `llsc` to start an interactive session.
+### 3. Chat: Type `llsc` to start an interactive session.
 
-1.   **Automatic Initialization**: On the first run, `~/.llm_secure_cli/config.toml` is automatically created.
-2.   **Model Setup**: By default, no model is selected. Use `/model <model_name>` (e.g., `/model llama3`) to set one before your first request.
-3.   **Brave Search**: Built-in support for the Brave Search API is available for comprehensive searching across all providers (requires `BRAVE_API_KEY`).
-4.   **File/URL Attachment**: Use `/attach <path|URL>` to quickly add local files or web content to your conversation.
-5.  **Configure (Optional)**: Ollama is the default provider. To use OpenRouter or others, edit the configuration file:
+1.   Automatic Initialization: On the first run, `~/.llm_secure_cli/config.toml` is automatically created.
+2.   Model Setup: By default, no model is selected. Use `/model <model_name>` (e.g., `/model llama3`) to set one before your first request.
+3.   Brave Search: Built-in support for the Brave Search API is available for comprehensive searching across all providers (requires `BRAVE_API_KEY`).
+4.   File/URL Attachment: Use `/attach <path|URL>` to quickly add local files or web content to your conversation.
+5.  Configure (Optional): Ollama is the default provider. To use OpenRouter or others, edit the configuration file:
 
     ```bash
     # Edit ~/.llm_secure_cli/config.toml
     ```
 
-6.  **Help**: Type `/help` inside the chat to see all commands.
+6.  Help: Type `/help` inside the chat to see all commands.
 
 ### Docker Isolation (Optional)
 Run the agent in a completely isolated container to protect your host system. In `high` security mode (default), you must initialize the integrity manifest within the mounted volume.
@@ -172,14 +170,14 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 
 ## Core Features & Tools
 
-- **Unified Provider Access**: Seamlessly switch between any OpenAI-compatible APIs (**OpenRouter, OpenAI, Ollama, LiteLLM**).
-- **Autonomous Agent**: A streamlined set of built-in tools for complex automation:
+- Unified Provider Access: Seamlessly switch between any OpenAI-compatible APIs (**OpenRouter, OpenAI, Ollama, LiteLLM**).
+- Autonomous Agent: A streamlined set of built-in tools for complex automation:
     - **Universal Executor**: `execute_python` — run arbitrary Python code for any file operation, data processing, or computation task.
     - **Web Search**: `brave_search` — Brave LLM Context API for grounded, pre-extracted web content (LLM-optimized).
-- **High-Assurance via Verifier Committee**: Every tool call is verified by the **Verifier Committee** — N independent LLMs operating concurrently under an "any-flag" policy — as a Semantic Firewall to ensure intent alignment.
-- **MCP (Model Context Protocol)**: Connect to remote resources or services via custom servers.
-- **Operational Stability**: A clean, flicker-free UI designed for long-term "Deep Work" sessions.
-- **Human-in-the-Loop**: Configurable `auto_approval_level` (none/low/medium) to balance speed and safety.
+- High-Assurance via Verifier Committee: Every tool call is verified by the **Verifier Committee** — N independent LLMs operating concurrently under an "any-flag" policy — as a Semantic Firewall to ensure intent alignment.
+- MCP (Model Context Protocol): Connect to remote resources or services via custom servers.
+- Operational Stability: A clean, flicker-free UI designed for long-term "Deep Work" sessions.
+- Human-in-the-Loop: Configurable `auto_approval_level` (none/low/medium) to balance speed and safety.
 
 ### Autonomous Agent Capabilities
 The AI agent autonomously selects tools to perform tasks. For example, it can search for a bug with Python file operations, read the relevant code, and apply a fix — all through `execute_python`. All actions are logged with cryptographic signatures for auditability.
@@ -195,7 +193,7 @@ As a tool designed with **CISSP/CISA/CCSP** principles in mind, `llm-secure-cli`
 - **AI-native Policy Engine (Verifier Committee)**: Replaces complex regex blocklists with a hardcoded **Security Constitution**. The system automatically gathers context (OS, User, Directory, Git status) and uses N independent LLM verifiers to judge risks semantically using structured verdicts (ALLOW/REVIEW). This avoids the quagmire of platform-dependent static rules.
 - **Any-Flag Policy**: The Verifier Committee runs ALL members concurrently. If ANY member flags a call as requiring review, human approval is mandatory. Only if ALL members approve is the call auto-approved.
 - **Path Guardrails (Verifier-based)**: Path validation is handled entirely by the Verifier Committee. The static path whitelist has been removed — the verifier LLM uses its inherent knowledge of sensitive paths (like `C:\Windows` or `/etc`) together with the user's intent context to determine whether a file access is safe.
-- **PQC at Maximum Strength (CASS)**: Security requirements (PQC signature level, audit encryption) are fixed at the highest available NIST Level 5 (**ML-DSA-87** for signing, **ML-KEM-1024** for encryption). Risk-level-based variant switching has been discontinued.
+- **PQC at Maximum Strength (CASS)**: Security requirements (PQC signature level, audit encryption) are fixed at the highest available NIST Level 5 (ML-DSA-87 for signing, ML-KEM-1024 for encryption). Risk-level-based variant switching has been discontinued.
 - **Intent Verification**: Every tool call is verified by the Verifier Committee. This acts as a **Semantic Firewall**, ensuring the proposed tool call aligns with the user's original intent and providing corrected arguments if small discrepancies are detected.
 - **Minimalist Fast-fail**: A lightweight syntactic check blocks only control characters and NULL bytes in **nanoseconds**, while the heavy lifting of security judgment is shifted to the Verifier Committee. Shell invocation pattern detection has been removed as redundant — the Verifier Committee handles all semantic analysis.
 - **Verifier Fallback**: When the verifier is unavailable (network error, API failure), the system always asks for human approval. The `block` option has been removed — the verifier fallback now always requires manual confirmation.
@@ -209,7 +207,7 @@ As a tool designed with **CISSP/CISA/CCSP** principles in mind, `llm-secure-cli`
 - **Bi-directional Verification**: Tool results can be signed by the responder, allowing the requester to verify that the observations are authentic and untampered within the protocol's scope.
 
 ### 3. Observability & Audit Compliance (Tier 3 Reference Implementation)
-- **Tamper-Evident Audit Logs**: Audit trails are protected using **Chained Hashing** and optionally encrypted with **ML-KEM (Kyber)** for confidentiality.
+- Tamper-Evident Audit Logs: Audit trails are protected using **Chained Hashing** and optionally encrypted with **ML-KEM (Kyber)** for confidentiality.
 - **Merkle Tree Anchoring**: The Tier 3 implementation uses Merkle Trees to anchor log batches, demonstrating an architecture to prevent historical revisionism and provide compact proofs of session integrity.
 
 ---
@@ -306,7 +304,7 @@ zero_trust = true
 
 ## Agent Skill Verification
 
-`llsc` provides a **three-tier verification pipeline** for [Agent Skills](https://agentskills.io/specification) — structural validation, Ed25519/ML-DSA signature verification, and Verifier Committee Semantic Firewall analysis — that audits skills before installation without executing them.  See **[docs/AGENT_SKILLS.md](docs/AGENT_SKILLS.md)** for the full rationale, usage, and threat model.
+`llsc` provides a three-tier verification pipeline for [Agent Skills](https://agentskills.io/specification) — structural validation, Ed25519/ML-DSA signature verification, and Verifier Committee Semantic Firewall analysis — that audits skills before installation without executing them.  See **[docs/AGENT_SKILLS.md](docs/AGENT_SKILLS.md)** for the full rationale, usage, and threat model.
 
 ```bash
 llsc verify-skill ./path/to/skill/           # Human-readable report
@@ -389,6 +387,18 @@ just bench-local
 # Verifier benchmarks (requires API keys)
 just bench-verifier openrouter google/gemini-3.1-flash-lite
 ```
+
+
+## Disclaimer
+
+**This tool is not certified or validated for enterprise production use.** No formal third-party security audit has been conducted, and the PQC primitives rely on Rust implementations that have not undergone independent cryptographic review. Deploying this in a regulated or mission-critical environment without additional validation would be inappropriate.
+
+Users should:
+- Conduct independent security reviews before production deployment.
+- Validate PQC implementations for their specific use cases.
+- Understand the limitations of the current implementation.
+
+---
 
 ##  License
 Licensed under [Apache License 2.0](LICENSE). 
