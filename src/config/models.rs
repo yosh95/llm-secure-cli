@@ -375,7 +375,7 @@ pub struct McpServerConfig {
     /// Transport type: "stdio" (default) or "streamable-http"
     #[serde(default)]
     pub transport: String,
-    /// Base URL for Streamable HTTP transport (e.g., "https://example.com/mcp")
+    /// Base URL for Streamable HTTP transport (e.g., "<https://example.com/mcp>")
     #[serde(default)]
     pub api_url: Option<String>,
 }
