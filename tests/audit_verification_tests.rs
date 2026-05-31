@@ -275,6 +275,10 @@ async fn register_verifier_mock(ctx: &Arc<AppContext>, provider_name: &str, resp
 
 /// Helper: create a session, configure it, and run `process_and_print`.
 /// Returns the session.
+///
+/// When `verifier_response` is `Some(...)`, the verifier is configured via
+/// state.toml with `mock_verifier:verifier-model` and enabled.
+/// When `None`, the verifier is disabled (no provider:model set, or disabled).
 async fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSession {
     create_test_env();
     // Clear audit log to avoid cross-test contamination
@@ -290,21 +294,27 @@ async fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSessi
 
     let ui = Arc::new(ui);
     let ctx = AppContext::new(ui);
-    let mut config = (*ctx
-        .config_manager
-        .get_config()
-        .expect("Failed to get config"))
-    .clone();
 
     // Standard security level (no PQC key required)
-    config.security.security_level = llm_secure_cli::config::models::SecurityLevel::Standard;
+    {
+        let mut config = (*ctx
+            .config_manager
+            .get_config()
+            .expect("Failed to get config"))
+        .clone();
+        config.security.security_level = llm_secure_cli::config::models::SecurityLevel::Standard;
+        let _ = ctx.config_manager.set_config(config);
+    }
 
     if let Some(v_resp) = verifier_response {
-        // Enable verifier with a mock provider
-        config.security.verifier_enabled = Some(true);
-        config.security.verifier_provider = "mock_verifier".to_string();
-        config.security.verifier_model = "verifier-model".to_string();
-        let _ = ctx.config_manager.set_config(config);
+        // Configure verifier via state.toml (new provider:model format)
+        ctx.config_manager
+            .set_primary_verifier("mock_verifier:verifier-model")
+            .expect("Failed to set verifier provider:model");
+        ctx.config_manager
+            .set_verifier_enabled(true)
+            .expect("Failed to enable verifier");
+
         let ctx = Arc::new(ctx);
 
         // Register the verifier mock
@@ -333,9 +343,12 @@ async fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSessi
         result.expect("process_and_print should succeed");
         session
     } else {
-        // Verifier disabled
-        config.security.verifier_enabled = Some(false);
-        let _ = ctx.config_manager.set_config(config);
+        // Verifier disabled: don't set any verifier provider:model
+        // and explicitly disable verifier
+        ctx.config_manager
+            .set_verifier_enabled(false)
+            .expect("Failed to disable verifier");
+
         let ctx = Arc::new(ctx);
 
         let mock_client = SessionMockClient {
@@ -392,6 +405,16 @@ async fn test_audit_no_verifier_human_approves() {
     let _session = run_session(TestUi::always_yes(), None).await;
 
     let log_entries = read_audit_log();
+
+    // DEBUG: Print all entries
+    for (i, entry) in log_entries.iter().enumerate() {
+        eprintln!(
+            "DEBUG Entry {}: event_type={:?}, args={:?}",
+            i,
+            entry.get("event_type"),
+            entry.get("args")
+        );
+    }
 
     // Check verifier_decision entries
     let verifier_decisions: Vec<_> = log_entries

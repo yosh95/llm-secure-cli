@@ -636,7 +636,7 @@ Attackers can distribute malicious skills that:
 pub async fn analyze_skill_semantic(
     dir: &Path,
     ctx: &std::sync::Arc<crate::core::context::AppContext>,
-    config: &crate::config::models::SecurityConfig,
+    _config: &crate::config::models::SecurityConfig,
     provider: Option<&str>,
     model: Option<&str>,
 ) -> SkillSemanticVerdict {
@@ -650,14 +650,18 @@ pub async fn analyze_skill_semantic(
         }
     };
 
-    let p = provider.unwrap_or(&config.verifier_provider);
-    let m = model.unwrap_or(&config.verifier_model);
-
-    if p.is_empty() || m.is_empty() {
-        return SkillSemanticVerdict::Error {
-            message: "Verifier provider/model not configured. Set verifier_provider and verifier_model in config.toml, or use --provider/--model flags.".to_string(),
-        };
-    }
+    let p = match provider {
+        Some(p) if !p.is_empty() => p,
+        _ => return SkillSemanticVerdict::Error {
+            message: "Verifier provider not configured. Use /vm <provider:model> to set the verifier, or pass --provider/--model flags.".to_string(),
+        },
+    };
+    let m = match model {
+        Some(m) if !m.is_empty() => m,
+        _ => return SkillSemanticVerdict::Error {
+            message: "Verifier model not configured. Use /vm <provider:model> to set the verifier, or pass --provider/--model flags.".to_string(),
+        },
+    };
 
     let client = {
         let registry = ctx.client_registry.lock().await;

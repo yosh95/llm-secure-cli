@@ -59,13 +59,13 @@ impl ActiveSession {
                 .await
         } else {
             // Verifier is off or not configured: fall back to human approval.
-            if config.security.verifier_enabled.unwrap_or(false) {
+            if self.ctx.config_manager.get_verifier_enabled() {
                 self.ctx.ui.report_warning(
                     "Verifier is enabled, but no verifier committee members are configured.                      Falling back to manual approval.",
                 );
                 self.ctx
                     .ui
-                    .report_info("Hint: Use /vp and /vm to set the primary verifier, or add [security.verifier_committee] members.");
+                    .report_info("Hint: Use /vm <provider:model> to set the verifier, or /vcommittee add <provider:model> to add committee members.");
             }
             // Show the tool call — human needs to review
             self.ctx.ui.print_tool_call(name, &serde_json::json!(args));

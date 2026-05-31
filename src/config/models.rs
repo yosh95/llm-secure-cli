@@ -154,10 +154,25 @@ pub struct ProviderConfig {
 pub struct AppState {
     pub last_used_provider: Option<String>,
     pub last_used_model: Option<String>,
-    pub last_used_v_provider: Option<String>,
-    pub last_used_v_model: Option<String>,
+    /// Verifier LLM on/off state. Persisted in state.toml.
+    /// Default (None) = enabled.
+    #[serde(default = "default_verifier_enabled")]
+    pub verifier_enabled: Option<bool>,
+    /// Verifier committee members (provider:model strings).
+    /// Set via `/vcommittee add|set <provider:model>` command.
+    /// A single member means single-verifier mode, multiple means committee mode.
+    #[serde(default)]
+    pub verifier_committee_members: Vec<String>,
+    /// Whether to display tool execution results to the user.
+    /// Default (None/false) = hidden (not shown).
+    #[serde(default)]
+    pub show_tool_result: Option<bool>,
     #[serde(default)]
     pub model_aliases: HashMap<String, ModelAlias>,
+}
+
+fn default_verifier_enabled() -> Option<bool> {
+    Some(true)
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -193,37 +208,9 @@ pub struct CommitteeMemberConfig {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SecurityConfig {
     #[serde(default)]
-    pub verifier_enabled: Option<bool>,
-    #[serde(default = "default_unified_provider")]
-    pub verifier_provider: String,
-    #[serde(default = "default_verifier_model")]
-    pub verifier_model: String,
-    #[serde(default)]
     pub security_level: SecurityLevel,
-    /// Additional verifier committee members beyond the primary (verifier_provider/model).
-    ///
-    /// When configured, the verifier runs ALL members (including the primary legacy pair)
-    /// concurrently. If ANY member flags the call as NeedsApproval, human approval is required.
-    /// Only if ALL members return Allowed is the call auto-approved.
-    ///
-    /// To use committee mode, add entries like:
-    /// ```toml
-    /// [security.verifier_committee]
-    /// members = [
-    ///   { provider = "openai", model = "gpt-4o" },
-    ///   { provider = "anthropic", model = "claude-3-opus" },
-    /// ]
-    /// ```
-    #[serde(default)]
-    pub verifier_committee: VerifierCommitteeConfig,
 }
 
-fn default_verifier_model() -> String {
-    "".to_string()
-}
-fn default_unified_provider() -> String {
-    "".to_string()
-}
 /// Configuration for the verifier committee.
 ///
 /// The committee runs multiple independent LLM verifiers concurrently.
@@ -250,11 +237,7 @@ pub struct VerifierCommitteeConfig {
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
-            verifier_enabled: None,
-            verifier_provider: default_unified_provider(),
-            verifier_model: default_verifier_model(),
             security_level: SecurityLevel::High,
-            verifier_committee: VerifierCommitteeConfig::default(),
         }
     }
 }
@@ -282,52 +265,11 @@ impl SecurityConfig {
     /// Use [`Self::validate_warnings`] for advisory issues that should not
     /// block configuration loading but are worth surfacing to the user.
     pub fn validate(&self) -> Vec<ValidationError> {
-        let mut errors = Vec::new();
+        let errors = Vec::new();
 
         // --- security_level ---
         // No runtime check needed: invalid values are rejected at
         // deserialization time by the SecurityLevel custom Deserialize impl.
-
-        // --- cross-field: verifier_enabled enabled but nothing configured ---
-        if self.verifier_enabled.unwrap_or(false) {
-            let has_legacy = !self.verifier_provider.is_empty() && !self.verifier_model.is_empty();
-            let has_committee = !self.verifier_committee.members.is_empty();
-            if !has_legacy && !has_committee {
-                errors.push(ValidationError {
-                    field: "verifier_enabled".to_string(),
-                    message: "verifier_enabled is enabled but neither legacy provider/model nor verifier_committee members are configured. Set verifier_provider/model or add verifier_committee.members.".to_string(),
-                });
-            }
-            // Warn if legacy is partially configured
-            if self.verifier_provider.is_empty() && !self.verifier_model.is_empty() {
-                errors.push(ValidationError {
-                    field: "verifier_provider".to_string(),
-                    message: "verifier_provider is empty but verifier_model is set. Both or neither must be set.".to_string(),
-                });
-            }
-            if !self.verifier_provider.is_empty() && self.verifier_model.is_empty() {
-                errors.push(ValidationError {
-                    field: "verifier_model".to_string(),
-                    message: "verifier_model is empty but verifier_provider is set. Both or neither must be set.".to_string(),
-                });
-            }
-        }
-
-        // --- cross-field: committee members with empty provider/model ---
-        for (idx, member) in self.verifier_committee.members.iter().enumerate() {
-            if member.provider.is_empty() {
-                errors.push(ValidationError {
-                    field: format!("verifier_committee[{}].provider", idx),
-                    message: "committee member provider must not be empty".to_string(),
-                });
-            }
-            if member.model.is_empty() {
-                errors.push(ValidationError {
-                    field: format!("verifier_committee[{}].model", idx),
-                    message: "committee member model must not be empty".to_string(),
-                });
-            }
-        }
 
         errors
     }
@@ -336,17 +278,7 @@ impl SecurityConfig {
     /// combinations.  These do **not** block configuration loading but should
     /// be surfaced to the user (e.g., at startup or via `/info`).
     pub fn validate_warnings(&self) -> Vec<ValidationError> {
-        let mut warnings = Vec::new();
-
-        // --- cross-field: high security without verifier ---
-        if self.security_level == SecurityLevel::High && !self.verifier_enabled.unwrap_or(false) {
-            warnings.push(ValidationError {
-                field: "security_level".to_string(),
-                message: "security_level 'high' is set but verifier_enabled is not enabled — high-risk tools will escalate to Critical".to_string(),
-            });
-        }
-
-        warnings
+        Vec::new()
     }
 
     /// Convenience wrapper that returns `Ok(())` if valid, or `Err` with

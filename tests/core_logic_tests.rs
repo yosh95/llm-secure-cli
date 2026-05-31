@@ -211,43 +211,26 @@ security_level = "paranoid"
 }
 
 #[test]
-fn test_security_config_validate_warnings_high_without_verifier() {
-    // Default config has security_level="high" but verifier_enabled=None
+fn test_security_config_default_has_no_validation_errors() {
+    // SecurityConfig now only contains security_level.
+    let cfg = SecurityConfig::default();
+    let errors = cfg.validate();
+    assert!(
+        errors.is_empty(),
+        "Default config should have no validation errors, got: {:?}",
+        errors
+    );
+}
+
+#[test]
+fn test_security_config_default_has_no_warnings() {
+    // SecurityConfig now only contains security_level.
     let cfg = SecurityConfig::default();
     let warnings = cfg.validate_warnings();
     assert!(
-        warnings.iter().any(|w| w.field == "security_level"),
-        "Default config should warn about high security without verifier_enabled"
-    );
-}
-
-#[test]
-fn test_security_config_no_warnings_when_verifier_enabled() {
-    let cfg = SecurityConfig {
-        verifier_enabled: Some(true),
-        ..Default::default()
-    };
-    let warnings = cfg.validate_warnings();
-    assert!(
         warnings.is_empty(),
-        "Config with verifier enabled should have no warnings, got: {:?}",
+        "Default config should have no warnings, got: {:?}",
         warnings
-    );
-}
-
-#[test]
-fn test_security_config_validate_errors_for_verifier_without_provider() {
-    // verifier_enabled is enabled, but neither
-    // legacy provider/model nor verifier_committee members are set.
-    let cfg = SecurityConfig {
-        verifier_enabled: Some(true),
-        verifier_provider: "".to_string(),
-        ..Default::default()
-    };
-    let errors = cfg.validate();
-    assert!(
-        errors.iter().any(|e| e.field == "verifier_enabled"),
-        "Should report error on verifier_enabled when enabled without any provider/committee config"
     );
 }
 

@@ -32,7 +32,7 @@ fn test_config_merging_from_current_dir() {
     // Write config to the actual base directory where ConfigManager will look.
     let custom_config = r#"
 [security]
-verifier_enabled = false
+security_level = "standard"
 "#;
     let config_path = actual_base_dir.join("config.toml");
     fs::write(&config_path, custom_config).expect("Failed to write mock config");
@@ -40,8 +40,11 @@ verifier_enabled = false
     let manager = ConfigManager::new();
     let config = manager.get_config().expect("Failed to load config");
 
-    // Default is true, so false indicates it was merged from our file.
-    assert_eq!(config.security.verifier_enabled, Some(false));
+    // Default is "high", so "standard" indicates it was merged from our file.
+    assert_eq!(
+        config.security.security_level,
+        llm_secure_cli::config::models::SecurityLevel::Standard
+    );
 
     // Clean up
     let _ = fs::remove_file(config_path);

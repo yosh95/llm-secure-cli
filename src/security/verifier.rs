@@ -91,12 +91,23 @@ pub async fn verify_tool_call(
 /// Validates a tool call using a secondary LLM and returns the full outcome.
 /// The caller should handle NeedsApproval and FallbackRequired by requiring human approval.
 pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> VerificationOutcome {
-    let p = params
-        .provider
-        .unwrap_or_else(|| params.config.verifier_provider.clone());
-    let m = params
-        .model
-        .unwrap_or_else(|| params.config.verifier_model.clone());
+    let p =
+        match &params.provider {
+            Some(p) if !p.is_empty() => p.clone(),
+            _ => return VerificationOutcome::FallbackRequired(
+                "Verifier provider not configured. Use /vm <provider:model> to set the verifier."
+                    .to_string(),
+            ),
+        };
+    let m = match &params.model {
+        Some(m) if !m.is_empty() => m.clone(),
+        _ => {
+            return VerificationOutcome::FallbackRequired(
+                "Verifier model not configured. Use /vm <provider:model> to set the verifier."
+                    .to_string(),
+            );
+        }
+    };
 
     let client = {
         let registry = params.ctx_app.client_registry.lock().await;

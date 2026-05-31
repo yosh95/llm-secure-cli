@@ -1,4 +1,4 @@
-//! Application state persistence (provider/model memory, aliases).
+//! Application state persistence (provider/model memory, aliases, flags).
 
 use crate::config::models::AppState;
 use crate::consts::state_file_path;
@@ -23,8 +23,6 @@ impl ConfigManager {
         // deadlocking when acquiring the write lock.
         if read.last_used_provider.is_none()
             && read.last_used_model.is_none()
-            && read.last_used_v_provider.is_none()
-            && read.last_used_v_model.is_none()
             && read.model_aliases.is_empty()
         {
             drop(read);
@@ -104,13 +102,18 @@ impl ConfigManager {
         Ok(())
     }
 
-    pub fn update_v_state(&self, provider: &str, model: &str) -> anyhow::Result<()> {
+    /// Set the primary verifier committee member (replaces all members).
+    /// The format is "provider:model" (e.g. "ollama:gemma4:e2b").
+    /// This clears any existing committee members and sets this as the sole member.
+    pub fn set_primary_verifier(&self, provider_model: &str) -> anyhow::Result<()> {
         let mut write = self
             .app_state
             .write()
             .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-        write.last_used_v_provider = Some(provider.to_string());
-        write.last_used_v_model = Some(model.to_string());
+        write.verifier_committee_members.clear();
+        write
+            .verifier_committee_members
+            .push(provider_model.to_string());
         Self::persist_state(&write);
         Ok(())
     }
@@ -142,83 +145,124 @@ impl ConfigManager {
         Ok(existed)
     }
 
-    /// Resolve the verifier provider and model, prioritizing AppState (state.toml)
-    /// but falling back to AppConfig (config.toml).
-    pub fn get_verifier_settings(&self) -> (String, String) {
+    // ── Verifier enabled flag (state.toml) ─────────────────────────────────
+
+    /// Get the verifier enabled state from state.toml.
+    pub fn get_verifier_enabled(&self) -> bool {
         let state = self.get_state().unwrap_or_else(|_| Default::default());
-        let config = self.get_config().ok();
-
-        let provider = state
-            .last_used_v_provider
-            .filter(|s| !s.is_empty())
-            .or_else(|| {
-                config
-                    .as_ref()
-                    .map(|c| c.security.verifier_provider.clone())
-            })
-            .unwrap_or_default();
-
-        let model = state
-            .last_used_v_model
-            .filter(|s| !s.is_empty())
-            .or_else(|| config.as_ref().map(|c| c.security.verifier_model.clone()))
-            .unwrap_or_default();
-
-        (provider, model)
+        state.verifier_enabled.unwrap_or(true)
     }
 
-    /// Resolve the full verifier committee configuration.
+    /// Toggle verifier on/off and persist to state.toml.
+    pub fn set_verifier_enabled(&self, enabled: bool) -> anyhow::Result<()> {
+        let mut write = self
+            .app_state
+            .write()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+        write.verifier_enabled = Some(enabled);
+        Self::persist_state(&write);
+        Ok(())
+    }
+
+    // ── Show tool result flag (state.toml) ─────────────────────────────────
+
+    /// Whether tool execution results should be displayed to the user.
+    /// Default (None/false) = hidden — useful when output is very large.
+    pub fn get_show_tool_result(&self) -> bool {
+        let state = self.get_state().unwrap_or_else(|_| Default::default());
+        state.show_tool_result.unwrap_or(false)
+    }
+
+    /// Set the show_tool_result flag and persist to state.toml.
+    pub fn set_show_tool_result(&self, show: bool) -> anyhow::Result<()> {
+        let mut write = self
+            .app_state
+            .write()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+        write.show_tool_result = Some(show);
+        Self::persist_state(&write);
+        Ok(())
+    }
+
+    // ── Verifier committee (state.toml) ────────────────────────────────────
+
+    /// Resolve the primary verifier provider:model from committee members.
+    /// Returns (provider, model) parsed from "provider:model" format.
+    /// Returns empty strings if no committee members configured.
+    pub fn get_verifier_settings(&self) -> (String, String) {
+        let state = self.get_state().unwrap_or_else(|_| Default::default());
+        if let Some(first) = state.verifier_committee_members.first()
+            && !first.is_empty()
+            && let Some((provider, model)) = first.split_once(':')
+        {
+            return (provider.to_string(), model.to_string());
+        }
+        (String::new(), String::new())
+    }
+
+    /// Add a committee member (provider:model format) to the verifier committee.
+    pub fn add_verifier_committee_member(&self, provider_model: &str) -> anyhow::Result<()> {
+        let mut write = self
+            .app_state
+            .write()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+        let pm = provider_model.to_string();
+        if !write.verifier_committee_members.contains(&pm) {
+            write.verifier_committee_members.push(pm);
+        }
+        Self::persist_state(&write);
+        Ok(())
+    }
+
+    /// Remove a committee member (provider:model format) from the verifier committee.
+    pub fn remove_verifier_committee_member(&self, provider_model: &str) -> anyhow::Result<bool> {
+        let mut write = self
+            .app_state
+            .write()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+        let len_before = write.verifier_committee_members.len();
+        write
+            .verifier_committee_members
+            .retain(|m| m != provider_model);
+        let removed = write.verifier_committee_members.len() < len_before;
+        if removed {
+            Self::persist_state(&write);
+        }
+        Ok(removed)
+    }
+
+    /// List all verifier committee members (provider:model format).
+    pub fn list_verifier_committee(&self) -> Vec<String> {
+        let state = self.get_state().unwrap_or_else(|_| Default::default());
+        state.verifier_committee_members.clone()
+    }
+
+    /// Resolve the verifier committee configuration.
     ///
     /// Returns a tuple of:
-    /// - The legacy primary (provider, model) — may be empty if only committee is used.
-    /// - A list of additional committee members from `verifier_committee.members`.
+    /// - All committee members as (provider, model) pairs.
+    /// - Whether the verifier is enabled and has at least one member configured.
     ///
-    /// The primary (if configured) is used as the first committee member.
-    /// All members are verified concurrently with an "any-flag" policy.
+    /// Members are resolved from `verifier_committee_members` in state.toml.
+    /// A single member means single-verifier mode; multiple means committee mode
+    /// with an "any-flag" policy.
     pub fn get_verifier_committee(&self) -> (Vec<(String, String)>, bool) {
         let state = self.get_state().unwrap_or_else(|_| Default::default());
-        let config = self.get_config().ok();
         let mut members: Vec<(String, String)> = Vec::new();
 
-        // 1. Legacy primary verifier (from state or config)
-        let primary_provider = state
-            .last_used_v_provider
-            .filter(|s| !s.is_empty())
-            .or_else(|| {
-                config
-                    .as_ref()
-                    .map(|c| c.security.verifier_provider.clone())
-            })
-            .unwrap_or_default();
-
-        let primary_model = state
-            .last_used_v_model
-            .filter(|s| !s.is_empty())
-            .or_else(|| config.as_ref().map(|c| c.security.verifier_model.clone()))
-            .unwrap_or_default();
-
-        if !primary_provider.is_empty() && !primary_model.is_empty() {
-            members.push((primary_provider, primary_model));
-        }
-
-        // 2. Additional committee members from verifier_committee config
-        if let Some(ref cfg) = config {
-            for member in &cfg.security.verifier_committee.members {
-                if !member.provider.is_empty() && !member.model.is_empty() {
-                    // Avoid duplicate if the primary happens to be the same
-                    let pair = (member.provider.clone(), member.model.clone());
-                    if !members.contains(&pair) {
-                        members.push(pair);
-                    }
+        for pm in &state.verifier_committee_members {
+            if let Some((provider, model)) = pm.split_once(':')
+                && !provider.is_empty()
+                && !model.is_empty()
+            {
+                let pair = (provider.to_string(), model.to_string());
+                if !members.contains(&pair) {
+                    members.push(pair);
                 }
             }
         }
 
-        let enabled = config
-            .as_ref()
-            .and_then(|c| c.security.verifier_enabled)
-            .unwrap_or(false)
-            && !members.is_empty();
+        let enabled = state.verifier_enabled.unwrap_or(true) && !members.is_empty();
 
         (members, enabled)
     }

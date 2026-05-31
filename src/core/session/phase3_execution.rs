@@ -110,13 +110,38 @@ impl ActiveSession {
         // Calculate and display stats
         let stats = crate::cli::stats::get_tool_result_stats(name, &final_v);
 
-        // Display the tool result to the user (always shown, same for auto-approve and manual approve)
-        let display_str = final_v
-            .as_str()
-            .map(|s| s.to_owned())
-            .unwrap_or_else(|| final_v.to_string());
+        // Display the tool result to the user conditionally (based on state.toml setting).
+        // Default is hidden — useful when tool output is very large.
+        // The result is always sent to the LLM and logged to the audit trail.
+        let show_result = self.ctx.config_manager.get_show_tool_result();
+        if show_result {
+            let display_str = final_v
+                .as_str()
+                .map(|s| s.to_owned())
+                .unwrap_or_else(|| final_v.to_string());
 
-        self.ctx.ui.print_tool_result(&display_str);
+            self.ctx.ui.print_tool_result(&display_str);
+        } else {
+            // Show a brief summary instead of the full output
+            use colored::Colorize;
+            let item_count = stats.item_count;
+            let lines = stats.line_count;
+            let summary = if let Some(count) = item_count {
+                format!(
+                    " — {} {}, {} lines",
+                    crate::utils::format_number(count),
+                    stats.item_label,
+                    crate::utils::format_number(lines)
+                )
+            } else {
+                format!(" — {} lines", crate::utils::format_number(lines))
+            };
+            println!(
+                "  {}{}",
+                "Tool result hidden (use /tool_output on to show)".dimmed(),
+                summary.dimmed()
+            );
+        }
 
         // Show stats (stderr info included)
         crate::cli::stats::print_tool_stats(&stats);

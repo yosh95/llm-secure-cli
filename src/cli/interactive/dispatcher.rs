@@ -86,16 +86,8 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             handle_model_cmd(session, args).await;
             CommandResult::Handled
         }
-        "vmodel" | "vm" => {
-            handle_vmodel_cmd(session, args).await;
-            CommandResult::Handled
-        }
         "provider" | "p" => {
             handle_provider_cmd(session, args).await;
-            CommandResult::Handled
-        }
-        "vprovider" | "vp" => {
-            handle_vprovider_cmd(session, args).await;
             CommandResult::Handled
         }
         "summarize" | "s" => {
@@ -108,6 +100,10 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
         }
         "verify" | "verifier" => {
             handle_verify_cmd(session, args);
+            CommandResult::Handled
+        }
+        "vcommittee" | "vcom" => {
+            handle_vcommittee_cmd(session, args).await;
             CommandResult::Handled
         }
         "t" | "template" => {
@@ -158,6 +154,10 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
         }
         "view" => {
             handle_view_cmd(session, args).await;
+            CommandResult::Handled
+        }
+        "tool_output" | "to" => {
+            handle_tool_output_cmd(session, args);
             CommandResult::Handled
         }
         "credits" => {
@@ -361,35 +361,49 @@ pub fn handle_info(session: &ActiveSession) {
     ui::print_key_value("Provider", &state.provider);
 
     // Validator Info
-    let (v_provider, v_model_raw) = session.ctx.config_manager.get_verifier_settings();
-    let v_enabled = config.security.verifier_enabled.unwrap_or(false);
+    let (members, _) = session.ctx.config_manager.get_verifier_committee();
+    let v_enabled = session.ctx.config_manager.get_verifier_enabled();
 
-    let v_model = if v_model_raw.is_empty() {
-        if v_enabled {
+    if members.is_empty() {
+        let status = if v_enabled {
             "NOT SET (Falling back to manual approval)"
                 .red()
                 .to_string()
         } else {
             "Not Set".to_string()
-        }
+        };
+        ui::print_key_value("Verifier", &status);
     } else {
-        v_model_raw
-    };
-    ui::print_key_value("Verifier Model", &v_model);
-    ui::print_key_value(
-        "Verifier Prov",
-        if v_provider.is_empty() {
-            "Not Set"
+        let count = members.len();
+        let label = if count == 1 {
+            "Verifier"
         } else {
-            &v_provider
-        },
-    );
+            "Verifier Committee"
+        };
+        let (p, m) = &members[0];
+        if count == 1 {
+            ui::print_key_value(label, &format!("{}:{}", p, m));
+        } else {
+            ui::print_key_value(label, &format!("{} members (any-flag)", count));
+            ui::print_key_value("  Primary", &format!("{}:{}", p, m));
+            for (i, (p, m)) in members.iter().enumerate().skip(1) {
+                ui::print_key_value(&format!("  Member {}", i), &format!("{}:{}", p, m));
+            }
+        }
+    }
     let v_status = if v_enabled {
         "ENABLED".green().to_string()
     } else {
         "DISABLED".yellow().to_string()
     };
     ui::print_key_value("Verifier Status", &v_status);
+
+    // Tool Output display status
+    let show_output = session.ctx.config_manager.get_show_tool_result();
+    ui::print_key_value(
+        "Tool Output",
+        if show_output { "Visible" } else { "Hidden" },
+    );
 
     // Security & Integrity
     let integrity_status = match crate::security::integrity::IntegrityVerifier::new().verify() {
@@ -573,33 +587,21 @@ pub async fn handle_tools(session: &mut ActiveSession, args: &str) {
 }
 
 pub fn handle_verify_cmd(session: &mut ActiveSession, args: &str) {
-    let config = match session.ctx.config_manager.get_config() {
-        Ok(c) => c,
-        Err(e) => {
-            ui::report_error(&format!("Failed to load config: {}", e));
-            return;
-        }
-    };
-
-    let current = config.security.verifier_enabled.unwrap_or(false);
+    let current = session.ctx.config_manager.get_verifier_enabled();
 
     match args.to_lowercase().as_str() {
         "on" => {
-            let mut new_config = (*config).clone();
-            new_config.security.verifier_enabled = Some(true);
-            if let Err(e) = session.ctx.config_manager.set_config(new_config) {
-                ui::report_error(&format!("Failed to update config: {}", e));
+            if let Err(e) = session.ctx.config_manager.set_verifier_enabled(true) {
+                ui::report_error(&format!("Failed to update verifier state: {}", e));
             } else {
-                ui::report_success("Verifier enabled.");
+                ui::report_success("Verifier enabled. (Persisted to state.toml)");
             }
         }
         "off" => {
-            let mut new_config = (*config).clone();
-            new_config.security.verifier_enabled = Some(false);
-            if let Err(e) = session.ctx.config_manager.set_config(new_config) {
-                ui::report_error(&format!("Failed to update config: {}", e));
+            if let Err(e) = session.ctx.config_manager.set_verifier_enabled(false) {
+                ui::report_error(&format!("Failed to update verifier state: {}", e));
             } else {
-                ui::report_success("Verifier disabled.");
+                ui::report_success("Verifier disabled. (Persisted to state.toml)");
             }
         }
         "" => {
@@ -610,14 +612,23 @@ pub fn handle_verify_cmd(session: &mut ActiveSession, args: &str) {
             };
             println!("Verifier Status: {}", status);
 
-            let (v_provider, v_model) = session.ctx.config_manager.get_verifier_settings();
+            let (members, _) = session.ctx.config_manager.get_verifier_committee();
             if current {
-                if v_provider.is_empty() || v_model.is_empty() {
+                if members.is_empty() {
                     ui::report_warning(
-                        "Verifier provider/model is not set. Use /vp and /vm to configure.",
+                        "Verifier not configured. Use /vcommittee set <provider:model> to configure.",
                     );
+                } else if members.len() == 1 {
+                    let (p, m) = &members[0];
+                    println!("  Verifier: {}:{}", p, m);
                 } else {
-                    println!("  Verifier: {}/{}", v_provider, v_model);
+                    println!(
+                        "  Verifier Committee ({} members, any-flag):",
+                        members.len()
+                    );
+                    for (i, (p, m)) in members.iter().enumerate() {
+                        println!("    {}. {}:{}", i + 1, p, m);
+                    }
                 }
             }
         }
@@ -748,104 +759,96 @@ pub async fn handle_provider_cmd(session: &mut ActiveSession, args: &str) {
     }
 }
 
-pub async fn handle_vmodel_cmd(session: &mut ActiveSession, args: &str) {
-    let (current_provider, current_model) = session.ctx.config_manager.get_verifier_settings();
+pub async fn handle_vcommittee_cmd(session: &mut ActiveSession, args: &str) {
+    let parts: Vec<&str> = args.split_whitespace().collect();
 
-    let args_trimmed = args.trim();
-
-    // `/vmodel -u` or `/vmodel --update`: refresh the models cache
-    if args_trimmed == "-u" || args_trimmed == "--update" {
-        ui::report_info("Updating models cache...");
-        session.ctx.config_manager.update_models_cache().await;
-        ui::report_success("Models cache updated.");
-    }
-
-    if args_trimmed.is_empty() || args_trimmed == "-u" || args_trimmed == "--update" {
-        if current_provider.is_empty() {
-            ui::report_error("Verifier provider is not set. Use /vp <provider> first.");
-            return;
+    match parts.first().copied().unwrap_or("") {
+        "set" if parts.len() >= 2 => {
+            let provider_model = parts[1..].join(" ");
+            if !provider_model.contains(':') {
+                ui::report_error(
+                    "Usage: /vcommittee set <provider:model> (e.g. ollama:gemma4:e2b)",
+                );
+                return;
+            }
+            if let Err(e) = session
+                .ctx
+                .config_manager
+                .set_primary_verifier(&provider_model)
+            {
+                ui::report_error(&format!("Failed to set verifier: {}", e));
+            } else {
+                ui::report_success(&format!("Verifier set to: {}", provider_model));
+            }
         }
-        ui::print_rule(
-            Some(&format!(
-                "Available Models for Verifier ({})",
-                current_provider
-            )),
-            Some("cyan"),
-        );
-        let models_map = session.ctx.config_manager.get_cached_models().await;
-        if let Some(mut models) = models_map.get(&current_provider).cloned() {
-            models.sort();
-            for model in models {
-                if model == current_model {
-                    println!("  {} {}", "●".cyan(), model.bold().cyan());
-                } else {
-                    println!("    {}", model);
+        "add" if parts.len() >= 2 => {
+            let provider_model = parts[1..].join(" ");
+            if !provider_model.contains(':') {
+                ui::report_error(
+                    "Usage: /vcommittee add <provider:model> (e.g. openai:gpt-4o-mini)",
+                );
+                return;
+            }
+            if let Err(e) = session
+                .ctx
+                .config_manager
+                .add_verifier_committee_member(&provider_model)
+            {
+                ui::report_error(&format!("Failed to add committee member: {}", e));
+            } else {
+                ui::report_success(&format!("Added committee member: {}", provider_model));
+            }
+        }
+        "remove" | "rm" if parts.len() >= 2 => {
+            let provider_model = parts[1..].join(" ");
+            match session
+                .ctx
+                .config_manager
+                .remove_verifier_committee_member(&provider_model)
+            {
+                Ok(true) => {
+                    ui::report_success(&format!("Removed committee member: {}", provider_model))
+                }
+                Ok(false) => {
+                    ui::report_warning(&format!("Committee member not found: {}", provider_model))
+                }
+                Err(e) => ui::report_error(&format!("Failed to remove committee member: {}", e)),
+            }
+        }
+        "list" | "ls" | "" => {
+            let (members, _enabled) = session.ctx.config_manager.get_verifier_committee();
+            let verifier_enabled = session.ctx.config_manager.get_verifier_enabled();
+
+            ui::print_rule(Some("Verifier"), Some("cyan"));
+            let status = if verifier_enabled {
+                "ENABLED".green()
+            } else {
+                "DISABLED".yellow()
+            };
+            println!("  Status: {}", status);
+
+            if members.is_empty() {
+                println!("  No committee members configured.");
+                if verifier_enabled {
+                    println!("  (Falling back to manual approval for all tool calls)");
+                }
+            } else {
+                println!(
+                    "  Committee (any-flag policy, {} member(s)):",
+                    members.len()
+                );
+                for (provider, model) in members.iter() {
+                    let prefix = "  ── ";
+                    println!("{}{}:{}", prefix, provider, model);
                 }
             }
-        } else {
-            println!(
-                "  No models cached for {}. Use /vmodel -u to fetch models now.",
-                current_provider
-            );
+            println!();
+            println!("  Commands:");
+            println!("    /vcommittee set <provider:model>       Set primary (replaces all)");
+            println!("    /vcommittee add <provider:model>       Add committee member");
+            println!("    /vcommittee remove <provider:model>    Remove committee member");
         }
-        return;
-    }
-
-    // Validate: model must exist in cache or be a known alias
-    let models_map = session.ctx.config_manager.get_cached_models().await;
-    let cached_models: Vec<String> = models_map
-        .get(&current_provider)
-        .cloned()
-        .unwrap_or_default();
-    let state = match session.ctx.config_manager.get_state() {
-        Ok(s) => s,
-        Err(_) => return,
-    };
-    let is_alias = state.model_aliases.contains_key(args_trimmed);
-    let is_cached = cached_models.iter().any(|m| m == args_trimmed);
-
-    if !is_cached && !is_alias {
-        ui::report_error(&format!(
-            "Unknown verifier model: '{}'. Use /vmodel to list available models for provider '{}'.",
-            args_trimmed, current_provider
-        ));
-        return;
-    }
-
-    if let Err(e) = session
-        .ctx
-        .config_manager
-        .update_v_state(&current_provider, args_trimmed)
-    {
-        ui::report_error(&format!("Failed to update verifier model: {}", e));
-    } else {
-        ui::report_success(&format!("Verifier model set to: {}", args_trimmed));
-    }
-}
-
-pub async fn handle_vprovider_cmd(session: &mut ActiveSession, args: &str) {
-    let (current_provider, _) = session.ctx.config_manager.get_verifier_settings();
-
-    if args.is_empty() {
-        ui::print_rule(Some("Available Providers for Verifier"), Some("cyan"));
-        let providers = session.ctx.client_registry.lock().await.list_providers();
-        for p in providers {
-            if p == current_provider {
-                println!("  {} {}", "●".cyan(), p.bold().cyan());
-            } else {
-                println!("    {}", p);
-            }
-        }
-        return;
-    }
-
-    if let Err(e) = session.ctx.config_manager.update_v_state(args, "") {
-        ui::report_error(&format!("Failed to update verifier provider: {}", e));
-    } else {
-        ui::report_success(&format!(
-            "Verifier provider set to: {}. Please set a model with /vmodel.",
-            args
-        ));
+        _ => ui::report_error("Usage: /vcommittee [set|add|remove|list] [<provider:model>]"),
     }
 }
 
@@ -972,6 +975,41 @@ pub async fn handle_view_cmd(session: &mut ActiveSession, args: &str) {
     }
 }
 
+pub fn handle_tool_output_cmd(session: &mut ActiveSession, args: &str) {
+    match args.to_lowercase().as_str() {
+        "on" | "show" => {
+            if let Err(e) = session.ctx.config_manager.set_show_tool_result(true) {
+                ui::report_error(&format!("Failed to update tool output setting: {}", e));
+            } else {
+                ui::report_success(
+                    "Tool execution results will now be displayed. (Persisted to state.toml)",
+                );
+            }
+        }
+        "off" | "hide" => {
+            if let Err(e) = session.ctx.config_manager.set_show_tool_result(false) {
+                ui::report_error(&format!("Failed to update tool output setting: {}", e));
+            } else {
+                ui::report_success(
+                    "Tool execution results will now be hidden. (Persisted to state.toml)",
+                );
+            }
+        }
+        "" => {
+            let current = session.ctx.config_manager.get_show_tool_result();
+            let status = if current {
+                "VISIBLE".green()
+            } else {
+                "HIDDEN".yellow()
+            };
+            println!("Tool Output Status: {}", status);
+            println!("  When hidden, tool execution results are not shown in the terminal");
+            println!("  (they are still sent to the LLM and logged to the audit trail).");
+        }
+        _ => ui::report_error("Usage: /tool_output [on|off] (or [show|hide])"),
+    }
+}
+
 fn print_help() {
     ui::print_rule(Some("Interactive Commands"), Some("cyan"));
     println!("  /h, /help          Show this help message");
@@ -984,13 +1022,16 @@ fn print_help() {
     );
     println!("  /session [load|delete <id>|clear]  List, load, delete, or clear saved sessions");
     println!("  /attach <path|url> Attach a file or URL to the next request");
-    println!("  /tools [on|off]    Toggle or show status of tool execution");
+    println!(
+        "  /tools [on|off]    Toggle or show status of tool execution
+  /to, /tool_output [on|off] Toggle display of tool execution results (default: hidden)"
+    );
 
     println!("  /m, /model [-u] [<name>]  List models (/model -u to refresh cache) or switch");
     println!("  /p, /provider <n>  Switch LLM provider");
-    println!("  /vm, /vmodel [-u] [<name>] List verifier models (-u to refresh) or set");
-    println!("  /vp, /vprovider <n> Set provider for verifier");
-    println!("  /verify [on|off]   Toggle or show status of verifier");
+    println!(
+        "  /vcommittee [set|add|remove|list] [<provider:model>]  Manage verifier (set=replace all, add=add member)"
+    );
     println!("  /alias [-d <name>] [<name> <target>]  List/create/delete model aliases");
     println!("  /s, /summarize     Summarize history and clear it");
     println!("  /t, /template [<name>]  List templates or insert one into prompt");

@@ -34,26 +34,6 @@ pager = "auto"
 # - standard: Compatibility mode; warnings instead of blocks for some integrity checks.
 security_level = "high"
 
-# Verifier Committee (AI-native ABAC / Semantic Firewall)
-# Validates ALL tool calls using a secondary LLM with a hardcoded Security Constitution.
-# - true (default): All tool calls are verified. Safe calls auto-approve;
-#   potentially unsafe calls require human approval with the verifier's reasoning.
-# - false: Fall back to manual human approval for all tool calls (no auto-approve).
-verifier_enabled = true
-verifier_provider = "ollama"
-verifier_model = "gemma4:e2b"
-# Verifier Committee — additional LLMs that participate in tool-call verification.
-# When configured, ALL committee members (including the primary verifier_provider/model)
-# verify each tool call concurrently. The "any-flag" policy applies:
-# if ANY member flags a call, human approval is required.
-#
-# Examples:
-# [security.verifier_committee]
-# members = [
-#   { provider = "openai", model = "gpt-4o-mini" },
-#   { provider = "openrouter", model = "anthropic/claude-3-haiku" },
-# ]
-
 # =============================================================================
 # OpenAI Compatible Providers
 # =============================================================================

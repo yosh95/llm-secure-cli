@@ -145,16 +145,24 @@ async fn test_processor_tool_execution_flow() {
     // 1. Setup Config for Auto-approval
     let ui = Arc::new(MockUi { confirmed: true });
     let ctx = AppContext::new(ui);
-    let mut config = (*ctx
-        .config_manager
-        .get_config()
-        .expect("Failed to get config"))
-    .clone();
-    config.security.security_level = llm_secure_cli::config::models::SecurityLevel::Standard;
+    {
+        let mut config = (*ctx
+            .config_manager
+            .get_config()
+            .expect("Failed to get config"))
+        .clone();
+        config.security.security_level = llm_secure_cli::config::models::SecurityLevel::Standard;
+        let _ = ctx.config_manager.set_config(config);
+    }
 
-    config.security.verifier_enabled = Some(true);
-    config.security.verifier_provider = "mock".to_string();
-    let _ = ctx.config_manager.set_config(config);
+    // Configure verifier via state.toml
+    ctx.config_manager
+        .set_primary_verifier("mock:mock-model")
+        .expect("Failed to set verifier");
+    ctx.config_manager
+        .set_verifier_enabled(true)
+        .expect("Failed to enable verifier");
+
     let ctx = Arc::new(ctx);
 
     // 2. Register Mock Client in Registry for Verifier
