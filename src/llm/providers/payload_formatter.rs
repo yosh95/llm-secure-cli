@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 
 /// Trait to handle provider-specific payload formatting.
-/// This decouples the generic client from specific API quirks (OpenRouter, Anthropic, etc.)
+/// This decouples the generic client from specific API quirks (`OpenRouter`, Anthropic, etc.)
 pub trait PayloadFormatter: Send + Sync {
     fn format_text(&self, text: &str) -> Value {
         json!({"type": "text", "text": text})

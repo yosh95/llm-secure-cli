@@ -25,6 +25,7 @@ pub struct IntegrityVerifier {
 }
 
 impl IntegrityVerifier {
+    #[must_use]
     pub fn new() -> Self {
         let mut manifest_path = get_base_dir().clone();
         manifest_path.push("integrity_manifest.json");
@@ -101,7 +102,7 @@ impl IntegrityVerifier {
         // 2. Sign with Ed25519 (Classical)
         let classical_priv_pem = IdentityManager::get_classical_private_key_pem()?;
         let signing_key = SigningKey::from_pkcs8_pem(&classical_priv_pem)
-            .map_err(|e| anyhow!("Failed to load Ed25519 private key: {}", e))?;
+            .map_err(|e| anyhow!("Failed to load Ed25519 private key: {e}"))?;
         let classical_sig = signing_key.sign(json_data.as_bytes());
 
         let manifest = IntegrityManifest {
@@ -161,10 +162,10 @@ impl IntegrityVerifier {
                     .try_into()
                     .map_err(|_| anyhow!("Invalid Ed25519 public key length"))?,
             )
-            .map_err(|e| anyhow!("Failed to load Ed25519 public key: {}", e))?;
+            .map_err(|e| anyhow!("Failed to load Ed25519 public key: {e}"))?;
             let classical_sig_bytes = general_purpose::STANDARD.decode(classical_sig_b64)?;
             let classical_sig = Signature::from_slice(&classical_sig_bytes)
-                .map_err(|e| anyhow!("Invalid Ed25519 signature format: {}", e))?;
+                .map_err(|e| anyhow!("Invalid Ed25519 signature format: {e}"))?;
 
             if verifying_key
                 .verify(json_data.as_bytes(), &classical_sig)

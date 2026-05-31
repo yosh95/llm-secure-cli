@@ -1,3 +1,4 @@
+#[must_use]
 pub fn truncate_output(res_str: &str, max_output_lines: usize, max_output_chars: usize) -> String {
     let original_len = res_str.len();
     let original_lines: Vec<&str> = res_str.lines().collect();
@@ -56,6 +57,7 @@ pub fn truncate_json_strings(
 
 /// Converts a tool result (JSON) into a human-readable string.
 /// This is used to provide better output for both humans (CLI) and LLMs.
+#[must_use]
 pub fn humanize_tool_result(_name: &str, v: &serde_json::Value) -> String {
     if let Some(obj) = v.as_object() {
         // Special handling for command execution
@@ -69,9 +71,12 @@ pub fn humanize_tool_result(_name: &str, v: &serde_json::Value) -> String {
                 .get("stderr")
                 .and_then(|v| v.as_str())
                 .unwrap_or_default();
-            let exit_code = obj.get("exit_code").and_then(|v| v.as_i64()).unwrap_or(-1);
+            let exit_code = obj
+                .get("exit_code")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(-1);
 
-            let mut output = format!("Exit Code: {}\n", exit_code);
+            let mut output = format!("Exit Code: {exit_code}\n");
             if !stdout.is_empty() {
                 output.push_str("STDOUT:\n");
                 output.push_str(stdout);

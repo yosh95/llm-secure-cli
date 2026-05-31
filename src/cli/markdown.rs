@@ -1,4 +1,4 @@
-use colored::*;
+use colored::Colorize;
 use comfy_table::Table;
 use pulldown_cmark::{Alignment, Event, Options as CmarkOptions, Parser, Tag, TagEnd};
 use textwrap::{Options as WrapOptions, WordSplitter, fill};
@@ -8,10 +8,12 @@ pub struct MarkdownRenderer {
 }
 
 impl MarkdownRenderer {
+    #[must_use]
     pub fn new(width: usize) -> Self {
         Self { width }
     }
 
+    #[must_use]
     pub fn render(&self, markdown: &str) -> String {
         let mut options = CmarkOptions::empty();
         options.insert(CmarkOptions::ENABLE_TABLES);
@@ -128,7 +130,7 @@ impl MarkdownRenderer {
                             dest_url.chars().filter(|c| !c.is_whitespace()).collect();
                         link_stack.push(clean_url.clone());
                         if !in_table {
-                            let link_start = format!("\x1b]8;;{}\x1b\\", clean_url);
+                            let link_start = format!("\x1b]8;;{clean_url}\x1b\\");
                             current_paragraph.push_str(&link_start);
                         }
                     }
@@ -270,7 +272,7 @@ impl MarkdownRenderer {
                             .blue()
                             .to_string()
                     } else {
-                        format!("`{}`", text)
+                        format!("`{text}`")
                     };
 
                     if in_table {
@@ -366,6 +368,7 @@ impl MarkdownRenderer {
     }
 }
 
+#[must_use]
 pub fn render_markdown(content: &str, width: usize) -> String {
     let renderer = MarkdownRenderer::new(width);
     renderer.render(content)

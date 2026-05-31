@@ -51,36 +51,43 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
         }
     }
 
+    #[must_use]
     pub fn provider_name(mut self, name: &str) -> Self {
         self.provider_name = name.to_string();
         self
     }
 
+    #[must_use]
     pub fn api_url(mut self, url: &str) -> Self {
         self.api_url = url.to_string();
         self
     }
 
+    #[must_use]
     pub fn api_key(mut self, key: &str) -> Self {
         self.api_key = key.to_string();
         self
     }
 
+    #[must_use]
     pub fn model(mut self, model: &str) -> Self {
         self.model = model.to_string();
         self
     }
 
+    #[must_use]
     pub fn stdout(mut self, stdout: bool) -> Self {
         self.stdout = stdout;
         self
     }
 
+    #[must_use]
     pub fn raw(mut self, raw: bool) -> Self {
         self.raw = raw;
         self
     }
 
+    #[must_use]
     pub fn formatter(mut self, formatter: Box<dyn PayloadFormatter>) -> Self {
         self.formatter = Some(formatter);
         self
@@ -91,6 +98,7 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
     /// When set to `Some(false)`, tool definitions will never be sent in requests
     /// even if the model list cache would indicate otherwise.  When `None` (the
     /// default), the builder will look up the model in the cache to decide.
+    #[must_use]
     pub fn supports_tools(mut self, supports: Option<bool>) -> Self {
         self.supports_tools = supports;
         self
@@ -150,6 +158,7 @@ impl OpenAiCompatibleClient {
 
     /// Build the messages array for an OpenAI-compatible chat completion request.
     /// Delegates to the standalone `MessageBuilder` for testability.
+    #[must_use]
     pub fn build_messages(&self, data: &[DataSource]) -> Vec<Value> {
         MessageBuilder {
             formatter: self.formatter.as_ref(),
@@ -231,7 +240,7 @@ impl LlmClient for OpenAiCompatibleClient {
         );
 
         if let Some(err) = resp_json.get("error") {
-            return Err(anyhow::anyhow!("API Error: {}", err));
+            return Err(anyhow::anyhow!("API Error: {err}"));
         }
 
         let choice = &resp_json["choices"][0];
@@ -307,7 +316,7 @@ impl LlmClient for OpenAiCompatibleClient {
 
         // 1. Check for API-level error field
         if let Some(err) = resp_json.get("error") {
-            return Err(anyhow::anyhow!("API Error: {}", err));
+            return Err(anyhow::anyhow!("API Error: {err}"));
         }
 
         // 2. Validate response structure
@@ -315,8 +324,7 @@ impl LlmClient for OpenAiCompatibleClient {
             Some(c) => c,
             None => {
                 return Err(anyhow::anyhow!(
-                    "Invalid response from LLM: no choices found. Full response: {}",
-                    resp_json
+                    "Invalid response from LLM: no choices found. Full response: {resp_json}"
                 ));
             }
         };
@@ -325,7 +333,7 @@ impl LlmClient for OpenAiCompatibleClient {
 
         // 3. Check for refusal (OpenAI safety filters)
         if let Some(refusal) = msg.get("refusal").and_then(|v| v.as_str()) {
-            return Err(anyhow::anyhow!("Model refused to verify: {}", refusal));
+            return Err(anyhow::anyhow!("Model refused to verify: {refusal}"));
         }
 
         // 4. Extract tool calls
@@ -340,14 +348,12 @@ impl LlmClient for OpenAiCompatibleClient {
         // 5. Fallback: If no tool call, check if it returned text (e.g. refused or explained)
         if let Some(content) = msg.get("content").and_then(|v| v.as_str()) {
             return Err(anyhow::anyhow!(
-                "Verifier returned text instead of tool call: \"{}\". This usually means the model refused the request or is not capable of tool calling.",
-                content
+                "Verifier returned text instead of tool call: \"{content}\". This usually means the model refused the request or is not capable of tool calling."
             ));
         }
 
         Err(anyhow::anyhow!(
-            "Verifier did not return a tool call. Raw response: {}",
-            resp_json
+            "Verifier did not return a tool call. Raw response: {resp_json}"
         ))
     }
 }

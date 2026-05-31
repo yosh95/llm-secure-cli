@@ -14,10 +14,7 @@ pub fn init_config() {
     }
 
     if let Err(e) = fs::create_dir_all(&c_dir) {
-        ui::report_error(&format!(
-            "Could not create config directory {:?}: {}",
-            c_dir, e
-        ));
+        ui::report_error(&format!("Could not create config directory {c_dir:?}: {e}"));
         return;
     }
 
@@ -42,7 +39,7 @@ pub fn init_config() {
             && !stripped.starts_with('#')
             && (!stripped.starts_with('[') || stripped.starts_with("[["))
         {
-            commented_lines.push_str(&format!("# {}\n", line));
+            commented_lines.push_str(&format!("# {line}\n"));
         } else {
             commented_lines.push_str(line);
             commented_lines.push('\n');
@@ -50,8 +47,8 @@ pub fn init_config() {
     }
 
     if let Err(e) = fs::write(&c_file, commented_lines) {
-        ui::report_error(&format!("Could not write config file {:?}: {}", c_file, e));
+        ui::report_error(&format!("Could not write config file {c_file:?}: {e}"));
     } else {
-        ui::report_success(&format!("Initialized config at {:?}", c_file));
+        ui::report_success(&format!("Initialized config at {c_file:?}"));
     }
 }

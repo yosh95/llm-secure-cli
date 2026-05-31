@@ -31,25 +31,32 @@ fn default_base_dir() -> PathBuf {
 
 pub static LLM_CLI_BASE_DIR: &OnceLock<PathBuf> = &BASE_DIR_INNER;
 
+#[must_use]
 pub fn config_dir() -> PathBuf {
     get_base_dir().clone()
 }
+#[must_use]
 pub fn log_dir() -> PathBuf {
     get_base_dir().join("logs")
 }
+#[must_use]
 pub fn key_dir() -> PathBuf {
     get_base_dir().join("keys")
 }
 
+#[must_use]
 pub fn config_file_path() -> PathBuf {
     config_dir().join("config.toml")
 }
+#[must_use]
 pub fn state_file_path() -> PathBuf {
     config_dir().join("state.toml")
 }
+#[must_use]
 pub fn models_cache_path() -> PathBuf {
     config_dir().join("models_cache.json")
 }
+#[must_use]
 pub fn audit_log_path() -> PathBuf {
     log_dir().join("audit.jsonl")
 }
@@ -59,21 +66,27 @@ pub fn audit_log_path() -> PathBuf {
 /// File format: a single line containing the SHA-256 hex hash of the last
 /// audit entry, followed by a newline.  If the cache is stale or corrupt,
 /// `get_last_log_hash()` falls back to a full-file scan.
+#[must_use]
 pub fn audit_head_cache_path() -> PathBuf {
     log_dir().join("audit_head.cache")
 }
+#[must_use]
 pub fn security_log_path() -> PathBuf {
     log_dir().join("security.log")
 }
+#[must_use]
 pub fn history_log_path() -> PathBuf {
     log_dir().join("history.log")
 }
+#[must_use]
 pub fn chat_log_path() -> PathBuf {
     log_dir().join("chat.log")
 }
+#[must_use]
 pub fn sessions_dir() -> PathBuf {
     get_base_dir().join("sessions")
 }
+#[must_use]
 pub fn templates_dir() -> PathBuf {
     get_base_dir().join("templates")
 }

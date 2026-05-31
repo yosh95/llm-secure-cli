@@ -31,12 +31,11 @@ impl ActiveSession {
                         .await
                     {
                         Ok(result) => return Ok(serde_json::json!(result)),
-                        Err(e) => return Err(anyhow::anyhow!("MCP Error: {}", e)),
+                        Err(e) => return Err(anyhow::anyhow!("MCP Error: {e}")),
                     }
                 }
                 Err(anyhow::anyhow!(
-                    "MCP tool '{}' has invalid namespaced format",
-                    name
+                    "MCP tool '{name}' has invalid namespaced format"
                 ))
             }
             // Local built-in tools: execute via the registry
@@ -46,11 +45,11 @@ impl ActiveSession {
                 if let Some(tool) = registry.tools.get(name) {
                     (tool.func)(args.clone(), config).await
                 } else {
-                    Err(anyhow::anyhow!("Tool not found: {}", name))
+                    Err(anyhow::anyhow!("Tool not found: {name}"))
                 }
             }
             // Tool not registered at all
-            None => Err(anyhow::anyhow!("Tool not found: {}", name)),
+            None => Err(anyhow::anyhow!("Tool not found: {name}")),
         }
     }
 }

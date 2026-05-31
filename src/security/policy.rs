@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::env;
 
-/// SecurityContext holds the "Attributes" used for semantic evaluation by the LLM.
+/// `SecurityContext` holds the "Attributes" used for semantic evaluation by the LLM.
 #[derive(Serialize, Clone)]
 pub struct SecurityContext {
     pub os: String,
@@ -13,21 +13,22 @@ pub struct SecurityContext {
 }
 
 impl SecurityContext {
+    #[must_use]
     pub fn gather(security_level: &str) -> Self {
         let os = env::consts::OS.to_string();
         let user = env::var("USER")
             .or_else(|_| env::var("USERNAME"))
             .unwrap_or_else(|_| "unknown".to_string());
-        let current_dir = env::current_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|_| "unknown".to_string());
+        let current_dir = env::current_dir().map_or_else(
+            |_| "unknown".to_string(),
+            |p| p.to_string_lossy().to_string(),
+        );
         let is_git_repo = std::path::Path::new(".git").exists();
 
         // Auto-detect Docker
         let container_mode = std::path::Path::new("/.dockerenv").exists()
             || std::fs::read_to_string("/proc/self/cgroup")
-                .map(|s| s.contains("docker") || s.contains("containerd"))
-                .unwrap_or(false);
+                .is_ok_and(|s| s.contains("docker") || s.contains("containerd"));
 
         Self {
             os,

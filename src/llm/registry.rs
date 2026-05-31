@@ -20,6 +20,7 @@ impl Default for ClientRegistry {
 }
 
 impl ClientRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             factories: HashMap::new(),
@@ -43,16 +44,18 @@ impl ClientRegistry {
             .and_then(|f| match f(model, stdout, raw, config_manager) {
                 Ok(client) => Some(client),
                 Err(e) => {
-                    ui::report_error(&format!("Error creating client '{}': {}", name, e));
+                    ui::report_error(&format!("Error creating client '{name}': {e}"));
                     None
                 }
             })
     }
 
+    #[must_use]
     pub fn list_aliases(&self) -> Vec<String> {
         self.factories.keys().cloned().collect()
     }
 
+    #[must_use]
     pub fn list_providers(&self) -> Vec<String> {
         self.factories.keys().cloned().collect()
     }

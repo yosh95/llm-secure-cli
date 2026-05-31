@@ -13,6 +13,7 @@ pub struct McpManager {
 }
 
 impl McpManager {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
@@ -58,7 +59,7 @@ impl McpManager {
             let api_url = server_cfg.api_url.clone();
 
             join_set.spawn(async move {
-                ui::report_success(&format!("Connecting to MCP server '{}'...", server_name));
+                ui::report_success(&format!("Connecting to MCP server '{server_name}'..."));
 
                 // Determine transport type and connect
                 let session_result = match transport.as_str() {
@@ -97,9 +98,9 @@ impl McpManager {
                             }
                             Ok((server_name, session, namespaced_tools))
                         }
-                        Err(e) => Err(anyhow!("Failed to list tools for '{}': {}", server_name, e)),
+                        Err(e) => Err(anyhow!("Failed to list tools for '{server_name}': {e}")),
                     },
-                    Err(e) => Err(anyhow!("Failed to connect to '{}': {}", server_name, e)),
+                    Err(e) => Err(anyhow!("Failed to connect to '{server_name}': {e}")),
                 }
             });
         }
@@ -116,7 +117,7 @@ impl McpManager {
                     self.sessions.lock().await.insert(name, session);
                 }
                 Ok(Err(e)) => ui::report_error(&e.to_string()),
-                Err(e) => ui::report_error(&format!("Task panicked: {}", e)),
+                Err(e) => ui::report_error(&format!("Task panicked: {e}")),
             }
         }
 
@@ -135,7 +136,7 @@ impl McpManager {
 
         let session = sessions
             .get(server_name)
-            .ok_or_else(|| anyhow!("MCP server '{}' not connected.", server_name))?;
+            .ok_or_else(|| anyhow!("MCP server '{server_name}' not connected."))?;
 
         // Filter out internal arguments (explanation, __meta)
         let mut tool_args = json!({});

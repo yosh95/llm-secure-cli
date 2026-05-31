@@ -3,7 +3,7 @@ use crate::cli::ui;
 use crate::consts::history_log_path;
 use crate::core::session::ActiveSession;
 use crate::llm::models::DataSource;
-use colored::*;
+use colored::Colorize;
 use rustyline::error::ReadlineError;
 use rustyline::history::{FileHistory, History};
 use rustyline::{Cmd, Editor, KeyCode, KeyEvent, Modifiers};
@@ -31,10 +31,8 @@ fn load_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::
     if let Some(Ok(first)) = lines.next() {
         if first == "#V2" {
             v2 = true;
-        } else {
-            if let Err(e) = rl.add_history_entry(&first) {
-                tracing::warn!("Failed to add history entry: {}", e);
-            }
+        } else if let Err(e) = rl.add_history_entry(&first) {
+            tracing::warn!("Failed to add history entry: {}", e);
         }
     }
     for line in lines {
@@ -105,7 +103,7 @@ fn save_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::
     }
     for entry in &entries {
         let escaped = entry.replace('\\', "\\\\").replace('\n', "\\n");
-        if let Err(e) = writeln!(file, "{}", escaped) {
+        if let Err(e) = writeln!(file, "{escaped}") {
             tracing::warn!("Failed to write history entry: {}", e);
         }
     }
@@ -124,11 +122,7 @@ impl ActiveSession {
         {
             // Check if there's any actual text prompt from the user in the initial data
             let has_text_prompt = data.iter().any(|d| {
-                d.content
-                    .as_str()
-                    .map(|s| !s.trim().is_empty())
-                    .unwrap_or(false)
-                    && !d.is_file_or_url
+                d.content.as_str().is_some_and(|s| !s.trim().is_empty()) && !d.is_file_or_url
             });
 
             // If only files were provided without a text prompt, insert a default prompt
@@ -150,8 +144,10 @@ impl ActiveSession {
                     .first()
                     .and_then(|d| d.metadata.get("filename"))
                     .and_then(|v| v.as_str())
-                    .map(|f| format!("Analysis of {}", f))
-                    .unwrap_or_else(|| "Initial file analysis".to_string());
+                    .map_or_else(
+                        || "Initial file analysis".to_string(),
+                        |f| format!("Analysis of {f}"),
+                    );
             }
 
             let model_is_empty = self.client.get_state().model.is_empty();
@@ -163,13 +159,13 @@ impl ActiveSession {
                 }
             } else {
                 match self.process_and_print(data).await {
-                    Ok(_) => {
+                    Ok(()) => {
                         if is_stdout {
                             return;
                         }
                     }
                     Err(e) => {
-                        ui::report_error(&format!("Error: {}", e));
+                        ui::report_error(&format!("Error: {e}"));
                         if is_stdout {
                             return;
                         }
@@ -195,7 +191,7 @@ impl ActiveSession {
         let mut rl = match Editor::<ChatCompleter, FileHistory>::with_config(config) {
             Ok(e) => e,
             Err(e) => {
-                ui::report_error(&format!("Failed to create editor: {}", e));
+                ui::report_error(&format!("Failed to create editor: {e}"));
                 return;
             }
         };
@@ -235,7 +231,7 @@ impl ActiveSession {
                 let mut cp = match current_provider.lock() {
                     Ok(guard) => guard,
                     Err(e) => {
-                        ui::report_error(&format!("Lock poisoned: {}", e));
+                        ui::report_error(&format!("Lock poisoned: {e}"));
                         break;
                     }
                 };
@@ -280,7 +276,7 @@ impl ActiveSession {
                             next_initial_text = Some(text);
                             continue;
                         }
-                    };
+                    }
 
                     if let Err(e) = rl.add_history_entry(&final_trimmed) {
                         tracing::warn!("Failed to add history entry: {}", e);
@@ -317,7 +313,7 @@ impl ActiveSession {
                     }
 
                     if let Err(e) = self.process_and_print(data).await {
-                        ui::report_error(&format!("Error: {}", e));
+                        ui::report_error(&format!("Error: {e}"));
                     }
                 }
                 Err(ReadlineError::Interrupted) => {
@@ -333,7 +329,7 @@ impl ActiveSession {
                     return;
                 }
                 Err(err) => {
-                    ui::report_error(&format!("Error: {:?}", err));
+                    ui::report_error(&format!("Error: {err:?}"));
                     break;
                 }
             }

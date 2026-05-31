@@ -41,7 +41,7 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow:
     let _config = match cm.get_config() {
         Ok(c) => c,
         Err(e) => {
-            let msg = format!("Failed to load config: {}", e);
+            let msg = format!("Failed to load config: {e}");
             ctx.ui.report_error(&msg);
             bail!(msg);
         }
@@ -50,7 +50,7 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow:
         Ok(s) => s,
         Err(e) => {
             ctx.ui
-                .report_warning(&format!("Failed to load app state: {}. Using defaults.", e));
+                .report_warning(&format!("Failed to load app state: {e}. Using defaults."));
             Default::default()
         }
     };
@@ -84,9 +84,7 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow:
         let ctx_bg = ctx.clone();
         tokio::spawn(async move {
             let c_path = crate::consts::models_cache_path();
-            let should_refresh = if !c_path.exists() {
-                true
-            } else {
+            let should_refresh = if c_path.exists() {
                 match std::fs::metadata(&c_path) {
                     Ok(meta) => match meta.modified() {
                         Ok(mtime) => {
@@ -99,6 +97,8 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow:
                     },
                     Err(_) => true,
                 }
+            } else {
+                true
             };
             if should_refresh {
                 tracing::info!("Background refresh of models cache...");
@@ -135,8 +135,7 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow:
                     client.get_state_mut().conversation = conversation;
                 }
                 Err(e) => {
-                    ctx.ui
-                        .report_error(&format!("Failed to load session: {}", e));
+                    ctx.ui.report_error(&format!("Failed to load session: {e}"));
                 }
             }
         }
@@ -145,7 +144,7 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow:
         let mut session = match ActiveSession::new(client, ctx.clone()) {
             Ok(s) => s,
             Err(e) => {
-                let msg = format!("Failed to initialize session: {}", e);
+                let msg = format!("Failed to initialize session: {e}");
                 ctx.ui.report_error(&msg);
                 bail!(msg);
             }
@@ -171,7 +170,7 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow:
         session.run(sources, None).await;
         Ok(())
     } else {
-        let msg = format!("Provider '{}' not found or not configured.", provider);
+        let msg = format!("Provider '{provider}' not found or not configured.");
         ctx.ui.report_error(&msg);
         bail!(msg);
     }

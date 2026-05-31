@@ -8,6 +8,7 @@ use colored::Colorize;
 use std::collections::HashSet;
 
 /// Returns `code` with ANSI escape sequences that colour Python syntax.
+#[must_use]
 pub fn highlight_python(code: &str) -> String {
     let keywords: HashSet<&str> = [
         "def", "class", "return", "if", "elif", "else", "for", "while", "import", "from", "as",

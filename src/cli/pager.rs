@@ -57,6 +57,7 @@ pub enum PagerConfig {
 
 impl PagerConfig {
     /// Parse from the `pager` config string.
+    #[must_use]
     pub fn from_config_string(s: Option<&str>) -> Self {
         match s {
             None | Some("") => PagerConfig::Disabled,

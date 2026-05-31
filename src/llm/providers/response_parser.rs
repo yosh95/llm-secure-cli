@@ -17,8 +17,11 @@ pub struct ParsedResponse {
 
 /// Parse the "choices\[0\].message" object from an OpenAI-compatible chat completion
 /// response into a `ParsedResponse`.
+#[must_use]
 pub fn parse_assistant_message(msg: &Value) -> ParsedResponse {
-    let text = msg["content"].as_str().map(|s| s.to_string());
+    let text = msg["content"]
+        .as_str()
+        .map(std::string::ToString::to_string);
 
     let mut message_parts = Vec::new();
     if let Some(t) = &text {
@@ -81,7 +84,7 @@ fn parse_multimodal_content_array(msg: &Value, parts: &mut Vec<MessagePart>) {
                         .and_then(|v| v.as_str())
                         .unwrap_or("mp3");
                     if !b64.is_empty() {
-                        parts.push(inline_data_part(&format!("audio/{}", format), b64));
+                        parts.push(inline_data_part(&format!("audio/{format}"), b64));
                     }
                 }
             }

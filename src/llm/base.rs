@@ -125,11 +125,11 @@ impl BaseLlmClientData {
         let system_prompt = model_config
             .get("system_prompt")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         let tools_enabled = model_config
             .get("tools")
-            .and_then(|v| v.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(true);
 
         let state = ClientState {
@@ -156,14 +156,11 @@ pub fn create_http_client(config_manager: &ConfigManager) -> anyhow::Result<reqw
     let config = config_manager.get_config()?;
     let timeout_secs = config.general.request_timeout;
     let version = env!("CARGO_PKG_VERSION");
-    let ua = format!(
-        "llm-secure-cli/{} (https://github.com/yosh95/llm-secure-cli)",
-        version
-    );
+    let ua = format!("llm-secure-cli/{version} (https://github.com/yosh95/llm-secure-cli)");
 
     reqwest::Client::builder()
         .user_agent(ua)
         .timeout(std::time::Duration::from_secs(timeout_secs))
         .build()
-        .map_err(|e| anyhow::anyhow!("Failed to create reqwest client: {}", e))
+        .map_err(|e| anyhow::anyhow!("Failed to create reqwest client: {e}"))
 }

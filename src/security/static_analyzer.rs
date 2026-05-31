@@ -1,4 +1,4 @@
-/// StaticAnalyzer provides a "Fast Fail" mechanism for deterministic security blocks.
+/// `StaticAnalyzer` provides a "Fast Fail" mechanism for deterministic security blocks.
 ///
 /// 【Architectural Principle】
 /// This tool adopts "AI-native ABAC" and does not maintain platform-dependent static
@@ -8,6 +8,7 @@
 pub struct StaticAnalyzer;
 
 impl StaticAnalyzer {
+    #[must_use]
     pub fn check(command: &str, args: &[String]) -> (bool, Vec<String>) {
         let mut violations = Vec::new();
 
@@ -35,6 +36,7 @@ impl StaticAnalyzer {
 
     /// Block only physical anomalies that could disrupt the tool execution engine
     /// or log output.
+    #[must_use]
     pub fn is_obviously_malicious(input: &str) -> bool {
         // Block NULL bytes and control characters except for newline, carriage return, and tab.
         // These can cause unstable behavior in OS or terminals.
@@ -44,6 +46,7 @@ impl StaticAnalyzer {
     }
 
     /// Backwards compatibility for benchmarks and older tests.
+    #[must_use]
     pub fn is_dangerous_command(input: &str) -> bool {
         Self::is_obviously_malicious(input)
     }

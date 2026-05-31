@@ -37,12 +37,12 @@ impl std::fmt::Display for AuditStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AuditStatus::Success => write!(f, "SUCCESS"),
-            AuditStatus::Failed(reason) => write!(f, "FAILED: {}", reason),
+            AuditStatus::Failed(reason) => write!(f, "FAILED: {reason}"),
             AuditStatus::PqcEncryptionFailed(reason) => {
-                write!(f, "FAILED: {}; PQC_ENCRYPTION_FAILED", reason)
+                write!(f, "FAILED: {reason}; PQC_ENCRYPTION_FAILED")
             }
             AuditStatus::IntegrityFailure(reason) => {
-                write!(f, "INTEGRITY_FAILURE: {}", reason)
+                write!(f, "INTEGRITY_FAILURE: {reason}")
             }
             AuditStatus::SuccessWithoutSignature => {
                 write!(f, "SUCCESS_WITHOUT_SIGNATURE: PQC private key unavailable")
@@ -127,6 +127,7 @@ pub struct AuditParamsBuilder<'a> {
 }
 
 impl<'a> AuditParamsBuilder<'a> {
+    #[must_use]
     pub fn new(
         event_type: &'a str,
         tool_name: &'a str,
@@ -146,26 +147,31 @@ impl<'a> AuditParamsBuilder<'a> {
         }
     }
 
+    #[must_use]
     pub fn args(mut self, args: serde_json::Value) -> Self {
         self.params.args = args;
         self
     }
 
+    #[must_use]
     pub fn output(mut self, output: &'a str) -> Self {
         self.params.output = Some(output);
         self
     }
 
+    #[must_use]
     pub fn exit_code(mut self, code: i32) -> Self {
         self.params.exit_code = Some(code);
         self
     }
 
+    #[must_use]
     pub fn error(mut self, error: &'a str) -> Self {
         self.params.error = Some(error);
         self
     }
 
+    #[must_use]
     pub fn context(mut self, context: &'a serde_json::Value) -> Self {
         self.params.context = Some(context);
         self
@@ -175,12 +181,14 @@ impl<'a> AuditParamsBuilder<'a> {
         log_audit(self.params);
     }
 
+    #[must_use]
     pub fn log_and_return(self, log_path: Option<&std::path::Path>) -> Option<AuditEntry> {
         log_audit_and_return(self.params, log_path)
     }
 }
 
 impl<'a> AuditParams<'a> {
+    #[must_use]
     pub fn builder(
         event_type: &'a str,
         tool_name: &'a str,
@@ -325,7 +333,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         tool: params.tool_name.to_string(),
         args: final_args,
         pqc_confidential: pqc_encrypted,
-        output: params.output.map(|s| s.to_string()),
+        output: params.output.map(std::string::ToString::to_string),
         status: {
             if encryption_failed {
                 match params.error {
@@ -363,7 +371,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                 "CRITICAL: Audit entry serialization failed; using fallback hash"
             );
             log_entry.status =
-                AuditStatus::IntegrityFailure(format!("Entry serialization failed: {}", e));
+                AuditStatus::IntegrityFailure(format!("Entry serialization failed: {e}"));
             format!(
                 "{{\"fallback\": true, \"trace_id\": \"{}\", \"timestamp\": \"{}\"}}",
                 log_entry.trace_id, log_entry.timestamp
@@ -386,11 +394,11 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                 log_entry.pqc_signature = signed
                     .get("pqc_signature")
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                    .map(std::string::ToString::to_string);
                 log_entry.pqc_algorithm = signed
                     .get("algorithm")
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                    .map(std::string::ToString::to_string);
             }
             Err(e) => {
                 // In high-security mode, a signing failure is a critical event,
@@ -401,7 +409,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                     error = %e,
                     "PQC Sign failed in high-security mode; storing entry without signature"
                 );
-                log_entry.status = AuditStatus::IntegrityFailure(format!("PQC Sign failed: {}", e));
+                log_entry.status = AuditStatus::IntegrityFailure(format!("PQC Sign failed: {e}"));
                 // Do NOT return None — persist the entry for forensic traceability.
             }
         }
@@ -446,7 +454,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         Err(e) => {
             tracing::error!(path = %path.display(), error = %e, "audit log open failed");
             if params.config.security.security_level == crate::config::models::SecurityLevel::High {
-                crate::cli::ui::report_error(&format!("CRITICAL: Audit log unavailable: {}", e));
+                crate::cli::ui::report_error(&format!("CRITICAL: Audit log unavailable: {e}"));
             }
             return None;
         }
@@ -458,15 +466,12 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                     return None;
                 }
             };
-            if let Err(e) = writeln!(file, "{}", line) {
+            if let Err(e) = writeln!(file, "{line}") {
                 tracing::error!(path = %path.display(), error = %e, "audit log write failed");
                 if params.config.security.security_level
                     == crate::config::models::SecurityLevel::High
                 {
-                    crate::cli::ui::report_error(&format!(
-                        "CRITICAL: Audit log write failed: {}",
-                        e
-                    ));
+                    crate::cli::ui::report_error(&format!("CRITICAL: Audit log write failed: {e}"));
                 }
                 return None;
             }
@@ -536,7 +541,7 @@ fn write_head_cache(hash: &str) {
     let tmp_path = cache_path.with_extension("cache.tmp");
     if let Ok(mut f) = std::fs::File::create(&tmp_path) {
         use std::io::Write;
-        if writeln!(f, "{}", hash).is_ok() {
+        if writeln!(f, "{hash}").is_ok() {
             drop(f);
             if let Err(e) = std::fs::rename(&tmp_path, &cache_path) {
                 tracing::warn!(
@@ -551,7 +556,7 @@ fn write_head_cache(hash: &str) {
         drop(f);
     }
     // Non-atomic fallback: direct write (better than losing the cache).
-    if let Err(e) = std::fs::write(&cache_path, format!("{}\n", hash)) {
+    if let Err(e) = std::fs::write(&cache_path, format!("{hash}\n")) {
         tracing::warn!(
             path = %cache_path.display(),
             error = %e,
@@ -590,7 +595,7 @@ fn get_last_log_hash(path: &Path) -> String {
     }
 
     if let Ok(mut file) = std::fs::File::open(path) {
-        let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+        let size = file.metadata().map_or(0, |m| m.len());
         if size == 0 {
             write_head_cache(GENESIS_HASH);
             return GENESIS_HASH.to_string();
@@ -694,7 +699,7 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
         .and_then(|v| {
             v.get("hash")
                 .and_then(|h| h.as_str())
-                .map(|s| s.to_string())
+                .map(std::string::ToString::to_string)
         })
         .unwrap_or_else(|| GENESIS_HASH.to_string());
 
@@ -728,12 +733,12 @@ fn trim_log_file(path: &std::path::Path, max_lines: usize) {
             "arch": arch,
             "cli_version": cli_version
         });
-        if let Err(e) = writeln!(temp_file, "{}", continuity_marker) {
+        if let Err(e) = writeln!(temp_file, "{continuity_marker}") {
             tracing::error!(path = %temp_path.display(), error = %e, "Failed to write continuity marker during log rotation");
         }
 
         for l in all_lines.into_iter().skip(skip_count) {
-            if let Err(e) = writeln!(temp_file, "{}", l) {
+            if let Err(e) = writeln!(temp_file, "{l}") {
                 tracing::error!(path = %temp_path.display(), error = %e, "Failed to write audit entry during log rotation");
             }
         }

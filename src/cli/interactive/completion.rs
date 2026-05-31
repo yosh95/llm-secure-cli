@@ -1,3 +1,4 @@
+use crate::cli::interactive::commands;
 use crate::core::context::AppContext;
 use rustyline::Context;
 use rustyline::Helper;
@@ -7,58 +8,29 @@ use rustyline::highlight::{CmdKind, Highlighter};
 use rustyline::hint::Hinter;
 use rustyline::validate::Validator;
 use std::sync::{Arc, Mutex};
+
 pub struct ChatCompleter {
     file_completer: FilenameCompleter,
-    commands: Vec<&'static str>,
+    /// Slash commands for completion — derived from the central command registry.
+    commands: Vec<String>,
     pub current_provider: Arc<Mutex<String>>,
     pub ctx: Arc<AppContext>,
 }
+
 impl ChatCompleter {
     pub fn new(current_provider: Arc<Mutex<String>>, ctx: Arc<AppContext>) -> Self {
         Self {
             file_completer: FilenameCompleter::new(),
-            commands: vec![
-                "/help",
-                "/h",
-                "/quit",
-                "/q",
-                "/edit",
-                "/e",
-                "/clear",
-                "/c",
-                "/info",
-                "/i",
-                "/raw",
-                "/session",
-                "/attach",
-                "/tools",
-                "/model",
-                "/m",
-                "/vmodel",
-                "/vm",
-                "/provider",
-                "/p",
-                "/vprovider",
-                "/vp",
-                "/summarize",
-                "/s",
-                "/edit_history",
-                "/eh",
-                "/alias",
-                "/verify",
-                "/verifier",
-                "/template",
-                "/t",
-                "/view",
-                "/credits",
-            ],
+            commands: commands::all_slash_commands(),
             current_provider,
             ctx,
         }
     }
 }
+
 impl Completer for ChatCompleter {
     type Candidate = Pair;
+
     fn complete(
         &self,
         line: &str,
@@ -73,8 +45,8 @@ impl Completer for ChatCompleter {
                 for cmd in &self.commands {
                     if cmd.starts_with(line) {
                         matches.push(Pair {
-                            display: cmd.to_string(),
-                            replacement: cmd.to_string(),
+                            display: cmd.clone(),
+                            replacement: cmd.clone(),
                         });
                     }
                 }
@@ -185,7 +157,7 @@ impl Completer for ChatCompleter {
                                         let display = if let Some(preview) = preview
                                             && !preview.is_empty()
                                         {
-                                            format!("{}  ({})", stem, preview)
+                                            format!("{stem}  ({preview})")
                                         } else {
                                             stem.to_string()
                                         };
@@ -216,57 +188,9 @@ impl Completer for ChatCompleter {
                         }
                         return Ok((start, matches));
                     }
-                    "/model" | "/m" => {
-                        let models_map = self.ctx.config_manager.get_cached_models_sync();
-                        let mut matches = Vec::new();
-                        let current_p = self
-                            .current_provider
-                            .lock()
-                            .unwrap_or_else(|e| {
-                                tracing::warn!(error = %e, "Provider mutex poisoned during completion");
-                                e.into_inner()
-                            })
-                            .clone();
-                        // Suggest -u / --update flag
-                        if arg_prefix.starts_with('-') {
-                            for flag in &["-u", "--update"] {
-                                if flag.starts_with(arg_prefix) {
-                                    matches.push(Pair {
-                                        display: flag.to_string(),
-                                        replacement: format!("{} ", flag),
-                                    });
-                                }
-                            }
-                            matches.sort_by(|a, b| a.display.cmp(&b.display));
-                            return Ok((start, matches));
-                        }
-                        // Add aliases to completions (only for main model switch)
-                        if let Ok(state) = self.ctx.config_manager.get_state() {
-                            for alias in state.model_aliases.keys() {
-                                if alias.starts_with(arg_prefix) {
-                                    matches.push(Pair {
-                                        display: format!("{} (alias)", alias),
-                                        replacement: alias.clone(),
-                                    });
-                                }
-                            }
-                        }
-                        // Suggest models for the CURRENT provider directly
-                        if let Some(models) = models_map.get(&current_p) {
-                            for model in models {
-                                if model.starts_with(arg_prefix) {
-                                    matches.push(Pair {
-                                        display: model.clone(),
-                                        replacement: model.clone(),
-                                    });
-                                }
-                            }
-                        }
-                        matches.sort_by(|a, b| a.display.cmp(&b.display));
-                        matches.dedup_by(|a, b| a.display == b.display);
-                        return Ok((start, matches));
-                    }
-                    "/vmodel" | "/vm" => {
+                    "/model" | "/m" | "/vmodel" | "/vm" => {
+                        // Check if this is verifier model or main model
+                        let is_verifier = cmd == "/vmodel" || cmd == "/vm";
                         let models_map = self.ctx.config_manager.get_cached_models_sync();
                         let mut matches = Vec::new();
                         // Suggest -u / --update flag
@@ -275,23 +199,57 @@ impl Completer for ChatCompleter {
                                 if flag.starts_with(arg_prefix) {
                                     matches.push(Pair {
                                         display: flag.to_string(),
-                                        replacement: format!("{} ", flag),
+                                        replacement: format!("{flag} "),
                                     });
                                 }
                             }
                             matches.sort_by(|a, b| a.display.cmp(&b.display));
                             return Ok((start, matches));
                         }
-                        let (v_p, _) = self.ctx.config_manager.get_verifier_settings();
-                        if !v_p.is_empty()
-                            && let Some(models) = models_map.get(&v_p)
-                        {
-                            for model in models {
-                                if model.starts_with(arg_prefix) {
-                                    matches.push(Pair {
-                                        display: model.clone(),
-                                        replacement: model.clone(),
-                                    });
+                        if is_verifier {
+                            // Verifier model: only suggest verifier's provider's models
+                            let (v_p, _) = self.ctx.config_manager.get_verifier_settings();
+                            if !v_p.is_empty()
+                                && let Some(models) = models_map.get(&v_p)
+                            {
+                                for model in models {
+                                    if model.starts_with(arg_prefix) {
+                                        matches.push(Pair {
+                                            display: model.clone(),
+                                            replacement: model.clone(),
+                                        });
+                                    }
+                                }
+                            }
+                        } else {
+                            // Main model: add aliases
+                            if let Ok(state) = self.ctx.config_manager.get_state() {
+                                for alias in state.model_aliases.keys() {
+                                    if alias.starts_with(arg_prefix) {
+                                        matches.push(Pair {
+                                            display: format!("{alias} (alias)"),
+                                            replacement: alias.clone(),
+                                        });
+                                    }
+                                }
+                            }
+                            // Suggest models for the CURRENT provider
+                            let current_p = self
+                                .current_provider
+                                .lock()
+                                .unwrap_or_else(|e| {
+                                    tracing::warn!(error = %e, "Provider mutex poisoned during completion");
+                                    e.into_inner()
+                                })
+                                .clone();
+                            if let Some(models) = models_map.get(&current_p) {
+                                for model in models {
+                                    if model.starts_with(arg_prefix) {
+                                        matches.push(Pair {
+                                            display: model.clone(),
+                                            replacement: model.clone(),
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -302,6 +260,18 @@ impl Completer for ChatCompleter {
                     "/tools" | "/verify" | "/verifier" => {
                         let mut matches = Vec::new();
                         for opt in &["on", "off"] {
+                            if opt.starts_with(arg_prefix) {
+                                matches.push(Pair {
+                                    display: opt.to_string(),
+                                    replacement: opt.to_string(),
+                                });
+                            }
+                        }
+                        return Ok((start, matches));
+                    }
+                    "/tool_output" | "/to" => {
+                        let mut matches = Vec::new();
+                        for opt in &["on", "off", "show", "hide"] {
                             if opt.starts_with(arg_prefix) {
                                 matches.push(Pair {
                                     display: opt.to_string(),
@@ -383,7 +353,7 @@ impl Completer for ChatCompleter {
                             let models_map = self.ctx.config_manager.get_cached_models_sync();
                             for (p, models) in models_map {
                                 for m in models {
-                                    let full = format!("{}:{}", p, m);
+                                    let full = format!("{p}:{m}");
                                     matches.push(Pair {
                                         display: full.clone(),
                                         replacement: full,
@@ -404,7 +374,7 @@ impl Completer for ChatCompleter {
                                     if flag.starts_with(target_prefix) {
                                         matches.push(Pair {
                                             display: flag.to_string(),
-                                            replacement: format!("{} ", flag),
+                                            replacement: format!("{flag} "),
                                         });
                                     }
                                 }
@@ -415,7 +385,7 @@ impl Completer for ChatCompleter {
                             let mut matches = Vec::new();
                             for (p, models) in models_map {
                                 for m in models {
-                                    let full = format!("{}:{}", p, m);
+                                    let full = format!("{p}:{m}");
                                     if full.starts_with(target_prefix) {
                                         matches.push(Pair {
                                             display: full.clone(),
@@ -439,19 +409,21 @@ impl Completer for ChatCompleter {
         Ok((0, Vec::new()))
     }
 }
+
 impl Hinter for ChatCompleter {
     type Hint = String;
 }
+
 impl Highlighter for ChatCompleter {
     fn highlight<'l>(&self, line: &'l str, _pos: usize) -> std::borrow::Cow<'l, str> {
         if line.starts_with('/') {
             let parts: Vec<&str> = line.splitn(2, ' ').collect();
             let cmd = parts[0];
-            if self.commands.contains(&cmd) {
+            if self.commands.contains(&cmd.to_string()) {
                 let mut highlighted = line.to_string();
                 // Use ANSI codes directly to avoid conflicts with rustyline's own handling
                 // \x1b[1;36m is bold cyan, \x1b[0m is reset
-                let colored_cmd = format!("\x1b[1;34m{}\x1b[0m", cmd);
+                let colored_cmd = format!("\x1b[1;34m{cmd}\x1b[0m");
                 highlighted = highlighted.replacen(cmd, &colored_cmd, 1);
                 return std::borrow::Cow::Owned(highlighted);
             }
@@ -464,10 +436,12 @@ impl Highlighter for ChatCompleter {
         }
         std::borrow::Cow::Borrowed(line)
     }
+
     fn highlight_char(&self, _line: &str, _pos: usize, _forced: CmdKind) -> bool {
         true
     }
 }
+
 impl Validator for ChatCompleter {
     fn validate(
         &self,
@@ -486,4 +460,5 @@ impl Validator for ChatCompleter {
         Ok(rustyline::validate::ValidationResult::Valid(None))
     }
 }
+
 impl Helper for ChatCompleter {}

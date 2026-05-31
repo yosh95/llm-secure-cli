@@ -88,7 +88,7 @@ impl KeyStore for FileSystemKeyStore {
     }
 
     fn drop_cache(&self) {
-        super::key_storage::purge_passphrase_cache()
+        super::key_storage::purge_passphrase_cache();
     }
 }
 
@@ -120,6 +120,7 @@ impl IdentityManager {
 
     // ── Key existence check ──
 
+    #[must_use]
     pub fn has_keys() -> bool {
         // Accept both raw and LKEF-magic encrypted key files.
         let dir = Self::get_key_dir("self", "me");
@@ -180,7 +181,7 @@ impl IdentityManager {
         let kem_path = dir.join("id_kem1024");
         if !kem_path.exists() {
             let (pk, sk) = fips203::ml_kem_1024::KG::try_keygen()
-                .map_err(|e| anyhow!("KEM keygen failed: {}", e))?;
+                .map_err(|e| anyhow!("KEM keygen failed: {e}"))?;
             store.save_private_key(&kem_path, &sk.into_bytes(), passphrase.as_deref())?;
             fs::write(dir.join("id_kem1024.pub"), pk.into_bytes())?;
         }
@@ -193,7 +194,7 @@ impl IdentityManager {
     pub fn get_public_key_for(entity_type: &str, name: &str, filename: &str) -> Result<Vec<u8>> {
         let path = Self::get_key_dir(entity_type, name).join(filename);
         if !path.exists() {
-            return Err(anyhow!("Public key not found: {:?}", path));
+            return Err(anyhow!("Public key not found: {path:?}"));
         }
         Ok(fs::read(path)?)
     }
@@ -280,7 +281,7 @@ impl IdentityManager {
             iat: now,
             exp: now + 600,
             jti: Uuid::new_v4().to_string(),
-            tool: tool_name.map(|s| s.to_string()),
+            tool: tool_name.map(std::string::ToString::to_string),
             workspace: format!("{:?}", std::env::current_dir()?),
         };
 

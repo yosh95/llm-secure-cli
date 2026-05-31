@@ -25,11 +25,10 @@ pub struct Spinner {
 fn terminal_width() -> u16 {
     console::Term::stdout()
         .size_checked()
-        .map(|(_, cols)| cols)
-        .unwrap_or(80)
+        .map_or(80, |(_, cols)| cols)
 }
 
-/// Reserve space for: spinner_char (1-3 chars) + space + "XX.Xs" (6 chars)
+/// Reserve space for: `spinner_char` (1-3 chars) + space + "XX.Xs" (6 chars)
 const RESERVED_COLS: u16 = 12;
 
 /// Truncate `msg` at the **beginning** so the tail (model name) is preserved.
@@ -58,6 +57,7 @@ const ERASE_LINE: &str = "\x1b[2K";
 
 // ── Implementation ──
 impl Spinner {
+    #[must_use]
     pub fn start(msg: &str) -> Self {
         let mut msg = msg.to_string();
         let term_w = terminal_width();
@@ -107,7 +107,7 @@ impl Spinner {
             h.abort();
         }
         let goto = cursor_to_col1();
-        print!("{erase}{goto}", erase = ERASE_LINE, goto = goto);
+        print!("{ERASE_LINE}{goto}");
         std::io::stdout().flush().ok();
     }
 
@@ -117,11 +117,12 @@ impl Spinner {
         }
         let elapsed = self.start.elapsed();
         let goto = cursor_to_col1();
-        print!("{erase}{goto}", erase = ERASE_LINE, goto = goto);
+        print!("{ERASE_LINE}{goto}");
         println!("{} {:.1}s {}", self.msg, elapsed.as_secs_f64(), completion);
         std::io::stdout().flush().ok();
     }
 
+    #[must_use]
     pub fn message(&self) -> &str {
         &self.msg
     }

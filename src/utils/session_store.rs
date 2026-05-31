@@ -46,7 +46,7 @@ pub fn auto_save(session: &ActiveSession) {
         conversation: state.conversation.clone(),
     };
 
-    let path = dir.join(format!("{}.json", trace_id));
+    let path = dir.join(format!("{trace_id}.json"));
 
     let file = match std::fs::File::create(&path) {
         Ok(f) => f,
@@ -60,7 +60,7 @@ pub fn auto_save(session: &ActiveSession) {
         }
     };
     match serde_json::to_writer_pretty(&file, &session_file) {
-        Ok(_) => {}
+        Ok(()) => {}
         Err(e) => {
             tracing::warn!(
                 trace_id = %trace_id,
@@ -164,7 +164,7 @@ pub fn load_session(filename: &str) -> anyhow::Result<Vec<Message>> {
             dir.join(filename) // fallback
         }
     } else {
-        let p = dir.join(format!("{}.json", filename));
+        let p = dir.join(format!("{filename}.json"));
         if p.exists() {
             p
         } else {
@@ -197,9 +197,10 @@ pub fn load_from_path(path: &std::path::Path) -> anyhow::Result<Vec<Message>> {
     }
 }
 
-/// Get the path to a session file by its trace_id.
+/// Get the path to a session file by its `trace_id`.
+#[must_use]
 pub fn session_path(trace_id: &str) -> PathBuf {
-    crate::consts::sessions_dir().join(format!("{}.json", trace_id))
+    crate::consts::sessions_dir().join(format!("{trace_id}.json"))
 }
 
 /// Delete a single session by its filename (without .json extension).
@@ -213,7 +214,7 @@ pub fn delete_session(filename: &str) -> anyhow::Result<bool> {
     let path = if filename.ends_with(".json") {
         dir.join(filename)
     } else {
-        dir.join(format!("{}.json", filename))
+        dir.join(format!("{filename}.json"))
     };
 
     if path.exists() {

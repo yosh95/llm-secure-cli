@@ -7,16 +7,16 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 /// Checks if python3 is available on the system PATH.
-/// Returns false if not found — when false, execute_python is not registered
+/// Returns false if not found — when false, `execute_python` is not registered
 /// as a tool so the LLM never sees it.
+#[must_use]
 pub fn is_python_available() -> bool {
     std::process::Command::new("python3")
         .arg("--version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+        .is_ok_and(|s| s.success())
 }
 
 /// Executes arbitrary Python code supplied by the LLM.
@@ -37,9 +37,8 @@ pub async fn execute_python(
         Some(Value::String(s)) => s.clone(),
         Some(other) => {
             return Err(anyhow::anyhow!(
-                "Invalid type for 'code': expected a string, got {}. \
+                "Invalid type for 'code': expected a string, got {other}. \
                  Provide the Python source code as a single string.",
-                other,
             ));
         }
         None => {
@@ -59,10 +58,10 @@ pub async fn execute_python(
         .prefix("llsc_py_")
         .suffix(".py")
         .tempfile()
-        .map_err(|e| anyhow::anyhow!("Failed to create temporary file: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to create temporary file: {e}"))?;
 
     std::fs::write(tmp_file.path(), &code)
-        .map_err(|e| anyhow::anyhow!("Failed to write code to temporary file: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to write code to temporary file: {e}"))?;
 
     let tmp_path = tmp_file.path().to_path_buf();
 
@@ -88,7 +87,7 @@ pub async fn execute_python(
                  Ensure python3 is installed and available."
             ));
         }
-        Err(e) => return Err(anyhow::anyhow!("Failed to start python3: {}", e)),
+        Err(e) => return Err(anyhow::anyhow!("Failed to start python3: {e}")),
     };
 
     let mut stdout_reader = BufReader::new(
@@ -138,7 +137,7 @@ pub async fn execute_python(
                     Err(_) => stderr_done = true,
                 }
             }
-            _ = &mut sleep => {
+            () = &mut sleep => {
                 if let Err(e) = child.kill().await {
                     tracing::warn!("Failed to kill python subprocess: {}", e);
                 }
@@ -147,8 +146,7 @@ pub async fn execute_python(
                     tracing::warn!("Failed to remove temp file {:?}: {}", tmp_path, e);
                 }
                 return Err(anyhow::anyhow!(
-                    "Python execution timed out after {} seconds",
-                    timeout_secs
+                    "Python execution timed out after {timeout_secs} seconds"
                 ));
             }
         }
@@ -173,6 +171,6 @@ pub async fn execute_python(
             ),
             "exit_code": status.code().unwrap_or(-1)
         })),
-        Err(e) => Err(anyhow::anyhow!("Execution error: {}", e)),
+        Err(e) => Err(anyhow::anyhow!("Execution error: {e}")),
     }
 }

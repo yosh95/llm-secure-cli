@@ -39,12 +39,14 @@ pub enum KEMVariant {
 }
 
 impl PQCVariant {
+    #[must_use]
     pub fn to_str(&self) -> &'static str {
         "ML-DSA-87"
     }
 }
 
 impl KEMVariant {
+    #[must_use]
     pub fn to_str(&self) -> &'static str {
         "ML-KEM-1024"
     }
@@ -55,7 +57,7 @@ impl FromStr for PQCVariant {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_uppercase().replace('_', "-").as_str() {
             "ML-DSA-87" | "MLDSA87" => Ok(PQCVariant::MLDSA87),
-            _ => Err(anyhow!("Unknown PQC variant: {}. Supported: ML-DSA-87", s)),
+            _ => Err(anyhow!("Unknown PQC variant: {s}. Supported: ML-DSA-87")),
         }
     }
 }
@@ -78,15 +80,15 @@ impl PqcProvider {
 
     pub fn generate_keypair(_variant: PQCVariant) -> Result<(Vec<u8>, Vec<u8>)> {
         let (pk, sk) =
-            ml_dsa_87::KG::try_keygen().map_err(|e| anyhow!("ML-DSA-87 keygen failed: {}", e))?;
+            ml_dsa_87::KG::try_keygen().map_err(|e| anyhow!("ML-DSA-87 keygen failed: {e}"))?;
         Ok((pk.into_bytes().to_vec(), sk.into_bytes().to_vec()))
     }
 
     // ── ML-KEM-1024 key generation ──
 
     pub fn generate_kem_keypair(_variant: KEMVariant) -> Result<(Vec<u8>, Vec<u8>)> {
-        let (pk, sk) = ml_kem_1024::KG::try_keygen()
-            .map_err(|e| anyhow!("ML-KEM-1024 keygen failed: {}", e))?;
+        let (pk, sk) =
+            ml_kem_1024::KG::try_keygen().map_err(|e| anyhow!("ML-KEM-1024 keygen failed: {e}"))?;
         Ok((pk.into_bytes().to_vec(), sk.into_bytes().to_vec()))
     }
 
@@ -97,10 +99,10 @@ impl PqcProvider {
             .try_into()
             .map_err(|_| anyhow!("Invalid ML-DSA-87 secret key length"))?;
         let sk = ml_dsa_87::PrivateKey::try_from_bytes(sk_arr)
-            .map_err(|e| anyhow!("Invalid ML-DSA-87 sk: {}", e))?;
+            .map_err(|e| anyhow!("Invalid ML-DSA-87 sk: {e}"))?;
         let sig = sk
             .try_sign(message, &[])
-            .map_err(|e| anyhow!("ML-DSA-87 sign failed: {}", e))?;
+            .map_err(|e| anyhow!("ML-DSA-87 sign failed: {e}"))?;
         Ok(sig.to_vec())
     }
 
@@ -119,7 +121,7 @@ impl PqcProvider {
             .try_into()
             .map_err(|_| anyhow!("Invalid ML-DSA-87 signature length"))?;
         let pk = ml_dsa_87::PublicKey::try_from_bytes(pk_arr)
-            .map_err(|e| anyhow!("Invalid ML-DSA-87 pk: {}", e))?;
+            .map_err(|e| anyhow!("Invalid ML-DSA-87 pk: {e}"))?;
         let ok = pk.verify(message, &sig_arr, &[]);
         if ok {
             Ok(())
@@ -134,6 +136,7 @@ impl PqcProvider {
         Self::sign(PQCVariant::MLDSA87, sk_bytes, message)
     }
 
+    #[must_use]
     pub fn verify_mldsa(
         message: &[u8],
         sig_bytes: &[u8],
@@ -150,10 +153,10 @@ impl PqcProvider {
             .try_into()
             .map_err(|_| anyhow!("Invalid ML-KEM-1024 public key length"))?;
         let ek = ml_kem_1024::EncapsKey::try_from_bytes(pk_arr)
-            .map_err(|e| anyhow!("Invalid ML-KEM-1024 pk: {}", e))?;
+            .map_err(|e| anyhow!("Invalid ML-KEM-1024 pk: {e}"))?;
         let (ss, ct) = ek
             .try_encaps()
-            .map_err(|e| anyhow!("ML-KEM-1024 encapsulate failed: {}", e))?;
+            .map_err(|e| anyhow!("ML-KEM-1024 encapsulate failed: {e}"))?;
         Ok((ss.into_bytes().to_vec(), ct.into_bytes().to_vec()))
     }
 
@@ -167,12 +170,12 @@ impl PqcProvider {
             .try_into()
             .map_err(|_| anyhow!("Invalid ML-KEM-1024 ciphertext length"))?;
         let dk = ml_kem_1024::DecapsKey::try_from_bytes(dk_arr)
-            .map_err(|e| anyhow!("Invalid ML-KEM-1024 dk: {}", e))?;
+            .map_err(|e| anyhow!("Invalid ML-KEM-1024 dk: {e}"))?;
         let ct = ml_kem_1024::CipherText::try_from_bytes(ct_arr)
-            .map_err(|e| anyhow!("Invalid ML-KEM-1024 ct: {}", e))?;
+            .map_err(|e| anyhow!("Invalid ML-KEM-1024 ct: {e}"))?;
         let ss = dk
             .try_decaps(&ct)
-            .map_err(|e| anyhow!("ML-KEM-1024 decapsulate failed: {}", e))?;
+            .map_err(|e| anyhow!("ML-KEM-1024 decapsulate failed: {e}"))?;
         Ok(ss.into_bytes().to_vec())
     }
 
@@ -231,7 +234,7 @@ impl SecureStorage {
         let nonce = Nonce::from(nonce_bytes);
         let ciphertext_with_tag = cipher
             .encrypt(&nonce, data)
-            .map_err(|e| anyhow!("Enc failed: {}", e))?;
+            .map_err(|e| anyhow!("Enc failed: {e}"))?;
         let (aes_ct, tag) = ciphertext_with_tag.split_at(ciphertext_with_tag.len() - 16);
         Ok(EncryptedPacket {
             kem_ct,
@@ -253,7 +256,7 @@ impl SecureStorage {
         encrypted.extend_from_slice(&packet.tag);
         cipher
             .decrypt(nonce, encrypted.as_slice())
-            .map_err(|e| anyhow!("Dec failed: {}", e))
+            .map_err(|e| anyhow!("Dec failed: {e}"))
     }
 }
 
@@ -262,6 +265,7 @@ pub struct PQCAgilityManager;
 impl PQCAgilityManager {
     /// Always returns [`DEFAULT_PQC_VARIANT`] (ML-DSA-87).
     /// Risk-level-based variant switching is discontinued.
+    #[must_use]
     pub fn get_required_level(
         _config: &crate::config::models::AppConfig,
         _tool_name: &str,
@@ -279,7 +283,7 @@ impl ResponseSigner {
         sk: &[u8],
         _v: PQCVariant,
     ) -> Result<serde_json::Value> {
-        let msg = format!("{}:{}", id, text);
+        let msg = format!("{id}:{text}");
         let sig = PqcProvider::sign(PQCVariant::MLDSA87, sk, msg.as_bytes())?;
         Ok(serde_json::json!({
             "result": text,

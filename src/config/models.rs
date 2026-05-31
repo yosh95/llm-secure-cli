@@ -17,6 +17,7 @@ pub enum SecurityLevel {
 
 impl SecurityLevel {
     /// Convert to the TOML string representation (for serialization).
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             SecurityLevel::High => "high",
@@ -58,7 +59,7 @@ impl TryFrom<&str> for SecurityLevel {
         match s {
             "high" => Ok(SecurityLevel::High),
             "standard" => Ok(SecurityLevel::Standard),
-            other => Err(format!("unknown security level: '{}'", other)),
+            other => Err(format!("unknown security level: '{other}'")),
         }
     }
 }
@@ -183,7 +184,7 @@ pub struct ModelAlias {
 /// A single member of the verifier committee.
 ///
 /// Each committee member is an independent LLM that evaluates tool call safety.
-/// The committee uses an "any-flag" model: if **any** member returns NeedsApproval,
+/// The committee uses an "any-flag" model: if **any** member returns `NeedsApproval`,
 /// the call requires human approval. Only if **all** members return Allowed is the
 /// call auto-approved.
 ///
@@ -214,7 +215,7 @@ pub struct SecurityConfig {
 /// Configuration for the verifier committee.
 ///
 /// The committee runs multiple independent LLM verifiers concurrently.
-/// The "any-flag" policy means: if ANY member flags a call as NeedsApproval,
+/// The "any-flag" policy means: if ANY member flags a call as `NeedsApproval`,
 /// human approval is required. Only if ALL members return Allowed is the call
 /// auto-approved.
 ///
@@ -264,6 +265,7 @@ impl SecurityConfig {
     ///
     /// Use [`Self::validate_warnings`] for advisory issues that should not
     /// block configuration loading but are worth surfacing to the user.
+    #[must_use]
     pub fn validate(&self) -> Vec<ValidationError> {
         let errors = Vec::new();
 
@@ -277,6 +279,7 @@ impl SecurityConfig {
     /// Returns advisory warnings for suboptimal (but not invalid) configuration
     /// combinations.  These do **not** block configuration loading but should
     /// be surfaced to the user (e.g., at startup or via `/info`).
+    #[must_use]
     pub fn validate_warnings(&self) -> Vec<ValidationError> {
         Vec::new()
     }
@@ -289,7 +292,10 @@ impl SecurityConfig {
         if errors.is_empty() {
             Ok(())
         } else {
-            let messages: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+            let messages: Vec<String> = errors
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect();
             Err(format!(
                 "Security config validation failed:\n  - {}",
                 messages.join("\n  - ")

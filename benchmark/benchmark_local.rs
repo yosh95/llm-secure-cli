@@ -31,7 +31,7 @@ fn main() -> anyhow::Result<()> {
         // Verify
         let start = Instant::now();
         for _ in 0..100 {
-            PqcProvider::verify_mldsa(msg, &sig, &pk, variant);
+            let _ = PqcProvider::verify_mldsa(msg, &sig, &pk, variant);
         }
         let elapsed = start.elapsed();
         println!("{} Verify (100 runs): {:?}", name, elapsed);
@@ -71,7 +71,7 @@ fn main() -> anyhow::Result<()> {
     let code = "import os; os.system('ls')";
     let start = Instant::now();
     for _ in 0..1000 {
-        StaticAnalyzer::is_obviously_malicious(code);
+        let _ = StaticAnalyzer::is_obviously_malicious(code);
     }
     let elapsed = start.elapsed();
     println!("Fast-Fail Check (1000 runs): {:?}", elapsed);

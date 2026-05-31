@@ -30,6 +30,7 @@ fn return_true() -> bool {
 }
 
 impl CachedModelEntry {
+    #[must_use]
     pub fn id(&self) -> &str {
         match self {
             CachedModelEntry::Simple(id) => id,
@@ -41,6 +42,7 @@ impl CachedModelEntry {
     ///
     /// For entries in the old format (plain strings) the value defaults to `true`
     /// so that existing cache files remain valid.
+    #[must_use]
     pub fn supports_tools(&self) -> bool {
         match self {
             CachedModelEntry::Simple(_) => true,
@@ -80,7 +82,7 @@ fn read_cache() -> anyhow::Result<Option<HashMap<String, Vec<CachedModelEntry>>>
                     .collect();
                 return Ok(Some(converted));
             }
-            Err(anyhow::anyhow!("Failed to parse models cache: {}", e))
+            Err(anyhow::anyhow!("Failed to parse models cache: {e}"))
         }
     }
 }
@@ -141,7 +143,7 @@ impl ConfigManager {
         };
         map.get(provider)
             .and_then(|models| models.iter().find(|e| e.id() == model))
-            .map(|e| e.supports_tools())
+            .map(CachedModelEntry::supports_tools)
     }
 
     /// Fetch model lists from all active providers and persist the combined
@@ -167,7 +169,7 @@ impl ConfigManager {
 
     /// Fetch model data from a single provider.
     ///
-    /// For providers whose API exposes per-model capabilities (e.g. OpenRouter
+    /// For providers whose API exposes per-model capabilities (e.g. `OpenRouter`
     /// with its `supported_parameters` array), the returned entries carry
     /// metadata that can be used to decide whether to send tool definitions.
     async fn fetch_models_from_provider(
@@ -206,7 +208,7 @@ impl ConfigManager {
         if let Some(key) = api_key
             && key != "local_bypass"
         {
-            req = req.header("Authorization", format!("Bearer {}", key));
+            req = req.header("Authorization", format!("Bearer {key}"));
         }
 
         let res = req.send().await?;

@@ -43,9 +43,8 @@ pub fn validate_tool_call(
             && StaticAnalyzer::is_obviously_malicious(s)
         {
             return Err(format!(
-                "Phase 1 Static Analysis blocked '{}': argument '{}' contains \
-                     control characters or null bytes.",
-                name, key
+                "Phase 1 Static Analysis blocked '{name}': argument '{key}' contains \
+                     control characters or null bytes."
             ));
         }
     }

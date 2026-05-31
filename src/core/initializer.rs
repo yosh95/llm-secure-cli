@@ -55,7 +55,7 @@ pub async fn switch_model(
         }
         Ok(())
     } else {
-        anyhow::bail!("Failed to create client for model: {}", target_model)
+        anyhow::bail!("Failed to create client for model: {target_model}")
     }
 }
 
@@ -83,7 +83,7 @@ pub async fn switch_provider(session: &mut ActiveSession, provider: &str) -> any
         }
         Ok(())
     } else {
-        anyhow::bail!("Failed to create client for provider: {}", provider)
+        anyhow::bail!("Failed to create client for provider: {provider}")
     }
 }
 
@@ -152,7 +152,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
     {
         if let Err(e) = IdentityManager::ensure_keys() {
             ctx.ui
-                .report_error(&format!("Failed to generate keys: {}", e));
+                .report_error(&format!("Failed to generate keys: {e}"));
         } else {
             ctx.ui.report_success("Identity keys generated.");
         }
@@ -167,39 +167,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
         crate::config::models::SecurityLevel::try_from(security_level_str.as_str())
             .unwrap_or(config.security.security_level);
 
-    if !verifier.manifest_path.exists() {
-        let msg = if security_level == crate::config::models::SecurityLevel::High {
-            "SECURITY FAILURE: Integrity manifest not found. In 'high' security mode, a signed manifest is required."
-        } else {
-            "Integrity manifest not found. This protects your binary and config from unauthorized changes."
-        };
-
-        ctx.ui.report_warning(msg);
-        if is_atty
-            && ctx
-                .ui
-                .ask_confirm_simple("Generate and sign integrity manifest now?")
-                .await
-                == Some(ui::ConfirmResult::Yes)
-        {
-            if let Err(e) = verifier.rebuild_manifest() {
-                ctx.ui
-                    .report_error(&format!("Failed to build manifest: {}", e));
-                if security_level == crate::config::models::SecurityLevel::High {
-                    return Err(anyhow::anyhow!(
-                        "Integrity manifest build failed in 'high' security mode: {}",
-                        e
-                    ));
-                }
-            } else {
-                ctx.ui.report_success("Integrity manifest generated.");
-            }
-        } else if security_level == crate::config::models::SecurityLevel::High {
-            return Err(anyhow::anyhow!(
-                "Execution aborted: integrity manifest not found in 'high' security mode."
-            ));
-        }
-    } else {
+    if verifier.manifest_path.exists() {
         match verifier.verify() {
             Ok(true) => {
                 // Integrity OK
@@ -224,11 +192,10 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
                 {
                     if let Err(e) = verifier.rebuild_manifest() {
                         ctx.ui
-                            .report_error(&format!("Failed to rebuild manifest: {}", e));
+                            .report_error(&format!("Failed to rebuild manifest: {e}"));
                         if security_level == crate::config::models::SecurityLevel::High {
                             return Err(anyhow::anyhow!(
-                                "Integrity manifest rebuild failed in 'high' security mode: {}",
-                                e
+                                "Integrity manifest rebuild failed in 'high' security mode: {e}"
                             ));
                         }
                     } else {
@@ -244,6 +211,37 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
                 }
             }
             Err(_e) => {}
+        }
+    } else {
+        let msg = if security_level == crate::config::models::SecurityLevel::High {
+            "SECURITY FAILURE: Integrity manifest not found. In 'high' security mode, a signed manifest is required."
+        } else {
+            "Integrity manifest not found. This protects your binary and config from unauthorized changes."
+        };
+
+        ctx.ui.report_warning(msg);
+        if is_atty
+            && ctx
+                .ui
+                .ask_confirm_simple("Generate and sign integrity manifest now?")
+                .await
+                == Some(ui::ConfirmResult::Yes)
+        {
+            if let Err(e) = verifier.rebuild_manifest() {
+                ctx.ui
+                    .report_error(&format!("Failed to build manifest: {e}"));
+                if security_level == crate::config::models::SecurityLevel::High {
+                    return Err(anyhow::anyhow!(
+                        "Integrity manifest build failed in 'high' security mode: {e}"
+                    ));
+                }
+            } else {
+                ctx.ui.report_success("Integrity manifest generated.");
+            }
+        } else if security_level == crate::config::models::SecurityLevel::High {
+            return Err(anyhow::anyhow!(
+                "Execution aborted: integrity manifest not found in 'high' security mode."
+            ));
         }
     }
 
@@ -266,7 +264,7 @@ async fn register_clients(ctx: &Arc<AppContext>) {
             Arc::new(move |model, stdout, raw, config_manager| {
                 let api_key = config_manager
                     .get_api_key(&closure_p_name)
-                    .unwrap_or_else(|| "".to_string());
+                    .unwrap_or_else(String::new);
 
                 // Read api_url and the optional formatter hint from config in one pass.
                 let (api_url, formatter_hint) = if let Ok(config) = config_manager.get_config() {
@@ -277,12 +275,12 @@ async fn register_clients(ctx: &Arc<AppContext>) {
                             "openai" => "https://api.openai.com/v1".to_string(),
                             "ollama" => "http://localhost:11434/v1".to_string(),
                             "openrouter" => "https://openrouter.ai/api/v1".to_string(),
-                            _ => "".to_string(),
+                            _ => String::new(),
                         });
                     let hint = p_cfg.and_then(|p| p.formatter.clone());
                     (url, hint)
                 } else {
-                    ("".to_string(), None)
+                    (String::new(), None)
                 };
 
                 let client: Box<dyn LlmClient> = match closure_p_name.as_str() {

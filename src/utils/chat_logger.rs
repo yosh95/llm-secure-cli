@@ -107,7 +107,7 @@ fn trim_chat_log(config_manager: &ConfigManager, path: &std::path::Path, max_lin
     let kept_lines = &lines[lines.len() - max_lines..];
     if let Ok(mut file) = std::fs::File::create(path) {
         for line in kept_lines {
-            if let Err(e) = writeln!(file, "{}", line) {
+            if let Err(e) = writeln!(file, "{line}") {
                 tracing::warn!("Failed to write chat log line: {}", e);
             }
         }

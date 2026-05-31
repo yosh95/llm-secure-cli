@@ -9,7 +9,7 @@ pub fn run_keygen() {
     ui::report_success("Generating Secure Identity Keys (Ed25519 + Post-Quantum)...");
 
     match IdentityManager::ensure_keys() {
-        Ok(_) => {
+        Ok(()) => {
             println!(
                 "Keys successfully generated and stored in {}",
                 key_dir().display()
@@ -19,7 +19,7 @@ pub fn run_keygen() {
             println!("- ML-KEM-768 (Post-Quantum Key Encapsulation)");
         }
         Err(e) => {
-            ui::report_error(&format!("Failed to generate keys: {}", e));
+            ui::report_error(&format!("Failed to generate keys: {e}"));
         }
     }
 }
@@ -28,14 +28,14 @@ pub fn run_manifest() {
     ui::report_success("Generating Integrity Manifest...");
     let verifier = IntegrityVerifier::new();
     match verifier.rebuild_manifest() {
-        Ok(_) => {
+        Ok(()) => {
             ui::report_success(&format!(
                 "Integrity manifest saved to {}",
                 verifier.manifest_path.display()
             ));
         }
         Err(e) => {
-            ui::report_error(&format!("Failed to generate manifest: {}", e));
+            ui::report_error(&format!("Failed to generate manifest: {e}"));
         }
     }
 }
@@ -53,28 +53,26 @@ pub fn run_verify(_tail: Option<usize>) {
             );
         }
         Err(e) => {
-            ui::report_error(&format!("ERROR: Verification error: {}", e));
+            ui::report_error(&format!("ERROR: Verification error: {e}"));
         }
     }
 }
 
 pub fn run_verify_session(trace_id: &str) {
-    ui::report_success(&format!("Verifying session integrity: {}...", trace_id));
+    ui::report_success(&format!("Verifying session integrity: {trace_id}..."));
     match SessionAnchorManager::verify_session(trace_id) {
         Ok(true) => {
             ui::report_success(&format!(
-                "OK: Session {} integrity verified via PQC-signed Merkle Anchor.",
-                trace_id
+                "OK: Session {trace_id} integrity verified via PQC-signed Merkle Anchor."
             ));
         }
         Ok(false) => {
             ui::report_error(&format!(
-                "FAILED: Session {} integrity verification failed or anchor not found.",
-                trace_id
+                "FAILED: Session {trace_id} integrity verification failed or anchor not found."
             ));
         }
         Err(e) => {
-            ui::report_error(&format!("ERROR: Verification error: {}", e));
+            ui::report_error(&format!("ERROR: Verification error: {e}"));
         }
     }
 }
@@ -82,12 +80,11 @@ pub fn run_verify_session(trace_id: &str) {
 pub fn list_anchors() {
     ui::report_success("Available Sessions (PQC-Anchored):");
 
-    let anchor_dir = match audit_log_path().parent() {
-        Some(p) => p.join("anchors"),
-        None => {
-            println!("No audit log parent directory found.");
-            return;
-        }
+    let anchor_dir = if let Some(p) = audit_log_path().parent() {
+        p.join("anchors")
+    } else {
+        println!("No audit log parent directory found.");
+        return;
     };
     if !anchor_dir.exists() {
         println!("No session anchors found.");
@@ -107,16 +104,13 @@ pub fn list_anchors() {
                     .unwrap_or("unknown");
                 let count = anchor
                     .get("entry_count")
-                    .and_then(|v| v.as_u64())
+                    .and_then(serde_json::Value::as_u64)
                     .unwrap_or(0);
                 let time = anchor
                     .get("timestamp")
                     .and_then(|v| v.as_str())
                     .unwrap_or("-");
-                println!(
-                    "  - Trace ID: {} | Time: {} | Logs: {}",
-                    trace_id, time, count
-                );
+                println!("  - Trace ID: {trace_id} | Time: {time} | Logs: {count}");
             }
         }
     }

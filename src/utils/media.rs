@@ -246,7 +246,7 @@ pub fn save_media(b64_data: &str, mime_type: &str, save_path: &str) -> anyhow::R
     };
 
     let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-    let filename = format!("generated_{}.{}", timestamp, extension);
+    let filename = format!("generated_{timestamp}.{extension}");
 
     let mut path = Path::new(save_path).to_path_buf();
     // Expand ~ if present
@@ -266,6 +266,7 @@ pub fn save_media(b64_data: &str, mime_type: &str, save_path: &str) -> anyhow::R
 
 /// Find the most recently modified file in the given directory.
 /// Returns `None` if the directory does not exist or contains no files.
+#[must_use]
 pub fn find_latest_media(dir: &std::path::Path) -> Option<std::path::PathBuf> {
     let dir = if dir.starts_with("~") {
         let home = dirs::home_dir()?;
@@ -277,7 +278,7 @@ pub fn find_latest_media(dir: &std::path::Path) -> Option<std::path::PathBuf> {
 
     let entries = std::fs::read_dir(&dir).ok()?;
     entries
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .map(|e| e.path())
         .filter(|p| p.is_file())
         .max_by(|a, b| {
@@ -299,8 +300,6 @@ pub fn open_file_with_default_app(path: &std::path::Path) -> anyhow::Result<()> 
     let path_str = path.to_string_lossy();
     open::that(path)
         .map_err(|e| anyhow::anyhow!(
-            "Failed to open file: {}\n             Your platform may not support opening files via command line.\n             You can manually open the file at: {}",
-            e,
-            path_str
+            "Failed to open file: {e}\n             Your platform may not support opening files via command line.\n             You can manually open the file at: {path_str}"
         ))
 }

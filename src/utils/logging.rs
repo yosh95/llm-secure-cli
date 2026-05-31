@@ -13,7 +13,7 @@ pub fn rotate_file(path: &Path, max_archives: usize) -> std::io::Result<()> {
     // Shift existing archives: .1 -> .2, .2 -> .3, etc.
     for i in (1..max_archives).rev() {
         let mut old_name = file_name.to_os_string();
-        old_name.push(format!(".{}", i));
+        old_name.push(format!(".{i}"));
         let old_archive = path.with_file_name(old_name);
 
         if old_archive.exists() {

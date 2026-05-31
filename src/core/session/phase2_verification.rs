@@ -49,8 +49,7 @@ impl ActiveSession {
                 // Multi-member committee — any-flag policy
                 let member_count = committee_members.len();
                 self.ctx.ui.report_info(&format!(
-                    "Verifier Committee: {} members (any-flag policy)",
-                    member_count,
+                    "Verifier Committee: {member_count} members (any-flag policy)",
                 ));
                 Some(self.spawn_committee_task(name, args, committee_members))
             };
@@ -133,7 +132,7 @@ impl ActiveSession {
                     .print_tool_call_direct(name, &serde_json::json!(args));
                 self.ctx
                     .ui
-                    .report_success(&format!("Intent Verified (Auto-Approved): {}", reason));
+                    .report_success(&format!("Intent Verified (Auto-Approved): {reason}"));
                 Ok((args.clone(), true, None))
             }
             VerificationOutcome::Modified(fixed_args, reason) => {
@@ -154,8 +153,7 @@ impl ActiveSession {
                     .ui
                     .print_tool_call_direct(name, &serde_json::json!(args));
                 self.ctx.ui.report_success(&format!(
-                    "Intent Verified & Corrected (Auto-Approved): {}",
-                    reason
+                    "Intent Verified & Corrected (Auto-Approved): {reason}"
                 ));
                 let effective_args = if let Some(obj) = fixed_args.as_object() {
                     obj.clone()
@@ -182,7 +180,7 @@ impl ActiveSession {
                 self.ctx
                     .ui
                     .report_warning("Verifier flagged this tool call as requiring review.");
-                self.ctx.ui.report_info(&format!("Reason: {}", reason));
+                self.ctx.ui.report_info(&format!("Reason: {reason}"));
                 let cancel_msg = self
                     .request_human_approval(name, config, "verifier_needs_approval")
                     .await?;
@@ -210,7 +208,7 @@ impl ActiveSession {
                 self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
                 self.ctx
                     .ui
-                    .report_warning(&format!("Verifier unavailable: {}", reason));
+                    .report_warning(&format!("Verifier unavailable: {reason}"));
                 let cancel_msg = self
                     .request_human_approval(name, config, "verifier_fallback")
                     .await?;
@@ -237,10 +235,10 @@ impl ActiveSession {
                 spin.finish("done");
                 res.unwrap_or(VerificationOutcome::FallbackRequired("Task Panicked".into()))
             }
-            _ = tokio::time::sleep(std::time::Duration::from_secs(VERIFIER_TIMEOUT_SECS)) => {
+            () = tokio::time::sleep(std::time::Duration::from_secs(VERIFIER_TIMEOUT_SECS)) => {
                 spin.stop();
-                eprintln!("Verifier timed out after {}s.", VERIFIER_TIMEOUT_SECS);
-                VerificationOutcome::FallbackRequired(format!("Verifier timed out after {}s", VERIFIER_TIMEOUT_SECS))
+                eprintln!("Verifier timed out after {VERIFIER_TIMEOUT_SECS}s.");
+                VerificationOutcome::FallbackRequired(format!("Verifier timed out after {VERIFIER_TIMEOUT_SECS}s"))
             }
             _ = tokio::signal::ctrl_c() => {
                 spin.stop();
@@ -268,7 +266,7 @@ impl ActiveSession {
     ) -> anyhow::Result<Option<Value>> {
         let audit_ctx = self.build_audit_context();
 
-        match self.ctx.ui.ask_confirm(&format!("Execute {}", name)).await {
+        match self.ctx.ui.ask_confirm(&format!("Execute {name}")).await {
             Some(crate::cli::ui::ConfirmResult::Yes) => {
                 // Audit log: human approved the tool call
                 crate::security::audit::AuditParams::builder("human_approval", name, config)
@@ -314,24 +312,22 @@ impl ActiveSession {
         feedback: Option<String>,
     ) -> anyhow::Result<Value> {
         self.ctx.ui.report_warning("Execution cancelled by user.");
-        let feedback = match feedback {
-            Some(f) => Some(f),
-            None => {
-                let f = crate::cli::ui::get_user_input("Provide feedback (optional): ");
-                if let Some(ref content) = f
-                    && !content.trim().is_empty()
-                {
-                    use colored::*;
-                    println!("  {}", format!("Feedback: {}", content).dimmed());
-                }
-                f
+        let feedback = if let Some(f) = feedback {
+            Some(f)
+        } else {
+            let f = crate::cli::ui::get_user_input("Provide feedback (optional): ");
+            if let Some(ref content) = f
+                && !content.trim().is_empty()
+            {
+                use colored::Colorize;
+                println!("  {}", format!("Feedback: {content}").dimmed());
             }
+            f
         };
 
         match feedback {
             Some(f) if !f.trim().is_empty() => Ok(Value::String(format!(
-                "Error: Cancelled by user. Feedback: {}",
-                f
+                "Error: Cancelled by user. Feedback: {f}"
             ))),
             Some(_) => Ok(Value::String("Error: Cancelled by user.".into())),
             None => {
@@ -377,9 +373,9 @@ impl ActiveSession {
     ///
     /// Runs ALL committee members concurrently and aggregates their verdicts
     /// using the "any-flag" policy:
-    /// - If ANY member flags NeedsApproval → the aggregated result is NeedsApproval.
+    /// - If ANY member flags `NeedsApproval` → the aggregated result is `NeedsApproval`.
     /// - Only if ALL members return Allowed → the result is Allowed.
-    /// - If ANY member is unavailable → FallbackRequired.
+    /// - If ANY member is unavailable → `FallbackRequired`.
     fn spawn_committee_task(
         &self,
         name: &str,
@@ -422,9 +418,7 @@ impl ActiveSession {
                 CommitteeVerdict::NeedsApproval(details) => {
                     let summary: Vec<String> = details
                         .iter()
-                        .map(|(provider, model, reason)| {
-                            format!("[{}@{}] {}", provider, model, reason)
-                        })
+                        .map(|(provider, model, reason)| format!("[{provider}@{model}] {reason}"))
                         .collect();
                     VerificationOutcome::NeedsApproval(format!(
                         "Committee flagged by {} member(s): {}",
@@ -435,9 +429,7 @@ impl ActiveSession {
                 CommitteeVerdict::FallbackRequired(details) => {
                     let summary: Vec<String> = details
                         .iter()
-                        .map(|(provider, model, reason)| {
-                            format!("[{}@{}] {}", provider, model, reason)
-                        })
+                        .map(|(provider, model, reason)| format!("[{provider}@{model}] {reason}"))
                         .collect();
                     VerificationOutcome::FallbackRequired(format!(
                         "Committee fallback for {} member(s): {}",
@@ -479,7 +471,7 @@ impl ActiveSession {
                         .into_iter()
                         .rev()
                         .collect();
-                    format!("{}...[TRUNCATED]...{}", head, tail)
+                    format!("{head}...[TRUNCATED]...{tail}")
                 } else {
                     text
                 }

@@ -22,8 +22,8 @@ use std::sync::{Arc, OnceLock, RwLock};
 /// initialization path and using a separate `OnceLock` flag to make the
 /// initialization path atomic.
 ///
-/// **`AppState`** is stored in a `RwLock` because it is mutable (*update_state*,
-/// *set_alias*, …).  The lock is held only for the brief clone-or-swap, so
+/// **`AppState`** is stored in a `RwLock` because it is mutable (*`update_state`*,
+/// *`set_alias`*, …).  The lock is held only for the brief clone-or-swap, so
 /// contention in the async runtime is negligible.
 ///
 /// State management methods live in [`state`]; model-cache methods in [`cache`].
@@ -38,6 +38,7 @@ pub struct ConfigManager {
 }
 
 impl ConfigManager {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             config_init_error: OnceLock::new(),
@@ -117,13 +118,13 @@ impl ConfigManager {
         });
 
         if let Some(e) = init_error {
-            return Err(anyhow::anyhow!("{}", e));
+            return Err(anyhow::anyhow!("{e}"));
         }
 
         let read = self
             .app_config
             .read()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         Ok(Arc::clone(&read))
     }
 
@@ -132,7 +133,7 @@ impl ConfigManager {
         // 1. Load defaults from embedded defaults.toml
         let defaults_toml = include_str!("defaults.toml");
         let mut config_value: serde_json::Value = toml::from_str(defaults_toml)
-            .map_err(|e| anyhow::anyhow!("Embedded defaults.toml must be valid: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Embedded defaults.toml must be valid: {e}"))?;
 
         // 2. Load user config from files and merge them
         let config_path = config_file_path();
@@ -143,8 +144,7 @@ impl ConfigManager {
             match toml::from_str::<serde_json::Value>(&content) {
                 Ok(user_value) => merge_json(&mut config_value, user_value),
                 Err(e) => ui::report_warning(&format!(
-                    "Failed to parse config file at {:?}: {}",
-                    config_path, e
+                    "Failed to parse config file at {config_path:?}: {e}"
                 )),
             }
         }
@@ -161,7 +161,7 @@ impl ConfigManager {
 
         // 4. Validate critical security settings
         if let Err(e) = validate_security_config(&final_config_struct.security) {
-            return Err(anyhow::anyhow!("Invalid security configuration: {}", e));
+            return Err(anyhow::anyhow!("Invalid security configuration: {e}"));
         }
 
         Ok(final_config_struct)
@@ -282,7 +282,7 @@ impl ConfigManager {
         let mut write = self
             .app_config
             .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         *write = Arc::new(config);
         Ok(())
     }
@@ -326,22 +326,21 @@ impl ConfigManager {
         let dir = crate::consts::templates_dir();
         let mut templates = HashMap::new();
 
-        let dir = match std::fs::read_dir(&dir) {
-            Ok(rd) => rd,
-            Err(_) => {
-                // Create the directory if missing
-                if let Err(e) = std::fs::create_dir_all(&dir) {
-                    tracing::warn!(
-                        path = %dir.display(),
-                        error = %e,
-                        "Failed to create templates directory"
-                    );
-                }
-                return templates;
+        let dir = if let Ok(rd) = std::fs::read_dir(&dir) {
+            rd
+        } else {
+            // Create the directory if missing
+            if let Err(e) = std::fs::create_dir_all(&dir) {
+                tracing::warn!(
+                    path = %dir.display(),
+                    error = %e,
+                    "Failed to create templates directory"
+                );
             }
+            return templates;
         };
 
-        for entry in dir.filter_map(|e| e.ok()) {
+        for entry in dir.filter_map(std::result::Result::ok) {
             let path = entry.path();
             if !path.is_file() {
                 continue;

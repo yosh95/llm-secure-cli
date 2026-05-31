@@ -2,7 +2,7 @@
 //!
 //! A high-assurance CLI tool for interacting with Large Language Models (LLMs)
 //! through OpenAI-compatible APIs.  Provides a unified interface for
-//! **OpenRouter, OpenAI, Ollama, and LiteLLM** with a focus on cognitive focus,
+//! **`OpenRouter`, `OpenAI`, Ollama, and `LiteLLM`** with a focus on cognitive focus,
 //! secure execution, and extensible automation.
 //!
 //! ## Architecture overview

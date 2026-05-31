@@ -72,10 +72,11 @@ impl ActiveSession {
         })
     }
 
-    /// Consumes the ActiveSession and returns a ClosedSession.
+    /// Consumes the `ActiveSession` and returns a `ClosedSession`.
     ///
     /// This is the preferred way to close a session.  If `close()` is *not*
     /// called, `Drop` will still anchor the audit trail as a safety net.
+    #[must_use]
     pub fn close(mut self) -> ClosedSession {
         self.finalize_audit();
         ClosedSession {
@@ -121,6 +122,7 @@ impl ActiveSession {
         }
     }
 
+    #[must_use]
     pub fn get_client(&self) -> &(dyn LlmClient + '_) {
         self.client.as_ref()
     }
@@ -147,16 +149,13 @@ impl ActiveSession {
         // create an inconsistency between the conversation history and the audit log.
         // Simply removing the unactioned message is the cleanest approach:
         // the LLM will re-evaluate the conversation state on the next turn.
-        let should_remove = state
-            .conversation
-            .last()
-            .map(|msg| {
-                (msg.role == Role::Assistant || msg.role == Role::Model)
-                    && msg.parts.iter().any(
-                        |part| matches!(part, MessagePart::Part(cp) if cp.function_call.is_some()),
-                    )
-            })
-            .unwrap_or(false);
+        let should_remove = state.conversation.last().is_some_and(|msg| {
+            (msg.role == Role::Assistant || msg.role == Role::Model)
+                && msg
+                    .parts
+                    .iter()
+                    .any(|part| matches!(part, MessagePart::Part(cp) if cp.function_call.is_some()))
+        });
 
         if should_remove {
             state.conversation.pop();

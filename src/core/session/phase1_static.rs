@@ -11,7 +11,7 @@ impl ActiveSession {
     ) -> anyhow::Result<()> {
         if let Err(e) = crate::security::validate_tool_call(name, args, &config.security) {
             self.ctx.ui.report_error(&e);
-            return Err(anyhow::anyhow!("Phase 1 blocked: {}", e));
+            return Err(anyhow::anyhow!("Phase 1 blocked: {e}"));
         }
         Ok(())
     }

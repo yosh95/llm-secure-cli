@@ -93,6 +93,7 @@ impl ClientSession {
         Ok(result)
     }
 
+    #[must_use]
     pub fn server_name(&self) -> &str {
         &self.server_name
     }

@@ -42,7 +42,7 @@ impl std::fmt::Display for SkillValidationError {
                 write!(f, "No YAML frontmatter (--- ... ---) found in SKILL.md")
             }
             SkillValidationError::InvalidYaml(msg) => {
-                write!(f, "Invalid YAML frontmatter: {}", msg)
+                write!(f, "Invalid YAML frontmatter: {msg}")
             }
             SkillValidationError::MissingName => {
                 write!(f, "Required field 'name' is missing in frontmatter")
@@ -53,18 +53,16 @@ impl std::fmt::Display for SkillValidationError {
             SkillValidationError::NameTooLong { actual, max } => {
                 write!(
                     f,
-                    "name is {} characters (max: {}). Use lowercase letters, numbers, and hyphens.",
-                    actual, max
+                    "name is {actual} characters (max: {max}). Use lowercase letters, numbers, and hyphens."
                 )
             }
             SkillValidationError::DescriptionTooLong { actual, max } => {
-                write!(f, "description is {} characters (max: {})", actual, max)
+                write!(f, "description is {actual} characters (max: {max})")
             }
             SkillValidationError::InvalidName(name) => {
                 write!(
                     f,
-                    "name '{}' contains invalid characters. Use only lowercase letters, numbers, and hyphens.",
-                    name
+                    "name '{name}' contains invalid characters. Use only lowercase letters, numbers, and hyphens."
                 )
             }
         }
@@ -115,6 +113,7 @@ pub enum SkillSemanticVerdict {
 }
 
 impl SkillSemanticVerdict {
+    #[must_use]
     pub fn short_label(&self) -> &str {
         match self {
             SkillSemanticVerdict::Clean { .. } => "CLEAN",
@@ -125,6 +124,7 @@ impl SkillSemanticVerdict {
         }
     }
 
+    #[must_use]
     pub fn confidence(&self) -> f64 {
         match self {
             SkillSemanticVerdict::Clean { confidence }
@@ -195,8 +195,7 @@ pub fn parse_skill_file(path: &Path) -> Result<SkillContent, Vec<SkillValidation
     let skill_md_path = find_skill_md(path)?;
     let raw = std::fs::read_to_string(&skill_md_path).map_err(|e| {
         vec![SkillValidationError::InvalidYaml(format!(
-            "Cannot read file: {}",
-            e
+            "Cannot read file: {e}"
         ))]
     })?;
 
@@ -353,9 +352,8 @@ fn parse_frontmatter(raw: &str) -> Result<SkillMetadata, SkillValidationError> {
                         }
                         description = desc_parts.join(" ");
                         continue; // i is already advanced
-                    } else {
-                        description = value.to_string();
                     }
+                    description = value.to_string();
                 }
                 "license" => license = Some(value.to_string()),
                 "compatibility" => compatibility = Some(value.to_string()),
@@ -463,13 +461,17 @@ fn parse_kv_line(line: &str) -> Option<(&str, &str)> {
 
 /// Validates the structural conformance of a skill directory.
 /// Returns Ok(metadata) if valid, or a list of validation errors.
+#[must_use]
 pub fn validate_skill_structure(dir: &Path) -> SkillStructureResult {
     match parse_skill_file(dir) {
         Ok(content) => SkillStructureResult::Pass {
             metadata: content.metadata,
         },
         Err(errors) => SkillStructureResult::Fail {
-            errors: errors.iter().map(|e| e.to_string()).collect(),
+            errors: errors
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
         },
     }
 }
@@ -481,6 +483,7 @@ pub fn validate_skill_structure(dir: &Path) -> SkillStructureResult {
 /// Looks for `SKILL.md.sig` alongside `SKILL.md`. If found, verifies
 /// the signature using the project's Ed25519/PQC verification pipeline.
 /// If no signature file is found, returns `Unsigned`.
+#[must_use]
 pub fn verify_skill_signature(dir: &Path) -> SkillSignatureStatus {
     let skill_md = match find_skill_md(dir) {
         Ok(p) => p,
@@ -508,8 +511,7 @@ fn verify_skill_signature_impl(skill_md: &Path, sig_path: &Path) -> SkillSignatu
         Ok(d) => d,
         Err(e) => {
             return SkillSignatureStatus::VerificationFailed(format!(
-                "Cannot read signature file: {}",
-                e
+                "Cannot read signature file: {e}"
             ));
         }
     };
@@ -517,10 +519,7 @@ fn verify_skill_signature_impl(skill_md: &Path, sig_path: &Path) -> SkillSignatu
     let skill_content = match std::fs::read(skill_md) {
         Ok(d) => d,
         Err(e) => {
-            return SkillSignatureStatus::VerificationFailed(format!(
-                "Cannot read SKILL.md: {}",
-                e
-            ));
+            return SkillSignatureStatus::VerificationFailed(format!("Cannot read SKILL.md: {e}"));
         }
     };
 
@@ -549,7 +548,7 @@ fn verify_skill_signature_impl(skill_md: &Path, sig_path: &Path) -> SkillSignatu
     // Strategy 2: Try as a raw Ed25519 signature (64 bytes)
     match verify_raw_ed25519(&skill_content, &sig_data) {
         Ok(pubkey_short) => SkillSignatureStatus::Verified {
-            publisher: format!("ed25519:{}", pubkey_short),
+            publisher: format!("ed25519:{pubkey_short}"),
             algorithm: "Ed25519".to_string(),
         },
         Err(_) => SkillSignatureStatus::VerificationFailed(
@@ -568,25 +567,25 @@ fn verify_raw_ed25519(
     use crate::security::identity::IdentityManager;
 
     let pk = IdentityManager::get_classical_public_key()
-        .map_err(|e| format!("Cannot load Ed25519 public key: {}", e))?;
+        .map_err(|e| format!("Cannot load Ed25519 public key: {e}"))?;
 
     // Use the dalek API directly
     let sig = ed25519_dalek::Signature::from_slice(_sig_bytes)
-        .map_err(|e| format!("Invalid Ed25519 signature bytes: {}", e))?;
+        .map_err(|e| format!("Invalid Ed25519 signature bytes: {e}"))?;
 
     let pk_array: [u8; 32] = pk
         .try_into()
         .map_err(|_| "Ed25519 public key must be exactly 32 bytes")?;
     let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&pk_array)
-        .map_err(|e| format!("Invalid Ed25519 public key: {}", e))?;
+        .map_err(|e| format!("Invalid Ed25519 public key: {e}"))?;
 
     use ed25519_dalek::Verifier;
     verifying_key
         .verify(_content, &sig)
-        .map_err(|e| format!("Ed25519 verification failed: {}", e))?;
+        .map_err(|e| format!("Ed25519 verification failed: {e}"))?;
 
     // Return a short identifier for the public key
-    let hex_pk: String = pk_array.iter().map(|b| format!("{:02x}", b)).collect();
+    let hex_pk: String = pk_array.iter().map(|b| format!("{b:02x}")).collect();
     let short = if hex_pk.len() > 16 {
         format!("{}...", &hex_pk[..16])
     } else {
@@ -599,7 +598,7 @@ fn verify_raw_ed25519(
 // ── Semantic Firewall Analysis ───────────────────────────────────────────
 
 /// The skill analysis prompt for the verifier LLM.
-pub const SKILL_SECURITY_CONSTITUTION: &str = r#"
+pub const SKILL_SECURITY_CONSTITUTION: &str = r"
 # SYSTEM POLICY: SKILL SECURITY AUDITOR
 You are a security auditor analyzing an AI agent skill. Your sole purpose is to determine if this skill is safe for users to install and use.
 
@@ -626,7 +625,7 @@ Attackers can distribute malicious skills that:
 4. Are there shell commands that modify system files outside the skill's declared scope?
 5. Are there obfuscated or encoded payloads?
 6. Does the skill attempt to disable or bypass security controls?
-"#;
+";
 
 /// Runs the Semantic Firewall analysis on a skill using the verifier.
 ///
@@ -643,7 +642,7 @@ pub async fn analyze_skill_semantic(
     let skill_content = match parse_skill_file(dir) {
         Ok(c) => c,
         Err(e) => {
-            let msgs: Vec<String> = e.iter().map(|err| err.to_string()).collect();
+            let msgs: Vec<String> = e.iter().map(std::string::ToString::to_string).collect();
             return SkillSemanticVerdict::Error {
                 message: format!("Cannot parse SKILL.md: {}", msgs.join("; ")),
             };
@@ -673,8 +672,7 @@ pub async fn analyze_skill_semantic(
         None => {
             return SkillSemanticVerdict::Error {
                 message: format!(
-                    "Could not create verifier client for {}/{}. Check that the provider is registered and API key is set.",
-                    p, m
+                    "Could not create verifier client for {p}/{m}. Check that the provider is registered and API key is set."
                 ),
             };
         }
@@ -684,7 +682,7 @@ pub async fn analyze_skill_semantic(
     let system_prompt = SKILL_SECURITY_CONSTITUTION.to_string();
 
     let user_prompt = format!(
-        r#"### SKILL TO ANALYZE
+        r"### SKILL TO ANALYZE
 
 **Declared Name:** {}
 **Declared Description:** {}
@@ -702,7 +700,7 @@ DECISION: [CLEAN, SUSPICIOUS, or TOXIC]
 CONFIDENCE: [0.0-1.0]
 FINDINGS: [JSON array of findings, each with category, description, and confidence. Empty array if CLEAN.]
 REASON: [One sentence summary]
-"#,
+",
         skill_content.metadata.name, skill_content.metadata.description, skill_content.body
     );
 
@@ -728,7 +726,7 @@ REASON: [One sentence summary]
             })
         }
         Err(e) => SkillSemanticVerdict::Error {
-            message: format!("Verifier LLM call failed: {}", e),
+            message: format!("Verifier LLM call failed: {e}"),
         },
     }
 }
@@ -790,10 +788,10 @@ pub async fn verify_skill(
     let structure = validate_skill_structure(dir);
     let skill_name = match &structure {
         SkillStructureResult::Pass { metadata } => metadata.name.clone(),
-        SkillStructureResult::Fail { .. } => dir
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "unknown".to_string()),
+        SkillStructureResult::Fail { .. } => dir.file_name().map_or_else(
+            || "unknown".to_string(),
+            |n| n.to_string_lossy().to_string(),
+        ),
     };
 
     // Tier 2: Signature verification
@@ -870,6 +868,7 @@ fn compute_verdict(
 // ── Batch verification ───────────────────────────────────────────────────
 
 /// Discovers skill directories (containing SKILL.md) recursively.
+#[must_use]
 pub fn discover_skills(root: &Path, recursive: bool) -> Vec<PathBuf> {
     let mut skills = Vec::new();
 

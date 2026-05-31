@@ -49,7 +49,7 @@ pub fn save_key(path: &Path, key_bytes: &[u8], passphrase: Option<&str>) -> Resu
 /// bytes are returned directly.
 pub fn load_key(path: &Path) -> Result<Vec<u8>> {
     if !path.exists() {
-        return Err(anyhow!("Key file not found: {:?}", path));
+        return Err(anyhow!("Key file not found: {path:?}"));
     }
 
     let mut file = fs::File::open(path)?;
@@ -78,11 +78,9 @@ pub fn purge_passphrase_cache() {
 }
 
 /// Returns true if the key file is encrypted (starts with LKEF magic).
+#[must_use]
 pub fn is_encrypted(path: &Path) -> bool {
-    path.exists()
-        && fs::read(path)
-            .map(|data| data.starts_with(ENCRYPTED_KEY_MAGIC))
-            .unwrap_or(false)
+    path.exists() && fs::read(path).is_ok_and(|data| data.starts_with(ENCRYPTED_KEY_MAGIC))
 }
 
 /// Prompts the user for an *optional* passphrase (empty = no encryption).
@@ -223,7 +221,7 @@ fn save_encrypted(path: &Path, key_bytes: &[u8], passphrase: &str) -> Result<()>
 
     Argon2::default()
         .hash_password_into(passphrase.as_bytes(), &salt, &mut aes_key)
-        .map_err(|e| anyhow!("Argon2id KDF failed: {}", e))?;
+        .map_err(|e| anyhow!("Argon2id KDF failed: {e}"))?;
 
     // 2. AES-256-GCM encrypt
     let cipher = Aes256Gcm::new_from_slice(&aes_key).map_err(|_| anyhow!("AES init failed"))?;
@@ -234,7 +232,7 @@ fn save_encrypted(path: &Path, key_bytes: &[u8], passphrase: &str) -> Result<()>
 
     let ciphertext = cipher
         .encrypt(&nonce, key_bytes)
-        .map_err(|e| anyhow!("Encryption failed: {}", e))?;
+        .map_err(|e| anyhow!("Encryption failed: {e}"))?;
 
     // 3. Assemble: magic(4) + salt(16) + nonce(12) + ciphertext(N+16)
     let mut output = Vec::with_capacity(HEADER_SIZE + ciphertext.len());
@@ -274,7 +272,7 @@ pub(crate) fn load_encrypted_key_data(data: &[u8], passphrase: &str) -> Result<V
     let mut aes_key = [0u8; 32];
     Argon2::default()
         .hash_password_into(passphrase.as_bytes(), salt, &mut aes_key)
-        .map_err(|e| anyhow!("Argon2id KDF failed: {}", e))?;
+        .map_err(|e| anyhow!("Argon2id KDF failed: {e}"))?;
 
     let cipher = Aes256Gcm::new_from_slice(&aes_key).map_err(|_| anyhow!("AES init failed"))?;
     let nonce = Nonce::from_slice(nonce_bytes);

@@ -4,10 +4,7 @@ use std::sync::LazyLock;
 
 pub static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     let version = env!("CARGO_PKG_VERSION");
-    let ua = format!(
-        "llm-secure-cli/{} (https://github.com/yosh95/llm-secure-cli)",
-        version
-    );
+    let ua = format!("llm-secure-cli/{version} (https://github.com/yosh95/llm-secure-cli)");
     reqwest::Client::builder()
         .user_agent(ua)
         .timeout(std::time::Duration::from_secs(30))

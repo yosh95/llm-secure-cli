@@ -1,5 +1,5 @@
 use crate::cli::markdown::render_markdown;
-use colored::*;
+use colored::Colorize;
 use console::Term;
 use std::io::{Read, Write};
 
@@ -95,7 +95,7 @@ pub fn print_rule(title: Option<&str>, style: Option<&str>) {
     let color = style.unwrap_or("bright_black");
 
     if let Some(t) = title {
-        let title_text = format!(" {} ", t);
+        let title_text = format!(" {t} ");
         let title_display = format!(" {} ", t.bold());
         let text_width = console::measure_text_width(&title_text);
         let rule_len = width.saturating_sub(text_width);
@@ -165,8 +165,7 @@ fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> Strin
                 if k != "code" && k != "explanation" {
                     let val_str = v
                         .as_str()
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| v.to_string());
+                        .map_or_else(|| v.to_string(), std::string::ToString::to_string);
                     push_line(
                         &mut buf,
                         &format!(
@@ -255,8 +254,7 @@ fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> Strin
                 if let Some(v) = obj.get(k) {
                     let val_str = v
                         .as_str()
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| v.to_string());
+                        .map_or_else(|| v.to_string(), std::string::ToString::to_string);
                     push_line(
                         &mut buf,
                         &format!(
@@ -270,7 +268,7 @@ fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> Strin
             }
         }
     } else {
-        push_line(&mut buf, &format!("    {}", args));
+        push_line(&mut buf, &format!("    {args}"));
     }
 
     buf.push_str(&format!("{}\n", "\u{2500}".repeat(width).color(color)));
@@ -360,7 +358,7 @@ pub fn print_tool_result(result: &str) {
         if let (Some(stdout), Some(stderr), Some(exit_code)) = (
             v.get("stdout").and_then(|v| v.as_str()),
             v.get("stderr").and_then(|v| v.as_str()),
-            v.get("exit_code").and_then(|v| v.as_i64()),
+            v.get("exit_code").and_then(serde_json::Value::as_i64),
         ) {
             let status_color = if exit_code == 0 {
                 "bright_green"
@@ -430,7 +428,9 @@ pub fn print_tool_result(result: &str) {
                                 obj.get("path").and_then(|v| v.as_str()),
                             ) {
                                 let mut details = Vec::new();
-                                if let Some(size) = obj.get("size").and_then(|v| v.as_u64()) {
+                                if let Some(size) =
+                                    obj.get("size").and_then(serde_json::Value::as_u64)
+                                {
                                     details.push(format_size_brief(size));
                                 }
                                 if let Some(mtime) =
@@ -475,7 +475,7 @@ pub fn print_tool_result(result: &str) {
                         }
                     }
                 }
-                if let Some(truncated) = v.get("truncated").and_then(|v| v.as_bool())
+                if let Some(truncated) = v.get("truncated").and_then(serde_json::Value::as_bool)
                     && truncated
                 {
                     push_line(
@@ -564,7 +564,7 @@ pub fn print_panel(
     for line in content.lines() {
         let wrapped = textwrap::wrap(line, &options);
         for w_line in wrapped {
-            println!("    {}", w_line);
+            println!("    {w_line}");
         }
     }
 
@@ -590,7 +590,7 @@ pub fn report_success(message: &str) {
 
 fn format_size_brief(bytes: u64) -> String {
     if bytes < 1024 {
-        format!("{}B", bytes)
+        format!("{bytes}B")
     } else if bytes < 1024 * 1024 {
         format!("{:.1}KB", bytes as f64 / 1024.0)
     } else if bytes < 1024 * 1024 * 1024 {
@@ -618,7 +618,7 @@ pub enum PromptMode {
 
 /// Ask the user a Yes/No confirmation question with configurable prompt mode.
 ///
-/// This function uses a simple stdin/stdout approach instead of dialoguer::Select
+/// This function uses a simple stdin/stdout approach instead of `dialoguer::Select`
 /// to avoid terminal raw-mode issues when running under SSH/tmux.
 ///
 /// Supports "y", "yes", "n", "no" (case-insensitive, including full-width),
@@ -630,7 +630,7 @@ fn ask_confirm_with_mode(prompt: &str, mode: PromptMode) -> Option<ConfirmResult
         PromptMode::WithFeedback => " [Y/n or feedback] ",
         PromptMode::YesNoOnly => " [Y/n] ",
     };
-    let y_n = format!("{}{}", prompt, suffix);
+    let y_n = format!("{prompt}{suffix}");
     match get_user_input(&y_n) {
         Some(input) => {
             let trimmed = input.trim();
@@ -652,13 +652,12 @@ fn ask_confirm_with_mode(prompt: &str, mode: PromptMode) -> Option<ConfirmResult
                 match mode {
                     PromptMode::WithFeedback => {
                         // Dimmed feedback display
-                        println!("  {}", format!("Feedback: {}", trimmed).dimmed());
+                        println!("  {}", format!("Feedback: {trimmed}").dimmed());
                         Some(ConfirmResult::Feedback(trimmed.to_string()))
                     }
                     PromptMode::YesNoOnly => {
                         report_warning(&format!(
-                            "Unrecognized input '{}'. Please answer Y(es) or N(o).",
-                            trimmed
+                            "Unrecognized input '{trimmed}'. Please answer Y(es) or N(o)."
                         ));
                         ask_confirm_with_mode(prompt, mode)
                     }
@@ -673,6 +672,7 @@ fn ask_confirm_with_mode(prompt: &str, mode: PromptMode) -> Option<ConfirmResult
 ///
 /// Use this in LLM chat sessions where the user can provide natural-language
 /// feedback as an alternative to a simple Y/N.
+#[must_use]
 pub fn ask_confirm(prompt: &str) -> Option<ConfirmResult> {
     ask_confirm_with_mode(prompt, PromptMode::WithFeedback)
 }
@@ -681,6 +681,7 @@ pub fn ask_confirm(prompt: &str) -> Option<ConfirmResult> {
 ///
 /// Use this outside of LLM chat sessions (e.g. startup / initialization)
 /// where free-text feedback would be meaningless.
+#[must_use]
 pub fn ask_confirm_simple(prompt: &str) -> Option<ConfirmResult> {
     ask_confirm_with_mode(prompt, PromptMode::YesNoOnly)
 }
@@ -699,6 +700,7 @@ pub async fn ask_confirm_simple_async(prompt: &str) -> Option<ConfirmResult> {
         .unwrap_or(None)
 }
 
+#[must_use]
 pub fn get_user_input(prompt: &str) -> Option<String> {
     // 2. Check for environment override ONLY during tests to prevent accidental production bypass
     #[cfg(test)]
@@ -712,7 +714,7 @@ pub fn get_user_input(prompt: &str) -> Option<String> {
     let mut rl = match DefaultEditor::new() {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("Failed to create editor: {:?}", e);
+            eprintln!("Failed to create editor: {e:?}");
             return None;
         }
     };
@@ -724,7 +726,7 @@ pub fn get_user_input(prompt: &str) -> Option<String> {
         }
         Err(ReadlineError::Eof) => None,
         Err(err) => {
-            eprintln!("Error: {:?}", err);
+            eprintln!("Error: {err:?}");
             None
         }
     }

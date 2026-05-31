@@ -7,28 +7,26 @@ use serde_json::Value;
 
 /// Run the `credits` subcommand (CLI subcommand: `llsc credits`).
 ///
-/// Fetches and displays the OpenRouter credit balance via the
+/// Fetches and displays the `OpenRouter` credit balance via the
 /// `/api/v1/credits` and `/api/v1/key` endpoints.
 /// Only works when the provider is `"openrouter"`.
 pub async fn run_credits(config_manager: &ConfigManager, provider: &str) {
     // Validate that the provider is "openrouter"
     if provider != "openrouter" {
         ui::report_error(&format!(
-            "Credits check is only supported for the 'openrouter' provider, got '{}'.",
-            provider
+            "Credits check is only supported for the 'openrouter' provider, got '{provider}'."
         ));
         return;
     }
 
     // Get the API key
-    let api_key = match config_manager.get_api_key("openrouter") {
-        Some(key) => key,
-        None => {
-            ui::report_error(
-                "OpenRouter API key is not configured. Set OPENROUTER_API_KEY in your environment or add it to config.toml under [providers.openrouter].",
-            );
-            return;
-        }
+    let api_key = if let Some(key) = config_manager.get_api_key("openrouter") {
+        key
+    } else {
+        ui::report_error(
+            "OpenRouter API key is not configured. Set OPENROUTER_API_KEY in your environment or add it to config.toml under [providers.openrouter].",
+        );
+        return;
     };
 
     fetch_and_display_credits(&api_key).await;
@@ -42,20 +40,18 @@ pub async fn run_credits_interactive(session: &ActiveSession) {
 
     if provider != "openrouter" {
         ui::report_error(&format!(
-            "Credits check is only supported for the 'openrouter' provider, current provider is '{}'.",
-            provider
+            "Credits check is only supported for the 'openrouter' provider, current provider is '{provider}'."
         ));
         return;
     }
 
-    let api_key = match session.ctx.config_manager.get_api_key("openrouter") {
-        Some(key) => key,
-        None => {
-            ui::report_error(
-                "OpenRouter API key is not configured. Set OPENROUTER_API_KEY in your environment or add it to config.toml under [providers.openrouter].",
-            );
-            return;
-        }
+    let api_key = if let Some(key) = session.ctx.config_manager.get_api_key("openrouter") {
+        key
+    } else {
+        ui::report_error(
+            "OpenRouter API key is not configured. Set OPENROUTER_API_KEY in your environment or add it to config.toml under [providers.openrouter].",
+        );
+        return;
     };
 
     fetch_and_display_credits(&api_key).await;
@@ -64,7 +60,7 @@ pub async fn run_credits_interactive(session: &ActiveSession) {
 /// Common implementation: fetch from both /credits and /key APIs and display.
 async fn fetch_and_display_credits(api_key: &str) {
     let mut headers = std::collections::HashMap::new();
-    headers.insert("Authorization".to_string(), format!("Bearer {}", api_key));
+    headers.insert("Authorization".to_string(), format!("Bearer {api_key}"));
 
     ui::report_info("Fetching OpenRouter credits...");
 
@@ -79,11 +75,11 @@ async fn fetch_and_display_credits(api_key: &str) {
         Ok(data) => {
             let total_credits = data
                 .get("total_credits")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.0);
             let total_usage = data
                 .get("total_usage")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.0);
             let remaining = total_credits - total_usage;
             let usage_pct = if total_credits > 0.0 {
@@ -117,7 +113,7 @@ async fn fetch_and_display_credits(api_key: &str) {
             println!("  {:<24} {} {:5.1}%", "Usage:".cyan(), bar, usage_pct);
         }
         Err(e) => {
-            ui::report_error(&format!("Failed to fetch credits API: {}", e));
+            ui::report_error(&format!("Failed to fetch credits API: {e}"));
         }
     }
 
@@ -125,40 +121,45 @@ async fn fetch_and_display_credits(api_key: &str) {
     match key_result {
         Ok(data) => {
             let label = data.get("label").and_then(|v| v.as_str()).unwrap_or("-");
-            let limit = data.get("limit").and_then(|v| v.as_f64());
-            let limit_remaining = data.get("limit_remaining").and_then(|v| v.as_f64());
-            let usage = data.get("usage").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let limit = data.get("limit").and_then(serde_json::Value::as_f64);
+            let limit_remaining = data
+                .get("limit_remaining")
+                .and_then(serde_json::Value::as_f64);
+            let usage = data
+                .get("usage")
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(0.0);
             let usage_daily = data
                 .get("usage_daily")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.0);
             let usage_weekly = data
                 .get("usage_weekly")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.0);
             let usage_monthly = data
                 .get("usage_monthly")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.0);
             let byok_usage = data
                 .get("byok_usage")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.0);
             let byok_usage_daily = data
                 .get("byok_usage_daily")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.0);
             let byok_usage_weekly = data
                 .get("byok_usage_weekly")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.0);
             let byok_usage_monthly = data
                 .get("byok_usage_monthly")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.0);
             let is_free_tier = data
                 .get("is_free_tier")
-                .and_then(|v| v.as_bool())
+                .and_then(serde_json::Value::as_bool)
                 .unwrap_or(true);
             let limit_reset = data
                 .get("limit_reset")
@@ -180,9 +181,8 @@ async fn fetch_and_display_credits(api_key: &str) {
 
             // Key limit info
             if let Some(l) = limit {
-                let remaining_str = limit_remaining
-                    .map(|r| format!("${:<.2}", r))
-                    .unwrap_or_else(|| "N/A".to_string());
+                let remaining_str =
+                    limit_remaining.map_or_else(|| "N/A".to_string(), |r| format!("${r:<.2}"));
                 println!(
                     "  {:<24} ${:<8.2}  (remaining: {})",
                     "Key Limit:".cyan(),
@@ -269,7 +269,7 @@ async fn fetch_and_display_credits(api_key: &str) {
             }
         }
         Err(e) => {
-            ui::report_error(&format!("Failed to fetch key API: {}", e));
+            ui::report_error(&format!("Failed to fetch key API: {e}"));
         }
     }
 
@@ -290,7 +290,7 @@ async fn fetch_credits(
                 .unwrap_or("Unexpected response format")
                 .to_string()),
         },
-        Err(e) => Err(format!("{}", e)),
+        Err(e) => Err(format!("{e}")),
     }
 }
 
@@ -308,6 +308,6 @@ async fn fetch_key_info(
                 .unwrap_or("Unexpected response format")
                 .to_string()),
         },
-        Err(e) => Err(format!("{}", e)),
+        Err(e) => Err(format!("{e}")),
     }
 }

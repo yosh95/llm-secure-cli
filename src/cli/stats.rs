@@ -1,4 +1,4 @@
-use colored::*;
+use colored::Colorize;
 use serde_json::Value;
 
 #[derive(Clone)]
@@ -6,13 +6,14 @@ pub struct ToolResultStats {
     pub byte_count: usize,
     pub line_count: usize,
     pub item_count: Option<usize>,
-    /// Label for item_count, e.g. "files", "matches", "items".
+    /// Label for `item_count`, e.g. "files", "matches", "items".
     pub item_label: &'static str,
     pub stderr: Option<String>,
     pub stderr_byte_count: usize,
     pub stderr_line_count: usize,
 }
 
+#[must_use]
 pub fn get_tool_result_stats(name: &str, result: &Value) -> ToolResultStats {
     let mut byte_count = 0;
     let mut line_count = 0;

@@ -45,7 +45,7 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
                 }
             }
             Err(e) => {
-                ui::report_error(&format!("Failed to open editor: {}", e));
+                ui::report_error(&format!("Failed to open editor: {e}"));
                 CommandResult::Handled
             }
         },
@@ -121,15 +121,20 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
                         let preview: String = templates[name]
                             .lines()
                             .find(|l| !l.trim().is_empty())
-                            .map(|l| {
-                                let trimmed = l.trim();
-                                if trimmed.chars().count() > 60 {
-                                    format!("{}...", trimmed.chars().take(60).collect::<String>())
-                                } else {
-                                    trimmed.to_string()
-                                }
-                            })
-                            .unwrap_or_else(|| "(empty)".to_string());
+                            .map_or_else(
+                                || "(empty)".to_string(),
+                                |l| {
+                                    let trimmed = l.trim();
+                                    if trimmed.chars().count() > 60 {
+                                        format!(
+                                            "{}...",
+                                            trimmed.chars().take(60).collect::<String>()
+                                        )
+                                    } else {
+                                        trimmed.to_string()
+                                    }
+                                },
+                            );
                         println!("  {: <25} {}", name.bold().cyan(), preview.dimmed());
                     }
                     ui::print_rule(None, Some("cyan"));
@@ -139,17 +144,13 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
                     );
                 }
                 CommandResult::Handled
+            } else if let Some(content) = templates.get(args) {
+                CommandResult::Input(content.clone())
             } else {
-                match templates.get(args) {
-                    Some(content) => CommandResult::Input(content.clone()),
-                    None => {
-                        ui::report_error(&format!(
-                            "Template '{}' not found. Use /t to list available templates.",
-                            args
-                        ));
-                        CommandResult::Handled
-                    }
-                }
+                ui::report_error(&format!(
+                    "Template '{args}' not found. Use /t to list available templates."
+                ));
+                CommandResult::Handled
             }
         }
         "view" => {
@@ -165,7 +166,12 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             CommandResult::Handled
         }
         _ => {
-            ui::report_error(&format!("Unknown command: /{}", cmd));
+            let full_cmd = format!("/{cmd}");
+            if !crate::cli::interactive::commands::is_valid_command(&full_cmd) {
+                ui::report_error(&format!(
+                    "Unknown command: /{cmd}. Type /help for available commands."
+                ));
+            }
             CommandResult::Handled
         }
     }
@@ -189,12 +195,14 @@ pub fn handle_session_cmd(session: &mut ActiveSession, args: &str) {
                             "unknown".dimmed().to_string()
                         } else {
                             chrono::DateTime::parse_from_rfc3339(&s.created_at)
-                                .map(|dt| {
-                                    dt.with_timezone(&chrono::Local)
-                                        .format("%Y-%m-%d %H:%M")
-                                        .to_string()
-                                })
-                                .unwrap_or_else(|_| s.created_at.clone())
+                                .map_or_else(
+                                    |_| s.created_at.clone(),
+                                    |dt| {
+                                        dt.with_timezone(&chrono::Local)
+                                            .format("%Y-%m-%d %H:%M")
+                                            .to_string()
+                                    },
+                                )
                                 .dimmed()
                                 .to_string()
                         };
@@ -213,7 +221,7 @@ pub fn handle_session_cmd(session: &mut ActiveSession, args: &str) {
                     );
                 }
             }
-            Err(e) => ui::report_error(&format!("Failed to list sessions: {}", e)),
+            Err(e) => ui::report_error(&format!("Failed to list sessions: {e}")),
         }
         return;
     }
@@ -233,9 +241,9 @@ pub fn handle_session_cmd(session: &mut ActiveSession, args: &str) {
                 Ok(conversation) => {
                     let client = session.get_client_mut();
                     client.get_state_mut().conversation = conversation;
-                    ui::report_success(&format!("Session loaded from {}", subargs));
+                    ui::report_success(&format!("Session loaded from {subargs}"));
                 }
-                Err(e) => ui::report_error(&format!("Failed to load session: {}", e)),
+                Err(e) => ui::report_error(&format!("Failed to load session: {e}")),
             }
         }
         "delete" => {
@@ -245,12 +253,12 @@ pub fn handle_session_cmd(session: &mut ActiveSession, args: &str) {
             }
             match crate::utils::session_store::delete_session(subargs) {
                 Ok(true) => {
-                    ui::report_success(&format!("Session '{}' deleted.", subargs));
+                    ui::report_success(&format!("Session '{subargs}' deleted."));
                 }
                 Ok(false) => {
-                    ui::report_error(&format!("Session '{}' not found.", subargs));
+                    ui::report_error(&format!("Session '{subargs}' not found."));
                 }
-                Err(e) => ui::report_error(&format!("Failed to delete session: {}", e)),
+                Err(e) => ui::report_error(&format!("Failed to delete session: {e}")),
             }
         }
         "clear" => match crate::utils::session_store::clear_sessions() {
@@ -258,14 +266,13 @@ pub fn handle_session_cmd(session: &mut ActiveSession, args: &str) {
                 ui::report_info("No sessions to clear.");
             }
             Ok(n) => {
-                ui::report_success(&format!("Cleared {} session(s).", n));
+                ui::report_success(&format!("Cleared {n} session(s)."));
             }
-            Err(e) => ui::report_error(&format!("Failed to clear sessions: {}", e)),
+            Err(e) => ui::report_error(&format!("Failed to clear sessions: {e}")),
         },
         _ => {
             ui::report_error(&format!(
-                "Unknown subcommand: '{}'. Use: load, delete, clear",
-                subcmd
+                "Unknown subcommand: '{subcmd}'. Use: load, delete, clear"
             ));
         }
     }
@@ -290,7 +297,7 @@ pub async fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
                     ui::print_rule(None, Some("cyan"));
                 }
             }
-            Err(e) => ui::report_error(&format!("Failed to load aliases: {}", e)),
+            Err(e) => ui::report_error(&format!("Failed to load aliases: {e}")),
         }
         return;
     }
@@ -305,9 +312,9 @@ pub async fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
         }
         let alias_name = parts[1];
         match session.ctx.config_manager.remove_alias(alias_name) {
-            Ok(true) => ui::report_success(&format!("Alias '{}' removed.", alias_name)),
-            Ok(false) => ui::report_info(&format!("Alias '{}' does not exist.", alias_name)),
-            Err(e) => ui::report_error(&format!("Failed to remove alias: {}", e)),
+            Ok(true) => ui::report_success(&format!("Alias '{alias_name}' removed.")),
+            Ok(false) => ui::report_info(&format!("Alias '{alias_name}' does not exist.")),
+            Err(e) => ui::report_error(&format!("Failed to remove alias: {e}")),
         }
         return;
     }
@@ -320,10 +327,10 @@ pub async fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
                 if let Some(alias) = state.model_aliases.get(alias_name) {
                     println!("  {: <15} -> {}", alias_name.bold().cyan(), alias.target);
                 } else {
-                    ui::report_info(&format!("Alias '{}' does not exist.", alias_name));
+                    ui::report_info(&format!("Alias '{alias_name}' does not exist."));
                 }
             }
-            Err(e) => ui::report_error(&format!("Failed to load aliases: {}", e)),
+            Err(e) => ui::report_error(&format!("Failed to load aliases: {e}")),
         }
         return;
     }
@@ -340,8 +347,8 @@ pub async fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
     let target = parts[1];
 
     match session.ctx.config_manager.set_alias(alias_name, target) {
-        Ok(_) => ui::report_success(&format!("Alias '{}' set to '{}'", alias_name, target)),
-        Err(e) => ui::report_error(&format!("Failed to set alias: {}", e)),
+        Ok(()) => ui::report_success(&format!("Alias '{alias_name}' set to '{target}'")),
+        Err(e) => ui::report_error(&format!("Failed to set alias: {e}")),
     }
 }
 
@@ -350,7 +357,7 @@ pub fn handle_info(session: &ActiveSession) {
     let config = match session.ctx.config_manager.get_config() {
         Ok(c) => c,
         Err(e) => {
-            ui::report_error(&format!("Failed to load config: {}", e));
+            ui::report_error(&format!("Failed to load config: {e}"));
             return;
         }
     };
@@ -382,12 +389,12 @@ pub fn handle_info(session: &ActiveSession) {
         };
         let (p, m) = &members[0];
         if count == 1 {
-            ui::print_key_value(label, &format!("{}:{}", p, m));
+            ui::print_key_value(label, &format!("{p}:{m}"));
         } else {
-            ui::print_key_value(label, &format!("{} members (any-flag)", count));
-            ui::print_key_value("  Primary", &format!("{}:{}", p, m));
+            ui::print_key_value(label, &format!("{count} members (any-flag)"));
+            ui::print_key_value("  Primary", &format!("{p}:{m}"));
             for (i, (p, m)) in members.iter().enumerate().skip(1) {
-                ui::print_key_value(&format!("  Member {}", i), &format!("{}:{}", p, m));
+                ui::print_key_value(&format!("  Member {i}"), &format!("{p}:{m}"));
             }
         }
     }
@@ -472,7 +479,7 @@ pub fn handle_edit_history(session: &mut ActiveSession) {
     }) {
         Ok(toml_str) => toml_str,
         Err(e) => {
-            ui::report_error(&format!("Failed to serialize conversation: {}", e));
+            ui::report_error(&format!("Failed to serialize conversation: {e}"));
             return;
         }
     };
@@ -490,10 +497,10 @@ pub fn handle_edit_history(session: &mut ActiveSession) {
                     session.get_client_mut().get_state_mut().conversation = dump.messages;
                     ui::report_success("Conversation history updated.");
                 }
-                Err(e) => ui::report_error(&format!("Failed to parse edited TOML: {}", e)),
+                Err(e) => ui::report_error(&format!("Failed to parse edited TOML: {e}")),
             }
         }
-        Err(e) => ui::report_error(&format!("Failed to open editor: {}", e)),
+        Err(e) => ui::report_error(&format!("Failed to open editor: {e}")),
     }
 }
 
@@ -511,7 +518,7 @@ fn mask_base64_in_conversation(
             {
                 let id = format!("blob_{}", blobs.len());
                 blobs.insert(id.clone(), data.clone());
-                *data = serde_json::Value::String(format!("<< {} >>", id));
+                *data = serde_json::Value::String(format!("<< {id} >>"));
             }
         }
     }
@@ -554,7 +561,7 @@ pub async fn handle_attach(session: &mut ActiveSession, source: &str) {
             "File queued. Type your question about it before sending (e.g. \"Summarize this PDF\").",
         );
     } else {
-        ui::report_error(&format!("Failed to attach: {}", source));
+        ui::report_error(&format!("Failed to attach: {source}"));
     }
 }
 
@@ -575,11 +582,11 @@ pub async fn handle_tools(session: &mut ActiveSession, args: &str) {
             } else {
                 "DISABLED"
             };
-            println!("Tools Status: {}", status);
+            println!("Tools Status: {status}");
             let registry = session.ctx.tool_registry.read().await;
             println!("Available Tools:");
             for name in registry.tools.keys() {
-                println!(" - {}", name);
+                println!(" - {name}");
             }
         }
         _ => ui::report_error("Usage: /tools [on|off]"),
@@ -592,14 +599,14 @@ pub fn handle_verify_cmd(session: &mut ActiveSession, args: &str) {
     match args.to_lowercase().as_str() {
         "on" => {
             if let Err(e) = session.ctx.config_manager.set_verifier_enabled(true) {
-                ui::report_error(&format!("Failed to update verifier state: {}", e));
+                ui::report_error(&format!("Failed to update verifier state: {e}"));
             } else {
                 ui::report_success("Verifier enabled. (Persisted to state.toml)");
             }
         }
         "off" => {
             if let Err(e) = session.ctx.config_manager.set_verifier_enabled(false) {
-                ui::report_error(&format!("Failed to update verifier state: {}", e));
+                ui::report_error(&format!("Failed to update verifier state: {e}"));
             } else {
                 ui::report_success("Verifier disabled. (Persisted to state.toml)");
             }
@@ -610,7 +617,7 @@ pub fn handle_verify_cmd(session: &mut ActiveSession, args: &str) {
             } else {
                 "DISABLED".yellow()
             };
-            println!("Verifier Status: {}", status);
+            println!("Verifier Status: {status}");
 
             let (members, _) = session.ctx.config_manager.get_verifier_committee();
             if current {
@@ -620,7 +627,7 @@ pub fn handle_verify_cmd(session: &mut ActiveSession, args: &str) {
                     );
                 } else if members.len() == 1 {
                     let (p, m) = &members[0];
-                    println!("  Verifier: {}:{}", p, m);
+                    println!("  Verifier: {p}:{m}");
                 } else {
                     println!(
                         "  Verifier Committee ({} members, any-flag):",
@@ -659,7 +666,7 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
 
     if args_trimmed.is_empty() || args_trimmed == "-u" || args_trimmed == "--update" {
         ui::print_rule(
-            Some(&format!("Available Models for {}", provider)),
+            Some(&format!("Available Models for {provider}")),
             Some("cyan"),
         );
         let models_map = session.ctx.config_manager.get_cached_models().await;
@@ -669,14 +676,11 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
                 if model == current_model {
                     println!("  {} {}", "●".cyan(), model.bold().cyan());
                 } else {
-                    println!("    {}", model);
+                    println!("    {model}");
                 }
             }
         } else {
-            println!(
-                "  No models cached for {}. Use /model -u to fetch models now.",
-                provider
-            );
+            println!("  No models cached for {provider}. Use /model -u to fetch models now.");
         }
 
         let state = match session.ctx.config_manager.get_state() {
@@ -712,21 +716,20 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
 
     if !is_cached && !is_alias {
         ui::report_error(&format!(
-            "Unknown model: '{}'. Use /model to list available models for provider '{}'.",
-            target_model, provider
+            "Unknown model: '{target_model}'. Use /model to list available models for provider '{provider}'."
         ));
         return;
     }
 
     match crate::core::initializer::switch_model(session, target_model, stdout, !raw).await {
-        Ok(_) => {
+        Ok(()) => {
             let state = session.get_client().get_state();
             ui::report_success(&format!(
                 "Model switched to: {} ({})",
                 state.model, state.provider
             ));
         }
-        Err(e) => ui::report_error(&format!("Failed to switch model to: {}", e)),
+        Err(e) => ui::report_error(&format!("Failed to switch model to: {e}")),
     }
 }
 
@@ -740,7 +743,7 @@ pub async fn handle_provider_cmd(session: &mut ActiveSession, args: &str) {
             if p == current_provider {
                 println!("  {} {}", "●".cyan(), p.bold().cyan());
             } else {
-                println!("    {}", p);
+                println!("    {p}");
             }
         }
         return;
@@ -748,14 +751,14 @@ pub async fn handle_provider_cmd(session: &mut ActiveSession, args: &str) {
 
     let target_provider = args;
     match crate::core::initializer::switch_provider(session, target_provider).await {
-        Ok(_) => {
+        Ok(()) => {
             let state = session.get_client().get_state();
             ui::report_success(&format!(
                 "Provider switched to: {} (Model: {})",
                 state.provider, state.model
             ));
         }
-        Err(e) => ui::report_error(&format!("Failed to switch provider: {}", e)),
+        Err(e) => ui::report_error(&format!("Failed to switch provider: {e}")),
     }
 }
 
@@ -776,9 +779,9 @@ pub async fn handle_vcommittee_cmd(session: &mut ActiveSession, args: &str) {
                 .config_manager
                 .set_primary_verifier(&provider_model)
             {
-                ui::report_error(&format!("Failed to set verifier: {}", e));
+                ui::report_error(&format!("Failed to set verifier: {e}"));
             } else {
-                ui::report_success(&format!("Verifier set to: {}", provider_model));
+                ui::report_success(&format!("Verifier set to: {provider_model}"));
             }
         }
         "add" if parts.len() >= 2 => {
@@ -794,9 +797,9 @@ pub async fn handle_vcommittee_cmd(session: &mut ActiveSession, args: &str) {
                 .config_manager
                 .add_verifier_committee_member(&provider_model)
             {
-                ui::report_error(&format!("Failed to add committee member: {}", e));
+                ui::report_error(&format!("Failed to add committee member: {e}"));
             } else {
-                ui::report_success(&format!("Added committee member: {}", provider_model));
+                ui::report_success(&format!("Added committee member: {provider_model}"));
             }
         }
         "remove" | "rm" if parts.len() >= 2 => {
@@ -807,12 +810,12 @@ pub async fn handle_vcommittee_cmd(session: &mut ActiveSession, args: &str) {
                 .remove_verifier_committee_member(&provider_model)
             {
                 Ok(true) => {
-                    ui::report_success(&format!("Removed committee member: {}", provider_model))
+                    ui::report_success(&format!("Removed committee member: {provider_model}"));
                 }
                 Ok(false) => {
-                    ui::report_warning(&format!("Committee member not found: {}", provider_model))
+                    ui::report_warning(&format!("Committee member not found: {provider_model}"));
                 }
-                Err(e) => ui::report_error(&format!("Failed to remove committee member: {}", e)),
+                Err(e) => ui::report_error(&format!("Failed to remove committee member: {e}")),
             }
         }
         "list" | "ls" | "" => {
@@ -825,7 +828,7 @@ pub async fn handle_vcommittee_cmd(session: &mut ActiveSession, args: &str) {
             } else {
                 "DISABLED".yellow()
             };
-            println!("  Status: {}", status);
+            println!("  Status: {status}");
 
             if members.is_empty() {
                 println!("  No committee members configured.");
@@ -837,9 +840,9 @@ pub async fn handle_vcommittee_cmd(session: &mut ActiveSession, args: &str) {
                     "  Committee (any-flag policy, {} member(s)):",
                     members.len()
                 );
-                for (provider, model) in members.iter() {
+                for (provider, model) in &members {
                     let prefix = "  ── ";
-                    println!("{}{}:{}", prefix, provider, model);
+                    println!("{prefix}{provider}:{model}");
                 }
             }
             println!();
@@ -884,8 +887,7 @@ pub async fn handle_summarize(session: &mut ActiveSession) {
             new_conversation.push(Message {
                 role: Role::User,
                 parts: vec![MessagePart::Text(format!(
-                    "Summary of our previous conversation for context:\n{}",
-                    summary_text
+                    "Summary of our previous conversation for context:\n{summary_text}"
                 ))],
             });
 
@@ -901,10 +903,10 @@ pub async fn handle_summarize(session: &mut ActiveSession) {
 
             ui::report_success("Conversation summarized and history cleared.");
             println!("\n{}\n", "--- Summary ---".cyan());
-            println!("{}", summary_text);
+            println!("{summary_text}");
             println!("{}\n", "---------------".cyan());
         }
-        Err(e) => ui::report_error(&format!("Failed to summarize: {}", e)),
+        Err(e) => ui::report_error(&format!("Failed to summarize: {e}")),
     }
 }
 
@@ -912,7 +914,7 @@ pub async fn handle_view_cmd(session: &mut ActiveSession, args: &str) {
     let config = match session.ctx.config_manager.get_config() {
         Ok(c) => c,
         Err(e) => {
-            ui::report_error(&format!("Failed to load config: {}", e));
+            ui::report_error(&format!("Failed to load config: {e}"));
             return;
         }
     };
@@ -923,7 +925,7 @@ pub async fn handle_view_cmd(session: &mut ActiveSession, args: &str) {
         // No argument: find the most recently saved media file
         match crate::utils::media::find_latest_media(save_dir) {
             Some(latest) => match crate::utils::media::open_file_with_default_app(&latest) {
-                Ok(_) => ui::report_success(&format!("Opened: {}", latest.display())),
+                Ok(()) => ui::report_success(&format!("Opened: {}", latest.display())),
                 Err(e) => ui::report_error(&e.to_string()),
             },
             None => {
@@ -969,7 +971,7 @@ pub async fn handle_view_cmd(session: &mut ActiveSession, args: &str) {
         }
 
         match crate::utils::media::open_file_with_default_app(&path) {
-            Ok(_) => ui::report_success(&format!("Opened: {}", path.display())),
+            Ok(()) => ui::report_success(&format!("Opened: {}", path.display())),
             Err(e) => ui::report_error(&e.to_string()),
         }
     }
@@ -979,7 +981,7 @@ pub fn handle_tool_output_cmd(session: &mut ActiveSession, args: &str) {
     match args.to_lowercase().as_str() {
         "on" | "show" => {
             if let Err(e) = session.ctx.config_manager.set_show_tool_result(true) {
-                ui::report_error(&format!("Failed to update tool output setting: {}", e));
+                ui::report_error(&format!("Failed to update tool output setting: {e}"));
             } else {
                 ui::report_success(
                     "Tool execution results will now be displayed. (Persisted to state.toml)",
@@ -988,7 +990,7 @@ pub fn handle_tool_output_cmd(session: &mut ActiveSession, args: &str) {
         }
         "off" | "hide" => {
             if let Err(e) = session.ctx.config_manager.set_show_tool_result(false) {
-                ui::report_error(&format!("Failed to update tool output setting: {}", e));
+                ui::report_error(&format!("Failed to update tool output setting: {e}"));
             } else {
                 ui::report_success(
                     "Tool execution results will now be hidden. (Persisted to state.toml)",
@@ -1002,7 +1004,7 @@ pub fn handle_tool_output_cmd(session: &mut ActiveSession, args: &str) {
             } else {
                 "HIDDEN".yellow()
             };
-            println!("Tool Output Status: {}", status);
+            println!("Tool Output Status: {status}");
             println!("  When hidden, tool execution results are not shown in the terminal");
             println!("  (they are still sent to the LLM and logged to the audit trail).");
         }

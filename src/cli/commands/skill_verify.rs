@@ -19,7 +19,7 @@ pub async fn run_skill_verify(
     let config = match ctx.config_manager.get_config() {
         Ok(c) => c,
         Err(e) => {
-            ui::report_error(&format!("Cannot load config: {}", e));
+            ui::report_error(&format!("Cannot load config: {e}"));
             return;
         }
     };
@@ -27,7 +27,7 @@ pub async fn run_skill_verify(
     let root = Path::new(path);
 
     if !root.exists() {
-        ui::report_error(&format!("Path not found: {}", path));
+        ui::report_error(&format!("Path not found: {path}"));
         return;
     }
 
@@ -36,8 +36,7 @@ pub async fn run_skill_verify(
         let skill_dirs = discover_skills(root, true);
         if skill_dirs.is_empty() {
             ui::report_warning(&format!(
-                "No skill directories (containing SKILL.md) found under {}",
-                path
+                "No skill directories (containing SKILL.md) found under {path}"
             ));
             return;
         }
@@ -55,8 +54,7 @@ pub async fn run_skill_verify(
                     i + 1,
                     total,
                     dir.file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_else(|| "?".to_string())
+                        .map_or_else(|| "?".to_string(), |n| n.to_string_lossy().to_string())
                 );
                 print_report_summary(&report);
                 println!();
@@ -85,11 +83,8 @@ pub async fn run_skill_verify(
                 .filter(|r| r.verdict == SkillVerdict::Dangerous)
                 .count();
             println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            println!(" Batch Summary: {} skills", total);
-            println!(
-                "   {} Safe | {} Suspicious | {} Dangerous",
-                safe, suspicious, dangerous
-            );
+            println!(" Batch Summary: {total} skills");
+            println!("   {safe} Safe | {suspicious} Suspicious | {dangerous} Dangerous");
             println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         }
         return;
@@ -98,8 +93,7 @@ pub async fn run_skill_verify(
     // Single skill verification
     if !has_direct_skill_md(root) {
         ui::report_error(&format!(
-            "No SKILL.md found in {}. Use --recursive to scan subdirectories.",
-            path
+            "No SKILL.md found in {path}. Use --recursive to scan subdirectories."
         ));
         return;
     }
@@ -152,19 +146,19 @@ fn print_full_report(report: &crate::security::skill_verifier::SkillVerification
                 metadata.description.len()
             );
             if let Some(ref license) = metadata.license {
-                println!("    license: {}", license);
+                println!("    license: {license}");
             }
             if let Some(ref compat) = metadata.compatibility {
-                println!("    compatibility: {}", compat);
+                println!("    compatibility: {compat}");
             }
             if let Some(ref tools) = metadata.allowed_tools {
-                println!("    allowed-tools: {:?}", tools);
+                println!("    allowed-tools: {tools:?}");
             }
         }
         SkillStructureResult::Fail { errors } => {
             println!("{}", style_red("✗ FAIL"));
             for e in errors {
-                println!("    ✗ {}", e);
+                println!("    ✗ {e}");
             }
         }
     }
@@ -178,15 +172,15 @@ fn print_full_report(report: &crate::security::skill_verifier::SkillVerification
             algorithm,
         } => {
             println!("{}", style_green("✓ VERIFIED"));
-            println!("    Publisher: {}", publisher);
-            println!("    Algorithm: {}", algorithm);
+            println!("    Publisher: {publisher}");
+            println!("    Algorithm: {algorithm}");
         }
         SkillSignatureStatus::Unsigned => {
             println!("{}", style_yellow("△ UNSIGNED"));
         }
         SkillSignatureStatus::VerificationFailed(reason) => {
             println!("{}", style_red("✗ FAILED"));
-            println!("    {}", reason);
+            println!("    {reason}");
         }
     }
     println!();
@@ -196,14 +190,14 @@ fn print_full_report(report: &crate::security::skill_verifier::SkillVerification
     match &report.semantic {
         Some(SkillSemanticVerdict::Clean { confidence }) => {
             println!("{}", style_green("✓ CLEAN"));
-            println!("    Confidence: {:.2}", confidence);
+            println!("    Confidence: {confidence:.2}");
         }
         Some(SkillSemanticVerdict::Suspicious {
             findings,
             confidence,
         }) => {
             println!("{}", style_yellow("△ SUSPICIOUS"));
-            println!("    Confidence: {:.2}", confidence);
+            println!("    Confidence: {confidence:.2}");
             for finding in findings {
                 println!(
                     "    ⚠ [{}] {} (confidence: {:.2})",
@@ -216,7 +210,7 @@ fn print_full_report(report: &crate::security::skill_verifier::SkillVerification
             confidence,
         }) => {
             println!("{}", style_red("✗ TOXIC"));
-            println!("    Confidence: {:.2}", confidence);
+            println!("    Confidence: {confidence:.2}");
             for finding in findings {
                 println!(
                     "    ⚠ [{}] {} (confidence: {:.2})",
@@ -230,7 +224,7 @@ fn print_full_report(report: &crate::security::skill_verifier::SkillVerification
         }
         Some(SkillSemanticVerdict::Error { message }) => {
             println!("{}", style_red("✗ ERROR"));
-            println!("    {}", message);
+            println!("    {message}");
         }
         None => {
             println!("{}", style_dim("— SKIPPED"));
@@ -308,31 +302,30 @@ fn print_report_summary(report: &crate::security::skill_verifier::SkillVerificat
     };
 
     println!(
-        "  Verdict: {} | Struct: {} | Sig: {} | Sem: {}",
-        verdict_icon, struct_icon, sig_icon, sem_icon
+        "  Verdict: {verdict_icon} | Struct: {struct_icon} | Sig: {sig_icon} | Sem: {sem_icon}"
     );
 }
 
 // ── Styling helpers ──────────────────────────────────────────────────────
 
 fn style_green(text: &str) -> String {
-    format!("\x1b[32m{}\x1b[0m", text)
+    format!("\x1b[32m{text}\x1b[0m")
 }
 fn style_green_bold(text: &str) -> String {
-    format!("\x1b[1;32m{}\x1b[0m", text)
+    format!("\x1b[1;32m{text}\x1b[0m")
 }
 fn style_red(text: &str) -> String {
-    format!("\x1b[31m{}\x1b[0m", text)
+    format!("\x1b[31m{text}\x1b[0m")
 }
 fn style_red_bold(text: &str) -> String {
-    format!("\x1b[1;31m{}\x1b[0m", text)
+    format!("\x1b[1;31m{text}\x1b[0m")
 }
 fn style_yellow(text: &str) -> String {
-    format!("\x1b[33m{}\x1b[0m", text)
+    format!("\x1b[33m{text}\x1b[0m")
 }
 fn style_yellow_bold(text: &str) -> String {
-    format!("\x1b[1;33m{}\x1b[0m", text)
+    format!("\x1b[1;33m{text}\x1b[0m")
 }
 fn style_dim(text: &str) -> String {
-    format!("\x1b[2m{}\x1b[0m", text)
+    format!("\x1b[2m{text}\x1b[0m")
 }

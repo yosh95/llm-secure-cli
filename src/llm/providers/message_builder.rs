@@ -14,7 +14,8 @@ pub struct MessageBuilder<'a> {
     pub pending_data: &'a [DataSource],
 }
 
-impl<'a> MessageBuilder<'a> {
+impl MessageBuilder<'_> {
+    #[must_use]
     pub fn build(&self) -> Vec<Value> {
         let mut messages = Vec::new();
 
@@ -47,7 +48,7 @@ impl<'a> MessageBuilder<'a> {
                             let content = match fr.get("response") {
                                 Some(Value::String(s)) => s.clone(),
                                 Some(v) => v.to_string(),
-                                None => "".to_string(),
+                                None => String::new(),
                             };
                             let id = fr.get("id").and_then(|v| v.as_str()).unwrap_or_default();
                             let tool_name =
@@ -63,8 +64,7 @@ impl<'a> MessageBuilder<'a> {
                                 }));
                             } else {
                                 // Orphaned or fallback
-                                tool_contents
-                                    .push(format!("Tool Result ({}): {}", tool_name, content));
+                                tool_contents.push(format!("Tool Result ({tool_name}): {content}"));
                             }
                         }
                     }
@@ -138,7 +138,7 @@ impl<'a> MessageBuilder<'a> {
                         }
                     }
                     let content_value = if parts.is_empty() {
-                        Value::String("".to_string())
+                        Value::String(String::new())
                     } else if parts.len() == 1 && parts[0]["type"] == "text" {
                         parts[0]["text"].clone()
                     } else {
@@ -155,7 +155,7 @@ impl<'a> MessageBuilder<'a> {
                         // Some providers (like Amazon Bedrock via OpenRouter/Nova) fail if 'content' is an empty string
                         // when 'tool_calls' is present. Others like Arcee AI require it to be present.
                         if role == "assistant"
-                            && (content_value == Value::String("".to_string())
+                            && (content_value == Value::String(String::new())
                                 || content_value == Value::Array(vec![]))
                         {
                             let model_lower = self.model.to_lowercase();

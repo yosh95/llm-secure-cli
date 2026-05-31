@@ -22,7 +22,7 @@ impl ActiveSession {
     ) -> Value {
         let config = match self.ctx.config_manager.get_config() {
             Ok(c) => c,
-            Err(e) => return Value::String(format!("Error: Failed to load config: {}", e)),
+            Err(e) => return Value::String(format!("Error: Failed to load config: {e}")),
         };
         let user_id = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
 
@@ -50,7 +50,7 @@ impl ActiveSession {
                 let c = config.clone();
                 let a = args.clone();
                 let ac = audit_ctx.clone();
-                let out_str = v.as_str().map(|s| s.to_string());
+                let out_str = v.as_str().map(std::string::ToString::to_string);
                 let entry = tokio::task::spawn_blocking(move || {
                     crate::security::audit::log_audit_and_return(
                         crate::security::audit::AuditParams {
@@ -97,7 +97,7 @@ impl ActiveSession {
                 if let Ok(Some(entry)) = entry {
                     self.audit_entries.push(entry);
                 }
-                Value::String(format!("Error: {}", err_msg))
+                Value::String(format!("Error: {err_msg}"))
             }
         };
 
@@ -117,8 +117,7 @@ impl ActiveSession {
         if show_result {
             let display_str = final_v
                 .as_str()
-                .map(|s| s.to_owned())
-                .unwrap_or_else(|| final_v.to_string());
+                .map_or_else(|| final_v.to_string(), std::borrow::ToOwned::to_owned);
 
             self.ctx.ui.print_tool_result(&display_str);
         } else {

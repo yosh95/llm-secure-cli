@@ -6,6 +6,7 @@ pub struct MerkleTree {
 }
 
 impl MerkleTree {
+    #[must_use]
     pub fn new(leaves: Vec<String>) -> Self {
         if leaves.is_empty() {
             return MerkleTree {

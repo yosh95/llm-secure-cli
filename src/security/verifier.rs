@@ -58,8 +58,8 @@ pub enum VerificationOutcome {
 
 /// Validates a tool call using a secondary LLM.
 /// Returns true if safe, false if blocked or error.
-/// NOTE: This simplified API cannot distinguish NeedsApproval from FallbackRequired.
-/// Use verify_tool_call_full for the complete outcome.
+/// NOTE: This simplified API cannot distinguish `NeedsApproval` from `FallbackRequired`.
+/// Use `verify_tool_call_full` for the complete outcome.
 pub async fn verify_tool_call(
     ctx_app: std::sync::Arc<crate::core::context::AppContext>,
     user_query: &str,
@@ -89,7 +89,7 @@ pub async fn verify_tool_call(
 }
 
 /// Validates a tool call using a secondary LLM and returns the full outcome.
-/// The caller should handle NeedsApproval and FallbackRequired by requiring human approval.
+/// The caller should handle `NeedsApproval` and `FallbackRequired` by requiring human approval.
 pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> VerificationOutcome {
     let p =
         match &params.provider {
@@ -118,8 +118,7 @@ pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> Verificati
         Some(c) => c,
         None => {
             return VerificationOutcome::FallbackRequired(format!(
-                "Could not create verifier client for {}/{}: the verifier is unavailable.",
-                p, m
+                "Could not create verifier client for {p}/{m}: the verifier is unavailable."
             ));
         }
     };
@@ -142,20 +141,21 @@ pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> Verificati
             VerificationOutcome::FallbackRequired(reason)
         }
         VerificationResult::Error(e) => {
-            VerificationOutcome::FallbackRequired(format!("Verifier unavailable: {}", e))
+            VerificationOutcome::FallbackRequired(format!("Verifier unavailable: {e}"))
         }
     }
 }
 
-/// Parses the raw text response from the verifier LLM into a VerificationResult.
+/// Parses the raw text response from the verifier LLM into a `VerificationResult`.
 ///
 /// This is a **pure function**, separated from the async LLM call for testability.
 /// It handles:
 /// - ALLOW / REVIEW / MODIFY decisions (BLOCK is mapped to REVIEW for human oversight)
 /// - Markdown formatting variations (e.g., `**ALLOW**`, `*ALLOW*`)
-/// - Markdown code blocks wrapping FIXED_ARGS JSON (```json ... ```)
-/// - Invalid or missing JSON in MODIFY decisions → falls back to NeedsApproval
-/// - Ambiguous or malformed responses → defaults to NeedsApproval (human decides)
+/// - Markdown code blocks wrapping `FIXED_ARGS` JSON (```json ... ```)
+/// - Invalid or missing JSON in MODIFY decisions → falls back to `NeedsApproval`
+/// - Ambiguous or malformed responses → defaults to `NeedsApproval` (human decides)
+#[must_use]
 pub fn parse_verifier_response(response: &str) -> VerificationResult {
     // Advanced Regex Parsing for robustness against LLM formatting variations (Markdown, etc.)
     let decision_re =
@@ -174,8 +174,7 @@ pub fn parse_verifier_response(response: &str) -> VerificationResult {
         .as_ref()
         .and_then(|re| re.captures(response))
         .and_then(|cap| cap.get(1))
-        .map(|m| m.as_str().trim())
-        .unwrap_or("No reason provided");
+        .map_or("No reason provided", |m| m.as_str().trim());
 
     if decision == "ALLOW" {
         VerificationResult::Allowed
@@ -188,8 +187,7 @@ pub fn parse_verifier_response(response: &str) -> VerificationResult {
             .as_ref()
             .and_then(|re| re.captures(response))
             .and_then(|cap| cap.get(1))
-            .map(|m| m.as_str().trim())
-            .unwrap_or("N/A");
+            .map_or("N/A", |m| m.as_str().trim());
 
         // Clean up potential markdown code blocks in the response
         let fixed_raw_clean = if fixed_raw.starts_with("```") {
@@ -205,8 +203,7 @@ pub fn parse_verifier_response(response: &str) -> VerificationResult {
         match serde_json::from_str::<Value>(fixed_raw_clean) {
             Ok(fixed_val) => VerificationResult::Modified(fixed_val, reason.to_string()),
             Err(e) => VerificationResult::NeedsApproval(format!(
-                "Verifier attempted modification but provided invalid JSON: {}. Error: {}",
-                reason, e
+                "Verifier attempted modification but provided invalid JSON: {reason}. Error: {e}"
             )),
         }
     } else {
@@ -223,7 +220,7 @@ pub fn parse_verifier_response(response: &str) -> VerificationResult {
 /// This is deliberately **not** configurable by the user.  Allowing the
 /// user (or an attacker) to modify the verifier\'s prompt would weaken the
 /// Semantic Firewall.  Placeholders are filled at verification time:
-///   {constitution}, {security_context}
+///   {constitution}, {`security_context`}
 pub const VERIFIER_SYSTEM_PROMPT_TEMPLATE: &str = concat!(
     "{constitution}\n\n",
     "## CURRENT SECURITY CONTEXT\n",
@@ -236,7 +233,7 @@ pub const VERIFIER_SYSTEM_PROMPT_TEMPLATE: &str = concat!(
 ///
 /// Deliberately **not** configurable — see [`VERIFIER_SYSTEM_PROMPT_TEMPLATE`].
 /// Placeholders are filled at verification time:
-///   {user_query}, {tool_name}, {tool_args}
+///   {`user_query`}, {`tool_name`}, {`tool_args`}
 pub const VERIFIER_USER_PROMPT_TEMPLATE: &str = concat!(
     "### UNTRUSTED USER INPUT (CONTEXT ONLY)\n",
     "<user_intent>\n",
@@ -277,6 +274,7 @@ pub const VERIFIER_USER_PROMPT_TEMPLATE: &str = concat!(
 );
 
 impl Verifier {
+    #[must_use]
     pub fn new(llm: Box<dyn LlmClient>) -> Self {
         Self { verifier_llm: llm }
     }
@@ -290,10 +288,7 @@ impl Verifier {
     ) -> VerificationResult {
         let security_context_json = serde_json::to_string_pretty(context).unwrap_or_else(|e| {
             tracing::warn!(error = %e, "Failed to serialize SecurityContext for verifier prompt");
-            format!(
-                "{{\"error\": \"SecurityContext serialization failed: {}\"}}",
-                e
-            )
+            format!("{{\"error\": \"SecurityContext serialization failed: {e}\"}}")
         });
 
         // Build the system prompt from the hardcoded template
@@ -304,7 +299,7 @@ impl Verifier {
         // Build the user prompt from the hardcoded template
         let tool_args_pretty = serde_json::to_string_pretty(tool_args).unwrap_or_else(|e| {
             tracing::warn!(error = %e, "Failed to serialize tool_args for verifier prompt");
-            format!("{{\"error\": \"tool_args serialization failed: {}\"}}", e)
+            format!("{{\"error\": \"tool_args serialization failed: {e}\"}}")
         });
         let user_prompt = VERIFIER_USER_PROMPT_TEMPLATE
             .replace("{user_query}", user_query)
@@ -329,7 +324,7 @@ impl Verifier {
                 let response = response_struct.content.unwrap_or_default();
                 parse_verifier_response(&response)
             }
-            Err(e) => VerificationResult::Error(format!("Verifier LLM error: {}", e)),
+            Err(e) => VerificationResult::Error(format!("Verifier LLM error: {e}")),
         }
     }
 }
@@ -341,9 +336,9 @@ impl Verifier {
 /// The aggregated verdict from a committee of verifier LLMs.
 ///
 /// The committee uses an "any-flag" policy:
-/// - If ANY member returns NeedsApproval → human approval is required.
+/// - If ANY member returns `NeedsApproval` → human approval is required.
 /// - Only if ALL members return Allowed → the call is auto-approved.
-/// - If ANY member is unavailable → FallbackRequired (human must decide).
+/// - If ANY member is unavailable → `FallbackRequired` (human must decide).
 #[derive(Debug, Clone)]
 pub enum CommitteeVerdict {
     /// All committee members approved the tool call.
@@ -360,9 +355,9 @@ pub enum CommitteeVerdict {
 /// Run verification against a committee of multiple verifier LLMs concurrently.
 ///
 /// The committee uses an "any-flag" policy:
-/// - If ANY member returns NeedsApproval → the result is NeedsApproval.
+/// - If ANY member returns `NeedsApproval` → the result is `NeedsApproval`.
 /// - Only if ALL members return Allowed → the result is Allowed.
-/// - If ANY member is unavailable → FallbackRequired.
+/// - If ANY member is unavailable → `FallbackRequired`.
 ///
 /// # Arguments
 ///
@@ -441,7 +436,7 @@ pub async fn verify_committee(
                 fallbacks.push((
                     "unknown".to_string(),
                     "unknown".to_string(),
-                    format!("Task panicked: {}", e),
+                    format!("Task panicked: {e}"),
                 ));
             }
         }

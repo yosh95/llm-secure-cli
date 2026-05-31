@@ -7,14 +7,14 @@ use std::path::PathBuf;
 
 pub fn decrypt_log_file(input_path: PathBuf, output_path: Option<PathBuf>) {
     if !input_path.exists() {
-        ui::report_error(&format!("File {:?} not found.", input_path));
+        ui::report_error(&format!("File {input_path:?} not found."));
         return;
     }
 
     let kem_sk = match IdentityManager::get_kem_private_key() {
         Ok(k) => k,
         Err(e) => {
-            ui::report_error(&format!("Failed to load PQC KEM private key: {}", e));
+            ui::report_error(&format!("Failed to load PQC KEM private key: {e}"));
             return;
         }
     };
@@ -22,7 +22,7 @@ pub fn decrypt_log_file(input_path: PathBuf, output_path: Option<PathBuf>) {
     let content = match fs::read_to_string(&input_path) {
         Ok(c) => c,
         Err(e) => {
-            ui::report_error(&format!("Failed to read file: {}", e));
+            ui::report_error(&format!("Failed to read file: {e}"));
             return;
         }
     };
@@ -44,7 +44,7 @@ pub fn decrypt_log_file(input_path: PathBuf, output_path: Option<PathBuf>) {
                         }
                     }
                     Ok(Err(e)) => {
-                        ui::report_error(&format!("Failed to decrypt entry: {}", e));
+                        ui::report_error(&format!("Failed to decrypt entry: {e}"));
                     }
                     Err(_) => {
                         ui::report_error("Failed to decrypt entry: decryption panicked.");
@@ -64,14 +64,14 @@ pub fn decrypt_log_file(input_path: PathBuf, output_path: Option<PathBuf>) {
             }
         }
         if let Err(e) = fs::write(&out, out_str) {
-            ui::report_error(&format!("Failed to write output: {}", e));
+            ui::report_error(&format!("Failed to write output: {e}"));
         } else {
-            ui::report_success(&format!("Decrypted log saved to {:?}", out));
+            ui::report_success(&format!("Decrypted log saved to {out:?}"));
         }
     } else {
         for entry in &decrypted_entries {
             if let Ok(pretty) = serde_json::to_string_pretty(entry) {
-                println!("{}", pretty);
+                println!("{pretty}");
             }
         }
     }

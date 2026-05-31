@@ -100,7 +100,7 @@ impl SessionAnchorManager {
             .filter_map(|e| {
                 e.get("hash")
                     .and_then(|h| h.as_str())
-                    .map(|s| s.to_string())
+                    .map(std::string::ToString::to_string)
             })
             .collect();
 
@@ -152,7 +152,7 @@ impl SessionAnchorManager {
             fs::set_permissions(&a_dir, fs::Permissions::from_mode(0o700))?;
         }
 
-        let anchor_path = a_dir.join(format!("{}.anchor.json", trace_id));
+        let anchor_path = a_dir.join(format!("{trace_id}.anchor.json"));
 
         let mut options = std::fs::OpenOptions::new();
         options.create(true).write(true).truncate(true);
@@ -169,7 +169,7 @@ impl SessionAnchorManager {
     }
 
     pub fn verify_session(trace_id: &str) -> Result<bool> {
-        let anchor_path = anchor_dir().join(format!("{}.anchor.json", trace_id));
+        let anchor_path = anchor_dir().join(format!("{trace_id}.anchor.json"));
         if !anchor_path.exists() {
             return Ok(false);
         }

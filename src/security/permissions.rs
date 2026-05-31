@@ -54,10 +54,8 @@ fn recursive_set_permissions(dir: &Path) {
                     tracing::warn!("Failed to set directory permissions on {:?}: {}", path, e);
                 }
                 recursive_set_permissions(&path);
-            } else {
-                if let Err(e) = set_private_permissions(&path) {
-                    tracing::warn!("Failed to set private permissions on {:?}: {}", path, e);
-                }
+            } else if let Err(e) = set_private_permissions(&path) {
+                tracing::warn!("Failed to set private permissions on {:?}: {}", path, e);
             }
         }
     }

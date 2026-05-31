@@ -28,13 +28,12 @@ impl ActiveSession {
                 // Auto-save session after each complete turn
                 crate::utils::session_store::auto_save(self);
                 break; // No more tools to execute
-            } else {
-                // Return tool results to the conversation
-                self.client.get_state_mut().conversation.push(Message {
-                    role: Role::Tool,
-                    parts: tool_results,
-                });
             }
+            // Return tool results to the conversation
+            self.client.get_state_mut().conversation.push(Message {
+                role: Role::Tool,
+                parts: tool_results,
+            });
         }
         Ok(())
     }
@@ -62,7 +61,7 @@ impl ActiveSession {
 
         // Animated spinner to indicate progress and keep SSH alive.
         let mut spin =
-            crate::utils::spinner::Spinner::start(&format!("Thinking ({}) …", thinking_label));
+            crate::utils::spinner::Spinner::start(&format!("Thinking ({thinking_label}) …"));
 
         let result = tokio::select! {
             res = send_future => {
@@ -82,7 +81,7 @@ impl ActiveSession {
             self.total_usage.completion_tokens += usage.completion_tokens;
             self.total_usage.total_tokens += usage.total_tokens;
 
-            use colored::*;
+            use colored::Colorize;
             println!(
                 "{}",
                 format!(
@@ -123,7 +122,7 @@ impl ActiveSession {
         let config = match self.ctx.config_manager.get_config() {
             Ok(c) => c,
             Err(e) => {
-                ui::report_error(&format!("Failed to load config for media output: {}", e));
+                ui::report_error(&format!("Failed to load config for media output: {e}"));
                 return;
             }
         };
@@ -150,11 +149,11 @@ impl ActiveSession {
                             Ok(path) => self
                                 .ctx
                                 .ui
-                                .report_success(&format!("Media saved to: {}", path)),
+                                .report_success(&format!("Media saved to: {path}")),
                             Err(e) => self
                                 .ctx
                                 .ui
-                                .report_error(&format!("Failed to save media: {}", e)),
+                                .report_error(&format!("Failed to save media: {e}")),
                         }
                     }
                 }

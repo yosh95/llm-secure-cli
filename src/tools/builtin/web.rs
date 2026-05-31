@@ -8,7 +8,7 @@ use std::collections::HashMap;
 /// (text, tables, code) ready for LLM consumption — no scraping needed.
 ///
 /// The raw API response is returned as-is without any restructuring.
-/// All optional parameters (count, max_tokens, max_urls, freshness, etc.) use API-side defaults.
+/// All optional parameters (count, `max_tokens`, `max_urls`, freshness, etc.) use API-side defaults.
 pub async fn brave_search(args: HashMap<String, Value>, api_key: &str) -> anyhow::Result<Value> {
     let query = args
         .get("query")
@@ -44,9 +44,7 @@ async fn call_brave_llm_context(query: &str, api_key: &str) -> anyhow::Result<Va
             Err(_) => "Unable to read error response body".to_string(),
         };
         return Err(anyhow::anyhow!(
-            "Brave LLM Context API error ({}): {}",
-            status,
-            error_body
+            "Brave LLM Context API error ({status}): {error_body}"
         ));
     }
 

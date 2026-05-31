@@ -10,13 +10,13 @@ impl ConfigManager {
     /// Returns a clone of the current application state.
     ///
     /// On the very first call the state is loaded from disk; subsequent calls
-    /// return the in-memory copy.  Mutations (via *update_state*, etc.) are
+    /// return the in-memory copy.  Mutations (via *`update_state`*, etc.) are
     /// always written through to disk.
     pub fn get_state(&self) -> anyhow::Result<AppState> {
         let read = self
             .app_state
             .read()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
 
         // If the state is still the default placeholder and a state file exists
         // on disk, we need to populate it.  We drop the read lock first to avoid
@@ -29,7 +29,7 @@ impl ConfigManager {
             let mut write = self
                 .app_state
                 .write()
-                .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
             // Double-check after acquiring write lock (another thread may have
             // initialized already).
             if write.last_used_provider.is_none()
@@ -95,7 +95,7 @@ impl ConfigManager {
         let mut write = self
             .app_state
             .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         write.last_used_provider = Some(provider.to_string());
         write.last_used_model = Some(model.to_string());
         Self::persist_state(&write);
@@ -109,7 +109,7 @@ impl ConfigManager {
         let mut write = self
             .app_state
             .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         write.verifier_committee_members.clear();
         write
             .verifier_committee_members
@@ -122,7 +122,7 @@ impl ConfigManager {
         let mut write = self
             .app_state
             .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         write.model_aliases.insert(
             alias.to_string(),
             crate::config::models::ModelAlias {
@@ -137,7 +137,7 @@ impl ConfigManager {
         let mut write = self
             .app_state
             .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let existed = write.model_aliases.remove(alias).is_some();
         if existed {
             Self::persist_state(&write);
@@ -158,7 +158,7 @@ impl ConfigManager {
         let mut write = self
             .app_state
             .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         write.verifier_enabled = Some(enabled);
         Self::persist_state(&write);
         Ok(())
@@ -173,12 +173,12 @@ impl ConfigManager {
         state.show_tool_result.unwrap_or(false)
     }
 
-    /// Set the show_tool_result flag and persist to state.toml.
+    /// Set the `show_tool_result` flag and persist to state.toml.
     pub fn set_show_tool_result(&self, show: bool) -> anyhow::Result<()> {
         let mut write = self
             .app_state
             .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         write.show_tool_result = Some(show);
         Self::persist_state(&write);
         Ok(())
@@ -205,7 +205,7 @@ impl ConfigManager {
         let mut write = self
             .app_state
             .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let pm = provider_model.to_string();
         if !write.verifier_committee_members.contains(&pm) {
             write.verifier_committee_members.push(pm);
@@ -219,7 +219,7 @@ impl ConfigManager {
         let mut write = self
             .app_state
             .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let len_before = write.verifier_committee_members.len();
         write
             .verifier_committee_members

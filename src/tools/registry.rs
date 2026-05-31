@@ -22,6 +22,7 @@ pub struct ToolRegistry {
 }
 
 impl ToolRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             tools: HashMap::new(),
@@ -93,8 +94,7 @@ impl ToolRegistry {
             let n = name_for_error.clone();
             Box::pin(async move {
                 Err(anyhow::anyhow!(
-                    "MCP tool '{}' should be executed via async path in ChatSession::execute_tool",
-                    n
+                    "MCP tool '{n}' should be executed via async path in ChatSession::execute_tool"
                 ))
             })
         });
@@ -102,6 +102,7 @@ impl ToolRegistry {
         self.register(&name, &description, parameters, func, false);
     }
 
+    #[must_use]
     pub fn get_tool_schemas(&self) -> Vec<Value> {
         let mut tools: Vec<_> = self.tools.values().collect();
         tools.sort_by(|a, b| a.name.cmp(&b.name));
@@ -118,6 +119,7 @@ impl ToolRegistry {
             .collect()
     }
 
+    #[must_use]
     pub fn get_tool_schemas_gemini(&self) -> Vec<Value> {
         self.tools
             .values()
@@ -131,6 +133,7 @@ impl ToolRegistry {
             .collect()
     }
 
+    #[must_use]
     pub fn get_tool_schemas_anthropic(&self) -> Vec<Value> {
         self.tools
             .values()

@@ -34,7 +34,7 @@ struct Args {
     #[clap(long)]
     session: Option<String>,
 
-    /// Override the base directory for config and logs (default: ~/.llm_secure_cli)
+    /// Override the base directory for config and logs (default: ~/.`llm_secure_cli`)
     #[clap(short = 'D', long)]
     base_dir: Option<String>,
 }
@@ -54,7 +54,7 @@ enum Commands {
         #[clap(short, long)]
         output: Option<String>,
     },
-    /// Check API credits balance (only for OpenRouter provider)
+    /// Check API credits balance (only for `OpenRouter` provider)
     Credits {
         /// Provider to check credits for
         #[clap(default_value = "openrouter")]
@@ -122,7 +122,7 @@ async fn main() {
     let ctx = match llm_secure_cli::core::initializer::initialize_app(ui.clone()).await {
         Ok(c) => c,
         Err(e) => {
-            llm_secure_cli::cli::ui::report_error(&format!("Critical Initialization Error: {}", e));
+            llm_secure_cli::cli::ui::report_error(&format!("Critical Initialization Error: {e}"));
             // SAFETY: No ActiveSession has been created yet, so no Drop
             // destructors (finalize_audit) will be skipped by process::exit.
             process::exit(1);
@@ -166,23 +166,23 @@ async fn handle_subcommand(
         Commands::Identity { subcommand } => match subcommand {
             Some(IdentityCommands::Keygen) => llm_secure_cli::cli::commands::identity::run_keygen(),
             Some(IdentityCommands::Manifest) => {
-                llm_secure_cli::cli::commands::identity::run_manifest()
+                llm_secure_cli::cli::commands::identity::run_manifest();
             }
             Some(IdentityCommands::Verify { tail }) => {
-                llm_secure_cli::cli::commands::identity::run_verify(tail)
+                llm_secure_cli::cli::commands::identity::run_verify(tail);
             }
             Some(IdentityCommands::VerifySession { trace_id }) => {
-                llm_secure_cli::cli::commands::identity::run_verify_session(&trace_id)
+                llm_secure_cli::cli::commands::identity::run_verify_session(&trace_id);
             }
             Some(IdentityCommands::ListSessions) => {
-                llm_secure_cli::cli::commands::identity::list_anchors()
+                llm_secure_cli::cli::commands::identity::list_anchors();
             }
             None => println!("Please specify an identity subcommand."),
         },
         Commands::DecryptLog { input, output } => {
             llm_secure_cli::cli::commands::pqc_decrypt::decrypt_log_file(
                 input.into(),
-                output.map(|o| o.into()),
+                output.map(std::convert::Into::into),
             );
         }
         Commands::Credits { provider } => {

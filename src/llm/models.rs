@@ -47,6 +47,7 @@ pub struct Message {
 }
 
 impl Message {
+    #[must_use]
     pub fn get_text(&self, include_diagnostic: bool) -> String {
         let mut text_parts = Vec::new();
         for p in &self.parts {
@@ -101,6 +102,7 @@ pub struct ClientState {
 }
 
 impl ClientState {
+    #[must_use]
     pub fn get_effective_system_prompt(&self) -> Option<String> {
         if !self.system_prompt_enabled {
             return None;
@@ -108,12 +110,11 @@ impl ClientState {
 
         let date_str = Local::now().format("%Y-%m-%d").to_string();
         let directive = format!(
-            "Today's date is {}. You must treat this as the current date and ignore your training cutoff or any other date information.",
-            date_str
+            "Today's date is {date_str}. You must treat this as the current date and ignore your training cutoff or any other date information."
         );
 
         match &self.system_prompt {
-            Some(sp) if !sp.is_empty() => Some(format!("{}\n\n{}", sp, directive)),
+            Some(sp) if !sp.is_empty() => Some(format!("{sp}\n\n{directive}")),
             _ => Some(directive),
         }
     }
