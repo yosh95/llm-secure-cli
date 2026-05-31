@@ -72,7 +72,7 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
     },
     CommandEntry {
         name: "model",
-        aliases: &["m", "p"],
+        aliases: &["m"],
         description: "List models or switch (provider:model)",
     },
     CommandEntry {
@@ -117,7 +117,7 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
     },
     CommandEntry {
         name: "verify",
-        aliases: &["verifier"],
+        aliases: &[],
         description: "Toggle verifier on/off",
     },
     CommandEntry {

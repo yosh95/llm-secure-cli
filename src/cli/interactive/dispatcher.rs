@@ -82,7 +82,7 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             handle_tools(session, args).await;
             CommandResult::Handled
         }
-        "model" | "m" | "p" => {
+        "model" | "m" => {
             handle_model_cmd(session, args).await;
             CommandResult::Handled
         }
@@ -95,7 +95,7 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             handle_alias_cmd(session, args).await;
             CommandResult::Handled
         }
-        "verify" | "verifier" => {
+        "verify" => {
             handle_verify_cmd(session, args);
             CommandResult::Handled
         }
@@ -1070,9 +1070,9 @@ fn print_help() {
     );
 
     println!(
-        "  /m, /p, /model [-u] [<name>]  List models (/model -u to refresh ALL providers cache) or switch to provider:model"
+        "  /m, /model [-u] [<name>]  List models (/model -u to refresh ALL providers cache) or switch to provider:model"
     );
-    println!("  /p is now an alias for /model. Use /model <provider:model> to switch.");
+
     println!(
         "  /vcommittee [set|add|remove|list] [<provider:model>]  Manage verifier (set=replace all, add=add member)"
     );

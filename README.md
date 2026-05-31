@@ -238,18 +238,22 @@ Inside the `llsc` interactive session:
 - `/help`, `/h`: Show help message.
 - `/quit`, `/q`: Exit the application.
 - `/verify [on|off]`: Show or toggle verifier status.
+- `/vcommittee [set|add|remove|list] [<provider:model>]`: Manage verifier committee members.
 - `/edit`, `/e`: Edit current buffer in external editor.
 - `/clear`, `/c`: Clear conversation history.
 - `/info`, `/i`: Show session info, integrity, and security status.
+- `/edit_history`, `/eh`: View/edit the conversation history in TOML format.
 - `/raw`: Show conversation as raw text.
 - `/session [load|delete <id>|clear]`: List, load, delete, or clear saved sessions.
 - `/attach <path/URL>`: Add a file or website content to the context.
 - `/tools [on|off]`: Show or toggle autonomous tool use status.
-- `/model`, `/m [-u] [<alias>]`: List models for current provider. Use `-u`/`--update` to refresh the cache. Specify an alias or model name to switch.
-- `/vmodel`, `/vm [-u] [<name>]`: List models for the verifier. Use `-u`/`--update` to refresh the cache.
+- `/tool_output`, `/to [on|off]`: Toggle display of tool execution results.
+- `/model`, `/m [-u] [<name>]`: List models or switch to `provider:model`. Use `-u` to refresh the cache.
 - `/alias` — list all; `/alias <name>` — show one; `/alias <name> <target>` — create/update; `/alias -d <name>` — delete.
-- `/provider`, `/p [<name>]`: Switch or list providers.
 - `/summarize`, `/s`: Summarize history and clear it (context preservation).
+- `/template`, `/t [<name>]`: List templates or insert one into the prompt.
+- `/view [<path>]`: Open saved image or file with system default app.
+- `/credits`: Show detailed OpenRouter credit info.
 
 ### Keybindings
 - **Newline**: `Ctrl+J` (Insert a newline without submitting).
