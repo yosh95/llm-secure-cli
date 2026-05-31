@@ -3,8 +3,8 @@ use crate::llm::models::DataSource;
 use crate::security::policy::{SECURITY_CONSTITUTION, SecurityContext};
 use serde_json::{Value, json};
 
-/// Verifier implements the "Intent and Policy Verification" logic.
-/// It uses a secondary LLM to judge if a tool call is safe based on the user's intent
+/// Verifier implements the "Tool Call Security Verification" logic.
+/// It uses a secondary LLM to judge if a tool call is safe based on the user's intent,
 /// and the system's hardcoded Security Constitution.
 ///
 /// NOTE: The Verifier LLM must NOT be configured with any tools itself (except the verdict tool)
@@ -124,9 +124,7 @@ pub async fn verify_tool_call_full(params: VerificationParams<'_>) -> Verificati
         }
     };
 
-    let ctx = params
-        .context
-        .unwrap_or_else(|| SecurityContext::gather(params.config.security_level.as_str()));
+    let ctx = params.context.unwrap_or_else(SecurityContext::gather);
 
     let mut verifier = Verifier::new(client);
     match verifier

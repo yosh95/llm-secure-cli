@@ -41,8 +41,8 @@ impl ActiveSession {
                 // Single verifier (legacy mode)
                 let (v_provider, v_model) = &committee_members[0];
                 self.ctx.ui.report_info(&format!(
-                    "Verifier: {} (single-member committee)",
-                    committee_members[0].1,
+                    "Verifier: {}:{} (single-member committee)",
+                    committee_members[0].0, committee_members[0].1,
                 ));
                 Some(self.spawn_verifier_task(name, args, v_provider.clone(), v_model.clone()))
             } else {
@@ -132,7 +132,7 @@ impl ActiveSession {
                     .print_tool_call_direct(name, &serde_json::json!(args));
                 self.ctx
                     .ui
-                    .report_success(&format!("Intent Verified (Auto-Approved): {reason}"));
+                    .report_success(&format!("✓ Tool Call Approved (Auto-Approved): {reason}"));
                 Ok((args.clone(), true, None))
             }
             VerificationOutcome::Modified(fixed_args, reason) => {
@@ -153,7 +153,7 @@ impl ActiveSession {
                     .ui
                     .print_tool_call_direct(name, &serde_json::json!(args));
                 self.ctx.ui.report_success(&format!(
-                    "Intent Verified & Corrected (Auto-Approved): {reason}"
+                    "✓ Tool Call Corrected & Approved (Auto-Approved): {reason}"
                 ));
                 let effective_args = if let Some(obj) = fixed_args.as_object() {
                     obj.clone()
@@ -228,7 +228,7 @@ impl ActiveSession {
     ) -> anyhow::Result<VerificationOutcome> {
         const VERIFIER_TIMEOUT_SECS: u64 = 60;
 
-        let mut spin = crate::utils::spinner::Spinner::start("Finalizing intent verification…");
+        let mut spin = crate::utils::spinner::Spinner::start("Running security verification…");
 
         let res = tokio::select! {
             res = handle => {

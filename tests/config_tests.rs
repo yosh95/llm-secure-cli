@@ -30,9 +30,11 @@ fn test_config_merging_from_current_dir() {
     env::set_current_dir(tmp_dir.path()).expect("Failed to change CWD");
 
     // Write config to the actual base directory where ConfigManager will look.
+    // SecurityConfig is now always high-equivalent (security_level removed);
+    // unknown fields like `security_level` are silently ignored by serde.
     let custom_config = r#"
 [security]
-security_level = "standard"
+# security_level field no longer exists; always high equivalent
 "#;
     let config_path = actual_base_dir.join("config.toml");
     fs::write(&config_path, custom_config).expect("Failed to write mock config");
@@ -40,11 +42,8 @@ security_level = "standard"
     let manager = ConfigManager::new();
     let config = manager.get_config().expect("Failed to load config");
 
-    // Default is "high", so "standard" indicates it was merged from our file.
-    assert_eq!(
-        config.security.security_level,
-        llm_secure_cli::config::models::SecurityLevel::Standard
-    );
+    // SecurityConfig is now empty (always high); just verify it loads
+    let _ = config.security;
 
     // Clean up
     let _ = fs::remove_file(config_path);

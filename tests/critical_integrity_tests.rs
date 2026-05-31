@@ -471,7 +471,7 @@ use llm_secure_cli::security::policy::SecurityContext;
 
 #[test]
 fn test_security_context_has_required_fields() {
-    let ctx = SecurityContext::gather("high");
+    let ctx = SecurityContext::gather();
     assert!(!ctx.os.is_empty(), "OS must be set");
     assert!(!ctx.user.is_empty(), "User must be set");
     assert!(!ctx.current_dir.is_empty(), "Current dir must be set");
@@ -483,9 +483,9 @@ fn test_security_context_has_required_fields() {
 
 #[test]
 fn test_security_context_serializes_to_json() {
-    let ctx = SecurityContext::gather("standard");
+    let ctx = SecurityContext::gather();
     let json = serde_json::to_value(&ctx).expect("Should serialise to JSON");
-    assert_eq!(json["security_level"], "standard");
+    assert_eq!(json["security_level"], "high");
     assert!(json.get("os").and_then(|v| v.as_str()).is_some());
     assert!(json.get("user").and_then(|v| v.as_str()).is_some());
     assert!(json.get("current_dir").and_then(|v| v.as_str()).is_some());

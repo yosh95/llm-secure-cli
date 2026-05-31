@@ -150,7 +150,7 @@ follow the same principle: **trust nothing, verify everything.**
 - **Semantic Firewall requires a configured verifier.**  Without
   `--semantic`, malicious skills with valid structure will be flagged only
   as `SUSPICIOUS` (unsigned), not `DANGEROUS`.  This is by design: the
-  structural and signature tiers are deterministic; intent analysis
+  structural and signature tiers are deterministic; security verification
   requires an LLM.
 - **Signature verification uses the project's own identity keys.**  A
   future AAIF (Agentic AI Foundation) verified-publisher PKI would allow

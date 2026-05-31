@@ -276,9 +276,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
     let mut final_args = params.args.clone();
     let mut encryption_failed = false;
 
-    if params.config.security.security_level == crate::config::models::SecurityLevel::High
-        && let Ok(pk) = crate::security::identity::IdentityManager::get_kem_public_key()
-    {
+    if let Ok(pk) = crate::security::identity::IdentityManager::get_kem_public_key() {
         match serde_json::to_vec(&params.args) {
             Ok(arg_bytes) => {
                 match crate::security::pqc::SecureStorage::encrypt(&arg_bytes, &pk) {
@@ -295,7 +293,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                         tracing::error!(
                             tool = params.tool_name,
                             error = %e,
-                            "PQC audit encryption failed in high-security mode; storing redacted entry"
+                            "PQC audit encryption failed; storing redacted entry"
                         );
                         final_args = serde_json::json!({
                             "pqc_encryption": "FAILED",
@@ -401,20 +399,20 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
                     .map(std::string::ToString::to_string);
             }
             Err(e) => {
-                // In high-security mode, a signing failure is a critical event,
+                // A signing failure is a critical event,
                 // but we still persist the entry (with redacted args if needed)
                 // so the event is traceable in forensic analysis.
                 tracing::error!(
                     tool = params.tool_name,
                     error = %e,
-                    "PQC Sign failed in high-security mode; storing entry without signature"
+                    "PQC Sign failed; storing entry without signature"
                 );
                 log_entry.status = AuditStatus::IntegrityFailure(format!("PQC Sign failed: {e}"));
                 // Do NOT return None — persist the entry for forensic traceability.
             }
         }
-    } else if params.config.security.security_level == crate::config::models::SecurityLevel::High {
-        let msg = "PQC Private Key unavailable in high-security mode.";
+    } else {
+        let msg = "PQC Private Key unavailable.";
         tracing::error!(
             tool = params.tool_name,
             "{}; storing entry without signature",
@@ -422,12 +420,6 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         );
         log_entry.status = AuditStatus::IntegrityFailure(msg.to_string());
         // Do NOT return None — persist for forensic traceability.
-    } else {
-        tracing::warn!(
-            tool = params.tool_name,
-            "PQC private key unavailable; audit entry will be stored without signature"
-        );
-        log_entry.status = AuditStatus::SuccessWithoutSignature;
     }
 
     // Now truncate the output only for storage efficiency
@@ -453,9 +445,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
     match options.open(path) {
         Err(e) => {
             tracing::error!(path = %path.display(), error = %e, "audit log open failed");
-            if params.config.security.security_level == crate::config::models::SecurityLevel::High {
-                crate::cli::ui::report_error(&format!("CRITICAL: Audit log unavailable: {e}"));
-            }
+            crate::cli::ui::report_error(&format!("CRITICAL: Audit log unavailable: {e}"));
             return None;
         }
         Ok(mut file) => {
@@ -468,11 +458,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
             };
             if let Err(e) = writeln!(file, "{line}") {
                 tracing::error!(path = %path.display(), error = %e, "audit log write failed");
-                if params.config.security.security_level
-                    == crate::config::models::SecurityLevel::High
-                {
-                    crate::cli::ui::report_error(&format!("CRITICAL: Audit log write failed: {e}"));
-                }
+                crate::cli::ui::report_error(&format!("CRITICAL: Audit log write failed: {e}"));
                 return None;
             }
         }

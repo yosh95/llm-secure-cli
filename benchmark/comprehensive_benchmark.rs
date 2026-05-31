@@ -164,7 +164,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Phase 4
-    section("Phase 4: Intent Verification (Verifier Committee)");
+    section("Phase 4: Security Verification (Verifier Committee)");
     let providers = [
         ("google", "lite"),
         ("openai", "nano"),

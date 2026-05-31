@@ -14,7 +14,7 @@ pub struct SecurityContext {
 
 impl SecurityContext {
     #[must_use]
-    pub fn gather(security_level: &str) -> Self {
+    pub fn gather() -> Self {
         let os = env::consts::OS.to_string();
         let user = env::var("USER")
             .or_else(|_| env::var("USERNAME"))
@@ -34,7 +34,7 @@ impl SecurityContext {
             os,
             user,
             current_dir,
-            security_level: security_level.to_string(),
+            security_level: "high".to_string(),
             container_mode,
             is_git_repo,
         }

@@ -351,7 +351,7 @@ pub async fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
 
 pub fn handle_info(session: &ActiveSession) {
     let state = session.get_client().get_state();
-    let config = match session.ctx.config_manager.get_config() {
+    let _config = match session.ctx.config_manager.get_config() {
         Ok(c) => c,
         Err(e) => {
             ui::report_error(&format!("Failed to load config: {e}"));
@@ -420,7 +420,7 @@ pub fn handle_info(session: &ActiveSession) {
             .to_string(),
     };
     ui::print_key_value("System Integrity", &integrity_status);
-    ui::print_key_value("Security Level", config.security.security_level.as_str());
+    ui::print_key_value("Security Level", "high");
 
     ui::print_rule(Some("Statistics"), Some("cyan"));
     ui::print_key_value(

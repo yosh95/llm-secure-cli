@@ -146,12 +146,12 @@ async fn test_processor_tool_execution_flow() {
     let ui = Arc::new(MockUi { confirmed: true });
     let ctx = AppContext::new(ui);
     {
-        let mut config = (*ctx
+        let config = (*ctx
             .config_manager
             .get_config()
             .expect("Failed to get config"))
         .clone();
-        config.security.security_level = llm_secure_cli::config::models::SecurityLevel::Standard;
+        // SecurityLevel removed; always high equivalent
         let _ = ctx.config_manager.set_config(config);
     }
 
@@ -244,13 +244,12 @@ async fn test_processor_pqc_blocking_in_high_security() {
     // 1. Setup Config with High Security Level
     let ui = Arc::new(MockUi { confirmed: true });
     let ctx = AppContext::new(ui);
-    let mut config = (*ctx
+    let config = (*ctx
         .config_manager
         .get_config()
         .expect("Failed to get config"))
     .clone();
-    config.security.security_level = llm_secure_cli::config::models::SecurityLevel::High;
-
+    // SecurityLevel removed; always high equivalent
     let _ = ctx.config_manager.set_config(config);
     let ctx = Arc::new(ctx);
 

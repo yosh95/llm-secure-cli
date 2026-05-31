@@ -48,7 +48,7 @@ impl ActiveSession {
             if state.provider.is_empty() {
                 state.model.clone()
             } else {
-                format!("{}/{}", state.provider, state.model)
+                format!("{}:{}", state.provider, state.model)
             }
         };
 

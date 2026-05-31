@@ -297,12 +297,12 @@ async fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSessi
 
     // Standard security level (no PQC key required)
     {
-        let mut config = (*ctx
+        let config = (*ctx
             .config_manager
             .get_config()
             .expect("Failed to get config"))
         .clone();
-        config.security.security_level = llm_secure_cli::config::models::SecurityLevel::Standard;
+        // SecurityLevel removed; always high equivalent
         let _ = ctx.config_manager.set_config(config);
     }
 

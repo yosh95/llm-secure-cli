@@ -1,68 +1,5 @@
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-// ---------------------------------------------------------------------------
-// Enum types for type-safe security configuration
-// ---------------------------------------------------------------------------
-
-/// Security level — controls PQC enforcement strictness.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SecurityLevel {
-    /// Strict PQC enforcement; high-risk actions without signatures are blocked.
-    #[default]
-    High,
-    /// Permissive checks; warnings instead of blocks for interoperability.
-    Standard,
-}
-
-impl SecurityLevel {
-    /// Convert to the TOML string representation (for serialization).
-    #[must_use]
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            SecurityLevel::High => "high",
-            SecurityLevel::Standard => "standard",
-        }
-    }
-}
-
-impl std::fmt::Display for SecurityLevel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl Serialize for SecurityLevel {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for SecurityLevel {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let s = String::deserialize(d)?;
-        match s.as_str() {
-            "high" => Ok(SecurityLevel::High),
-            "standard" => Ok(SecurityLevel::Standard),
-            other => Err(serde::de::Error::unknown_variant(
-                other,
-                &["high", "standard"],
-            )),
-        }
-    }
-}
-
-impl TryFrom<&str> for SecurityLevel {
-    type Error = String;
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        match s {
-            "high" => Ok(SecurityLevel::High),
-            "standard" => Ok(SecurityLevel::Standard),
-            other => Err(format!("unknown security level: '{other}'")),
-        }
-    }
-}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GeneralConfig {
@@ -206,11 +143,8 @@ pub struct CommitteeMemberConfig {
     pub model: String,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct SecurityConfig {
-    #[serde(default)]
-    pub security_level: SecurityLevel,
-}
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct SecurityConfig {}
 
 /// Configuration for the verifier committee.
 ///
@@ -233,14 +167,6 @@ pub struct VerifierCommitteeConfig {
     /// List of committee members (provider/model pairs).
     #[serde(default)]
     pub members: Vec<CommitteeMemberConfig>,
-}
-
-impl Default for SecurityConfig {
-    fn default() -> Self {
-        Self {
-            security_level: SecurityLevel::High,
-        }
-    }
 }
 
 /// Describes a single validation failure in a [`SecurityConfig`].
@@ -267,13 +193,7 @@ impl SecurityConfig {
     /// block configuration loading but are worth surfacing to the user.
     #[must_use]
     pub fn validate(&self) -> Vec<ValidationError> {
-        let errors = Vec::new();
-
-        // --- security_level ---
-        // No runtime check needed: invalid values are rejected at
-        // deserialization time by the SecurityLevel custom Deserialize impl.
-
-        errors
+        Vec::new()
     }
 
     /// Returns advisory warnings for suboptimal (but not invalid) configuration

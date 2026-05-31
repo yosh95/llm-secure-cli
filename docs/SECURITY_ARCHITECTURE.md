@@ -143,7 +143,7 @@ Tool call risk classification is handled by the Verifier Committee — there is 
 risk-level configuration file. The Verifier evaluates each tool call semantically
 using the Security Constitution.
 
-### Verifier Committee (Dynamic Intent Check — N-Member, Any-Flag Policy)
+### Verifier Committee (Semantic Firewall — N-Member, Any-Flag Policy)
 
 To prevent sophisticated Prompt Injection (especially indirect injection),
 `llm-secure-cli` implements a **Verifier Committee** pattern with N independent
@@ -316,7 +316,7 @@ Measured using the Rust implementation on reference hardware.
 | Tier 2 | Identity Generation | ML-DSA-87 | 1.26 |
 | Tier 3 | Audit Encryption | ML-KEM-1024 | 0.09 |
 
-### 2. Intent Verification Latency (Verifier Committee)
+### 2. Security Verification Latency (Verifier Committee)
 Latency varies based on the provider and network conditions. We recommend lightweight "verifier" models to minimize the "Security Speed Bump."
 
 The default verifier configuration uses `ollama` provider with `default` model. This can be overridden in `config.toml` via `verifier_provider` and `verifier_model`.
@@ -387,7 +387,7 @@ Shell invocation pattern detection (`sh -c`, `bash -c`, etc.) has been **removed
 
 While highly efficient (<0.01ms), this layer is intentionally minimal. **Real-world security relies on the Defense-in-Depth provided by Tier 2 (Verifier Committee) and Tier 3 (Audit Trail).** Complex intent analysis and semantic risk assessment are entirely delegated to the Verifier Committee.
 
-### 2. Probabilistic Intent Verification
+### 2. Probabilistic Security Verification
 Verifier Committee is a **probabilistic** defense. While it can achieve high accuracy with well-chosen verifier models, LLMs can hallucinate or fail to catch "jailbreak" style prompt injections. The Verifier Committee's semantic analysis — while highly effective — is probabilistic.  Choosing strong verifier models (e.g., Gemma-4, GPT-4o-mini) is important for balancing security and usability.
 
 ### 3. ML-DSA COSE algorithm identifier (`alg=−48`)
@@ -585,7 +585,7 @@ principles to content the agent *might* consume:
 | Tier | Existing (Tool Execution) | New (Skill Verification) |
 |---|---|---|
 | T1 — Space | Path guardrails, static analysis | YAML structural validation |
-| T2 — Behavior | Verifier Committee intent verification, ABAC | Signature verification (Ed25519/ML-DSA) |
+| T2 — Behavior | Verifier Committee security verification, ABAC | Signature verification (Ed25519/ML-DSA) |
 | T3 — Time | PQC audit trail, Merkle anchoring | Semantic Firewall for skill content |
 | T4 — Supply Chain | — *(new)* | Three-tier skill safety audit |
 

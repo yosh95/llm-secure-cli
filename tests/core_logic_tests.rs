@@ -1,5 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-use llm_secure_cli::config::models::{AppConfig, SecurityConfig, SecurityLevel};
+use llm_secure_cli::config::models::{AppConfig, SecurityConfig};
 use llm_secure_cli::security::validate_tool_call;
 use serde_json::json;
 
@@ -16,9 +16,7 @@ fn test_config_merge_nested_objects_preserve_existing_keys() {
             "pdf_as_base64": true,
             "request_timeout": 1800
         },
-        "security": {
-            "security_level": "high"
-        }
+        "security": {}
     });
 
     let over: serde_json::Value = serde_json::json!({
@@ -41,7 +39,8 @@ fn test_config_merge_nested_objects_preserve_existing_keys() {
 #[test]
 fn test_security_config_default_values_are_sane() {
     let cfg = SecurityConfig::default();
-    assert_eq!(cfg.security_level, SecurityLevel::High);
+    // SecurityConfig is now empty (always high); just verify it constructs
+    let _ = cfg;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,10 +145,10 @@ fn test_app_config_round_trip_via_toml() {
     let toml_str = toml::to_string(&original).expect("Serialize default config");
     let roundtripped: AppConfig = toml::from_str(&toml_str).expect("Deserialize config");
     // Spot-check a few fields
-    assert_eq!(
-        roundtripped.security.security_level,
-        original.security.security_level
-    );
+    // SecurityConfig is now empty (always high); security_level check removed
+    // (it was removed in the SecurityConfig simplification)
+    let _ = original.security;
+    let _ = roundtripped.security;
 }
 
 #[test]
@@ -160,8 +159,7 @@ pdf_as_base64 = false
 "#;
     let cfg: AppConfig = toml::from_str(minimal).expect("Minimal TOML should parse");
     assert!(!cfg.general.pdf_as_base64);
-    // Fields not specified should take their defaults
-    assert_eq!(cfg.security.security_level, SecurityLevel::High);
+    // SecurityConfig is now empty (always high); field check removed
 }
 
 // ---------------------------------------------------------------------------
@@ -188,31 +186,28 @@ fn test_validate_security_config_accepts_valid_defaults() {
     );
 
     // Also verify individual fields make sense
-    assert_eq!(
-        cfg.security_level,
-        SecurityLevel::High,
-        "default security level should be high"
-    );
+    // SecurityConfig is now empty (always high); removed security_level check
+    let _ = cfg;
 }
 
 #[test]
-fn test_security_config_rejects_invalid_security_level() {
-    // With the typed enum, invalid security_level values are
-    // rejected at TOML deserialization time.
+fn test_security_config_rejects_unknown_fields() {
+    // SecurityConfig no longer has a security_level field;
+    // unknown fields in TOML are silently ignored with #[serde(default)].
     let toml_str = r#"
 [security]
-security_level = "paranoid"
+# security_level field no longer exists; unknown fields are ignored
 "#;
     let cfg: Result<AppConfig, _> = toml::from_str(toml_str);
     assert!(
-        cfg.is_err(),
-        "TOML parse should fail for invalid security_level value"
+        cfg.is_ok(),
+        "TOML parse should succeed; unknown fields are silently ignored"
     );
 }
 
 #[test]
 fn test_security_config_default_has_no_validation_errors() {
-    // SecurityConfig now only contains security_level.
+    // SecurityConfig is now empty (always high equivalent).
     let cfg = SecurityConfig::default();
     let errors = cfg.validate();
     assert!(
@@ -224,7 +219,7 @@ fn test_security_config_default_has_no_validation_errors() {
 
 #[test]
 fn test_security_config_default_has_no_warnings() {
-    // SecurityConfig now only contains security_level.
+    // SecurityConfig is now empty (always high equivalent).
     let cfg = SecurityConfig::default();
     let warnings = cfg.validate_warnings();
     assert!(
