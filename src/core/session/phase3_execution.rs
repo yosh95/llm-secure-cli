@@ -143,7 +143,7 @@ impl ActiveSession {
         }
 
         // Show stats (stderr info included)
-        crate::cli::stats::print_tool_stats(&stats);
+        // crate::cli::stats::print_tool_stats(&stats);
 
         // Convert to human-readable string for the LLM
         let human_result = crate::tools::executor_utils::humanize_tool_result(name, &final_v);
