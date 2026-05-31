@@ -82,14 +82,11 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             handle_tools(session, args).await;
             CommandResult::Handled
         }
-        "model" | "m" => {
+        "model" | "m" | "p" => {
             handle_model_cmd(session, args).await;
             CommandResult::Handled
         }
-        "provider" | "p" => {
-            handle_provider_cmd(session, args).await;
-            CommandResult::Handled
-        }
+
         "summarize" | "s" => {
             handle_summarize(session).await;
             CommandResult::Handled
@@ -364,8 +361,10 @@ pub fn handle_info(session: &ActiveSession) {
 
     ui::print_rule(Some("Session Info"), Some("cyan"));
     ui::print_key_value("Session ID", &session.trace_id);
-    ui::print_key_value("Model", &state.model);
-    ui::print_key_value("Provider", &state.provider);
+    ui::print_key_value(
+        "Provider:Model",
+        &format!("{}:{}", state.provider, state.model),
+    );
 
     // Validator Info
     let (members, _) = session.ctx.config_manager.get_verifier_committee();
@@ -644,7 +643,7 @@ pub fn handle_verify_cmd(session: &mut ActiveSession, args: &str) {
 }
 
 pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
-    let (provider, current_model, stdout, raw) = {
+    let (current_provider, current_model, stdout, raw) = {
         let state = session.get_client().get_state();
         (
             state.provider.clone(),
@@ -656,101 +655,142 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
 
     let args_trimmed = args.trim();
 
-    // `/model -u` or `/model --update`: refresh the models cache
+    // `/model -u` or `/model --update`: refresh the models cache for ALL providers
     if args_trimmed == "-u" || args_trimmed == "--update" {
-        ui::report_info("Updating models cache...");
+        ui::report_info("Updating models cache for all providers...");
         session.ctx.config_manager.update_models_cache().await;
-        ui::report_success("Models cache updated.");
-        // fall through to display
+        ui::report_success("Models cache updated for all providers.");
+        // fall through to list
     }
 
+    // No args or -u: show all models grouped by provider, sorted
     if args_trimmed.is_empty() || args_trimmed == "-u" || args_trimmed == "--update" {
-        ui::print_rule(
-            Some(&format!("Available Models for {provider}")),
-            Some("cyan"),
-        );
+        ui::print_rule(Some("Available Models (provider:model)"), Some("cyan"));
         let models_map = session.ctx.config_manager.get_cached_models().await;
-        if let Some(mut models) = models_map.get(&provider).cloned() {
-            models.sort();
-            for model in models {
-                if model == current_model {
-                    println!("  {} {}", "●".cyan(), model.bold().cyan());
-                } else {
-                    println!("    {model}");
+
+        // Collect all provider:model pairs and sort them
+        let mut all_entries: Vec<(String, String, bool)> = Vec::new();
+        let mut providers: Vec<&String> = models_map.keys().collect();
+        providers.sort();
+        for p in &providers {
+            if let Some(models) = models_map.get(*p) {
+                let mut sorted_models = models.clone();
+                sorted_models.sort();
+                for m in sorted_models {
+                    let is_current = *p == &current_provider && m == current_model;
+                    all_entries.push(((*p).clone(), m, is_current));
                 }
             }
-        } else {
-            println!("  No models cached for {provider}. Use /model -u to fetch models now.");
         }
 
+        for (p, m, is_current) in &all_entries {
+            let display = format!("{p}:{m}");
+            if *is_current {
+                println!("  {} {}", "●".cyan(), display.bold().cyan());
+            } else {
+                println!("    {display}");
+            }
+        }
+
+        if all_entries.is_empty() {
+            println!("  No models cached. Use /model -u to fetch models now.");
+        }
+
+        // Show aliases
         let state = match session.ctx.config_manager.get_state() {
             Ok(s) => s,
             Err(_) => return,
         };
-        let mut filtered_aliases: Vec<_> = state
-            .model_aliases
-            .iter()
-            .filter(|(_, v)| v.target.starts_with(&provider))
-            .collect();
-
-        if !filtered_aliases.is_empty() {
-            println!("\nConfigured Aliases:");
-            filtered_aliases.sort_by_key(|(k, _)| *k);
-            for (name, alias) in filtered_aliases {
-                println!("  {} -> {}", name, alias.target);
+        if !state.model_aliases.is_empty() {
+            println!(
+                "
+Configured Aliases:"
+            );
+            let mut aliases: Vec<_> = state.model_aliases.iter().collect();
+            aliases.sort_by_key(|(k, _)| *k);
+            for (name, alias) in aliases {
+                println!(
+                    "  {}    {} -> {}",
+                    "●".cyan(),
+                    name.bold().cyan(),
+                    alias.target
+                );
             }
         }
         return;
     }
 
-    // Validate: model must exist in cache or be a known alias
-    let target_model = args_trimmed;
-    let models_map = session.ctx.config_manager.get_cached_models().await;
-    let cached_models: Vec<String> = models_map.get(&provider).cloned().unwrap_or_default();
+    // With argument: parse "provider:model" or just "model" (use current provider)
+    // Also check aliases first
     let state = match session.ctx.config_manager.get_state() {
         Ok(s) => s,
         Err(_) => return,
     };
-    let is_alias = state.model_aliases.contains_key(target_model);
-    let is_cached = cached_models.iter().any(|m| m == target_model);
+    let models_map = session.ctx.config_manager.get_cached_models().await;
 
-    if !is_cached && !is_alias {
-        ui::report_error(&format!(
-            "Unknown model: '{target_model}'. Use /model to list available models for provider '{provider}'."
-        ));
-        return;
+    let resolved_provider: String;
+    let resolved_model: String;
+
+    if state.model_aliases.contains_key(args_trimmed) {
+        // Alias resolution
+        let alias = &state.model_aliases[args_trimmed];
+        if let Some((p, m)) = alias.target.split_once(':') {
+            resolved_provider = p.to_string();
+            resolved_model = m.to_string();
+        } else {
+            resolved_provider = current_provider.clone();
+            resolved_model = alias.target.clone();
+        }
+    } else if let Some((p, m)) = args_trimmed.split_once(':') {
+        // provider:model format
+        resolved_provider = p.to_string();
+        resolved_model = m.to_string();
+    } else {
+        // Just model name - use current provider
+        resolved_provider = current_provider.clone();
+        resolved_model = args_trimmed.to_string();
     }
 
-    match crate::core::initializer::switch_model(session, target_model, stdout, !raw).await {
+    // Validate: check the resolved provider has this model in cache (unless alias)
+    if !state.model_aliases.contains_key(args_trimmed) {
+        let cached = models_map
+            .get(&resolved_provider)
+            .cloned()
+            .unwrap_or_default();
+        if !cached.contains(&resolved_model) {
+            // Check if the arg is just a provider name (no colon)
+            let active_providers = session.ctx.client_registry.lock().await.list_providers();
+            if !args_trimmed.contains(':') && active_providers.contains(&args_trimmed.to_string()) {
+                return handle_provider_only_switch(session, args_trimmed).await;
+            }
+            ui::report_error(&format!(
+                "Unknown model: '{}'. Use /model to list available models.",
+                args_trimmed
+            ));
+            return;
+        }
+    }
+
+    match crate::core::initializer::switch_model(
+        session,
+        &resolved_model,
+        &resolved_provider,
+        stdout,
+        !raw,
+    )
+    .await
+    {
         Ok(()) => {
             let state = session.get_client().get_state();
-            ui::report_success(&format!(
-                "Model switched to: {} ({})",
-                state.model, state.provider
-            ));
+            ui::report_success(&format!("Switched to {}:{}", state.provider, state.model));
         }
-        Err(e) => ui::report_error(&format!("Failed to switch model to: {e}")),
+        Err(e) => ui::report_error(&format!("Failed to switch: {e}")),
     }
 }
 
-pub async fn handle_provider_cmd(session: &mut ActiveSession, args: &str) {
-    let current_provider = session.get_client().get_state().provider.clone();
-
-    if args.is_empty() {
-        ui::print_rule(Some("Available Providers"), Some("cyan"));
-        let providers = session.ctx.client_registry.lock().await.list_providers();
-        for p in providers {
-            if p == current_provider {
-                println!("  {} {}", "●".cyan(), p.bold().cyan());
-            } else {
-                println!("    {p}");
-            }
-        }
-        return;
-    }
-
-    let target_provider = args;
-    match crate::core::initializer::switch_provider(session, target_provider).await {
+/// Handle switching to a provider with its default model (no model specified).
+async fn handle_provider_only_switch(session: &mut ActiveSession, provider: &str) {
+    match crate::core::initializer::switch_provider(session, provider).await {
         Ok(()) => {
             let state = session.get_client().get_state();
             ui::report_success(&format!(
@@ -1029,8 +1069,10 @@ fn print_help() {
   /to, /tool_output [on|off] Toggle display of tool execution results (default: hidden)"
     );
 
-    println!("  /m, /model [-u] [<name>]  List models (/model -u to refresh cache) or switch");
-    println!("  /p, /provider <n>  Switch LLM provider");
+    println!(
+        "  /m, /p, /model [-u] [<name>]  List models (/model -u to refresh ALL providers cache) or switch to provider:model"
+    );
+    println!("  /p is now an alias for /model. Use /model <provider:model> to switch.");
     println!(
         "  /vcommittee [set|add|remove|list] [<provider:model>]  Manage verifier (set=replace all, add=add member)"
     );

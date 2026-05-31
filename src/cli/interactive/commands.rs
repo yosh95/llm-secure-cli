@@ -72,13 +72,8 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
     },
     CommandEntry {
         name: "model",
-        aliases: &["m"],
-        description: "List models or switch",
-    },
-    CommandEntry {
-        name: "provider",
-        aliases: &["p"],
-        description: "Switch LLM provider",
+        aliases: &["m", "p"],
+        description: "List models or switch (provider:model)",
     },
     CommandEntry {
         name: "quit",

@@ -118,7 +118,7 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow:
         );
     } else if is_first_launch {
         ctx.ui.report_warning(
-            "No provider/model configured. Use /m <model> or /p <provider> to configure.",
+            "No provider:model configured. Use /model <provider:model> to configure.",
         );
     }
 

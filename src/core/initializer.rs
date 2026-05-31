@@ -8,11 +8,11 @@ use std::sync::Arc;
 pub async fn switch_model(
     session: &mut ActiveSession,
     model: &str,
+    provider: &str,
     stdout: bool,
     render_markdown: bool,
 ) -> anyhow::Result<()> {
-    // ... (keep current switch_model implementation)
-    // 1. Resolve alias if it exists
+    // 1. Resolve alias if it exists (backward compat - caller may pass alias)
     let (target_model, target_provider) = {
         let state = session.ctx.config_manager.get_state()?;
         if let Some(alias) = state.model_aliases.get(model) {
@@ -26,10 +26,7 @@ pub async fn switch_model(
                 )
             }
         } else {
-            (
-                model.to_string(),
-                session.client.get_state().provider.clone(),
-            )
+            (model.to_string(), provider.to_string())
         }
     };
 

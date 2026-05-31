@@ -175,17 +175,53 @@ impl Completer for ChatCompleter {
                     "/save" | "/attach" | "/edit" | "/e" | "/view" => {
                         return self.file_completer.complete(line, pos, ctx);
                     }
-                    "/provider" | "/p" | "/vprovider" | "/vp" => {
-                        let providers = self.ctx.config_manager.get_active_providers();
+                    "/p" | "/provider" => {
+                        // /p is now an alias for /model; delegate
+                        let models_map = self.ctx.config_manager.get_cached_models_sync();
                         let mut matches = Vec::new();
+                        if arg_prefix.starts_with('-') {
+                            for flag in &["-u", "--update"] {
+                                if flag.starts_with(arg_prefix) {
+                                    matches.push(Pair {
+                                        display: flag.to_string(),
+                                        replacement: format!("{flag} "),
+                                    });
+                                }
+                            }
+                            matches.sort_by(|a, b| a.display.cmp(&b.display));
+                            return Ok((start, matches));
+                        }
+                        // Suggest provider:model pairs
+                        let mut providers: Vec<&String> = models_map.keys().collect();
+                        providers.sort();
                         for p in providers {
-                            if p.starts_with(arg_prefix) {
-                                matches.push(Pair {
-                                    display: p.clone(),
-                                    replacement: p,
-                                });
+                            if let Some(models) = models_map.get(p) {
+                                let mut sorted_models = models.clone();
+                                sorted_models.sort();
+                                for m in sorted_models {
+                                    let entry = format!("{p}:{m}");
+                                    if entry.starts_with(arg_prefix) {
+                                        matches.push(Pair {
+                                            display: entry.clone(),
+                                            replacement: entry,
+                                        });
+                                    }
+                                }
                             }
                         }
+                        // Add aliases
+                        if let Ok(state) = self.ctx.config_manager.get_state() {
+                            for alias in state.model_aliases.keys() {
+                                if alias.starts_with(arg_prefix) {
+                                    matches.push(Pair {
+                                        display: format!("{alias} (alias)"),
+                                        replacement: alias.clone(),
+                                    });
+                                }
+                            }
+                        }
+                        matches.sort_by(|a, b| a.display.cmp(&b.display));
+                        matches.dedup_by(|a, b| a.display == b.display);
                         return Ok((start, matches));
                     }
                     "/model" | "/m" | "/vmodel" | "/vm" => {
@@ -213,16 +249,18 @@ impl Completer for ChatCompleter {
                                 && let Some(models) = models_map.get(&v_p)
                             {
                                 for model in models {
-                                    if model.starts_with(arg_prefix) {
+                                    // Show as provider:model
+                                    let entry = format!("{v_p}:{model}");
+                                    if entry.starts_with(arg_prefix) {
                                         matches.push(Pair {
-                                            display: model.clone(),
-                                            replacement: model.clone(),
+                                            display: entry.clone(),
+                                            replacement: entry,
                                         });
                                     }
                                 }
                             }
                         } else {
-                            // Main model: add aliases
+                            // Add aliases
                             if let Ok(state) = self.ctx.config_manager.get_state() {
                                 for alias in state.model_aliases.keys() {
                                     if alias.starts_with(arg_prefix) {
@@ -233,22 +271,21 @@ impl Completer for ChatCompleter {
                                     }
                                 }
                             }
-                            // Suggest models for the CURRENT provider
-                            let current_p = self
-                                .current_provider
-                                .lock()
-                                .unwrap_or_else(|e| {
-                                    tracing::warn!(error = %e, "Provider mutex poisoned during completion");
-                                    e.into_inner()
-                                })
-                                .clone();
-                            if let Some(models) = models_map.get(&current_p) {
-                                for model in models {
-                                    if model.starts_with(arg_prefix) {
-                                        matches.push(Pair {
-                                            display: model.clone(),
-                                            replacement: model.clone(),
-                                        });
+                            // Suggest ALL provider:model pairs, sorted
+                            let mut providers: Vec<&String> = models_map.keys().collect();
+                            providers.sort();
+                            for p in providers {
+                                if let Some(models) = models_map.get(p) {
+                                    let mut sorted_models = models.clone();
+                                    sorted_models.sort();
+                                    for m in sorted_models {
+                                        let entry = format!("{p}:{m}");
+                                        if entry.starts_with(arg_prefix) {
+                                            matches.push(Pair {
+                                                display: entry.clone(),
+                                                replacement: entry,
+                                            });
+                                        }
                                     }
                                 }
                             }

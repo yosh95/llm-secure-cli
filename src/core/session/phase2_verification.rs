@@ -64,7 +64,7 @@ impl ActiveSession {
                 );
                 self.ctx
                     .ui
-                    .report_info("Hint: Use /vm <provider:model> to set the verifier, or /vcommittee add <provider:model> to add committee members.");
+                    .report_info("Hint: Use /vcommittee set <provider:model> to set the verifier, or /vcommittee add <provider:model> to add committee members.");
             }
             // Show the tool call — human needs to review
             self.ctx.ui.print_tool_call(name, &serde_json::json!(args));

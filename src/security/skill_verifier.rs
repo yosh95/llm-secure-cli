@@ -652,13 +652,13 @@ pub async fn analyze_skill_semantic(
     let p = match provider {
         Some(p) if !p.is_empty() => p,
         _ => return SkillSemanticVerdict::Error {
-            message: "Verifier provider not configured. Use /vm <provider:model> to set the verifier, or pass --provider/--model flags.".to_string(),
+            message: "Verifier not configured. Use /vcommittee set <provider:model> to configure, or pass --provider/--model flags.".to_string(),
         },
     };
     let m = match model {
         Some(m) if !m.is_empty() => m,
         _ => return SkillSemanticVerdict::Error {
-            message: "Verifier model not configured. Use /vm <provider:model> to set the verifier, or pass --provider/--model flags.".to_string(),
+            message: "Verifier not configured. Use /vcommittee set <provider:model> to configure, or pass --provider/--model flags.".to_string(),
         },
     };
 
