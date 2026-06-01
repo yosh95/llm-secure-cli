@@ -83,9 +83,7 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
         let rule = "\u{2500}".repeat(width);
         output.push_str(&format!("{}\n", rule.color(rule_color)));
     }
-
-    let term_height = term.size().0;
-    crate::cli::pager::page_output(&output, term_height);
+    print!("{output}");
 }
 
 pub fn print_rule(title: Option<&str>, style: Option<&str>) {
@@ -275,16 +273,15 @@ fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> Strin
     buf
 }
 
-/// Print a tool call with pager (less) if output exceeds terminal height.
+/// Print a tool call with formatting.
 pub fn print_tool_call(name: &str, args: &serde_json::Value) {
     let term = Term::stdout();
-    let (term_height, width) = term.size();
-    let width = (width as usize).min(140);
-    let buf = format_tool_call(name, args, width);
-    crate::cli::pager::page_output(&buf, term_height);
+    let (_, width) = term.size();
+    let buf = format_tool_call(name, args, width as usize);
+    print!("{buf}");
 }
 
-/// Print a tool call directly without pager (no less even if long).
+/// Print a tool call directly without formatting.
 pub fn print_tool_call_direct(name: &str, args: &serde_json::Value) {
     let term = Term::stdout();
     let (_, width) = term.size();
@@ -521,7 +518,7 @@ fn push_line(buf: &mut String, line: &str) {
     buf.push('\n');
 }
 
-/// Print buffered tool result output directly (no pager in React flow).
+/// Print buffered tool result output directly.
 fn finish_tool_result(out: String) {
     print!("{out}");
 }

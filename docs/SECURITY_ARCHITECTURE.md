@@ -340,9 +340,6 @@ max_chat_archives = 5
 max_output_lines = 5000
 max_output_chars = 50000
 
-# Pager: "" (disable), "auto" (try less/built-in), or a specific command
-pager = "auto"
-
 [security]
 # Security Level: "high" (Default) | "standard"
 security_level = "high"

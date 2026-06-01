@@ -19,6 +19,15 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
+/// Strip `data:[mime];base64,` prefix from a data URI if present.
+/// Returns the raw base64 payload; if the input is not a data URI, returns it unchanged.
+fn strip_data_uri_prefix(s: &str) -> &str {
+    s.strip_prefix("data:")
+        .and_then(|s| s.split_once(','))
+        .map(|(_, data)| data)
+        .unwrap_or(s)
+}
+
 /// DeepInfra model modality type.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DeepInfraModelType {
@@ -264,6 +273,8 @@ impl DeepInfraClient {
 
         for img in &images {
             let b64 = img.as_str().unwrap_or("");
+            // Strip data URI prefix if returned by DeepInfra (e.g. "data:image/png;base64,...")
+            let b64 = strip_data_uri_prefix(b64);
             if !b64.is_empty() {
                 let mut inline = HashMap::new();
                 inline.insert("mimeType".to_string(), json!("image/png"));
