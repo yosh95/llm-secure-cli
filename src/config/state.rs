@@ -21,10 +21,7 @@ impl ConfigManager {
         // If the state is still the default placeholder and a state file exists
         // on disk, we need to populate it.  We drop the read lock first to avoid
         // deadlocking when acquiring the write lock.
-        if read.last_used_provider.is_none()
-            && read.last_used_model.is_none()
-            && read.model_aliases.is_empty()
-        {
+        if read.last_model.is_none() && read.model_aliases.is_empty() {
             drop(read);
             let mut write = self
                 .app_state
@@ -32,10 +29,7 @@ impl ConfigManager {
                 .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
             // Double-check after acquiring write lock (another thread may have
             // initialized already).
-            if write.last_used_provider.is_none()
-                && write.last_used_model.is_none()
-                && write.model_aliases.is_empty()
-            {
+            if write.last_model.is_none() && write.model_aliases.is_empty() {
                 *write = Self::load_state_from_disk();
             }
             return Ok(write.clone());
@@ -91,13 +85,13 @@ impl ConfigManager {
         }
     }
 
-    pub fn update_state(&self, provider: &str, model: &str) -> anyhow::Result<()> {
+    pub fn update_state(&self, model: &str) -> anyhow::Result<()> {
+        // `model` should be in "provider:model" format (e.g. "deepinfra:deepseek-ai/DeepSeek-V4-Flash").
         let mut write = self
             .app_state
             .write()
             .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        write.last_used_provider = Some(provider.to_string());
-        write.last_used_model = Some(model.to_string());
+        write.last_model = Some(model.to_string());
         Self::persist_state(&write);
         Ok(())
     }

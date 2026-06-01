@@ -56,10 +56,23 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow:
     };
 
     let active_providers = cm.get_active_providers();
-    let is_first_launch = provider_arg.is_none() && state.last_used_provider.is_none();
+
+    // last_model is "provider:model" format (e.g. "deepinfra:deepseek-ai/DeepSeek-V4-Flash")
+    let (last_provider, last_model) = state
+        .last_model
+        .as_ref()
+        .and_then(|m| m.split_once(':'))
+        .map(|(p, m)| (p.to_string(), m.to_string()))
+        .unwrap_or((String::new(), String::new()));
+
+    let is_first_launch = provider_arg.is_none() && last_provider.is_empty();
 
     let mut provider = provider_arg
-        .or(state.last_used_provider)
+        .or(if last_provider.is_empty() {
+            None
+        } else {
+            Some(last_provider.clone())
+        })
         .unwrap_or_else(|| "ollama".to_string());
 
     if !active_providers.contains(&provider) {
@@ -74,7 +87,13 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow:
         }
     }
 
-    let model = model_arg.or(state.last_used_model).unwrap_or_default();
+    let model = model_arg
+        .or(if last_model.is_empty() {
+            None
+        } else {
+            Some(last_model)
+        })
+        .unwrap_or_default();
 
     let stdout = stdout || !is_atty;
 

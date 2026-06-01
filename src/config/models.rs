@@ -85,8 +85,9 @@ pub struct ProviderConfig {
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct AppState {
-    pub last_used_provider: Option<String>,
-    pub last_used_model: Option<String>,
+    /// Provider:model string (e.g. "deepinfra:deepseek-ai/DeepSeek-V4-Flash").
+    /// Unified field replacing the old separate last_used_provider + last_used_model.
+    pub last_model: Option<String>,
     /// Verifier LLM on/off state. Persisted in state.toml.
     /// Default (None) = enabled.
     #[serde(default = "default_verifier_enabled")]

@@ -43,11 +43,8 @@ pub async fn switch_model(
 
     if let Some(new_client) = client {
         session.switch_client(new_client);
-        if let Err(e) = session
-            .ctx
-            .config_manager
-            .update_state(&target_provider, &target_model)
-        {
+        let full_model = format!("{}:{}", target_provider, target_model);
+        if let Err(e) = session.ctx.config_manager.update_state(&full_model) {
             tracing::warn!("Failed to persist state update: {}", e);
         }
         Ok(())
@@ -75,7 +72,8 @@ pub async fn switch_provider(session: &mut ActiveSession, provider: &str) -> any
 
     if let Some(new_client) = client {
         session.switch_client(new_client);
-        if let Err(e) = session.ctx.config_manager.update_state(provider, "default") {
+        let full_model = format!("{}:{}", provider, "default");
+        if let Err(e) = session.ctx.config_manager.update_state(&full_model) {
             tracing::warn!("Failed to persist state update: {}", e);
         }
         Ok(())
