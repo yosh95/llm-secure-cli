@@ -15,12 +15,22 @@ use zeroize::{Zeroize, Zeroizing};
 const ENCRYPTED_KEY_MAGIC: &[u8; 4] = b"LKEF";
 const HEADER_SIZE: usize = 4 + 16 + 12; // magic(4) + salt(16) + nonce(12) = 32
 
-/// Thread-local cache for passphrase during a session.
-/// Set once on first key access, reused for all subsequent key reads.
-/// Thread-local cache for passphrase during a session.
-/// Set once on first key access, reused for all subsequent key reads.
-/// Uses `Zeroizing<String>` to ensure the passphrase is zeroed in memory on drop.
-static PASSPHRASE_CACHE: Mutex<Option<Zeroizing<String>>> = Mutex::new(None);
+/// Per-key-path passphrase cache for the current session.
+///
+/// Maps key file paths to their passphrases so that multiple keys with
+/// different passphrases can be used in the same session without repeated
+/// prompts.  Uses `Zeroizing<String>` to ensure passphrases are zeroed
+/// in memory on drop.
+///
+/// The cache is cleared by [`purge_passphrase_cache`] when the session ends
+/// (via [`crate::core::session::ActiveSession`]'s `Drop` or `close()`).
+/// Per-key-path passphrase cache for the current session.
+///
+/// Uses `std::sync::LazyLock` for lazy initialization since
+/// `HashMap::new()` is not `const`.
+static PASSPHRASE_CACHE: std::sync::LazyLock<
+    Mutex<std::collections::HashMap<std::path::PathBuf, Zeroizing<String>>>,
+> = std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
 // ─────────────────────────────────────────────
 // Public API
@@ -61,19 +71,87 @@ pub fn load_key(path: &Path) -> Result<Vec<u8>> {
         return Ok(fs::read(path)?);
     }
 
-    // Encrypted path
+    // Encrypted path — resolve passphrase from cache, env, or interactive prompt
     let mut data = Vec::new();
     data.extend_from_slice(&magic);
     file.read_to_end(&mut data)?;
-    let pw = read_passphrase_or_cached(false)?; // false = not optional for encrypted keys
+    let pw = resolve_passphrase(path)?;
     load_encrypted_key_data(&data, &pw)
 }
 
+/// Resolve the passphrase for a given key file path.
+///
+/// Resolution order:
+/// 1. Check the per-path cache (returns cached passphrase if previously entered).
+/// 2. Prompt the user interactively (if stdin is a terminal).
+/// 3. Fall back to the `LLM_CLI_KEY_PASSPHRASE` env var or `*_FILE` Docker secret.
+///
+/// On success, the passphrase is cached for the remainder of the session
+/// (keyed by `path`) and also stored as the "default" for any subsequent key
+/// that lacks its own cache entry.
+fn resolve_passphrase(path: &Path) -> Result<String> {
+    // 1. Check per-path cache
+    {
+        let cache = PASSPHRASE_CACHE
+            .lock()
+            .map_err(|_| anyhow!("Cache lock poisoned"))?;
+        if let Some(pw) = cache.get(path) {
+            return Ok(pw.to_string());
+        }
+        // Fallback to the first cached passphrase (for workflows that use
+        // a single passphrase for all keys).
+        if let Some(pw) = cache.values().next() {
+            return Ok(pw.to_string());
+        }
+    }
+
+    // 2. Not cached — read from appropriate source
+    let pw = if stdin().is_terminal() {
+        read_passphrase_interactive()?
+    } else {
+        // Non-interactive: env var or Docker secret
+        let pw = std::env::var("LLM_CLI_KEY_PASSPHRASE")
+            .or_else(|_| {
+                std::env::var("LLM_CLI_KEY_PASSPHRASE_FILE").and_then(|p| {
+                    fs::read_to_string(p).map_err(|_| std::env::VarError::NotPresent)
+                })
+            })
+            .map(|s| s.trim().to_string())
+            .map_err(|_| {
+                anyhow!(
+                    "Encrypted PQC keys require a passphrase.\n                 For interactive use, run from a terminal.\n                 For non-interactive use, set LLM_CLI_KEY_PASSPHRASE environment variable."
+                )
+            })?;
+        if pw.is_empty() {
+            return Err(anyhow!(
+                "LLM_CLI_KEY_PASSPHRASE is empty — passphrase required"
+            ));
+        }
+        pw
+    };
+
+    // 3. Cache for session (keyed by path)
+    {
+        let mut cache = PASSPHRASE_CACHE
+            .lock()
+            .map_err(|_| anyhow!("Cache lock poisoned"))?;
+        cache.insert(path.to_path_buf(), Zeroizing::new(pw.clone()));
+    }
+
+    Ok(pw)
+}
+
 /// Purge the passphrase cache (called on session end).
+///
+/// This clears all cached passphrases from memory.  Called by
+/// [`crate::security::identity::FileSystemKeyStore::drop_cache`]
+/// which is invoked during [`crate::core::session::ActiveSession`]
+/// teardown (`close()` or `Drop`).
 pub fn purge_passphrase_cache() {
     if let Ok(mut cache) = PASSPHRASE_CACHE.lock() {
-        // Drop the cached passphrase; Zeroizing ensures automatic zeroization.
-        cache.take();
+        // Clear all entries; Zeroizing ensures automatic zeroization
+        // of each passphrase as it is dropped.
+        cache.clear();
     }
 }
 
@@ -150,64 +228,6 @@ fn read_passphrase_interactive() -> Result<String> {
 // ─────────────────────────────────────────────
 // Internal: passphrase resolution with cache
 // ─────────────────────────────────────────────
-
-fn read_passphrase_or_cached(is_optional: bool) -> Result<String> {
-    // 1. Check cache
-    {
-        let cache = PASSPHRASE_CACHE
-            .lock()
-            .map_err(|_| anyhow!("Cache lock poisoned"))?;
-        if let Some(ref pw) = *cache {
-            return Ok(pw.to_string());
-        }
-    }
-
-    // 2. Not cached — read from appropriate source
-    let is_atty = stdin().is_terminal();
-
-    let pw = if is_atty {
-        if is_optional {
-            match read_optional_passphrase_interactive()? {
-                Some(pw) => pw,
-                None => return Err(anyhow!("Passphrase required for encrypted keys")),
-            }
-        } else {
-            read_passphrase_interactive()?
-        }
-    } else {
-        // Non-interactive: env var is required for encrypted keys
-        let pw = std::env::var("LLM_CLI_KEY_PASSPHRASE")
-            .or_else(|_| {
-                std::env::var("LLM_CLI_KEY_PASSPHRASE_FILE").and_then(|path| {
-                    fs::read_to_string(path).map_err(|_| std::env::VarError::NotPresent)
-                })
-            })
-            .map(|s| s.trim().to_string())
-            .map_err(|_| {
-                anyhow!(
-                    "Encrypted PQC keys require a passphrase.\n\
-                 For interactive use, run from a terminal.\n\
-                 For non-interactive use, set LLM_CLI_KEY_PASSPHRASE environment variable."
-                )
-            })?;
-        if pw.is_empty() {
-            return Err(anyhow!(
-                "LLM_CLI_KEY_PASSPHRASE is empty — passphrase required"
-            ));
-        }
-        pw
-    };
-
-    // 3. Cache for session
-    {
-        let mut cache = PASSPHRASE_CACHE
-            .lock()
-            .map_err(|_| anyhow!("Cache lock poisoned"))?;
-        *cache = Some(Zeroizing::new(pw.clone()));
-    }
-
-    Ok(pw)
-}
 
 // ─────────────────────────────────────────────
 // Internal: encryption / decryption

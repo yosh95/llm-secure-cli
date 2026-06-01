@@ -31,7 +31,7 @@ fn default_request_timeout() -> u64 {
     1800
 }
 fn default_command_timeout() -> u64 {
-    300
+    3600
 }
 fn default_max_audit_log() -> usize {
     10000
@@ -46,10 +46,10 @@ fn default_image_save_path() -> String {
     "~/Pictures/llsc".to_string()
 }
 fn default_max_output_lines() -> usize {
-    10000
+    5000
 }
 fn default_max_output_chars() -> usize {
-    100000
+    50000
 }
 
 impl Default for GeneralConfig {

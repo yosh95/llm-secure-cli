@@ -96,6 +96,10 @@ impl ActiveSession {
         }
         self.audit_finalized = true;
 
+        // Purge the in-memory passphrase cache so that secrets are not
+        // retained in memory after the session ends.
+        crate::security::key_storage::purge_passphrase_cache();
+
         if self.audit_entries.is_empty() {
             return;
         }

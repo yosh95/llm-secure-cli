@@ -9,8 +9,9 @@ pub fn setup_permissions() {
     let base_dir = get_base_dir();
     // Ensure base directory exists.
     if !base_dir.exists()
-        && let Err(_e) = fs::create_dir_all(base_dir)
+        && let Err(e) = fs::create_dir_all(base_dir)
     {
+        tracing::warn!("Failed to create base directory {:?}: {}", base_dir, e);
         return;
     }
 
@@ -46,17 +47,34 @@ pub fn fix_all_permissions() {
 }
 
 fn recursive_set_permissions(dir: &Path) {
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                if let Err(e) = set_dir_private_permissions(&path) {
-                    tracing::warn!("Failed to set directory permissions on {:?}: {}", path, e);
-                }
-                recursive_set_permissions(&path);
-            } else if let Err(e) = set_private_permissions(&path) {
-                tracing::warn!("Failed to set private permissions on {:?}: {}", path, e);
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            tracing::warn!(
+                "Failed to read directory {:?} for permission fix: {}",
+                dir,
+                e
+            );
+            return;
+        }
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!("Failed to read entry in {:?}: {}", dir, e);
+                continue;
             }
+        };
+        let path = entry.path();
+        if path.is_dir() {
+            if let Err(e) = set_dir_private_permissions(&path) {
+                tracing::warn!("Failed to set directory permissions on {:?}: {}", path, e);
+            }
+            recursive_set_permissions(&path);
+        } else if let Err(e) = set_private_permissions(&path) {
+            tracing::warn!("Failed to set private permissions on {:?}: {}", path, e);
         }
     }
 }

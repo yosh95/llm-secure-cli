@@ -98,6 +98,8 @@ flowchart TB
 
   <br>
   <em>Simplified Architecture Flow</em>
+  <br>
+  <em>Note: Provider-specific clients (OpenAI, Google Gemini, Anthropic Claude) use the unified OpenAI-compatible client with appropriate payload formatters. Dedicated client implementations exist for OpenRouter, Ollama, and DeepInfra.</em>
 </p>
 
 ---
@@ -168,7 +170,7 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 
 ## Core Features & Tools
 
-- Unified Provider Access: Seamlessly switch between any OpenAI-compatible APIs (**OpenRouter, OpenAI, Ollama, LiteLLM**).
+- Unified Provider Access: Seamlessly switch between any OpenAI-compatible APIs (**OpenRouter, OpenAI, Ollama, LiteLLM**, and any custom OpenAI-compatible endpoint). Custom providers (e.g., Anthropic Claude, Google Gemini) can be added via config with the appropriate `formatter` setting.
 - Autonomous Agent: A streamlined set of built-in tools for complex automation:
     - **Universal Executor**: `execute_python` — run arbitrary Python code for any file operation, data processing, or computation task.
     - **Web Search**: `brave_search` — Brave LLM Context API for grounded, pre-extracted web content (LLM-optimized).
@@ -239,7 +241,7 @@ Inside the `llsc` interactive session:
 - `/quit`, `/q`: Exit the application.
 - `/verify [on|off]`: Show or toggle verifier status.
 - `/vcommittee [set|add|remove|list] [<provider:model>]`: Manage verifier committee members.
-- `/edit`, `/e`: Edit current buffer in external editor.
+- `F2`: Open external editor to edit the current prompt (multi-line composition).
 - `/clear`, `/c`: Clear conversation history.
 - `/info`, `/i`: Show session info, integrity, and security status.
 - `/edit_history`, `/eh`: View/edit the conversation history in TOML format.
@@ -260,34 +262,28 @@ Inside the `llsc` interactive session:
 - **Clear Screen**: `Ctrl+L`.
 - **History**: `Up/Down` arrows to navigate.
 - **Interrupt**: `Ctrl+C` to cancel the current thinking process or exit the session.
+- **External Editor**: `F2` (Open external editor to edit the current prompt).
 
 ### Power User Tips
 - **Backgrounding (`Ctrl+Z`)**: Suspend the session to perform shell operations, then use `fg` to return.
 - **Prompt Continuation**: Use `\` at the end of a line or open a code block with ``` to enter multi-line mode automatically.
-- **External Editor**: Use `/edit` (or `/e`) for composing complex prompts in your default editor (`vim`, `nano`, etc.).
+- **External Editor**: Press `F2` to open your default editor (`vim`, `nano`, etc.) for composing multi-line prompts.
 - **Disabling Tools Manually**: Use `/tools off` to prevent errors when using a model that doesn't support function calling.
 
 ## Security Configuration Reference
 
-The primary security configuration is in `src/config/defaults.toml` (overridden by `~/.llm_secure_cli/config.toml`):
+The primary security configuration is in `src/config/defaults.toml` (overridden by `~/.llm_secure_cli/config.toml`). Security-related runtime state (verifier committee members, enabled/disabled flag) is persisted in `~/.llm_secure_cli/state.toml`.
 
 ### Verifier Committee Configuration
-The Verifier Committee uses N independent LLM verifiers with an "any-flag" policy:
+The Verifier Committee uses N independent LLM verifiers with an "any-flag" policy. Configure verifier members via the `/vcommittee` interactive command or directly in `state.toml`:
 
 ```toml
-[security]
-# Verifier Committee (AI-native ABAC / Semantic Firewall)
+# ~/.llm_secure_cli/state.toml
 verifier_enabled = true
-verifier_provider = "ollama"
-verifier_model = "gemma4:e2b"
-
-# Additional committee members (optional)
-[security.verifier_committee]
-members = [
-  { provider = "openai", model = "gpt-4o-mini" },
-  { provider = "openrouter", model = "anthropic/claude-3-haiku" },
-]
+verifier_committee_members = ["ollama:gemma4:e2b", "openai:gpt-4o-mini", "openrouter:anthropic/claude-3-haiku"]
 ```
+
+**Note**: The `[security]` section in `config.toml` is currently unused — verifier settings are managed through `state.toml` (via the `/vcommittee` interactive command). This will be consolidated in a future release.
 
 ---
 
@@ -364,7 +360,7 @@ CI runs on every push and pull request via [GitHub Actions](.github/workflows/ci
 |-----|-------------|
 | **Format** | `cargo fmt --check` |
 | **Build & Test** | `cargo clippy`, `cargo build --release`, `cargo test` on Ubuntu, macOS, and Windows |
-| **Security Audit** | `cargo audit` for dependency vulnerabilities |
+| **Security Audit** | `cargo audit` for dependency vulnerabilities, `cargo deny` for supply-chain security (advisories, licenses, crate duplicates) |
 | **Docs** | `cargo doc` with warnings as errors |
 
 ### Running Benchmarks
