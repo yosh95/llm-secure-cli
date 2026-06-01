@@ -22,6 +22,11 @@ pub enum CachedModelEntry {
         id: String,
         #[serde(default = "return_true")]
         supports_tools: bool,
+        /// Model modality type: "chat" (text generation/chat), "image" (image generation),
+        /// "video" (video generation), "audio" (audio generation/speech).
+        /// When None/unset, defaults to "chat" for backward compatibility.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model_type: Option<String>,
     },
 }
 
@@ -47,6 +52,18 @@ impl CachedModelEntry {
         match self {
             CachedModelEntry::Simple(_) => true,
             CachedModelEntry::Detailed { supports_tools, .. } => *supports_tools,
+        }
+    }
+
+    /// Returns the model modality type: "chat", "image", "video", or "audio".
+    /// Defaults to "chat" when not set (backward compatibility).
+    #[must_use]
+    pub fn model_type(&self) -> &str {
+        match self {
+            CachedModelEntry::Simple(_) => "chat",
+            CachedModelEntry::Detailed { model_type, .. } => {
+                model_type.as_deref().unwrap_or("chat")
+            }
         }
     }
 }
@@ -146,6 +163,24 @@ impl ConfigManager {
             .map(CachedModelEntry::supports_tools)
     }
 
+    /// Return the model type for a given provider/model from the cache.
+    ///
+    /// Returns `Some(Some(type_str))` if the model is found with a known type,
+    /// `Some(None)` if found but no type set (defaults to "chat"),
+    /// or `None` if the model is not in the cache at all.
+    pub fn model_type(&self, provider: &str, model: &str) -> Option<Option<String>> {
+        let map = match read_cache() {
+            Ok(Some(m)) => m,
+            _ => return None,
+        };
+        map.get(provider)
+            .and_then(|models| models.iter().find(|e| e.id() == model))
+            .map(|e| match e {
+                CachedModelEntry::Simple(_) => None,
+                CachedModelEntry::Detailed { model_type, .. } => model_type.clone(),
+            })
+    }
+
     /// Fetch model lists from all active providers and persist the combined
     /// cache.  Returns the model IDs (string form) for convenience.
     pub async fn update_models_cache(&self) -> HashMap<String, Vec<String>> {
@@ -191,6 +226,7 @@ impl ConfigManager {
                 "openai" => url = "https://api.openai.com/v1".to_string(),
                 "openrouter" => url = "https://openrouter.ai/api/v1".to_string(),
                 "ollama" => url = "http://localhost:11434/v1".to_string(),
+                "deepinfra" => url = "https://api.deepinfra.com/v1/openai".to_string(),
                 _ => return Err(anyhow::anyhow!("No API URL for provider")),
             }
         }
@@ -200,6 +236,9 @@ impl ConfigManager {
         } else if provider == "openrouter" && url == "https://openrouter.ai/api/v1" {
             // openrouter requires query param to include all modalities like video/image generation
             "https://openrouter.ai/api/v1/models?output_modalities=all".to_string()
+        } else if provider == "deepinfra" {
+            // DeepInfra /v1/models returns standard OpenAI-compatible model list
+            "https://api.deepinfra.com/v1/models".to_string()
         } else {
             format!("{}/models", url.trim_end_matches('/'))
         };
@@ -224,6 +263,45 @@ impl ConfigManager {
                         models.push(CachedModelEntry::Detailed {
                             id: name.to_string(),
                             supports_tools: true,
+                            model_type: None,
+                        });
+                    }
+                }
+            }
+        } else if provider == "deepinfra" {
+            // DeepInfra /v1/models returns a standard OpenAI-compatible response:
+            // {"data": [{"id": "...", "metadata": {"tags": ["chat", ...], ...}}, ...]}
+            // Tags indicate model modality: "chat", "image-gen", "stt", "tts", "embed", "vlm", etc.
+            if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
+                for m in data {
+                    if let Some(id) = m.get("id").and_then(|v| v.as_str()) {
+                        let tags: Vec<&str> = m
+                            .get("metadata")
+                            .and_then(|v| v.get("tags"))
+                            .and_then(|v| v.as_array())
+                            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+                            .unwrap_or_default();
+
+                        // Skip embedding models — irrelevant for chat/image/audio inference
+                        if tags.contains(&"embed") {
+                            continue;
+                        }
+
+                        let supports_tools = tags.contains(&"chat");
+
+                        // Determine model type from metadata tags
+                        let model_type = if tags.contains(&"image-gen") {
+                            Some("image".to_string())
+                        } else if tags.contains(&"stt") || tags.contains(&"tts") {
+                            Some("audio".to_string())
+                        } else {
+                            Some("chat".to_string())
+                        };
+
+                        models.push(CachedModelEntry::Detailed {
+                            id: id.to_string(),
+                            supports_tools,
+                            model_type,
                         });
                     }
                 }
@@ -240,6 +318,7 @@ impl ConfigManager {
                     models.push(CachedModelEntry::Detailed {
                         id: id.to_string(),
                         supports_tools,
+                        model_type: None,
                     });
                 }
             }

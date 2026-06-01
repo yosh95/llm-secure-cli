@@ -1,3 +1,4 @@
+pub mod deepinfra;
 pub mod message_builder;
 pub mod ollama;
 pub mod openai_compatible;

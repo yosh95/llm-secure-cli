@@ -228,6 +228,7 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
 }
 
 async fn register_clients(ctx: &Arc<AppContext>) {
+    use crate::llm::providers::deepinfra::DeepInfraClient;
     use crate::llm::providers::ollama::OllamaClient;
     use crate::llm::providers::openai_compatible::OpenAiCompatibleClient;
     use crate::llm::providers::openrouter::OpenRouterClient;
@@ -273,6 +274,15 @@ async fn register_clients(ctx: &Arc<AppContext>) {
                         raw,
                     )?),
                     "ollama" => Box::new(OllamaClient::new(
+                        config_manager,
+                        &closure_p_name,
+                        &api_url,
+                        &api_key,
+                        model,
+                        stdout,
+                        raw,
+                    )?),
+                    "deepinfra" => Box::new(DeepInfraClient::new(
                         config_manager,
                         &closure_p_name,
                         &api_url,

@@ -19,22 +19,6 @@ max_output_chars = 50000
 pager = "auto"
 
 # =============================================================================
-# Security & API Keys
-# =============================================================================
-[security]
-# IMPORTANT: API Keys are NOT checked in this file for security reasons.
-# You MUST set them as environment variables (e.g., in ~/.bashrc, ~/.zshrc, or ~/.llm_secure_cli/.env):
-#   - OpenRouter:   OPENROUTER_API_KEY
-#   - OpenAI:       OPENAI_API_KEY
-#   - Ollama:       No API key required for local usage by default.
-#   - LiteLLM:      LITELLM_API_KEY (if configured)
-
-# Security Level (high | standard)
-# - high (default): Strict PQC enforcement (ML-DSA-87, ML-KEM-1024).
-# - standard: Compatibility mode; warnings instead of blocks for some integrity checks.
-security_level = "high"
-
-# =============================================================================
 # OpenAI Compatible Providers
 # =============================================================================
 
@@ -45,6 +29,10 @@ api_url = "http://localhost:11434/v1"
 # OpenRouter (Aggregation service)
 [openrouter]
 api_url = "https://openrouter.ai/api/v1"
+
+# deepinfra
+[deepinfra]
+api_url = "https://api.deepinfra.com/v1/"
 
 # -----------------------------------------------------------------------------
 # Custom OpenAI-compatible provider example
