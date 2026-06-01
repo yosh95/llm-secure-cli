@@ -1068,6 +1068,6 @@ fn print_help() {
         "  /credits           Show detailed OpenRouter credit info (uses both /credits and /key APIs)"
     );
     println!("  /raw               Show raw conversation history");
-    println!("  Ctrl+E             Open external editor to edit the current prompt (multi-line)");
+    println!("  F2                 Open external editor to edit the current prompt (multi-line)");
     ui::print_rule(None, Some("cyan"));
 }

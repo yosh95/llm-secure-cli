@@ -113,13 +113,13 @@ fn save_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::
     }
 }
 
-/// A conditional event handler that detects Ctrl+E and sets the
+/// A conditional event handler that detects F2 and sets the
 /// `edit_pending` flag so the main loop can open an external editor.
-struct EditOnCtrlE {
+struct EditOnF2 {
     edit_pending: Arc<AtomicBool>,
 }
 
-impl ConditionalEventHandler for EditOnCtrlE {
+impl ConditionalEventHandler for EditOnF2 {
     fn handle(
         &self,
         _evt: &Event,
@@ -241,14 +241,14 @@ impl ActiveSession {
             Cmd::Move(rustyline::Movement::EndOfBuffer),
         );
 
-        // --- Ctrl+E: open external editor for current prompt ---
+        // --- F2: open external editor for current prompt (use F2 to avoid Emacs Ctrl+E conflict) ---
         let edit_pending = Arc::new(AtomicBool::new(false));
-        let ctrl_e_handler = EditOnCtrlE {
+        let f2_handler = EditOnF2 {
             edit_pending: edit_pending.clone(),
         };
         rl.bind_sequence(
-            KeyEvent(KeyCode::Char('e'), Modifiers::CTRL),
-            EventHandler::Conditional(Box::new(ctrl_e_handler)),
+            KeyEvent(KeyCode::F(2), Modifiers::NONE),
+            EventHandler::Conditional(Box::new(f2_handler)),
         );
 
         let h_path = history_log_path();
@@ -282,12 +282,9 @@ impl ActiveSession {
             match readline {
                 Ok(line) => {
                     let raw_line = line.trim().to_string();
-                    if raw_line.is_empty() {
-                        continue;
-                    }
 
-                    // Check if we should open the external editor for this input
-                    // (triggered by Ctrl+E).
+                    // Check F2 BEFORE the empty-line check so F2 works on
+                    // an empty prompt (just open a blank editor and go).
                     if edit_pending.swap(false, Ordering::SeqCst) {
                         match ui::open_external_editor(&raw_line) {
                             Ok(edited) => {
@@ -296,8 +293,8 @@ impl ActiveSession {
                                     ui::report_warning("Empty input from editor, skipping.");
                                     continue;
                                 }
-                                // Set the edited content as the initial text for the
-                                // next prompt so the user can review / continue editing.
+                                // Set the edited content as the initial value for the next readline,
+                                // so the user can review/edit it before sending.
                                 next_initial_text = Some(trimmed);
                                 continue;
                             }
@@ -306,6 +303,10 @@ impl ActiveSession {
                                 continue;
                             }
                         }
+                    }
+
+                    if raw_line.is_empty() {
+                        continue;
                     }
 
                     let final_trimmed = raw_line;
