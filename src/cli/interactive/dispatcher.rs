@@ -35,20 +35,6 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
         }
         "q" | "quit" => CommandResult::Exit,
 
-        "edit" | "e" => match ui::open_external_editor(args) {
-            Ok(content) => {
-                if content.trim().is_empty() {
-                    ui::report_warning("Empty input from editor, skipping.");
-                    CommandResult::Handled
-                } else {
-                    CommandResult::Input(content)
-                }
-            }
-            Err(e) => {
-                ui::report_error(&format!("Failed to open editor: {e}"));
-                CommandResult::Handled
-            }
-        },
         "clear" | "c" => {
             session
                 .get_client_mut()
@@ -1058,21 +1044,17 @@ fn print_help() {
     println!("  /q, /quit          Exit the session");
     println!("  /i, /info          Show session and security status");
     println!("  /c, /clear         Clear conversation history");
-    println!("  /e, /edit          Open external editor for multi-line input");
     println!(
         "  /eh, /edit_history View/edit the conversation history in TOML format (includes full structure)"
     );
     println!("  /session [load|delete <id>|clear]  List, load, delete, or clear saved sessions");
     println!("  /attach <path|url> Attach a file or URL to the next request");
     println!(
-        "  /tools [on|off]    Toggle or show status of tool execution
-  /to, /tool_output [on|off] Toggle display of tool execution results (default: hidden)"
+        "  /tools [on|off]    Toggle or show status of tool execution /to, /tool_output [on|off] Toggle display of tool execution results (default: hidden)"
     );
-
     println!(
         "  /m, /model [-u] [<name>]  List models (/model -u to refresh ALL providers cache) or switch to provider:model"
     );
-
     println!(
         "  /vcommittee [set|add|remove|list] [<provider:model>]  Manage verifier (set=replace all, add=add member)"
     );
@@ -1080,11 +1062,12 @@ fn print_help() {
     println!("  /s, /summarize     Summarize history and clear it");
     println!("  /t, /template [<name>]  List templates or insert one into prompt");
     println!(
-        "  /view [<path>]      Open saved image or file with system default app (no arg = latest)"
+        "  /view [<path>]     Open saved image or file with system default app (no arg = latest)"
     );
     println!(
-        "  /credits          Show detailed OpenRouter credit info (uses both /credits and /key APIs)"
+        "  /credits           Show detailed OpenRouter credit info (uses both /credits and /key APIs)"
     );
     println!("  /raw               Show raw conversation history");
+    println!("  Ctrl+E             Open external editor to edit the current prompt (multi-line)");
     ui::print_rule(None, Some("cyan"));
 }

@@ -51,11 +51,6 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
         description: "Show detailed OpenRouter credit info",
     },
     CommandEntry {
-        name: "edit",
-        aliases: &["e"],
-        description: "Open external editor for multi-line input",
-    },
-    CommandEntry {
         name: "edit_history",
         aliases: &["eh"],
         description: "View/edit the conversation history in TOML format",

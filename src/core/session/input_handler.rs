@@ -6,9 +6,13 @@ use crate::llm::models::DataSource;
 use colored::Colorize;
 use rustyline::error::ReadlineError;
 use rustyline::history::{FileHistory, History};
-use rustyline::{Cmd, Editor, KeyCode, KeyEvent, Modifiers};
+use rustyline::{
+    Cmd, ConditionalEventHandler, Editor, Event, EventContext, EventHandler, KeyCode, KeyEvent,
+    Modifiers,
+};
 use serde_json;
 use std::io::{BufRead, BufReader, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Load history with a fallback for platforms where rustyline's native
@@ -106,6 +110,27 @@ fn save_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::
         if let Err(e) = writeln!(file, "{escaped}") {
             tracing::warn!("Failed to write history entry: {}", e);
         }
+    }
+}
+
+/// A conditional event handler that detects Ctrl+E and sets the
+/// `edit_pending` flag so the main loop can open an external editor.
+struct EditOnCtrlE {
+    edit_pending: Arc<AtomicBool>,
+}
+
+impl ConditionalEventHandler for EditOnCtrlE {
+    fn handle(
+        &self,
+        _evt: &Event,
+        _n: rustyline::RepeatCount,
+        _positive: bool,
+        _ctx: &EventContext,
+    ) -> Option<Cmd> {
+        // Mark that the next accepted input should be opened in an external editor.
+        self.edit_pending.store(true, Ordering::SeqCst);
+        // Accept the current line (same as pressing Enter).
+        Some(Cmd::AcceptLine)
     }
 }
 
@@ -216,6 +241,16 @@ impl ActiveSession {
             Cmd::Move(rustyline::Movement::EndOfBuffer),
         );
 
+        // --- Ctrl+E: open external editor for current prompt ---
+        let edit_pending = Arc::new(AtomicBool::new(false));
+        let ctrl_e_handler = EditOnCtrlE {
+            edit_pending: edit_pending.clone(),
+        };
+        rl.bind_sequence(
+            KeyEvent(KeyCode::Char('e'), Modifiers::CTRL),
+            EventHandler::Conditional(Box::new(ctrl_e_handler)),
+        );
+
         let h_path = history_log_path();
         if let Some(parent) = h_path.parent()
             && let Err(e) = std::fs::create_dir_all(parent)
@@ -246,7 +281,34 @@ impl ActiveSession {
 
             match readline {
                 Ok(line) => {
-                    let final_trimmed = line.trim().to_string();
+                    let raw_line = line.trim().to_string();
+                    if raw_line.is_empty() {
+                        continue;
+                    }
+
+                    // Check if we should open the external editor for this input
+                    // (triggered by Ctrl+E).
+                    if edit_pending.swap(false, Ordering::SeqCst) {
+                        match ui::open_external_editor(&raw_line) {
+                            Ok(edited) => {
+                                let trimmed = edited.trim().to_string();
+                                if trimmed.is_empty() {
+                                    ui::report_warning("Empty input from editor, skipping.");
+                                    continue;
+                                }
+                                // Set the edited content as the initial text for the
+                                // next prompt so the user can review / continue editing.
+                                next_initial_text = Some(trimmed);
+                                continue;
+                            }
+                            Err(e) => {
+                                ui::report_error(&format!("Failed to open editor: {e}"));
+                                continue;
+                            }
+                        }
+                    }
+
+                    let final_trimmed = raw_line;
                     if final_trimmed.is_empty() {
                         continue;
                     }

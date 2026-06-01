@@ -172,7 +172,7 @@ impl Completer for ChatCompleter {
                             return Ok((session_start, matches));
                         }
                     }
-                    "/attach" | "/edit" | "/e" | "/view" => {
+                    "/attach" | "/view" => {
                         return self.file_completer.complete(line, pos, ctx);
                     }
 
