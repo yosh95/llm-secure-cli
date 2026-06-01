@@ -2,7 +2,7 @@
 //!
 //! DeepInfra uses different API endpoints depending on the model modality:
 //! - Chat/text generation: `POST /v1/openai/chat/completions` (OpenAI compatible)
-//! - Image generation:     `POST /v1/inference/{model_id}`
+//! - Image generation:     `POST /v1/openai/images/generations` (OpenAI compatible)
 //! - Video generation:     `POST /v1/inference/{model_id}`
 //! - Audio generation:     `POST /v1/inference/{model_id}`
 //!
@@ -95,10 +95,16 @@ impl DeepInfraModelType {
                     format!("{}/openai/chat/completions", base)
                 }
             }
-            // Image, Video, Audio all use /v1/inference/{model_id}
-            Self::Image | Self::Video | Self::Audio => {
+            // Image uses OpenAI-compatible /v1/openai/images/generations
+            Self::Image => {
                 let base = base_url.trim_end_matches('/');
-                // Strip trailing /openai if present to get to /v1
+                let base = base.strip_suffix("/openai").unwrap_or(base);
+                let base = base.strip_suffix("/chat/completions").unwrap_or(base);
+                format!("{}/images/generations", base)
+            }
+            // Video, Audio use /v1/inference/{model_id}
+            Self::Video | Self::Audio => {
+                let base = base_url.trim_end_matches('/');
                 let v1_base = base.strip_suffix("/openai").unwrap_or(base);
                 format!("{}/inference/{}", v1_base, model)
             }
@@ -217,10 +223,12 @@ impl DeepInfraClient {
     ) -> anyhow::Result<LlmResponse> {
         let prompt = self.extract_prompt(&data);
 
+        // DeepInfra uses OpenAI-compatible /v1/openai/images/generations endpoint
         let body = json!({
-            "input": {
-                "prompt": prompt,
-            }
+            "model": self.base.state.model,
+            "prompt": prompt,
+            "size": "1024x1024",
+            "n": 1
         });
 
         tracing::debug!(
@@ -252,10 +260,19 @@ impl DeepInfraClient {
             return Err(anyhow::anyhow!("DeepInfra API Error: {err}"));
         }
 
-        // DeepInfra image generation returns: {"output": [base64_string, ...]}
-        // or sometimes {"output": base64_string}
-        let output = resp_json.get("output").or_else(|| resp_json.get("images"));
-        let images = match output {
+        // DeepInfra OpenAI-compatible images/generations returns:
+        // {"data": [{"b64_json": "...", "revised_prompt": "..."}, ...]}
+        let output = resp_json
+            .get("data")
+            .or_else(|| resp_json.get("output"))
+            .or_else(|| resp_json.get("images"));
+        let images: Vec<Value> = match output {
+            // OpenAI format: {"data": [{"b64_json": "..."}, ...]}
+            Some(Value::Array(arr)) if arr.first().and_then(|v| v.get("b64_json")).is_some() => arr
+                .iter()
+                .filter_map(|item| item.get("b64_json").cloned())
+                .collect(),
+            // Legacy format: {"output": [base64_string, ...]} or {"output": base64_string}
             Some(Value::Array(arr)) => arr.clone(),
             Some(Value::String(s)) => vec![json!(s)],
             _ => Vec::new(),
