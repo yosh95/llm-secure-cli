@@ -16,6 +16,7 @@ use crate::llm::providers::message_builder::MessageBuilder;
 use crate::llm::providers::openai_compatible::PayloadFormatter;
 use crate::llm::providers::response_parser;
 use async_trait::async_trait;
+use base64::Engine;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
@@ -26,6 +27,38 @@ fn strip_data_uri_prefix(s: &str) -> &str {
         .and_then(|s| s.split_once(','))
         .map(|(_, data)| data)
         .unwrap_or(s)
+}
+
+/// Download an image from a URL and return (base64_data, mime_type).
+async fn fetch_image_base64_from_url(url: &str) -> anyhow::Result<(String, String)> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| anyhow::anyhow!("Failed to build HTTP client for image download: {e}"))?;
+
+    let res = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to download image from '{url}': {e}"))?;
+
+    let content_type = res
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/png")
+        .split(';')
+        .next()
+        .unwrap_or("image/png")
+        .to_string();
+
+    let bytes = res
+        .bytes()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to read image bytes from '{url}': {e}"))?;
+
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok((b64, content_type))
 }
 
 /// DeepInfra model modality type.
@@ -260,53 +293,89 @@ impl DeepInfraClient {
             return Err(anyhow::anyhow!("DeepInfra API Error: {err}"));
         }
 
-        // DeepInfra OpenAI-compatible images/generations returns:
-        // {"data": [{"b64_json": "...", "revised_prompt": "..."}, ...]}
+        // DeepInfra OpenAI-compatible images/generations returns either:
+        //   {"data": [{"b64_json": "...", "revised_prompt": "..."}, ...]}   (Base64)
+        //   {"data": [{"url": "https://...", "b64_json": null}, ...]}        (URL)
+        //   {"output": [base64_string, ...]} or {"output": base64_string}     (Legacy)
         let output = resp_json
             .get("data")
             .or_else(|| resp_json.get("output"))
             .or_else(|| resp_json.get("images"));
-        let images: Vec<Value> = match output {
-            // OpenAI format: {"data": [{"b64_json": "..."}, ...]}
-            Some(Value::Array(arr)) if arr.first().and_then(|v| v.get("b64_json")).is_some() => arr
-                .iter()
-                .filter_map(|item| item.get("b64_json").cloned())
-                .collect(),
-            // Legacy format: {"output": [base64_string, ...]} or {"output": base64_string}
+
+        // Collect raw image entries (each is either a JSON object or a string)
+        let raw_entries: Vec<Value> = match output {
             Some(Value::Array(arr)) => arr.clone(),
             Some(Value::String(s)) => vec![json!(s)],
             _ => Vec::new(),
         };
 
-        if images.is_empty() {
+        if raw_entries.is_empty() {
             return Err(anyhow::anyhow!(
                 "DeepInfra image generation returned no images. Response: {resp_json}"
             ));
         }
 
-        // Build response with image data
+        // Resolve each entry to a (base64_data, mime_type) pair, downloading URLs if needed
+        let mut resolved: Vec<(String, String)> = Vec::new();
+        for entry in &raw_entries {
+            match entry {
+                // Object format: {"b64_json": "...", "url": "...", "revised_prompt": "..."}
+                Value::Object(map) => {
+                    // Prefer b64_json if present and non-null
+                    if let Some(Value::String(b64)) = map.get("b64_json")
+                        && !b64.is_empty()
+                    {
+                        let b64 = strip_data_uri_prefix(b64);
+                        resolved.push((b64.to_string(), "image/png".to_string()));
+                    }
+                    // Fall back to url field
+                    else if let Some(Value::String(url)) = map.get("url")
+                        && !url.is_empty()
+                    {
+                        match fetch_image_base64_from_url(url).await {
+                            Ok((b64, mime)) => resolved.push((b64, mime)),
+                            Err(e) => {
+                                tracing::warn!("Failed to download image from URL '{}': {e}", url);
+                            }
+                        }
+                    }
+                }
+                // String format: plain base64 string
+                Value::String(s) => {
+                    let b64 = strip_data_uri_prefix(s);
+                    if !b64.is_empty() {
+                        resolved.push((b64.to_string(), "image/png".to_string()));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if resolved.is_empty() {
+            return Err(anyhow::anyhow!(
+                "DeepInfra image generation returned no usable image data. Response: {resp_json}"
+            ));
+        }
+
+        // Build response with resolved image data
         let mut message_parts = Vec::new();
         let mut text = String::new();
 
-        for img in &images {
-            let b64 = img.as_str().unwrap_or("");
-            // Strip data URI prefix if returned by DeepInfra (e.g. "data:image/png;base64,...")
-            let b64 = strip_data_uri_prefix(b64);
-            if !b64.is_empty() {
-                let mut inline = HashMap::new();
-                inline.insert("mimeType".to_string(), json!("image/png"));
-                inline.insert("data".to_string(), json!(b64));
-                message_parts.push(MessagePart::Part(Box::new(
-                    crate::llm::models::ContentPart {
-                        inline_data: Some(inline),
-                        ..Default::default()
-                    },
-                )));
-                text.push_str(&format!(
-                    "[Image generated: data:image/png;base64,{}, ...]\n",
-                    &b64[..b64.len().min(50)]
-                ));
-            }
+        for (b64, mime_type) in &resolved {
+            let mut inline = HashMap::new();
+            inline.insert("mimeType".to_string(), json!(mime_type));
+            inline.insert("data".to_string(), json!(b64));
+            message_parts.push(MessagePart::Part(Box::new(
+                crate::llm::models::ContentPart {
+                    inline_data: Some(inline),
+                    ..Default::default()
+                },
+            )));
+            text.push_str(&format!(
+                "[Image generated: data:{};base64,{}, ...]\n",
+                mime_type,
+                &b64[..b64.len().min(50)]
+            ));
         }
 
         let model_msg = Message {
