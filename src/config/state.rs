@@ -86,7 +86,7 @@ impl ConfigManager {
     }
 
     pub fn update_state(&self, model: &str) -> anyhow::Result<()> {
-        // `model` should be in "provider:model" format (e.g. "deepinfra:deepseek-ai/DeepSeek-V4-Flash").
+        // `model` should be in "provider:model" format (e.g. "openai:gpt-4o").
         let mut write = self
             .app_state
             .write()

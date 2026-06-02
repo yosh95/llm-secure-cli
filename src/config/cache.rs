@@ -226,7 +226,7 @@ impl ConfigManager {
                 "openai" => url = "https://api.openai.com/v1".to_string(),
                 "openrouter" => url = "https://openrouter.ai/api/v1".to_string(),
                 "ollama" => url = "http://localhost:11434/v1".to_string(),
-                "deepinfra" => url = "https://api.deepinfra.com/v1/openai".to_string(),
+
                 _ => return Err(anyhow::anyhow!("No API URL for provider")),
             }
         }
@@ -236,9 +236,6 @@ impl ConfigManager {
         } else if provider == "openrouter" && url == "https://openrouter.ai/api/v1" {
             // openrouter requires query param to include all modalities like video/image generation
             "https://openrouter.ai/api/v1/models?output_modalities=all".to_string()
-        } else if provider == "deepinfra" {
-            // DeepInfra /v1/models returns standard OpenAI-compatible model list
-            "https://api.deepinfra.com/v1/models".to_string()
         } else {
             format!("{}/models", url.trim_end_matches('/'))
         };
@@ -268,10 +265,6 @@ impl ConfigManager {
                     }
                 }
             }
-        } else if provider == "deepinfra" {
-            // DeepInfra /v1/models returns a standard OpenAI-compatible response:
-            // {"data": [{"id": "...", "metadata": {"tags": ["chat", ...], ...}}, ...]}
-            // Tags indicate model modality: "chat", "image-gen", "stt", "tts", "embed", "vlm", etc.
             if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
                 for m in data {
                     if let Some(id) = m.get("id").and_then(|v| v.as_str()) {

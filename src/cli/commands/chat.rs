@@ -57,7 +57,7 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow:
 
     let active_providers = cm.get_active_providers();
 
-    // last_model is "provider:model" format (e.g. "deepinfra:deepseek-ai/DeepSeek-V4-Flash")
+    // last_model is "provider:model" format (e.g. "openai:gpt-4o")
     let (last_provider, last_model) = state
         .last_model
         .as_ref()

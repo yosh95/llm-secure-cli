@@ -99,7 +99,7 @@ flowchart TB
   <br>
   <em>Simplified Architecture Flow</em>
   <br>
-  <em>Note: Provider-specific clients (OpenAI, Google Gemini, Anthropic Claude) use the unified OpenAI-compatible client with appropriate payload formatters. Dedicated client implementations exist for OpenRouter, Ollama, and DeepInfra.</em>
+  <em>Note: Provider-specific clients (OpenAI, Google Gemini, Anthropic Claude) use the unified OpenAI-compatible client with appropriate payload formatters. Dedicated client implementations exist for OpenRouter and Ollama.</em>
 </p>
 
 ---
