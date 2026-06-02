@@ -270,6 +270,20 @@ Inside the `llsc` interactive session:
 - **External Editor**: Press `F2` to open your default editor (`vim`, `nano`, etc.) for composing multi-line prompts.
 - **Disabling Tools Manually**: Use `/tools off` to prevent errors when using a model that doesn't support function calling.
 
+
+
+## Environment Variables
+
+| Variable | Description | Default |
+|---|---|---|
+| `LLM_SECURE_INTEGRITY_SKIP_PROMPT` | Suppress integrity check prompts (warnings still shown). Useful for CI/testing. | unset (off) |
+| `LLM_SECURE_TEST_AUTO_APPROVE` | Automatically answer "Yes" to all confirmation prompts (for testing). | unset (off) |
+| `BRAVE_API_KEY` | API key for the built-in Brave Search tool. | — |
+| `LLM_CLI_KEY_PASSPHRASE` | Passphrase for encrypted key storage. | — |
+| `LLM_CLI_KEY_PASSPHRASE_FILE` | Path to a file containing the passphrase. | — |
+
+Provider API keys are read from environment variables (e.g., `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_API_KEY`) or from `~/.llm_secure_cli/.env`.
+
 ## Security Configuration Reference
 
 The primary security configuration is in `src/config/defaults.toml` (overridden by `~/.llm_secure_cli/config.toml`). Security-related runtime state (verifier committee members, enabled/disabled flag) is persisted in `~/.llm_secure_cli/state.toml`.

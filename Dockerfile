@@ -47,8 +47,6 @@ COPY --from=builder --chown=agent:agent /app/target/release/llsc /usr/local/bin/
 # Ensure the config directory exists
 RUN mkdir -p /home/agent/.llm_secure_cli
 
-# Default security level
-ENV LLM_CLI_SECURITY_LEVEL=high
 
 # Set the binary as the entry point
 ENTRYPOINT ["llsc"]

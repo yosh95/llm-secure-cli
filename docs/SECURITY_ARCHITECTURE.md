@@ -192,7 +192,7 @@ To allow interoperability with standard MCP clients (e.g., Cursor, Claude Deskto
 | **high** (Default) | Strict PQC checks. High-risk actions without signatures are blocked. | Enterprise / High-Assurance environments. |
 | **standard** | Permissive checks. Warnings are logged but actions are permitted. | General use / Interoperability with third-party tools. |
 
-When `security_level` is set to `standard` (via `config.toml` or `LLM_CLI_SECURITY_LEVEL` env var), the system downgrades PQC enforcement from a "hard block" to a "logged warning," ensuring the agent can still function in mixed-trust environments while maintaining an audit trail of the unverified actions.
+When `security_level` is set to `standard` (via `config.toml`), the system downgrades PQC enforcement from a "hard block" to a "logged warning," ensuring the agent can still function in mixed-trust environments while maintaining an audit trail of the unverified actions.
 
 ### Bi-directional Verification (ResponseSigner)
 
@@ -214,6 +214,33 @@ A bootstrap mode is available for standalone development environments.
 Simply run `llsc identity manifest` to generate the initial manifest.
 Once the manifest is generated, all subsequent runs will strictly enforce
 integrity against it.
+
+
+### Integrity Check Prompts (`LLM_SECURE_INTEGRITY_SKIP_PROMPT`)
+
+On startup, the application performs a **system integrity check** by comparing
+SHA-256 hashes of the binary and configuration against a signed manifest
+(`integrity_manifest.json`). If the manifest is missing or the hashes do not
+match, the system normally displays a warning and prompts the user to either
+re-sign the manifest or abort execution.
+
+Setting the environment variable `LLM_SECURE_INTEGRITY_SKIP_PROMPT=1`
+suppresses these prompts without aborting execution:
+
+- **Warnings are still displayed** so that integrity issues remain visible.
+- **No interactive prompt** is shown, preventing the process from blocking in
+  non-interactive environments (CI pipelines, automated tests, Docker without TTY).
+- **Execution continues** regardless of the integrity state.
+
+This is designed for **testing and CI/CD scenarios** where the integrity
+manifest may not be present or up-to-date, but the process must not hang
+waiting for user input.
+
+> **Note:** This environment variable is a *convenience for automation*, not a
+> security bypass. Integrity verification results are still logged and
+> displayed. For production deployments, ensure the manifest is properly
+> generated via `llsc identity manifest`.
+
 
 ---
 

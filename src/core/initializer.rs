@@ -120,12 +120,23 @@ pub async fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<Ap
     Ok(ctx)
 }
 
+/// Returns `true` if the `LLM_SECURE_INTEGRITY_SKIP_PROMPT` environment variable
+/// is set to any non-empty value. When enabled, integrity check prompts are
+/// suppressed — only warnings are displayed, and execution continues without
+/// aborting. This is useful for non-interactive environments (e.g., tests).
+fn integrity_skip_prompt() -> bool {
+    std::env::var("LLM_SECURE_INTEGRITY_SKIP_PROMPT").is_ok()
+}
+
 async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> anyhow::Result<()> {
     use crate::security::identity::IdentityManager;
     use crate::security::integrity::IntegrityVerifier;
 
     // 1. Ensure Identity Keys
-    if !IdentityManager::has_keys()
+    // When LLM_SECURE_INTEGRITY_SKIP_PROMPT is set, skip the identity keys prompt
+    // to avoid blocking in non-interactive environments.
+    if !integrity_skip_prompt()
+        && !IdentityManager::has_keys()
         && is_atty
         && ctx
             .ui
@@ -159,7 +170,11 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
                     "(This occurs after 'cargo install' or manual configuration edits)",
                 );
 
-                if is_atty
+                if integrity_skip_prompt() {
+                    ctx.ui.report_warning(
+                        "LLM_SECURE_INTEGRITY_SKIP_PROMPT is set — continuing without re-signing.",
+                    );
+                } else if is_atty
                     && ctx
                         .ui
                         .ask_confirm_simple(
@@ -189,7 +204,11 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
         let msg = "SECURITY FAILURE: Integrity manifest not found. A signed manifest is required.";
 
         ctx.ui.report_warning(msg);
-        if is_atty
+        if integrity_skip_prompt() {
+            ctx.ui.report_warning(
+                "LLM_SECURE_INTEGRITY_SKIP_PROMPT is set — continuing without generating manifest.",
+            );
+        } else if is_atty
             && ctx
                 .ui
                 .ask_confirm_simple("Generate and sign integrity manifest now?")
