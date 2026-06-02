@@ -1,5 +1,5 @@
 use crate::cli::ui;
-use crate::security::skill_verifier::{
+use crate::security::skill::{
     SkillSemanticVerdict, SkillSignatureStatus, SkillStructureResult, SkillVerdict,
     discover_skills, verify_skill,
 };
@@ -127,7 +127,7 @@ fn has_direct_skill_md(path: &Path) -> bool {
 
 // ── Report formatting ─────────────────────────────────────────────────────
 
-fn print_full_report(report: &crate::security::skill_verifier::SkillVerificationReport) {
+fn print_full_report(report: &crate::security::skill::types::SkillVerificationReport) {
     println!();
     println!("━━━ Skill Verification Report ━━━");
     println!("Skill: {}", report.skill_name);
@@ -274,7 +274,7 @@ fn print_full_report(report: &crate::security::skill_verifier::SkillVerification
     println!("\nTotal verification time: {}ms", report.total_duration_ms);
 }
 
-fn print_report_summary(report: &crate::security::skill_verifier::SkillVerificationReport) {
+fn print_report_summary(report: &crate::security::skill::types::SkillVerificationReport) {
     let verdict_icon = match report.verdict {
         SkillVerdict::Safe => style_green("✓"),
         SkillVerdict::Suspicious => style_yellow("△"),

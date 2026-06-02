@@ -1,64 +1,8 @@
 use crate::cli::markdown::render_markdown;
 use colored::Colorize;
 use console::Term;
-use std::io::{Read, Write};
 
-use async_trait::async_trait;
-
-#[async_trait]
-pub trait UserInterface: Send + Sync {
-    fn print_block(&self, content: &str, title: Option<&str>, style: Option<&str>);
-    fn print_rule(&self, title: Option<&str>, style: Option<&str>);
-    fn print_tool_call(&self, name: &str, args: &serde_json::Value);
-    fn print_tool_call_direct(&self, name: &str, args: &serde_json::Value);
-    fn print_tool_result(&self, result: &str);
-    fn report_error(&self, message: &str);
-    fn report_info(&self, message: &str);
-    fn report_warning(&self, message: &str);
-    fn report_success(&self, message: &str);
-    async fn ask_confirm(&self, prompt: &str) -> Option<ConfirmResult>;
-    async fn ask_confirm_simple(&self, prompt: &str) -> Option<ConfirmResult>;
-}
-
-pub struct CliUi;
-
-#[async_trait]
-impl UserInterface for CliUi {
-    fn print_block(&self, content: &str, title: Option<&str>, style: Option<&str>) {
-        print_block(content, title, style);
-    }
-    fn print_rule(&self, title: Option<&str>, style: Option<&str>) {
-        print_rule(title, style);
-    }
-    fn print_tool_call(&self, name: &str, args: &serde_json::Value) {
-        print_tool_call(name, args);
-    }
-    fn print_tool_call_direct(&self, name: &str, args: &serde_json::Value) {
-        print_tool_call_direct(name, args);
-    }
-    fn print_tool_result(&self, result: &str) {
-        print_tool_result(result);
-    }
-    fn report_error(&self, message: &str) {
-        report_error(message);
-    }
-    fn report_info(&self, message: &str) {
-        report_info(message);
-    }
-    fn report_warning(&self, message: &str) {
-        report_warning(message);
-    }
-    fn report_success(&self, message: &str) {
-        report_success(message);
-    }
-    async fn ask_confirm(&self, prompt: &str) -> Option<ConfirmResult> {
-        ask_confirm_async(prompt).await
-    }
-    async fn ask_confirm_simple(&self, prompt: &str) -> Option<ConfirmResult> {
-        ask_confirm_simple_async(prompt).await
-    }
-}
-
+/// Print a block of content with optional title and style.
 pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
     let term = Term::stdout();
     let (_, width) = term.size();
@@ -86,6 +30,7 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
     print!("{output}");
 }
 
+/// Print a horizontal rule with optional title.
 pub fn print_rule(title: Option<&str>, style: Option<&str>) {
     let term = Term::stdout();
     let (_, width) = term.size();
@@ -97,7 +42,7 @@ pub fn print_rule(title: Option<&str>, style: Option<&str>) {
         let title_display = format!(" {} ", t.bold());
         let text_width = console::measure_text_width(&title_text);
         let rule_len = width.saturating_sub(text_width);
-        let left = 2; // Fixed left margin for a more modern look
+        let left = 2;
         let right = rule_len.saturating_sub(left);
         println!(
             "{}{}{}",
@@ -110,13 +55,61 @@ pub fn print_rule(title: Option<&str>, style: Option<&str>) {
     }
 }
 
+/// Print a key-value pair with formatting.
 pub fn print_key_value(key: &str, value: &str) {
     println!("  {:15} {}", key.bold().cyan(), value);
 }
 
+/// Print a panel with content, title, and border style.
+pub fn print_panel(
+    content: &str,
+    title: Option<&str>,
+    _style: Option<&str>,
+    border_style: Option<&str>,
+) {
+    let term = Term::stdout();
+    let (_, term_width) = term.size();
+    let width = (term_width as usize).clamp(40, 140);
+
+    let border_color = border_style.unwrap_or("bright_black");
+
+    // Top border
+    if let Some(t) = title {
+        let title_str = format!(" {} ", t.bold());
+        let remaining = width.saturating_sub(title_str.len() + 2);
+        println!(
+            "{}",
+            format!(
+                "\u{2500}{}\u{2500}{}",
+                title_str,
+                "\u{2500}".repeat(remaining)
+            )
+            .color(border_color)
+        );
+    } else {
+        println!("{}", "\u{2500}".repeat(width).color(border_color));
+    }
+
+    // Content with wrapping
+    let inner_width = width - 4;
+    let options = textwrap::Options::new(inner_width)
+        .break_words(false)
+        .word_splitter(textwrap::WordSplitter::NoHyphenation);
+
+    for line in content.lines() {
+        let wrapped = textwrap::wrap(line, &options);
+        for w_line in wrapped {
+            println!("    {w_line}");
+        }
+    }
+
+    // Bottom border
+    println!("{}", "\u{2500}".repeat(width).color(border_color));
+}
+
 /// Format a tool call display string (header + args + footer).
 /// Returns the formatted string without printing.
-fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> String {
+pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> String {
     let color = "yellow";
 
     let mut buf = String::new();
@@ -134,7 +127,6 @@ fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> Strin
             let code = obj.get("code").and_then(|v| v.as_str()).unwrap_or_default();
             let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
-            // Print explanation FIRST
             if let Some(exp) = explanation {
                 push_line(
                     &mut buf,
@@ -147,18 +139,15 @@ fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> Strin
                 );
             }
 
-            // Then print code (path-like)
             push_line(
                 &mut buf,
                 &format!("    {} {}:", "\u{2022}".bright_black(), "code".cyan()),
             );
-            // Apply Python syntax highlighting and indent each line
             let highlighted = crate::cli::syntax_highlight::highlight_python(code);
             for line in highlighted.lines() {
                 push_line(&mut buf, &format!("        {line}"));
             }
 
-            // Print other arguments if any (except code and explanation)
             for (k, v) in obj {
                 if k != "code" && k != "explanation" {
                     let val_str = v
@@ -178,7 +167,6 @@ fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> Strin
         } else {
             let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
-            // Print explanation FIRST
             if let Some(exp) = explanation {
                 let val_str = exp.to_string();
                 push_line(
@@ -192,7 +180,6 @@ fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> Strin
                 );
             }
 
-            // Define priority categories for parameter ordering
             let path_like = [
                 "path",
                 "url",
@@ -213,7 +200,6 @@ fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> Strin
             let start_keys = ["start_line"];
             let end_keys = ["end_line"];
 
-            // Collect remaining keys
             let mut remaining_keys: Vec<&String> = Vec::new();
             for k in obj.keys() {
                 if k != "explanation" {
@@ -221,7 +207,6 @@ fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> Strin
                 }
             }
 
-            // Sort: path-like first, then start, then end, then rest (alphabetically)
             remaining_keys.sort_by(|a, b| {
                 let a_is_path = path_like.contains(&a.as_str());
                 let b_is_path = path_like.contains(&b.as_str());
@@ -247,7 +232,6 @@ fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> Strin
                 }
             });
 
-            // Print parameters in the determined order
             for k in remaining_keys {
                 if let Some(v) = obj.get(k) {
                     let val_str = v
@@ -363,7 +347,6 @@ pub fn print_tool_result(result: &str) {
                 "red"
             };
 
-            // Display stdout if present
             if !stdout.is_empty() {
                 push_line(&mut out, &format!("    {}:", "STDOUT".bold()));
                 for line in stdout.lines() {
@@ -371,7 +354,6 @@ pub fn print_tool_result(result: &str) {
                 }
             }
 
-            // Display stderr if present
             if !stderr.is_empty() {
                 push_line(&mut out, &format!("    {}:", "STDERR".bold()));
                 for line in stderr.lines() {
@@ -391,7 +373,7 @@ pub fn print_tool_result(result: &str) {
             return;
         }
 
-        // Special handling for "matches" or "results" arrays (e.g., from grep or search)
+        // Special handling for "matches" or "results" arrays
         for key in ["matches", "results", "files"] {
             if let Some(arr) = v.get(key).and_then(|a| a.as_array()) {
                 if arr.is_empty() {
@@ -404,7 +386,6 @@ pub fn print_tool_result(result: &str) {
                                 &format!("    {} {}", "\u{2022}".bright_black(), s.dimmed()),
                             );
                         } else if let Some(obj) = item.as_object() {
-                            // Try to format common object structures
                             if let (Some(file), Some(line), Some(text)) = (
                                 obj.get("file").and_then(|v| v.as_str()),
                                 obj.get("line"),
@@ -459,7 +440,6 @@ pub fn print_tool_result(result: &str) {
                                     );
                                 }
                             } else {
-                                // Fallback for other objects in the array
                                 push_line(
                                     &mut out,
                                     &format!(
@@ -486,13 +466,11 @@ pub fn print_tool_result(result: &str) {
         }
 
         if let Ok(pretty) = serde_json::to_string_pretty(&v) {
-            // If it's a complex object, show it pretty
             if v.is_object() || v.is_array() {
                 for line in pretty.lines() {
                     push_line(&mut out, &format!("    {}", line.dimmed()));
                 }
             } else if let Some(s) = v.as_str() {
-                // If it's just a string, print it directly (it might have newlines)
                 for line in s.lines() {
                     push_line(&mut out, &format!("    {}", line.dimmed()));
                 }
@@ -503,7 +481,6 @@ pub fn print_tool_result(result: &str) {
             push_line(&mut out, &format!("    {}", result.dimmed()));
         }
     } else {
-        // Not JSON, just print it dimmed and indented
         for line in result.lines() {
             push_line(&mut out, &format!("    {}", line.dimmed()));
         }
@@ -512,77 +489,13 @@ pub fn print_tool_result(result: &str) {
     finish_tool_result(out);
 }
 
-/// Append a line to a string buffer (with trailing newline).
 fn push_line(buf: &mut String, line: &str) {
     buf.push_str(line);
     buf.push('\n');
 }
 
-/// Print buffered tool result output directly.
 fn finish_tool_result(out: String) {
     print!("{out}");
-}
-
-pub fn print_panel(
-    content: &str,
-    title: Option<&str>,
-    _style: Option<&str>,
-    border_style: Option<&str>,
-) {
-    let term = Term::stdout();
-    let (_, term_width) = term.size();
-    let width = (term_width as usize).clamp(40, 140);
-
-    let border_color = border_style.unwrap_or("bright_black");
-
-    // Top border
-    if let Some(t) = title {
-        let title_str = format!(" {} ", t.bold());
-        let remaining = width.saturating_sub(title_str.len() + 2);
-        println!(
-            "{}",
-            format!(
-                "\u{2500}{}\u{2500}{}",
-                title_str,
-                "\u{2500}".repeat(remaining)
-            )
-            .color(border_color)
-        );
-    } else {
-        println!("{}", "\u{2500}".repeat(width).color(border_color));
-    }
-
-    // Content with wrapping
-    let inner_width = width - 4;
-    let options = textwrap::Options::new(inner_width)
-        .break_words(false)
-        .word_splitter(textwrap::WordSplitter::NoHyphenation);
-
-    for line in content.lines() {
-        let wrapped = textwrap::wrap(line, &options);
-        for w_line in wrapped {
-            println!("    {w_line}");
-        }
-    }
-
-    // Bottom border
-    println!("{}", "\u{2500}".repeat(width).color(border_color));
-}
-
-pub fn report_error(message: &str) {
-    eprintln!("{} {}", "NG".red().bold(), message.red());
-}
-
-pub fn report_info(message: &str) {
-    println!("{} {}", "INFO".cyan().bold(), message.cyan());
-}
-
-pub fn report_warning(message: &str) {
-    println!("{} {}", "WARNING".yellow().bold(), message.yellow());
-}
-
-pub fn report_success(message: &str) {
-    println!("{} {}", "OK".bright_green().bold(), message.bright_green());
 }
 
 fn format_size_brief(bytes: u64) -> String {
@@ -595,168 +508,4 @@ fn format_size_brief(bytes: u64) -> String {
     } else {
         format!("{:.1}GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum ConfirmResult {
-    Yes,
-    No,
-    Feedback(String),
-}
-
-/// Whether a confirmation prompt accepts free-text feedback or is Yes/No only.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum PromptMode {
-    /// Input other than Y/N is treated as free-text feedback (for LLM chat sessions).
-    WithFeedback,
-    /// Only Y/N is accepted; anything else re-prompts.
-    YesNoOnly,
-}
-
-/// Ask the user a Yes/No confirmation question with configurable prompt mode.
-///
-/// This function uses a simple stdin/stdout approach instead of `dialoguer::Select`
-/// to avoid terminal raw-mode issues when running under SSH/tmux.
-///
-/// Supports "y", "yes", "n", "no" (case-insensitive, including full-width),
-/// Enter = Yes (default).
-/// In `WithFeedback` mode, any other input is treated as feedback.
-/// In `YesNoOnly` mode, any other input causes a re-prompt.
-fn ask_confirm_with_mode(prompt: &str, mode: PromptMode) -> Option<ConfirmResult> {
-    let suffix = match mode {
-        PromptMode::WithFeedback => " [Y/n or feedback] ",
-        PromptMode::YesNoOnly => " [Y/n] ",
-    };
-    let y_n = format!("{prompt}{suffix}");
-    match get_user_input(&y_n) {
-        Some(input) => {
-            let trimmed = input.trim();
-            let lower = trimmed.to_lowercase();
-            if lower.is_empty()
-                || lower == "y"
-                || lower == "yes"
-                || lower == "\u{ff59}"
-                || lower == "\u{ff59}\u{ff45}\u{ff53}"
-            {
-                Some(ConfirmResult::Yes)
-            } else if lower == "n"
-                || lower == "no"
-                || lower == "\u{ff4e}"
-                || lower == "\u{ff4e}\u{ff4f}"
-            {
-                Some(ConfirmResult::No)
-            } else {
-                match mode {
-                    PromptMode::WithFeedback => {
-                        // Dimmed feedback display
-                        println!("  {}", format!("Feedback: {trimmed}").dimmed());
-                        Some(ConfirmResult::Feedback(trimmed.to_string()))
-                    }
-                    PromptMode::YesNoOnly => {
-                        report_warning(&format!(
-                            "Unrecognized input '{trimmed}'. Please answer Y(es) or N(o)."
-                        ));
-                        ask_confirm_with_mode(prompt, mode)
-                    }
-                }
-            }
-        }
-        None => None, // Interrupted or EOF
-    }
-}
-
-/// Ask a Yes/No confirmation question that also accepts free-text feedback.
-///
-/// Use this in LLM chat sessions where the user can provide natural-language
-/// feedback as an alternative to a simple Y/N.
-#[must_use]
-pub fn ask_confirm(prompt: &str) -> Option<ConfirmResult> {
-    ask_confirm_with_mode(prompt, PromptMode::WithFeedback)
-}
-
-/// Ask a Yes/No-only confirmation question (no feedback).
-///
-/// Use this outside of LLM chat sessions (e.g. startup / initialization)
-/// where free-text feedback would be meaningless.
-#[must_use]
-pub fn ask_confirm_simple(prompt: &str) -> Option<ConfirmResult> {
-    ask_confirm_with_mode(prompt, PromptMode::YesNoOnly)
-}
-
-pub async fn ask_confirm_async(prompt: &str) -> Option<ConfirmResult> {
-    let p = prompt.to_string();
-    tokio::task::spawn_blocking(move || ask_confirm(&p))
-        .await
-        .unwrap_or(None)
-}
-
-pub async fn ask_confirm_simple_async(prompt: &str) -> Option<ConfirmResult> {
-    let p = prompt.to_string();
-    tokio::task::spawn_blocking(move || ask_confirm_simple(&p))
-        .await
-        .unwrap_or(None)
-}
-
-#[must_use]
-pub fn get_user_input(prompt: &str) -> Option<String> {
-    // 2. Check for environment override ONLY during tests to prevent accidental production bypass
-    #[cfg(test)]
-    if std::env::var("LLM_SECURE_TEST_AUTO_APPROVE").is_ok() {
-        return Some("y".to_string());
-    }
-
-    use rustyline::DefaultEditor;
-    use rustyline::error::ReadlineError;
-
-    let mut rl = match DefaultEditor::new() {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Failed to create editor: {e:?}");
-            return None;
-        }
-    };
-    match rl.readline(prompt) {
-        Ok(line) => Some(line.trim().to_string()),
-        Err(ReadlineError::Interrupted) => {
-            println!("^C");
-            None
-        }
-        Err(ReadlineError::Eof) => None,
-        Err(err) => {
-            eprintln!("Error: {err:?}");
-            None
-        }
-    }
-}
-
-pub fn open_external_editor(initial_content: &str) -> anyhow::Result<String> {
-    use std::process::Command;
-    use tempfile::NamedTempFile;
-
-    let editor = std::env::var("VISUAL")
-        .or_else(|_| std::env::var("EDITOR"))
-        .unwrap_or_else(|_| {
-            if cfg!(windows) {
-                "notepad".to_string()
-            } else {
-                "vi".to_string()
-            }
-        });
-
-    let mut file = NamedTempFile::new()?;
-    if !initial_content.is_empty() {
-        file.write_all(initial_content.as_bytes())?;
-    }
-
-    let status = Command::new(editor).arg(file.path()).status()?;
-
-    if !status.success() {
-        return Err(anyhow::anyhow!("Editor exited with error status"));
-    }
-
-    let mut content = String::new();
-    let mut file = std::fs::File::open(file.path())?;
-    file.read_to_string(&mut content)?;
-
-    Ok(content)
 }

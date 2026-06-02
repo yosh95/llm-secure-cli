@@ -8,12 +8,13 @@ pub mod permissions;
 pub mod policy;
 pub mod pqc;
 pub mod pqc_cose;
-pub mod skill_verifier;
+pub mod skill;
+
 pub mod static_analyzer;
 pub mod verifier;
 
-// Re-export AuditStatus for downstream convenience
-pub use audit::AuditStatus;
+// Re-export audit types for downstream convenience
+pub use audit::{AuditEntry, AuditParams, AuditParamsBuilder, AuditStatus};
 
 // Re-export key management abstractions for custom KeyStore implementations
 pub use identity::{FileSystemKeyStore, KeyStore};
