@@ -144,7 +144,7 @@ fn resolve_passphrase(path: &Path) -> Result<String> {
 /// Purge the passphrase cache (called on session end).
 ///
 /// This clears all cached passphrases from memory.  Called by
-/// [`crate::security::identity::FileSystemKeyStore::drop_cache`]
+/// [`KeyStore::drop_cache`](crate::security::identity::KeyStore::drop_cache)
 /// which is invoked during [`crate::core::session::ActiveSession`]
 /// teardown (`close()` or `Drop`).
 pub fn purge_passphrase_cache() {
