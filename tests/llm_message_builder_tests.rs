@@ -24,6 +24,7 @@ fn builder(
     MessageBuilder {
         formatter,
         model: "test-model",
+        input_modalities: None,
         system_prompt: system_prompt.map(|s| s.to_string()),
         conversation: Box::leak(Box::new(conversation)),
         pending_data: Box::leak(Box::new(pending_data)),
@@ -397,6 +398,114 @@ fn test_multiple_tool_calls_generate_multiple_tool_calls_array_entries() {
     assert_eq!(tool_calls[0]["id"], "call_a");
     assert_eq!(tool_calls[1]["function"]["name"], "tool_b");
     assert_eq!(tool_calls[1]["id"], "call_b");
+}
+
+// ===========================================================================
+// Input modality filtering
+// ===========================================================================
+
+#[test]
+fn test_image_included_when_modality_supported() {
+    use std::collections::HashMap;
+    let mut id = HashMap::new();
+    id.insert(
+        "mimeType".to_string(),
+        Value::String("image/png".to_string()),
+    );
+    id.insert("data".to_string(), Value::String("base64data".to_string()));
+
+    let msg = Message {
+        role: Role::User,
+        parts: vec![
+            MessagePart::Text("Describe this".to_string()),
+            MessagePart::Part(Box::new(ContentPart {
+                inline_data: Some(id),
+                ..Default::default()
+            })),
+        ],
+    };
+
+    // Model supports "image" input
+    let formatter: &'static dyn llm_secure_cli::llm::providers::payload_formatter::PayloadFormatter =
+        Box::leak(Box::new(GenericPayloadFormatter));
+    let input_mods: &'static [String] =
+        Box::leak(Box::new(vec!["text".to_string(), "image".to_string()]));
+    let msgs = MessageBuilder {
+        formatter,
+        model: "test-model",
+        input_modalities: Some(input_mods),
+        system_prompt: None,
+        conversation: Box::leak(Box::new(vec![msg])),
+        pending_data: Box::leak(Box::new(vec![])),
+    }
+    .build();
+
+    let content = msgs[0]["content"].as_array().expect("Should be array");
+    assert_eq!(content.len(), 2);
+    assert_eq!(content[1]["type"], "image_url");
+}
+
+#[test]
+fn test_image_skipped_when_modality_not_supported() {
+    use std::collections::HashMap;
+    let mut id = HashMap::new();
+    id.insert(
+        "mimeType".to_string(),
+        Value::String("image/png".to_string()),
+    );
+    id.insert("data".to_string(), Value::String("base64data".to_string()));
+
+    let msg = Message {
+        role: Role::User,
+        parts: vec![
+            MessagePart::Text("Describe this".to_string()),
+            MessagePart::Part(Box::new(ContentPart {
+                inline_data: Some(id),
+                ..Default::default()
+            })),
+        ],
+    };
+
+    // Model only supports "text" input (no "image")
+    let formatter: &'static dyn llm_secure_cli::llm::providers::payload_formatter::PayloadFormatter =
+        Box::leak(Box::new(GenericPayloadFormatter));
+    let input_mods: &'static [String] = Box::leak(Box::new(vec!["text".to_string()]));
+    let msgs = MessageBuilder {
+        formatter,
+        model: "test-model",
+        input_modalities: Some(input_mods),
+        system_prompt: None,
+        conversation: Box::leak(Box::new(vec![msg])),
+        pending_data: Box::leak(Box::new(vec![])),
+    }
+    .build();
+
+    // Only text part should be present, image skipped
+    assert_eq!(msgs[0]["content"], "Describe this");
+}
+
+#[test]
+fn test_image_included_when_modality_info_unavailable() {
+    // When input_modalities is None (unknown), images should be included (backward compat)
+    use std::collections::HashMap;
+    let mut id = HashMap::new();
+    id.insert(
+        "mimeType".to_string(),
+        Value::String("image/png".to_string()),
+    );
+    id.insert("data".to_string(), Value::String("base64data".to_string()));
+
+    let msg = Message {
+        role: Role::User,
+        parts: vec![MessagePart::Part(Box::new(ContentPart {
+            inline_data: Some(id),
+            ..Default::default()
+        }))],
+    };
+
+    let msgs = builder(None, vec![msg], vec![]).build();
+    let content = msgs[0]["content"].as_array().expect("Should be array");
+    assert_eq!(content[0]["type"], "image_url");
 }
 
 // ===========================================================================

@@ -9,12 +9,20 @@ use super::payload_formatter::PayloadFormatter;
 pub struct MessageBuilder<'a> {
     pub formatter: &'a dyn PayloadFormatter,
     pub model: &'a str,
+    pub input_modalities: Option<&'a [String]>,
     pub system_prompt: Option<String>,
     pub conversation: &'a [crate::llm::models::Message],
     pub pending_data: &'a [DataSource],
 }
 
 impl MessageBuilder<'_> {
+    /// Check if the current model supports a given input modality.
+    /// Returns `true` when modality info is unknown (backward compatible).
+    fn supports_modality(&self, modality: &str) -> bool {
+        self.input_modalities
+            .is_none_or(|mods| mods.iter().any(|m| m == modality))
+    }
+
     #[must_use]
     pub fn build(&self) -> Vec<Value> {
         let mut messages = Vec::new();
@@ -128,11 +136,16 @@ impl MessageBuilder<'_> {
                                         ) {
                                             parts.push(v);
                                         }
-                                    } else if mime.starts_with("image/") {
+                                    } else if mime.starts_with("image/")
+                                        && self.supports_modality("image")
+                                    {
                                         parts.push(self.formatter.format_image(mime, b64));
-                                    } else if mime.starts_with("audio/") {
+                                    } else if mime.starts_with("audio/")
+                                        && self.supports_modality("audio")
+                                    {
                                         parts.push(self.formatter.format_audio(mime, b64));
                                     }
+                                    // Note: video is not currently handled, but would follow the same pattern.
                                 }
                             }
                         }
@@ -186,10 +199,15 @@ impl MessageBuilder<'_> {
                 ) {
                     current_parts.push(v);
                 }
-            } else if d.content_type.starts_with("image/") {
+            } else if d.content_type.starts_with("image/") && self.supports_modality("image") {
                 current_parts.push(
                     self.formatter
                         .format_image(&d.content_type, d.content.as_str().unwrap_or_default()),
+                );
+            } else if d.content_type.starts_with("audio/") && self.supports_modality("audio") {
+                current_parts.push(
+                    self.formatter
+                        .format_audio(&d.content_type, d.content.as_str().unwrap_or_default()),
                 );
             }
         }

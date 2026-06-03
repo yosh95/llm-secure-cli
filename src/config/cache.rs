@@ -27,6 +27,11 @@ pub enum CachedModelEntry {
         /// When None/unset, defaults to "chat" for backward compatibility.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         model_type: Option<String>,
+        /// Input modalities this model supports (e.g. ["text", "image", "audio", "file"]).
+        /// Populated from OpenRouter's `architecture.input_modalities` field.
+        /// When None/unset, all modalities are assumed supported for backward compatibility.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input_modalities: Option<Vec<String>>,
     },
 }
 
@@ -64,6 +69,34 @@ impl CachedModelEntry {
             CachedModelEntry::Detailed { model_type, .. } => {
                 model_type.as_deref().unwrap_or("chat")
             }
+        }
+    }
+
+    /// Returns the input modalities this model supports (e.g. ["text", "image"]).
+    /// Returns `None` when unknown (defaults to assuming all inputs are supported
+    /// for backward compatibility).
+    #[must_use]
+    pub fn input_modalities(&self) -> Option<&[String]> {
+        match self {
+            CachedModelEntry::Simple(_) => None,
+            CachedModelEntry::Detailed {
+                input_modalities, ..
+            } => input_modalities.as_deref(),
+        }
+    }
+
+    /// Returns `true` if this model supports the given input modality (e.g. "image", "audio").
+    /// When modality info is unavailable (None), conservatively returns `true` for
+    /// backward compatibility.
+    #[must_use]
+    pub fn supports_input_modality(&self, modality: &str) -> bool {
+        match self {
+            CachedModelEntry::Simple(_) => true,
+            CachedModelEntry::Detailed {
+                input_modalities, ..
+            } => input_modalities
+                .as_ref()
+                .is_none_or(|mods| mods.iter().any(|m| m == modality)),
         }
     }
 }
@@ -181,6 +214,48 @@ impl ConfigManager {
             })
     }
 
+    /// Return the input modalities for a given provider/model from the cache.
+    ///
+    /// Returns `Some(Some(vec))` if the model is found with known input modalities,
+    /// `Some(None)` if found but no modality info (assume all inputs supported),
+    /// or `None` if the model is not in the cache at all.
+    pub fn model_input_modalities(
+        &self,
+        provider: &str,
+        model: &str,
+    ) -> Option<Option<Vec<String>>> {
+        let map = match read_cache() {
+            Ok(Some(m)) => m,
+            _ => return None,
+        };
+        map.get(provider)
+            .and_then(|models| models.iter().find(|e| e.id() == model))
+            .map(|e| match e {
+                CachedModelEntry::Simple(_) => None,
+                CachedModelEntry::Detailed {
+                    input_modalities, ..
+                } => input_modalities.clone(),
+            })
+    }
+
+    /// Check if a given provider/model supports a specific input modality (e.g. "image", "audio").
+    /// Returns `None` when the model is not in the cache (callers should assume supported).
+    /// Returns `Some(true/false)` based on cached modality info.
+    pub fn model_supports_input_modality(
+        &self,
+        provider: &str,
+        model: &str,
+        modality: &str,
+    ) -> Option<bool> {
+        let map = match read_cache() {
+            Ok(Some(m)) => m,
+            _ => return None,
+        };
+        map.get(provider)
+            .and_then(|models| models.iter().find(|e| e.id() == model))
+            .map(|e| e.supports_input_modality(modality))
+    }
+
     /// Fetch model lists from all active providers and persist the combined
     /// cache.  Returns the model IDs (string form) for convenience.
     pub async fn update_models_cache(&self) -> HashMap<String, Vec<String>> {
@@ -261,6 +336,7 @@ impl ConfigManager {
                             id: name.to_string(),
                             supports_tools: true,
                             model_type: None,
+                            input_modalities: None,
                         });
                     }
                 }
@@ -295,6 +371,7 @@ impl ConfigManager {
                             id: id.to_string(),
                             supports_tools,
                             model_type,
+                            input_modalities: None,
                         });
                     }
                 }
@@ -308,10 +385,22 @@ impl ConfigManager {
                         .get("supported_parameters")
                         .and_then(|v| v.as_array())
                         .is_none_or(|params| params.iter().any(|p| p.as_str() == Some("tools")));
+                    // Parse input_modalities from architecture field (OpenRouter API).
+                    let input_modalities = m
+                        .get("architecture")
+                        .and_then(|a| a.get("input_modalities"))
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(String::from))
+                                .collect::<Vec<String>>()
+                        });
+
                     models.push(CachedModelEntry::Detailed {
                         id: id.to_string(),
                         supports_tools,
                         model_type: None,
+                        input_modalities,
                     });
                 }
             }

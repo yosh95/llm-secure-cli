@@ -22,6 +22,11 @@ pub struct OpenAiCompatibleClient {
     pub http_client: reqwest::Client,
     pub formatter: Box<dyn PayloadFormatter>,
     pub supports_tools: bool,
+    /// Cached input modalities this model supports (e.g. ["text", "image"]).
+    /// `None` means unknown (assume all inputs supported for backward compatibility).
+    /// Used by MessageBuilder to decide whether to include media content
+    /// from conversation history when switching between models.
+    pub input_modalities: Option<Vec<String>>,
 }
 
 pub struct OpenAiCompatibleClientBuilder<'a> {
@@ -138,6 +143,12 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
             .formatter
             .unwrap_or_else(|| Box::new(GenericPayloadFormatter));
 
+        // Look up input modalities for this model from the cache.
+        let input_modalities = self
+            .config_manager
+            .model_input_modalities(&self.provider_name, &self.model)
+            .unwrap_or(None);
+
         Ok(OpenAiCompatibleClient {
             base,
             api_url,
@@ -145,6 +156,7 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
             http_client,
             formatter,
             supports_tools,
+            input_modalities,
         })
     }
 }
@@ -163,6 +175,7 @@ impl OpenAiCompatibleClient {
         MessageBuilder {
             formatter: self.formatter.as_ref(),
             model: &self.base.state.model,
+            input_modalities: self.input_modalities.as_deref(),
             system_prompt: self.base.state.get_effective_system_prompt(),
             conversation: &self.base.state.conversation,
             pending_data: data,
