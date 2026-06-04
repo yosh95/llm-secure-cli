@@ -60,7 +60,7 @@ pub trait KeyStore: Send + Sync {
 
 /// Default key store backed by the local filesystem.
 ///
-/// Key files are stored under `~/.llm_secure_cli/keys/{entity_type}/{name}/`.
+/// Key files are stored under `~/.llsc/keys/{entity_type}/{name}/`.
 /// Optional passphrase-based encryption uses AES-256-GCM with an Argon2id
 /// key derivation function.
 pub struct FileSystemKeyStore;
@@ -183,6 +183,63 @@ impl IdentityManager {
             let (pk, sk) = fips203::ml_kem_1024::KG::try_keygen()
                 .map_err(|e| anyhow!("KEM keygen failed: {e}"))?;
             store.save_private_key(&kem_path, &sk.into_bytes(), passphrase.as_deref())?;
+            fs::write(dir.join("id_kem1024.pub"), pk.into_bytes())?;
+        }
+
+        Ok(())
+    }
+
+    /// Generate all identity keys using a custom [`KeyStore`] and an explicit passphrase.
+    ///
+    /// This method is primarily intended for testing, where you want to control
+    /// the passphrase without interactive prompts or environment variables.
+    /// Pass `None` for unencrypted (raw) keys.
+    pub fn ensure_keys_with_passphrase(passphrase: Option<&str>) -> Result<()> {
+        let store = FileSystemKeyStore;
+        Self::ensure_keys_with_store_and_passphrase(&store, passphrase)
+    }
+
+    /// Generate all identity keys using a custom [`KeyStore`] and an explicit passphrase.
+    pub fn ensure_keys_with_store_and_passphrase(
+        store: &dyn KeyStore,
+        passphrase: Option<&str>,
+    ) -> Result<()> {
+        let dir = store.base_dir().join("self").join("me");
+        if !dir.exists() {
+            fs::create_dir_all(&dir)?;
+        }
+
+        // If keys already exist, do nothing.
+        if dir.join("id_ed25519").exists() && dir.join("id_mldsa87").exists() {
+            return Ok(());
+        }
+
+        // Ed25519
+        let ed_path = dir.join("id_ed25519");
+        if !ed_path.exists() {
+            let mut rng = OsRng;
+            let signing_key = SigningKey::generate(&mut rng);
+            let priv_bytes = signing_key.to_bytes();
+            let pub_bytes = signing_key.verifying_key().to_bytes();
+
+            store.save_private_key(&ed_path, &priv_bytes, passphrase)?;
+            fs::write(dir.join("id_ed25519.pub"), pub_bytes)?;
+        }
+
+        // ML-DSA variants
+        let pqc_path = dir.join("id_mldsa87");
+        if !pqc_path.exists() {
+            let (pk, sk) = PqcProvider::generate_keypair(PQCVariant::MLDSA87)?;
+            store.save_private_key(&pqc_path, &sk, passphrase)?;
+            fs::write(dir.join("id_mldsa87.pub"), pk)?;
+        }
+
+        // ML-KEM (FIPS 203)
+        let kem_path = dir.join("id_kem1024");
+        if !kem_path.exists() {
+            let (pk, sk) = fips203::ml_kem_1024::KG::try_keygen()
+                .map_err(|e| anyhow!("KEM keygen failed: {e}"))?;
+            store.save_private_key(&kem_path, &sk.into_bytes(), passphrase)?;
             fs::write(dir.join("id_kem1024.pub"), pk.into_bytes())?;
         }
 

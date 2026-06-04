@@ -120,9 +120,7 @@ async fn handle_template_cmd(session: &mut ActiveSession, args: &str) {
     let templates = session.ctx.config_manager.load_templates();
     if args.is_empty() {
         if templates.is_empty() {
-            ui::report_info(
-                "No templates found. Place .txt or .md files in ~/.llm_secure_cli/templates/",
-            );
+            ui::report_info("No templates found. Place .txt or .md files in ~/.llsc/templates/");
         } else {
             ui::print_rule(Some("Available Templates"), Some("cyan"));
             let mut names: Vec<_> = templates.keys().collect();

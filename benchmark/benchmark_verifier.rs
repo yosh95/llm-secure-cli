@@ -114,7 +114,11 @@ async fn main() -> anyhow::Result<()> {
 
         // Validation for provider specific requirements
         if p_alias == "openrouter" && api_key.is_none() {
-            println!("{}", "Error: OpenRouter requires OPENROUTER_API_KEY in environment or ~/.llm_secure_cli/.env".red());
+            println!(
+                "{}",
+                "Error: OpenRouter requires OPENROUTER_API_KEY in environment or ~/.llsc/.env"
+                    .red()
+            );
             continue;
         }
 

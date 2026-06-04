@@ -4,11 +4,29 @@ mod tests {
     use ciborium::Value;
     use llm_secure_cli::security::identity::IdentityManager;
     use llm_secure_cli::security::pqc::{PQCVariant, PqcProvider};
+    use std::sync::OnceLock;
+
+    /// Set up a temporary base directory for identity tests so that
+    /// test keys are never written to ~/.llsc.
+    fn setup_temp_basedir() {
+        static INIT: OnceLock<()> = OnceLock::new();
+        INIT.get_or_init(|| {
+            let dir = tempfile::tempdir().expect("Failed to create temp dir");
+            let path = dir.path().to_path_buf();
+            // Keep the TempDir alive for the duration of all tests (leak it intentionally)
+            std::mem::forget(dir);
+            llm_secure_cli::consts::init_base_dir(Some(path));
+        });
+    }
 
     #[tokio::test]
     async fn test_identity_token_generation() {
-        // 1. Ensure keys exist
-        IdentityManager::ensure_keys().expect("Failed to ensure keys");
+        // Use a temporary directory so tests don't touch ~/.llsc
+        setup_temp_basedir();
+
+        // Use ensure_keys_with_passphrase(None) to generate unencrypted keys
+        // without any interactive prompt or environment variable.
+        IdentityManager::ensure_keys_with_passphrase(None).expect("Failed to ensure keys");
 
         // 2. Generate a token for a specific tool
         let tool_name = "test_server__list_files";

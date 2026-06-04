@@ -317,7 +317,7 @@ fn merge_json(base: &mut serde_json::Value, over: serde_json::Value) {
 }
 
 impl ConfigManager {
-    /// Load user-defined prompt templates from `~/.llm_secure_cli/templates/`.
+    /// Load user-defined prompt templates from `~/.llsc/templates/`.
     ///
     /// Only `.txt` and `.md` files are read.  The file stem (name without
     /// extension) becomes the template name.  Directory entries are created

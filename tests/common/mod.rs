@@ -410,7 +410,7 @@ static TEST_TEMP_DIR: LazyLock<Arc<Mutex<Option<TempDir>>>> =
 
 /// Initialize the test environment once (process-wide but safe).
 ///
-/// Sets a temporary base directory so tests don't read/write `~/.llm_secure_cli`.
+/// Sets a temporary base directory so tests don't read/write `~/.llsc`.
 pub fn init_test_env() {
     use std::sync::Once;
     static INIT: Once = Once::new();

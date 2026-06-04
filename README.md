@@ -124,14 +124,14 @@ flowchart TB
 
 ### 3. Chat: Type `llsc` to start an interactive session.
 
-1.   Automatic Initialization: On the first run, `~/.llm_secure_cli/config.toml` is automatically created.
+1.   Automatic Initialization: On the first run, `~/.llsc/config.toml` is automatically created.
 2.   Model Setup: By default, no model is selected. Use `/model <model_name>` (e.g., `/model llama3`) to set one before your first request.
 3.   Brave Search: Built-in support for the Brave Search API is available for comprehensive searching across all providers (requires `BRAVE_API_KEY`).
 4.   File/URL Attachment: Use `/attach <path|URL>` to quickly add local files or web content to your conversation.
 5.  Configure (Optional): Ollama is the default provider. To use OpenRouter or others, edit the configuration file:
 
     ```bash
-    # Edit ~/.llm_secure_cli/config.toml
+    # Edit ~/.llsc/config.toml
     ```
 
 6.  Help: Type `/help` inside the chat to see all commands.
@@ -141,9 +141,9 @@ Run the agent in a completely isolated container to protect your host system. In
 
 1. **Build**: `docker build -t llm-secure-cli .`
 2. **Setup API Keys**:
-   - **Option A: `.env` file (Recommended)**: Place a `.env` file in your host's `~/.llm_secure_cli/` directory.
+   - **Option A: `.env` file (Recommended)**: Place a `.env` file in your host's `~/.llsc/` directory.
      ```bash
-     # ~/.llm_secure_cli/.env
+     # ~/.llsc/.env
      OPENROUTER_API_KEY=sk-...
      OPENAI_API_KEY=sk-...
      ```
@@ -151,7 +151,7 @@ Run the agent in a completely isolated container to protect your host system. In
 3. **Run**:
    ```bash
    docker run -it --rm \
-     -v ~/.llm_secure_cli:/home/agent/.llm_secure_cli \
+     -v ~/.llsc:/home/agent/.llsc \
      -v $(pwd):/workspace \
      llm-secure-cli -m llama3 "Summarize the files in this directory"
    ```
@@ -282,17 +282,17 @@ Inside the `llsc` interactive session:
 | `LLM_CLI_KEY_PASSPHRASE` | Passphrase for encrypted key storage. | — |
 | `LLM_CLI_KEY_PASSPHRASE_FILE` | Path to a file containing the passphrase. | — |
 
-Provider API keys are read from environment variables (e.g., `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_API_KEY`) or from `~/.llm_secure_cli/.env`.
+Provider API keys are read from environment variables (e.g., `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_API_KEY`) or from `~/.llsc/.env`.
 
 ## Security Configuration Reference
 
-The primary security configuration is in `src/config/defaults.toml` (overridden by `~/.llm_secure_cli/config.toml`). Security-related runtime state (verifier committee members, enabled/disabled flag) is persisted in `~/.llm_secure_cli/state.toml`.
+The primary security configuration is in `src/config/defaults.toml` (overridden by `~/.llsc/config.toml`). Security-related runtime state (verifier committee members, enabled/disabled flag) is persisted in `~/.llsc/state.toml`.
 
 ### Verifier Committee Configuration
 The Verifier Committee uses N independent LLM verifiers with an "any-flag" policy. Configure verifier members via the `/vcommittee` interactive command or directly in `state.toml`:
 
 ```toml
-# ~/.llm_secure_cli/state.toml
+# ~/.llsc/state.toml
 verifier_enabled = true
 verifier_committee_members = ["ollama:gemma4:e2b", "openai:gpt-4o-mini", "openrouter:anthropic/claude-3-haiku"]
 ```

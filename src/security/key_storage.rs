@@ -105,32 +105,51 @@ fn resolve_passphrase(path: &Path) -> Result<String> {
         }
     }
 
-    // 2. Not cached — read from appropriate source
-    let pw = if stdin().is_terminal() {
-        read_passphrase_interactive()?
-    } else {
-        // Non-interactive: env var or Docker secret
-        let pw = std::env::var("LLM_CLI_KEY_PASSPHRASE")
-            .or_else(|_| {
-                std::env::var("LLM_CLI_KEY_PASSPHRASE_FILE").and_then(|p| {
-                    fs::read_to_string(p).map_err(|_| std::env::VarError::NotPresent)
-                })
-            })
-            .map(|s| s.trim().to_string())
-            .map_err(|_| {
-                anyhow!(
-                    "Encrypted PQC keys require a passphrase.\n                 For interactive use, run from a terminal.\n                 For non-interactive use, set LLM_CLI_KEY_PASSPHRASE environment variable."
-                )
-            })?;
+    // 2. Check environment variable (overrides interactive prompt).
+    //    This works whether or not stdin is a terminal.
+    if let Ok(pw) = std::env::var("LLM_CLI_KEY_PASSPHRASE") {
+        let pw = pw.trim().to_string();
         if pw.is_empty() {
             return Err(anyhow!(
-                "LLM_CLI_KEY_PASSPHRASE is empty — passphrase required"
+                "LLM_CLI_KEY_PASSPHRASE is empty \u{2014} passphrase required"
             ));
         }
-        pw
-    };
+        // Cache for session
+        {
+            let mut cache = PASSPHRASE_CACHE
+                .lock()
+                .map_err(|_| anyhow!("Cache lock poisoned"))?;
+            cache.insert(path.to_path_buf(), Zeroizing::new(pw.clone()));
+        }
+        return Ok(pw);
+    }
 
-    // 3. Cache for session (keyed by path)
+    // 3. Check *_FILE variant (Docker secrets pattern)
+    if let Ok(path_str) = std::env::var("LLM_CLI_KEY_PASSPHRASE_FILE")
+        && let Ok(content) = fs::read_to_string(&path_str)
+    {
+        let pw = content.trim().to_string();
+        if !pw.is_empty() {
+            // Cache for session
+            {
+                let mut cache = PASSPHRASE_CACHE
+                    .lock()
+                    .map_err(|_| anyhow!("Cache lock poisoned"))?;
+                cache.insert(path.to_path_buf(), Zeroizing::new(pw.clone()));
+            }
+            return Ok(pw);
+        }
+    }
+
+    // 4. Not cached, no env var \u{2014} prompt interactively if on a terminal
+    if !stdin().is_terminal() {
+        return Err(anyhow!(
+            "Encrypted PQC keys require a passphrase.\n                 For interactive use, run from a terminal.\n                 For non-interactive use, set LLM_CLI_KEY_PASSPHRASE environment variable."
+        ));
+    }
+    let pw = read_passphrase_interactive()?;
+
+    // 5. Cache for session (keyed by path)
     {
         let mut cache = PASSPHRASE_CACHE
             .lock()
@@ -140,7 +159,6 @@ fn resolve_passphrase(path: &Path) -> Result<String> {
 
     Ok(pw)
 }
-
 /// Purge the passphrase cache (called on session end).
 ///
 /// This clears all cached passphrases from memory.  Called by
@@ -165,32 +183,32 @@ pub fn is_encrypted(path: &Path) -> bool {
 /// Returns `Ok(Some(pw))` for a non-empty passphrase, `Ok(None)` if empty.
 /// In non-interactive mode, checks `LLM_CLI_KEY_PASSPHRASE` env var.
 pub fn read_optional_passphrase() -> Result<Option<String>> {
-    let is_atty = stdin().is_terminal();
-
-    if is_atty {
-        read_optional_passphrase_interactive()
-    } else {
-        // Non-interactive: check env var
-        match std::env::var("LLM_CLI_KEY_PASSPHRASE") {
-            Ok(pw) if !pw.trim().is_empty() => Ok(Some(pw.trim().to_string())),
-            _ => {
-                // Also check *_FILE variant (Docker secrets pattern)
-                if let Ok(path) = std::env::var("LLM_CLI_KEY_PASSPHRASE_FILE")
-                    && let Ok(content) = fs::read_to_string(&path)
-                {
-                    let pw = content.trim().to_string();
-                    if !pw.is_empty() {
-                        return Ok(Some(pw));
-                    }
-                }
-                Ok(None) // Default: no passphrase
-            }
+    // Check environment variable first (overrides interactive prompt).
+    // Empty string \u{2192} no encryption (raw keys); non-empty \u{2192} use as passphrase.
+    if let Ok(pw) = std::env::var("LLM_CLI_KEY_PASSPHRASE") {
+        return if pw.trim().is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(pw.trim().to_string()))
+        };
+    }
+    // Also check *_FILE variant (Docker secrets pattern)
+    if let Ok(path) = std::env::var("LLM_CLI_KEY_PASSPHRASE_FILE")
+        && let Ok(content) = fs::read_to_string(&path)
+    {
+        let pw = content.trim().to_string();
+        if !pw.is_empty() {
+            return Ok(Some(pw));
         }
     }
-}
 
-// ─────────────────────────────────────────────
-// Internal: interactive passphrase prompts
+    // Fall back to interactive prompt if on a terminal
+    if stdin().is_terminal() {
+        read_optional_passphrase_interactive()
+    } else {
+        Ok(None) // Default: no passphrase in non-interactive mode
+    }
+} // Internal: interactive passphrase prompts
 // ─────────────────────────────────────────────
 
 fn read_optional_passphrase_interactive() -> Result<Option<String>> {

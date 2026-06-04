@@ -2,9 +2,24 @@
 use llm_secure_cli::config::models::SecurityConfig;
 use std::fs;
 use std::sync::Mutex;
+use std::sync::Once;
+use std::sync::OnceLock;
 use tempfile::tempdir;
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
+static TEST_ENV_INIT: Once = Once::new();
+static _TEST_DIR: OnceLock<tempfile::TempDir> = OnceLock::new();
+
+fn setup_test_env() {
+    TEST_ENV_INIT.call_once(|| {
+        let dir = tempdir().expect("Failed to create temp dir for test keys");
+        let base_path = dir.path().to_path_buf();
+        llm_secure_cli::consts::init_base_dir(Some(base_path));
+        llm_secure_cli::security::identity::IdentityManager::ensure_keys_with_passphrase(None)
+            .expect("Failed to generate PQC keys for test");
+        let _ = _TEST_DIR.set(dir);
+    });
+}
 
 #[test]
 fn test_audit_entry_serialization() {
@@ -41,7 +56,8 @@ fn test_audit_entry_serialization() {
 
 #[test]
 fn test_audit_hash_chaining() {
-    let _lock = TEST_LOCK.lock().expect("Failed to acquire test lock");
+    setup_test_env();
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     use llm_secure_cli::config::models::AppConfig;
     use llm_secure_cli::security::audit::log_audit_and_return;
 
@@ -307,7 +323,8 @@ fn test_audit_status_roundtrip_serde() {
 
 #[test]
 fn test_audit_params_builder_produces_valid_log_entry() {
-    let _lock = TEST_LOCK.lock().expect("Failed to acquire test lock");
+    setup_test_env();
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     use llm_secure_cli::config::models::AppConfig;
     use llm_secure_cli::security::audit::{AuditParamsBuilder, AuditStatus};
 
@@ -332,7 +349,8 @@ fn test_audit_params_builder_produces_valid_log_entry() {
 
 #[test]
 fn test_audit_params_builder_with_error() {
-    let _lock = TEST_LOCK.lock().expect("Failed to acquire test lock");
+    setup_test_env();
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     use llm_secure_cli::config::models::AppConfig;
     use llm_secure_cli::security::audit::{AuditParamsBuilder, AuditStatus};
 
@@ -357,7 +375,8 @@ fn test_audit_params_builder_with_error() {
 
 #[test]
 fn test_log_audit_non_returning() {
-    let _lock = TEST_LOCK.lock().expect("Failed to acquire test lock");
+    setup_test_env();
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     use llm_secure_cli::config::models::AppConfig;
     use llm_secure_cli::security::audit::{AuditParams, log_audit, log_audit_and_return};
 
@@ -407,7 +426,8 @@ fn test_log_audit_non_returning() {
 
 #[test]
 fn test_log_audit_and_return_with_error_status() {
-    let _lock = TEST_LOCK.lock().expect("Failed to acquire test lock");
+    setup_test_env();
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     use llm_secure_cli::config::models::AppConfig;
     use llm_secure_cli::security::audit::{AuditParams, AuditStatus, log_audit_and_return};
 
@@ -438,7 +458,8 @@ fn test_log_audit_and_return_with_error_status() {
 
 #[test]
 fn test_log_audit_and_return_with_success_status() {
-    let _lock = TEST_LOCK.lock().expect("Failed to acquire test lock");
+    setup_test_env();
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     use llm_secure_cli::config::models::AppConfig;
     use llm_secure_cli::security::audit::{AuditParams, AuditStatus, log_audit_and_return};
 

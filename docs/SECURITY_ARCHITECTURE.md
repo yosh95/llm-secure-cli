@@ -250,7 +250,7 @@ In a distributed environment (e.g., Client Agent and Remote MCP Server),
 the system shifts to a **Distributed Trust** model designed to eliminate
 shared secrets:
 
-1.  **Local Trust Store Model:** Keys are stored locally in `~/.llm_secure_cli/keys/`. Each entity maintains its own key pair with no sharing of private keys between entities.
+1.  **Local Trust Store Model:** Keys are stored locally in `~/.llsc/keys/`. Each entity maintains its own key pair with no sharing of private keys between entities.
 2.  **Impersonation Resistance:** The Agent ID is fixed to `user@hostname` (derived from `IdentityManager::get_local_identity()`). Removing the ability to override this ID prevents attackers with stolen keys from easily spoofing authorized identities on different hosts.
 3.  **Automatic Key Generation:** Keys are automatically generated on first run when `IdentityManager::ensure_keys()` is called. However, security is enforced at the **Verification Layer** — any identity not backed by the local key store will fail verification.
 4.  **Blast Radius Containment:** Because keys are not shared, the compromise of a remote MCP server does not expose the Agent's private identity key, preventing an attacker from impersonating the user in other contexts.
@@ -292,9 +292,9 @@ use the highest available NIST Level 5 strength regardless of tool risk level:
 
 | File | Location | Algorithm |
 |---|---|---|
-| `id_pqc.key` / `id_pqc.pub` | `~/.llm_secure_cli/keys/` | ML-DSA-87 |
-| `id_ed25519` / `id_ed25519.pub` | `~/.llm_secure_cli/keys/` | Ed25519 (classical) |
-| `id_kem.key` / `id_kem.pub` | `~/.llm_secure_cli/keys/` | ML-KEM-1024 |
+| `id_pqc.key` / `id_pqc.pub` | `~/.llsc/keys/` | ML-DSA-87 |
+| `id_ed25519` / `id_ed25519.pub` | `~/.llsc/keys/` | Ed25519 (classical) |
+| `id_kem.key` / `id_kem.pub` | `~/.llsc/keys/` | ML-KEM-1024 |
 
 The application always uses ML-DSA-87 (FIPS 204 Level 5) for signing and ML-KEM-1024 (FIPS 203 Level 5) for encryption. There is no runtime variant selection — the highest NIST Level 5 is always used.
 
@@ -322,10 +322,10 @@ llsc identity manifest
 - **ML-KEM hybrid encryption** — audit logs are optionally encrypted with ML-KEM-1024 + AES-256-GCM to guarantee future quantum confidentiality. Decrypt with:
 
   ```bash
-  llsc decrypt-log ~/.llm_secure_cli/logs/audit.jsonl -o decrypted.jsonl
+  llsc decrypt-log ~/.llsc/logs/audit.jsonl -o decrypted.jsonl
   ```
 
-**Audit log retention:** Back up `~/.llm_secure_cli/logs/audit.jsonl` and its rotated archives. Forward to a remote WORM store (SIEM) if available.
+**Audit log retention:** Back up `~/.llsc/logs/audit.jsonl` and its rotated archives. Forward to a remote WORM store (SIEM) if available.
 
 ---
 
@@ -353,7 +353,7 @@ The default verifier configuration uses `ollama` provider with `default` model. 
 ## Security Configuration Reference
 
 The primary security configuration is in `src/config/defaults.toml`
-(overridden by `~/.llm_secure_cli/config.toml`):
+(overridden by `~/.llsc/config.toml`):
 
 ```toml
 [general]

@@ -23,9 +23,9 @@ pub fn get_base_dir() -> &'static PathBuf {
 
 fn default_base_dir() -> PathBuf {
     if let Some(home) = dirs::home_dir() {
-        home.join(".llm_secure_cli")
+        home.join(".llsc")
     } else {
-        PathBuf::from(".llm_secure_cli")
+        PathBuf::from(".llsc")
     }
 }
 

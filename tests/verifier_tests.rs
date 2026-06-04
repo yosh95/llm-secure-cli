@@ -83,7 +83,7 @@ impl LlmClient for MockLlmClient {
 }
 
 /// Helper to create a test AppContext with an isolated temporary directory.
-/// This prevents tests from reading/writing to ~/.llm_secure_cli.
+/// This prevents tests from reading/writing to ~/.llsc.
 fn create_test_context() -> Arc<AppContext> {
     let tmp_dir = tempdir().expect("Failed to create temp dir");
     // Use init_base_dir to redirect config to temp directory (process-wide but safe)

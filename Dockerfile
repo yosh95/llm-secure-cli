@@ -45,7 +45,7 @@ WORKDIR /home/agent
 COPY --from=builder --chown=agent:agent /app/target/release/llsc /usr/local/bin/llsc
 
 # Ensure the config directory exists
-RUN mkdir -p /home/agent/.llm_secure_cli
+RUN mkdir -p /home/agent/.llsc
 
 
 # Set the binary as the entry point

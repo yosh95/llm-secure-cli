@@ -34,7 +34,7 @@ struct Args {
     #[clap(long)]
     session: Option<String>,
 
-    /// Override the base directory for config and logs (default: ~/.`llm_secure_cli`)
+    /// Override the base directory for config and logs (default: ~/.llsc)
     #[clap(short = 'D', long)]
     base_dir: Option<String>,
 }
