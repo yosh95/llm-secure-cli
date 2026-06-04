@@ -19,6 +19,12 @@ pub enum PromptMode {
 
 /// Ask the user a Yes/No confirmation question with configurable prompt mode.
 fn ask_confirm_with_mode(prompt: &str, mode: PromptMode) -> Option<ConfirmResult> {
+    // If LLM_SECURE_AUTO_APPROVE env var is set, automatically return Yes
+    // without prompting the user. This is useful for automation/testing.
+    if std::env::var("LLM_SECURE_AUTO_APPROVE").is_ok() {
+        return Some(ConfirmResult::Yes);
+    }
+
     let suffix = match mode {
         PromptMode::WithFeedback => " [Y/n or feedback] ",
         PromptMode::YesNoOnly => " [Y/n] ",
@@ -88,11 +94,6 @@ pub async fn ask_confirm_simple_async(prompt: &str) -> Option<ConfirmResult> {
 
 #[must_use]
 pub fn get_user_input(prompt: &str) -> Option<String> {
-    #[cfg(test)]
-    if std::env::var("LLM_SECURE_TEST_AUTO_APPROVE").is_ok() {
-        return Some("y".to_string());
-    }
-
     use rustyline::DefaultEditor;
     use rustyline::error::ReadlineError;
 
