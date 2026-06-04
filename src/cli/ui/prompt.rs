@@ -22,6 +22,9 @@ fn ask_confirm_with_mode(prompt: &str, mode: PromptMode) -> Option<ConfirmResult
     // If LLM_SECURE_AUTO_APPROVE env var is set, automatically return Yes
     // without prompting the user. This is useful for automation/testing.
     if std::env::var("LLM_SECURE_AUTO_APPROVE").is_ok() {
+        crate::cli::ui::report::report_warning(
+            "LLM_SECURE_AUTO_APPROVE is set — automatically approving without user confirmation."
+        );
         return Some(ConfirmResult::Yes);
     }
 

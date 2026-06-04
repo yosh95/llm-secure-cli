@@ -277,7 +277,7 @@ Inside the `llsc` interactive session:
 | Variable | Description | Default |
 |---|---|---|
 | `LLM_SECURE_INTEGRITY_SKIP_PROMPT` | Suppress integrity check prompts (warnings still shown). Useful for CI/testing. | unset (off) |
-| `LLM_SECURE_TEST_AUTO_APPROVE` | Automatically answer "Yes" to all confirmation prompts (for testing). | unset (off) |
+| `LLM_SECURE_AUTO_APPROVE` | Automatically answer "Yes" to all confirmation prompts (for testing). | unset (off) |
 | `BRAVE_API_KEY` | API key for the built-in Brave Search tool. | — |
 | `LLM_CLI_KEY_PASSPHRASE` | Passphrase for encrypted key storage. | — |
 | `LLM_CLI_KEY_PASSPHRASE_FILE` | Path to a file containing the passphrase. | — |
