@@ -89,8 +89,7 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             CommandResult::Handled
         }
         "t" | "template" => {
-            handle_template_cmd(session, args).await;
-            CommandResult::Handled
+            return handle_template_cmd(session, args).await;
         }
         "view" => {
             content_handler::handle_view_cmd(session, args).await;
@@ -116,7 +115,7 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
     }
 }
 
-async fn handle_template_cmd(session: &mut ActiveSession, args: &str) {
+async fn handle_template_cmd(session: &mut ActiveSession, args: &str) -> CommandResult {
     let templates = session.ctx.config_manager.load_templates();
     if args.is_empty() {
         if templates.is_empty() {
@@ -148,20 +147,15 @@ async fn handle_template_cmd(session: &mut ActiveSession, args: &str) {
                 "Usage: /t <name>  — insert template into prompt".dimmed()
             );
         }
+        CommandResult::Handled
     } else if let Some(content) = templates.get(args) {
-        // Return Input variant with template content
-        // We can't return from here, so we set pending_data instead
-        session.pending_data.push(crate::llm::models::DataSource {
-            content: serde_json::Value::String(content.clone()),
-            content_type: "text/plain".to_string(),
-            is_file_or_url: false,
-            metadata: std::collections::HashMap::new(),
-        });
         ui::report_success(&format!("Template '{args}' inserted into prompt."));
+        CommandResult::Input(content.clone())
     } else {
         ui::report_error(&format!(
             "Template '{args}' not found. Use /t to list available templates."
         ));
+        CommandResult::Handled
     }
 }
 
