@@ -1,5 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use colored::Colorize;
+use console::Term;
 use llm_secure_cli::core::context::AppContext;
 use llm_secure_cli::security::verifier::verify_tool_call;
 use llm_secure_cli::security::identity::IdentityManager;
@@ -10,15 +11,19 @@ use std::sync::Arc;
 use std::time::Instant;
 
 fn section(title: &str) {
-    println!("\n{}", "─".repeat(66));
+    let (_, width) = Term::stdout().size();
+    let w = width as usize;
+    println!("\n{}", "─".repeat(w));
     println!("  {}", title.bold());
-    println!("{}", "─".repeat(66));
+    println!("{}", "─".repeat(w));
 }
 
 fn header(title: &str) {
-    println!("\n{}", "═".repeat(66));
+    let (_, width) = Term::stdout().size();
+    let w = width as usize;
+    println!("\n{}", "═".repeat(w));
     println!("  {}", title.bold());
-    println!("{}", "═".repeat(66));
+    println!("{}", "═".repeat(w));
 }
 
 fn timeit<F, T>(f: F, reps: u32) -> (f64, f64)

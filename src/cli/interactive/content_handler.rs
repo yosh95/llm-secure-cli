@@ -2,6 +2,7 @@ use crate::cli::ui;
 use crate::core::session::ActiveSession;
 use crate::llm::models::{DataSource, Message, MessagePart, Role};
 use colored::Colorize;
+use console::Term;
 use std::collections::HashMap;
 
 pub async fn handle_attach(session: &mut ActiveSession, source: &str) {
@@ -70,9 +71,11 @@ pub async fn handle_summarize(session: &mut ActiveSession) {
             session.get_client_mut().get_state_mut().conversation = new_conversation;
 
             ui::report_success("Conversation summarized and history cleared.");
-            println!("\n{}\n", "--- Summary ---".cyan());
+            let (_, width) = Term::stdout().size();
+            let sep = "─".repeat(width as usize);
+            println!("\n{}\n", sep.cyan());
             println!("{summary_text}");
-            println!("{}\n", "---------------".cyan());
+            println!("{}\n", sep.cyan());
         }
         Err(e) => ui::report_error(&format!("Failed to summarize: {e}")),
     }

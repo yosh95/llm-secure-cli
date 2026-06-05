@@ -3,6 +3,7 @@ use crate::security::skill::{
     SkillSemanticVerdict, SkillSignatureStatus, SkillStructureResult, SkillVerdict,
     discover_skills, verify_skill,
 };
+use console::Term;
 use std::path::Path;
 
 /// Runs a full verification report on a skill directory, printing
@@ -82,10 +83,15 @@ pub async fn run_skill_verify(
                 .iter()
                 .filter(|r| r.verdict == SkillVerdict::Dangerous)
                 .count();
-            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            let term = Term::stdout();
+            let (_, width) = term.size();
+            let line = "━".repeat(width as usize);
+            println!("{line}");
             println!(" Batch Summary: {total} skills");
             println!("   {safe} Safe | {suspicious} Suspicious | {dangerous} Dangerous");
-            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            let (_, width) = Term::stdout().size();
+            let line = "━".repeat(width as usize);
+            println!("{line}");
         }
         return;
     }
@@ -129,6 +135,9 @@ fn has_direct_skill_md(path: &Path) -> bool {
 
 fn print_full_report(report: &crate::security::skill::types::SkillVerificationReport) {
     println!();
+    let (_, width) = Term::stdout().size();
+    let line = "━".repeat(width as usize);
+    println!("{line}");
     println!("━━━ Skill Verification Report ━━━");
     println!("Skill: {}", report.skill_name);
     println!("Path:  {}", report.path);
@@ -234,7 +243,7 @@ fn print_full_report(report: &crate::security::skill::types::SkillVerificationRe
     println!();
 
     // Verdict
-    println!(
+    let verdict_str = format!(
         "━━━ VERDICT: {} ━━━",
         match report.verdict {
             SkillVerdict::Safe => style_green_bold("SAFE"),
@@ -242,6 +251,7 @@ fn print_full_report(report: &crate::security::skill::types::SkillVerificationRe
             SkillVerdict::Dangerous => style_red_bold("DANGEROUS"),
         }
     );
+    println!("{verdict_str}");
 
     match report.verdict {
         SkillVerdict::Safe => {
@@ -269,7 +279,9 @@ fn print_full_report(report: &crate::security::skill::types::SkillVerificationRe
             }
         }
     }
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    let (_, width) = Term::stdout().size();
+    let line = "━".repeat(width as usize);
+    println!("{line}");
 
     println!("\nTotal verification time: {}ms", report.total_duration_ms);
 }
