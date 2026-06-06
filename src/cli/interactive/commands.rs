@@ -106,16 +106,6 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
         description: "Toggle or show status of tool execution",
     },
     CommandEntry {
-        name: "vcommittee",
-        aliases: &["vcom"],
-        description: "Manage verifier committee",
-    },
-    CommandEntry {
-        name: "verify",
-        aliases: &[],
-        description: "Toggle verifier on/off",
-    },
-    CommandEntry {
         name: "view",
         aliases: &[],
         description: "Open saved image or file with system default app",
@@ -169,8 +159,9 @@ mod tests {
         assert!(is_valid_command("/help"));
         assert!(is_valid_command("/h"));
         assert!(is_valid_command("/alias"));
-        assert!(is_valid_command("/vcom"));
+        assert!(is_valid_command("/tools"));
         assert!(is_valid_command("/tool_output"));
+        assert!(!is_valid_command("/vcom"));
         assert!(!is_valid_command("/nonexistent"));
     }
 

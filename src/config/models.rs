@@ -88,13 +88,9 @@ pub struct AppState {
     /// Provider:model string (e.g. "openai:gpt-4o").
     /// Unified field replacing the old separate last_used_provider + last_used_model.
     pub last_model: Option<String>,
-    /// Verifier LLM on/off state. Persisted in state.toml.
-    /// Default (None) = enabled.
-    #[serde(default = "default_verifier_enabled")]
-    pub verifier_enabled: Option<bool>,
     /// Verifier committee members (provider:model strings).
-    /// Set via `/vcommittee add|set <provider:model>` command.
-    /// A single member means single-verifier mode, multiple means committee mode.
+    /// DEPRECATED: Use SecurityConfig.verifier_committee in config.toml.
+    /// Kept for backward compatibility during migration.
     #[serde(default)]
     pub verifier_committee_members: Vec<String>,
     /// Whether to display tool execution results to the user.
@@ -103,10 +99,6 @@ pub struct AppState {
     pub show_tool_result: Option<bool>,
     #[serde(default)]
     pub model_aliases: HashMap<String, ModelAlias>,
-}
-
-fn default_verifier_enabled() -> Option<bool> {
-    Some(true)
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -131,38 +123,42 @@ pub struct ModelAlias {
 ///
 /// When neither legacy fields nor `verifier_committee` are configured, the verifier
 /// is disabled and falls back to manual human approval for all tool calls.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct CommitteeMemberConfig {
-    /// The provider name (e.g. "ollama", "openrouter", "openai").
-    pub provider: String,
-    /// The model name (e.g. "gemma4:e2b", "gpt-4o", "claude-3-opus").
-    pub model: String,
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SecurityConfig {
+    /// When true, all Y/n and feedback prompts are automatically answered Yes.
+    /// Equivalent to the old `LLM_SECURE_AUTO_APPROVE` env var.
+    /// WARNING: This bypasses all user confirmation — use with extreme caution.
+    #[serde(default)]
+    pub auto_approve: bool,
+
+    /// Master switch for the Verifier Committee.
+    /// When true (default), tool calls are verified by the configured committee.
+    /// When false, all tool calls fall through to manual human approval.
+    #[serde(default = "default_verifier_enabled")]
+    pub verifier_enabled: bool,
+
+    /// Verifier Committee members (provider:model strings, e.g. "openai:gpt-4o").
+    /// The committee uses an "any-flag" policy: if ANY member flags a call
+    /// as NeedsApproval, human approval is required. Only if ALL members
+    /// return Allowed is the call auto-approved.
+    /// When empty, the verifier falls back to manual human approval.
+    #[serde(default)]
+    pub verifier_committee: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Default)]
-pub struct SecurityConfig {}
+fn default_verifier_enabled() -> bool {
+    true
+}
 
-/// Configuration for the verifier committee.
-///
-/// The committee runs multiple independent LLM verifiers concurrently.
-/// The "any-flag" policy means: if ANY member flags a call as `NeedsApproval`,
-/// human approval is required. Only if ALL members return Allowed is the call
-/// auto-approved.
-///
-/// # Examples
-///
-/// ```toml
-/// [security.verifier_committee]
-/// members = [
-///   { provider = "ollama", model = "gemma4:e2b" },
-///   { provider = "openai", model = "gpt-4o-mini" },
-/// ]
-/// ```
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct VerifierCommitteeConfig {
-    /// List of committee members (provider/model pairs).
-    #[serde(default)]
-    pub members: Vec<CommitteeMemberConfig>,
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            auto_approve: false,
+            verifier_enabled: true,
+            verifier_committee: Vec::new(),
+        }
+    }
 }
 
 /// Describes a single validation failure in a [`SecurityConfig`].

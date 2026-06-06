@@ -17,13 +17,19 @@ pub enum PromptMode {
     YesNoOnly,
 }
 
+/// Global auto-approve flag.
+/// Set from the `auto_approve` field in `[security]` section of config.toml.
+/// When true, all confirmation prompts are automatically answered Yes.
+/// WARNING: This bypasses user confirmation — use with extreme caution.
+pub static AUTO_APPROVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Ask the user a Yes/No confirmation question with configurable prompt mode.
 fn ask_confirm_with_mode(prompt: &str, mode: PromptMode) -> Option<ConfirmResult> {
-    // If LLM_SECURE_AUTO_APPROVE env var is set, automatically return Yes
-    // without prompting the user. This is useful for automation/testing.
-    if std::env::var("LLM_SECURE_AUTO_APPROVE").is_ok() {
+    // If auto_approve is set (from config.toml [security] section), automatically
+    // return Yes without prompting the user.
+    if AUTO_APPROVE.load(std::sync::atomic::Ordering::Relaxed) {
         crate::cli::ui::report::report_warning(
-            "LLM_SECURE_AUTO_APPROVE is set — automatically approving without user confirmation.",
+            "auto_approve is enabled in config.toml — automatically approving without user confirmation.",
         );
         return Some(ConfirmResult::Yes);
     }

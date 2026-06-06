@@ -225,7 +225,7 @@ impl Completer for ChatCompleter {
                         matches.dedup_by(|a, b| a.display == b.display);
                         return Ok((start, matches));
                     }
-                    "/tools" | "/verify" => {
+                    "/tools" => {
                         let mut matches = Vec::new();
                         for opt in &["on", "off"] {
                             if opt.starts_with(arg_prefix) {
@@ -368,96 +368,6 @@ impl Completer for ChatCompleter {
                         // parts.len() == 1 (just `/alias` without trailing space)
                         if parts.len() == 1 && !arg_prefix.ends_with(' ') {
                             // nothing extra needed here, the command is complete
-                        }
-                    }
-                    "/vcommittee" | "/vcom" => {
-                        // Determine subcommand
-                        let arg_parts: Vec<&str> = arg_prefix.split_whitespace().collect();
-                        if arg_parts.is_empty()
-                            || (arg_parts.len() == 1 && !arg_prefix.ends_with(' '))
-                        {
-                            // Completing subcommand
-                            let prefix = arg_parts.first().copied().unwrap_or("");
-                            let subs = ["set", "add", "remove", "rm", "list", "ls"];
-                            let mut matches = Vec::new();
-                            for sub in &subs {
-                                if sub.starts_with(prefix) {
-                                    matches.push(Pair {
-                                        display: sub.to_string(),
-                                        replacement: sub.to_string(),
-                                    });
-                                }
-                            }
-                            return Ok((start, matches));
-                        }
-                        // subcommand is fully typed with a trailing space
-                        let subcmd = arg_parts[0];
-                        match subcmd {
-                            "set" | "add" => {
-                                // provider:model completion (same logic as /model)
-                                let models_map = self.ctx.config_manager.get_cached_models_sync();
-                                let model_prefix = if arg_parts.len() >= 2 {
-                                    arg_parts[1]
-                                } else {
-                                    ""
-                                };
-                                let mut matches = Vec::new();
-                                let mut providers: Vec<&String> = models_map.keys().collect();
-                                providers.sort();
-                                for p in providers {
-                                    if let Some(models) = models_map.get(p) {
-                                        let mut sorted_models = models.clone();
-                                        sorted_models.sort();
-                                        for m in sorted_models {
-                                            let entry = format!("{p}:{m}");
-                                            if entry.starts_with(model_prefix) {
-                                                matches.push(Pair {
-                                                    display: entry.clone(),
-                                                    replacement: entry,
-                                                });
-                                            }
-                                        }
-                                    }
-                                }
-                                matches.sort_by(|a, b| a.display.cmp(&b.display));
-                                return Ok((
-                                    if arg_parts.len() >= 2 {
-                                        start + subcmd.len() + 1
-                                    } else {
-                                        pos
-                                    },
-                                    matches,
-                                ));
-                            }
-                            "remove" | "rm" => {
-                                // Complete current committee members
-                                let (members, _) = self.ctx.config_manager.get_verifier_committee();
-                                let model_prefix = if arg_parts.len() >= 2 {
-                                    arg_parts[1]
-                                } else {
-                                    ""
-                                };
-                                let mut matches = Vec::new();
-                                for (p, m) in &members {
-                                    let entry = format!("{p}:{m}");
-                                    if entry.starts_with(model_prefix) {
-                                        matches.push(Pair {
-                                            display: entry.clone(),
-                                            replacement: entry,
-                                        });
-                                    }
-                                }
-                                matches.sort_by(|a, b| a.display.cmp(&b.display));
-                                return Ok((
-                                    if arg_parts.len() >= 2 {
-                                        start + subcmd.len() + 1
-                                    } else {
-                                        pos
-                                    },
-                                    matches,
-                                ));
-                            }
-                            _ => return Ok((0, Vec::new())),
                         }
                     }
                     _ => {}

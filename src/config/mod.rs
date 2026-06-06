@@ -164,6 +164,12 @@ impl ConfigManager {
             return Err(anyhow::anyhow!("Invalid security configuration: {e}"));
         }
 
+        // 5. Sync auto_approve flag to prompt module
+        crate::cli::ui::prompt::AUTO_APPROVE.store(
+            final_config_struct.security.auto_approve,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+
         Ok(final_config_struct)
     }
 
@@ -279,6 +285,13 @@ impl ConfigManager {
         if self.config_init_error.set(None).is_err() {
             tracing::warn!("config_init_error already set");
         }
+
+        // Sync auto_approve flag to prompt module
+        crate::cli::ui::prompt::AUTO_APPROVE.store(
+            config.security.auto_approve,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+
         let mut write = self
             .app_config
             .write()

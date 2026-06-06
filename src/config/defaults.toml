@@ -12,6 +12,33 @@ max_chat_archives = 5
 max_output_lines = 5000
 max_output_chars = 50000
 
+
+# =============================================================================
+# Security Settings
+# =============================================================================
+# WARNING: Changing these settings in config.toml will be detected by
+# Integrity Check (the config hash is part of the signed manifest).
+#
+# DO NOT set API keys here — use environment variables instead.
+
+[security]
+# When true, all Y/n and feedback prompts are automatically answered Yes.
+# Equivalent to the old LLM_SECURE_AUTO_APPROVE env var.
+# WARNING: This bypasses all user confirmation — use with extreme caution.
+auto_approve = false
+
+# Master switch for the Verifier Committee.
+# When true (default), tool calls are verified by the configured committee.
+# When false, all tool calls fall through to manual human approval.
+verifier_enabled = true
+
+# Verifier Committee members (provider:model strings, e.g. "ollama:gemma4:e2b").
+# The committee uses an "any-flag" policy: if ANY member flags a call as
+# NeedsApproval, human approval is required.
+# When empty, the verifier falls back to manual human approval.
+# verifier_committee = ["ollama:gemma4:e2b", "openai:gpt-4o-mini"]
+
+
 # =============================================================================
 # OpenAI Compatible Providers
 # =============================================================================

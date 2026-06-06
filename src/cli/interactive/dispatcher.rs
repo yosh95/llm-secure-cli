@@ -2,7 +2,6 @@ use crate::cli::interactive::content_handler;
 use crate::cli::interactive::model_handler;
 use crate::cli::interactive::session_handler;
 use crate::cli::interactive::tool_handler;
-use crate::cli::interactive::verify_handler;
 use crate::cli::ui;
 use crate::core::session::ActiveSession;
 use colored::Colorize;
@@ -80,14 +79,7 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             model_handler::handle_alias_cmd(session, args).await;
             CommandResult::Handled
         }
-        "verify" => {
-            verify_handler::handle_verify_cmd(session, args);
-            CommandResult::Handled
-        }
-        "vcommittee" | "vcom" => {
-            verify_handler::handle_vcommittee_cmd(session, args).await;
-            CommandResult::Handled
-        }
+
         "t" | "template" => {
             return handle_template_cmd(session, args).await;
         }
@@ -175,9 +167,6 @@ fn print_help() {
     );
     println!(
         "  /m, /model [-u] [<name>]  List models (/model -u to refresh ALL providers cache) or switch to provider:model"
-    );
-    println!(
-        "  /vcommittee [set|add|remove|list] [<provider:model>]  Manage verifier (set=replace all, add=add member)"
     );
     println!("  /alias [-d <name>] [<name> <target>]  List/create/delete model aliases");
     println!("  /s, /summarize     Summarize history and clear it");

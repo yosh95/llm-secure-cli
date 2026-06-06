@@ -155,13 +155,20 @@ async fn test_processor_tool_execution_flow() {
         let _ = ctx.config_manager.set_config(config);
     }
 
-    // Configure verifier via state.toml
-    ctx.config_manager
-        .set_primary_verifier("mock:mock-model")
-        .expect("Failed to set verifier");
-    ctx.config_manager
-        .set_verifier_enabled(true)
-        .expect("Failed to enable verifier");
+    // Configure verifier via SecurityConfig (config.toml)
+    {
+        let config = (*ctx
+            .config_manager
+            .get_config()
+            .expect("Failed to get config"))
+        .clone();
+        let mut config = config;
+        config.security.verifier_committee = vec!["mock:mock-model".to_string()];
+        config.security.verifier_enabled = true;
+        ctx.config_manager
+            .set_config(config)
+            .expect("Failed to update config");
+    }
 
     let ctx = Arc::new(ctx);
 

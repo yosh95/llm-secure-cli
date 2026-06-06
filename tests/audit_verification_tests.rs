@@ -307,13 +307,20 @@ async fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSessi
     }
 
     if let Some(v_resp) = verifier_response {
-        // Configure verifier via state.toml (new provider:model format)
-        ctx.config_manager
-            .set_primary_verifier("mock_verifier:verifier-model")
-            .expect("Failed to set verifier provider:model");
-        ctx.config_manager
-            .set_verifier_enabled(true)
-            .expect("Failed to enable verifier");
+        // Configure verifier via SecurityConfig (config.toml)
+        {
+            let config = (*ctx
+                .config_manager
+                .get_config()
+                .expect("Failed to get config"))
+            .clone();
+            let mut config = config;
+            config.security.verifier_committee = vec!["mock_verifier:verifier-model".to_string()];
+            config.security.verifier_enabled = true;
+            ctx.config_manager
+                .set_config(config)
+                .expect("Failed to update config");
+        }
 
         let ctx = Arc::new(ctx);
 
@@ -343,11 +350,20 @@ async fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSessi
         result.expect("process_and_print should succeed");
         session
     } else {
-        // Verifier disabled: don't set any verifier provider:model
-        // and explicitly disable verifier
-        ctx.config_manager
-            .set_verifier_enabled(false)
-            .expect("Failed to disable verifier");
+        // Verifier disabled: explicitly disable in config
+        {
+            let config = (*ctx
+                .config_manager
+                .get_config()
+                .expect("Failed to get config"))
+            .clone();
+            let mut config = config;
+            config.security.verifier_committee = Vec::new();
+            config.security.verifier_enabled = false;
+            ctx.config_manager
+                .set_config(config)
+                .expect("Failed to update config");
+        }
 
         let ctx = Arc::new(ctx);
 
