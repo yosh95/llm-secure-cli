@@ -7,6 +7,19 @@ use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
+use std::sync::Mutex;
+
+/// Global mutex that serializes all audit log file writes.
+///
+/// Without this mutex, concurrent calls to `log_audit_and_return` from multiple
+/// async tasks (e.g., Verifier Committee members) would race on the same audit
+/// log file: `get_last_log_hash()` could read stale data, `OpenOptions::append()`
+/// could interleave partial writes, and `trim_log_file()` could race with
+/// concurrent appends, potentially corrupting the audit chain.
+///
+/// The mutex is held only for the brief file-I/O section — PQC operations
+/// (encryption, signing) happen *before* acquiring the lock.
+static AUDIT_LOG_MUTEX: Mutex<()> = Mutex::new(());
 
 pub fn log_audit(params: AuditParams) {
     let tool_name = params.tool_name.to_string();
@@ -234,6 +247,18 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         out.truncate(end);
         out.push_str("...[TRUNCATED]");
     }
+
+    // Serialize all audit log file I/O with a global mutex to prevent:
+    // 1. Interleaved writes from concurrent async tasks (Verifier Committee members, etc.)
+    // 2. Trim racing with concurrent appends
+    // 3. head cache reads seeing stale data
+    let _lock = match AUDIT_LOG_MUTEX.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            tracing::error!("Audit log mutex poisoned: {e}");
+            return None;
+        }
+    };
 
     let mut options = OpenOptions::new();
     options.create(true).append(true);

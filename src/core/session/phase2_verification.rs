@@ -222,6 +222,11 @@ impl ActiveSession {
     }
 
     /// Wait for the verifier task to complete, with timeout and interrupt support.
+    ///
+    /// **IMPORTANT**: On timeout or Ctrl-C, the spawned verifier task is explicitly
+    /// aborted to prevent resource leaks (background tasks consuming HTTP connections,
+    /// memory, and tokio task slots). Without this abort, leaked tasks accumulate
+    /// during long ReAct loops and eventually cause the system to hang.
     async fn wait_for_verifier(
         &mut self,
         handle: tokio::task::JoinHandle<VerificationOutcome>,
@@ -230,17 +235,25 @@ impl ActiveSession {
 
         let mut spin = crate::utils::spinner::Spinner::start("Running security verification…");
 
+        // Obtain an AbortHandle *before* the select! so we can cancel the task
+        // if the timeout or Ctrl-C branch wins.
+        let abort_handle = handle.abort_handle();
+
         let res = tokio::select! {
             res = handle => {
                 spin.finish("done");
                 res.unwrap_or(VerificationOutcome::FallbackRequired("Task Panicked".into()))
             }
             () = tokio::time::sleep(std::time::Duration::from_secs(VERIFIER_TIMEOUT_SECS)) => {
+                // Abort the background verifier task to prevent resource leaks.
+                abort_handle.abort();
                 spin.stop();
                 eprintln!("Verifier timed out after {VERIFIER_TIMEOUT_SECS}s.");
                 VerificationOutcome::FallbackRequired(format!("Verifier timed out after {VERIFIER_TIMEOUT_SECS}s"))
             }
             _ = tokio::signal::ctrl_c() => {
+                // Abort the background verifier task to prevent resource leaks.
+                abort_handle.abort();
                 spin.stop();
                 eprintln!("^C - Interrupted.");
                 self.handle_interruption();

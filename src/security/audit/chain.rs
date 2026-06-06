@@ -30,29 +30,54 @@ pub fn write_head_cache(hash: &str) {
             "Failed to create head cache directory"
         );
     }
+
+    // Atomic write: write to temp file, flush, then rename.
+    // No fallback to direct write — a partial/direct write could corrupt the cache,
+    // causing get_last_log_hash to return stale hashes and breaking the chain.
+    // If rename fails, the next session will rebuild the cache from the log file.
     let tmp_path = cache_path.with_extension("cache.tmp");
-    if let Ok(mut f) = std::fs::File::create(&tmp_path) {
-        use std::io::Write;
-        if writeln!(f, "{hash}").is_ok() {
-            drop(f);
-            if let Err(e) = std::fs::rename(&tmp_path, &cache_path) {
-                tracing::warn!(
-                    src = %tmp_path.display(),
-                    dst = %cache_path.display(),
-                    error = %e,
-                    "Failed to atomically rename head cache; falling back to direct write"
-                );
-            }
+    let mut f = match std::fs::File::create(&tmp_path) {
+        Ok(f) => f,
+        Err(e) => {
+            tracing::warn!(
+                path = %tmp_path.display(),
+                error = %e,
+                "Failed to create head cache temp file (non-critical: will rebuild)"
+            );
             return;
         }
-        drop(f);
-    }
-    if let Err(e) = std::fs::write(&cache_path, format!("{hash}\n")) {
+    };
+
+    use std::io::Write;
+    if let Err(e) = writeln!(f, "{hash}") {
         tracing::warn!(
-            path = %cache_path.display(),
+            path = %tmp_path.display(),
             error = %e,
-            "Failed to write head cache (non-critical: next session will rebuild it)"
+            "Failed to write head cache temp file (non-critical: will rebuild)"
         );
+        let _ = std::fs::remove_file(&tmp_path);
+        return;
+    }
+    // Explicitly flush before rename to ensure all data is on disk.
+    if let Err(e) = f.flush() {
+        tracing::warn!(
+            error = %e,
+            "Failed to flush head cache temp file (non-critical: will rebuild)"
+        );
+        let _ = std::fs::remove_file(&tmp_path);
+        return;
+    }
+    drop(f);
+
+    if let Err(e) = std::fs::rename(&tmp_path, &cache_path) {
+        tracing::warn!(
+            src = %tmp_path.display(),
+            dst = %cache_path.display(),
+            error = %e,
+            "Failed to atomically rename head cache (non-critical: next session will rebuild)"
+        );
+        // Clean up temp file on failure.
+        let _ = std::fs::remove_file(&tmp_path);
     }
 }
 

@@ -358,6 +358,12 @@ pub enum CommitteeVerdict {
 /// - Only if ALL members return Allowed → the result is Allowed.
 /// - If ANY member is unavailable → `FallbackRequired`.
 ///
+/// Uses `futures::future::join_all` (instead of nested `tokio::spawn`) so that
+/// all committee verification requests run on the same task. When the parent
+/// task is aborted (e.g. via `JoinHandle::abort()`), all in-flight HTTP
+/// requests are dropped immediately — preventing resource leaks that would
+/// otherwise accumulate during long ReAct loops.
+///
 /// # Arguments
 ///
 /// * `params` - The verification parameters (shared across all committee members).
@@ -378,10 +384,14 @@ pub async fn verify_committee(
         )]);
     }
 
-    // Spawn concurrent verification for each committee member
-    let mut handles = Vec::with_capacity(committee_members.len());
-    // Clone config once before the loop (needed for async tasks)
+    // Run all committee verifications concurrently using join_all.
+    // We avoid tokio::spawn for inner tasks because spawned tasks are NOT
+    // automatically cancelled when the parent task is aborted (e.g., via
+    // JoinHandle::abort()). join_all runs all futures on the same task,
+    // so when this parent task is aborted, all in-flight HTTP requests are
+    // dropped immediately, preventing resource leaks.
     let config_cloned = params.config.clone();
+    let mut futures = Vec::with_capacity(committee_members.len());
     for (provider, model) in committee_members {
         let ctx = params.ctx_app.clone();
         let user_query = params.user_query.to_string();
@@ -392,7 +402,7 @@ pub async fn verify_committee(
         let model = model.clone();
         let config_clone = config_cloned.clone();
 
-        handles.push(tokio::spawn(async move {
+        futures.push(async move {
             let outcome = verify_tool_call_full(VerificationParams {
                 ctx_app: ctx,
                 user_query: &user_query,
@@ -405,8 +415,10 @@ pub async fn verify_committee(
             })
             .await;
             (provider, model, outcome)
-        }));
+        });
     }
+
+    let results = futures::future::join_all(futures).await;
 
     // Collect outcomes
     let mut needs_approval: Vec<(String, String, String)> = Vec::new();
@@ -415,28 +427,19 @@ pub async fn verify_committee(
     let mut allowed_count = 0;
     let total = committee_members.len();
 
-    for handle in handles {
-        match handle.await {
-            Ok((provider, model, outcome)) => match outcome {
-                VerificationOutcome::Allowed(_reason) => {
-                    allowed_count += 1;
-                }
-                VerificationOutcome::Modified(fixed_args, reason) => {
-                    modified.push((provider, model, fixed_args, reason));
-                }
-                VerificationOutcome::NeedsApproval(reason) => {
-                    needs_approval.push((provider, model, reason));
-                }
-                VerificationOutcome::FallbackRequired(reason) => {
-                    fallbacks.push((provider, model, reason));
-                }
-            },
-            Err(e) => {
-                fallbacks.push((
-                    "unknown".to_string(),
-                    "unknown".to_string(),
-                    format!("Task panicked: {e}"),
-                ));
+    for (provider, model, outcome) in results {
+        match outcome {
+            VerificationOutcome::Allowed(_reason) => {
+                allowed_count += 1;
+            }
+            VerificationOutcome::Modified(fixed_args, reason) => {
+                modified.push((provider, model, fixed_args, reason));
+            }
+            VerificationOutcome::NeedsApproval(reason) => {
+                needs_approval.push((provider, model, reason));
+            }
+            VerificationOutcome::FallbackRequired(reason) => {
+                fallbacks.push((provider, model, reason));
             }
         }
     }
