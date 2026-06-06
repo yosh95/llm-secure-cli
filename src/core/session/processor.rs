@@ -182,8 +182,15 @@ impl ActiveSession {
                         .unwrap_or_default();
                     let id = fc.get("id").and_then(|v| v.as_str()).unwrap_or_default();
 
-                    let (result_value, _approved) =
-                        self.verify_and_execute_tool_workflow(name, &args).await?;
+                    let result_value =
+                        match self.verify_and_execute_tool_workflow(name, &args).await {
+                            Ok((val, _)) => val,
+                            Err(e) => {
+                                let err_msg = format!("Error (Phase 1): {e}");
+                                self.ctx.ui.report_error(&err_msg);
+                                serde_json::json!({"error": err_msg})
+                            }
+                        };
 
                     let mut fr = HashMap::new();
                     fr.insert("id".to_string(), serde_json::json!(id));
