@@ -18,7 +18,7 @@ pub enum PromptMode {
 }
 
 /// Global auto-approve flag.
-/// Set from the `auto_approve` field in `[security]` section of config.toml.
+/// Set from the `auto_approve` field in `\[security\]` section of config.toml.
 /// When true, all confirmation prompts are automatically answered Yes.
 /// WARNING: This bypasses user confirmation — use with extreme caution.
 pub static AUTO_APPROVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);

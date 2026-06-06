@@ -121,7 +121,7 @@ pub async fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<Ap
 }
 
 /// Returns `true` if the integrity prompts should be skipped.
-/// Uses the `auto_approve` setting from the [security] section of config.toml.
+/// Uses the `auto_approve` setting from the \[security\] section of config.toml.
 /// When enabled, integrity check prompts are suppressed — only warnings are
 /// displayed, and execution continues without aborting.
 /// This is useful for non-interactive environments (e.g., tests).
