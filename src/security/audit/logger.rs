@@ -9,16 +9,25 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::Mutex;
 
-/// Global mutex that serializes all audit log file writes.
+/// Global mutex that serializes the chain-sensitive portion of audit log writes.
 ///
-/// Without this mutex, concurrent calls to `log_audit_and_return` from multiple
-/// async tasks (e.g., Verifier Committee members) would race on the same audit
-/// log file: `get_last_log_hash()` could read stale data, `OpenOptions::append()`
-/// could interleave partial writes, and `trim_log_file()` could race with
-/// concurrent appends, potentially corrupting the audit chain.
+/// **What runs *under the lock* (must be atomic per entry):**
+/// - `get_last_log_hash()` read (prev_hash)
+/// - Hash-chain calculation (SHA-256 over the full entry)
+/// - PQC signing (chain-dependent, but fast ~1ms)
+/// - File append (single `writeln!`)
+/// - `trim_log_file()` (races with concurrent appends)
+/// - `write_head_cache()` (must reflect the newest entry)
 ///
-/// The mutex is held only for the brief file-I/O section — PQC operations
-/// (encryption, signing) happen *before* acquiring the lock.
+/// Without atomicity, concurrent calls (e.g. Verifier Committee members) would
+/// read the same `prev_hash`, producing two entries that both chain from the
+/// same parent — a **chain fork** that silently corrupts the tamper-evident
+/// audit trail.
+///
+/// **What runs *outside the lock* (chain-independent, can be concurrent):**
+/// - PQC encryption of `args` (ML-KEM-1024, CPU-intensive but does not
+///   depend on the prev_hash; encrypted payload is attached to the entry
+///   metadata, not the chain linkage)
 static AUDIT_LOG_MUTEX: Mutex<()> = Mutex::new(());
 
 pub fn log_audit(params: AuditParams) {
@@ -92,9 +101,11 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
     let arch = std::env::consts::ARCH.to_string();
     let cli_version = env!("CARGO_PKG_VERSION").to_string();
 
-    let prev_hash = get_last_log_hash(path);
-
-    // Hybrid Encryption for high-risk data
+    // ── Phase 1 (outside lock): PQC encryption of args ─────────────
+    // ML-KEM-1024 key encapsulation is CPU-intensive but chain-independent:
+    // the encrypted payload is opaque metadata attached to the entry and
+    // does not participate in the hash-chain linkage.  Running it here
+    // allows concurrent encryption across Verifier Committee members.
     let mut pqc_encrypted = false;
     let mut final_args = params.args.clone();
     let mut encryption_failed = false;
@@ -136,6 +147,24 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
             }
         }
     }
+
+    // ── Phase 2 (under lock): chain-critical operations ────────────
+    // All of prev_hash read → entry construction → hash calculation →
+    // PQC signature → file write → trim → head-cache update must happen
+    // atomically.  Otherwise two concurrent verifiers can both read the
+    // same prev_hash, producing a chain fork that silently corrupts the
+    // tamper-evident audit trail.
+    let _lock = match AUDIT_LOG_MUTEX.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            tracing::error!("Audit log mutex poisoned: {e}");
+            return None;
+        }
+    };
+
+    // prev_hash MUST be read under the lock so that a concurrent writer
+    // cannot slip a new entry between our read and our append.
+    let prev_hash = get_last_log_hash(path);
 
     let mut log_entry = AuditEntry {
         timestamp,
@@ -194,7 +223,9 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
     hasher.update(entry_json.as_bytes());
     log_entry.hash = crate::utils::hex_encode(hasher.finalize());
 
-    // PQC Signing
+    // PQC Signing: chain-dependent (signs log_entry.hash), so must run
+    // under the lock.  Signature verification is a fixed-cost operation
+    // (~1ms for ML-DSA-87), so lock-hold time remains short.
     let variant = crate::security::pqc::PQCAgilityManager::get_required_level(
         params.config,
         params.tool_name,
@@ -248,18 +279,6 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         out.push_str("...[TRUNCATED]");
     }
 
-    // Serialize all audit log file I/O with a global mutex to prevent:
-    // 1. Interleaved writes from concurrent async tasks (Verifier Committee members, etc.)
-    // 2. Trim racing with concurrent appends
-    // 3. head cache reads seeing stale data
-    let _lock = match AUDIT_LOG_MUTEX.lock() {
-        Ok(guard) => guard,
-        Err(e) => {
-            tracing::error!("Audit log mutex poisoned: {e}");
-            return None;
-        }
-    };
-
     let mut options = OpenOptions::new();
     options.create(true).append(true);
     #[cfg(unix)]
@@ -299,7 +318,8 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         }
     }
 
-    // Update the head-pointer cache
+    // Update the head-pointer cache atomically with the append so the
+    // next writer's `get_last_log_hash()` sees this entry's hash.
     crate::security::audit::chain::write_head_cache(&log_entry.hash);
 
     Some(log_entry)
