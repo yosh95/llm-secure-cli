@@ -1,5 +1,5 @@
-use crate::core::session::ActiveSession;
 use crate::config::models::CommitteePolicy;
+use crate::core::session::ActiveSession;
 use crate::security::verifier::{CommitteeVerdict, VerificationOutcome, VerificationParams};
 use serde_json::Value;
 

@@ -166,7 +166,6 @@ impl Default for SecurityConfig {
     }
 }
 
-
 /// Committee voting policy for the Verifier Committee.
 ///
 /// Determines how individual LLM verdicts are aggregated into a single decision.
@@ -194,7 +193,6 @@ impl Default for CommitteePolicy {
         Self::Majority
     }
 }
-
 
 /// Describes a single validation failure in a [`SecurityConfig`].
 #[derive(Debug, Clone, PartialEq, Eq)]
