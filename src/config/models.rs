@@ -169,7 +169,7 @@ impl Default for SecurityConfig {
 /// Committee voting policy for the Verifier Committee.
 ///
 /// Determines how individual LLM verdicts are aggregated into a single decision.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum CommitteePolicy {
     /// Any-flag policy (conservative):
@@ -183,15 +183,10 @@ pub enum CommitteePolicy {
     /// - Allowed votes >= (total / 2 + 1) → Allowed
     /// - NeedsApproval votes >= (total / 2 + 1) → NeedsApproval
     /// - Otherwise → NeedsApproval (ties/default to human review)
-    /// This reduces false positives compared to any-flag while maintaining
-    /// strong security through diverse LLM perspectives.
+    ///   This reduces false positives compared to any-flag while maintaining
+    ///   strong security through diverse LLM perspectives.
+    #[default]
     Majority,
-}
-
-impl Default for CommitteePolicy {
-    fn default() -> Self {
-        Self::Majority
-    }
 }
 
 /// Describes a single validation failure in a [`SecurityConfig`].
