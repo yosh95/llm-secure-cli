@@ -334,10 +334,13 @@ impl Verifier {
 
 /// The aggregated verdict from a committee of verifier LLMs.
 ///
-/// The committee uses an "any-flag" policy:
-/// - If ANY member returns `NeedsApproval` → human approval is required.
-/// - Only if ALL members return Allowed → the call is auto-approved.
+/// The aggregation policy is determined by `CommitteePolicy`:
+/// - `Majority` (default): decisions aggregated by simple majority.
+/// - `AnyFlag`: if ANY member flags → human approval required.
+///
+/// In both policies:
 /// - If ANY member is unavailable → `FallbackRequired` (human must decide).
+/// - Ties / ambiguity → `NeedsApproval` (human must decide).
 #[derive(Debug, Clone)]
 pub enum CommitteeVerdict {
     /// All committee members approved the tool call.
@@ -353,10 +356,13 @@ pub enum CommitteeVerdict {
 
 /// Run verification against a committee of multiple verifier LLMs concurrently.
 ///
-/// The committee uses an "any-flag" policy:
-/// - If ANY member returns `NeedsApproval` → the result is `NeedsApproval`.
-/// - Only if ALL members return Allowed → the result is Allowed.
+/// The aggregation policy is passed as `policy`:
+/// - `CommitteePolicy::Majority` (default): majority vote decides.
+/// - `CommitteePolicy::AnyFlag`: ANY flag → `NeedsApproval`.
+///
+/// In both policies:
 /// - If ANY member is unavailable → `FallbackRequired`.
+/// - Ties / ambiguity → `NeedsApproval` (human must decide).
 ///
 /// Uses `futures::future::join_all` (instead of nested `tokio::spawn`) so that
 /// all committee verification requests run on the same task. When the parent
@@ -375,6 +381,7 @@ pub enum CommitteeVerdict {
 pub async fn verify_committee(
     params: VerificationParams<'_>,
     committee_members: &[(String, String)],
+    policy: &crate::config::models::CommitteePolicy,
 ) -> CommitteeVerdict {
     if committee_members.is_empty() {
         return CommitteeVerdict::FallbackRequired(vec![(
@@ -444,7 +451,35 @@ pub async fn verify_committee(
         }
     }
 
-    // Aggregation logic: "any-flag" policy
+    // Aggregation logic: delegates to the configured policy
+    match policy {
+        crate::config::models::CommitteePolicy::AnyFlag => {
+            aggregate_any_flag(allowed_count, total, needs_approval, fallbacks, modified)
+        }
+        crate::config::models::CommitteePolicy::Majority => {
+            aggregate_majority(allowed_count, total, needs_approval, fallbacks, modified)
+        }
+    }
+}
+
+
+// =============================================================================
+// Committee aggregation strategies
+// =============================================================================
+
+/// Aggregate committee verdicts using the "any-flag" policy.
+///
+/// - If ANY member is unavailable → `FallbackRequired`.
+/// - If ANY member returns `NeedsApproval` → `NeedsApproval`.
+/// - Only if ALL members return Allowed → `Allowed`.
+/// - If any member returns Modified (and no one flagged) → `Modified`.
+fn aggregate_any_flag(
+    allowed_count: usize,
+    total: usize,
+    needs_approval: Vec<(String, String, String)>,
+    fallbacks: Vec<(String, String, String)>,
+    mut modified: Vec<(String, String, Value, String)>,
+) -> CommitteeVerdict {
     if !fallbacks.is_empty() {
         return CommitteeVerdict::FallbackRequired(fallbacks);
     }
@@ -476,4 +511,57 @@ pub async fn verify_committee(
             fallbacks.len()
         ),
     )])
+}
+
+/// Aggregate committee verdicts using the "majority-vote" policy.
+///
+/// - If ANY member is unavailable → `FallbackRequired` (human must decide).
+/// - Count `Allowed` vs `NeedsApproval` votes (Modified counts as Allowed).
+/// - `Allowed` > floor(total / 2) → `Allowed`.
+/// - `NeedsApproval` > floor(total / 2) → `NeedsApproval`.
+/// - Tie or ambiguity → `NeedsApproval` (default to human review).
+fn aggregate_majority(
+    allowed_count: usize,
+    total: usize,
+    needs_approval: Vec<(String, String, String)>,
+    fallbacks: Vec<(String, String, String)>,
+    mut modified: Vec<(String, String, Value, String)>,
+) -> CommitteeVerdict {
+    // If any member is unavailable, we cannot proceed — human must decide.
+    if !fallbacks.is_empty() {
+        return CommitteeVerdict::FallbackRequired(fallbacks);
+    }
+
+    // Modified votes count as "allowed with corrections"
+    let modified_count = modified.len();
+    let effective_allowed = allowed_count + modified_count;
+    let flagged_count = needs_approval.len();
+    let threshold = total / 2; // floor(total / 2) — majority needs > this
+
+    if effective_allowed > threshold {
+        // Allowed (or Modified) has the majority
+        if !modified.is_empty() {
+            // Use the most common modification if multiple, else the first
+            let (_, _, fixed_args, reason) = modified.remove(0);
+            CommitteeVerdict::Modified(fixed_args, reason)
+        } else {
+            CommitteeVerdict::Allowed
+        }
+    } else if flagged_count > threshold {
+        // NeedsApproval has the majority
+        CommitteeVerdict::NeedsApproval(needs_approval)
+    } else {
+        // Tie or unexpected state — default to human review
+        let mut details: Vec<(String, String, String)> = needs_approval;
+        if effective_allowed == flagged_count {
+            details.push((
+                "aggregator".to_string(),
+                "tie".to_string(),
+                format!(
+                    "Tie: allowed={effective_allowed}, flagged={flagged_count} (total={total}). Defaulting to human review."
+                ),
+            ));
+        }
+        CommitteeVerdict::NeedsApproval(details)
+    }
 }

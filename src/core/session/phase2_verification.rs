@@ -1,4 +1,5 @@
 use crate::core::session::ActiveSession;
+use crate::config::models::CommitteePolicy;
 use crate::security::verifier::{CommitteeVerdict, VerificationOutcome, VerificationParams};
 use serde_json::Value;
 
@@ -46,12 +47,17 @@ impl ActiveSession {
                 ));
                 Some(self.spawn_verifier_task(name, args, v_provider.clone(), v_model.clone()))
             } else {
-                // Multi-member committee — any-flag policy
+                // Multi-member committee
+                let policy = &config.security.committee_policy;
+                let policy_name = match policy {
+                    CommitteePolicy::AnyFlag => "any-flag",
+                    CommitteePolicy::Majority => "majority-vote",
+                };
                 let member_count = committee_members.len();
                 self.ctx.ui.report_info(&format!(
-                    "Verifier Committee: {member_count} members (any-flag policy)",
+                    "Verifier Committee: {member_count} members ({policy_name} policy)",
                 ));
-                Some(self.spawn_committee_task(name, args, committee_members))
+                Some(self.spawn_committee_task(name, args, committee_members, policy.clone()))
             };
 
             self.resolve_verifier_outcome(name, args, config, verifier_handle)
@@ -385,15 +391,13 @@ impl ActiveSession {
     /// Spawns the aggregated committee verification task.
     ///
     /// Runs ALL committee members concurrently and aggregates their verdicts
-    /// using the "any-flag" policy:
-    /// - If ANY member flags `NeedsApproval` → the aggregated result is `NeedsApproval`.
-    /// - Only if ALL members return Allowed → the result is Allowed.
-    /// - If ANY member is unavailable → `FallbackRequired`.
+    /// using the configured `policy` (default: majority-vote).
     fn spawn_committee_task(
         &self,
         name: &str,
         args: &serde_json::Map<String, Value>,
         committee_members: Vec<(String, String)>,
+        policy: CommitteePolicy,
     ) -> tokio::task::JoinHandle<VerificationOutcome> {
         let ctx_clone = self.ctx.clone();
         let config_clone = match self.ctx.config_manager.get_config() {
@@ -417,6 +421,7 @@ impl ActiveSession {
                     model: None,
                 },
                 &committee_members,
+                &policy,
             )
             .await;
 

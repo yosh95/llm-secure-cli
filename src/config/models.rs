@@ -139,12 +139,16 @@ pub struct SecurityConfig {
     pub verifier_enabled: bool,
 
     /// Verifier Committee members (provider:model strings, e.g. "openai:gpt-4o").
-    /// The committee uses an "any-flag" policy: if ANY member flags a call
-    /// as NeedsApproval, human approval is required. Only if ALL members
-    /// return Allowed is the call auto-approved.
     /// When empty, the verifier falls back to manual human approval.
     #[serde(default)]
     pub verifier_committee: Vec<String>,
+
+    /// Committee voting policy.
+    ///
+    /// - `"any-flag"` (conservative): ANY member flags → human approval required.
+    /// - `"majority"` (balanced, **default**): majority vote decides.
+    #[serde(default)]
+    pub committee_policy: CommitteePolicy,
 }
 
 fn default_verifier_enabled() -> bool {
@@ -157,9 +161,40 @@ impl Default for SecurityConfig {
             auto_approve: false,
             verifier_enabled: true,
             verifier_committee: Vec::new(),
+            committee_policy: CommitteePolicy::default(),
         }
     }
 }
+
+
+/// Committee voting policy for the Verifier Committee.
+///
+/// Determines how individual LLM verdicts are aggregated into a single decision.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CommitteePolicy {
+    /// Any-flag policy (conservative):
+    /// If ANY member returns NeedsApproval → human approval is required.
+    /// Only if ALL members return Allowed → the call is auto-approved.
+    /// This minimizes false negatives (missed attacks) at the cost of
+    /// more false positives (unnecessary human review).
+    AnyFlag,
+    /// Majority-vote policy (balanced, DEFAULT):
+    /// Decisions are aggregated by simple majority.
+    /// - Allowed votes >= (total / 2 + 1) → Allowed
+    /// - NeedsApproval votes >= (total / 2 + 1) → NeedsApproval
+    /// - Otherwise → NeedsApproval (ties/default to human review)
+    /// This reduces false positives compared to any-flag while maintaining
+    /// strong security through diverse LLM perspectives.
+    Majority,
+}
+
+impl Default for CommitteePolicy {
+    fn default() -> Self {
+        Self::Majority
+    }
+}
+
 
 /// Describes a single validation failure in a [`SecurityConfig`].
 #[derive(Debug, Clone, PartialEq, Eq)]

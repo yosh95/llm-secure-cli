@@ -33,10 +33,16 @@ auto_approve = false
 verifier_enabled = true
 
 # Verifier Committee members (provider:model strings, e.g. "ollama:gemma4:e2b").
-# The committee uses an "any-flag" policy: if ANY member flags a call as
-# NeedsApproval, human approval is required.
 # When empty, the verifier falls back to manual human approval.
 # verifier_committee = ["ollama:gemma4:e2b", "openai:gpt-4o-mini"]
+
+# Committee voting policy: "majority" (default) or "any-flag".
+# - "majority" (balanced): majority vote decides. Reduces false positives
+#   compared to any-flag while maintaining strong security.
+# - "any-flag" (conservative): if ANY member flags the call as NeedsApproval,
+#   human approval is required. Minimizes missed attacks but causes more
+#   unnecessary human review.
+# committee_policy = "majority"
 
 
 # =============================================================================
