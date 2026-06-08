@@ -160,7 +160,9 @@ fn print_help() {
     println!(
         "  /eh, /edit_history View/edit the conversation history in TOML format (includes full structure)"
     );
-    println!("  /session [load|delete <id>|clear]  List, load, delete, or clear saved sessions");
+    println!(
+        "  /session [load|delete <id>|clear]  List, load, delete, or clear saved sessions (\"last\" for most recent)"
+    );
     println!("  /attach <path|url> Attach a file or URL to the next request");
     println!(
         "  /tools [on|off]    Toggle or show status of tool execution /to, /tool_output [on|off] Toggle display of tool execution results (default: hidden)"

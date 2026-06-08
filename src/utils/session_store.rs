@@ -151,8 +151,26 @@ pub fn list_sessions() -> anyhow::Result<Vec<SessionListing>> {
     Ok(listings)
 }
 
+/// Load the most recently created session.
+fn load_last_session() -> anyhow::Result<Vec<Message>> {
+    let sessions = list_sessions()?;
+    if sessions.is_empty() {
+        return Err(anyhow::anyhow!("No saved sessions found."));
+    }
+    // list_sessions sorts by created_at ascending, so the last element is the most recent.
+    let latest = sessions
+        .last()
+        .ok_or_else(|| anyhow::anyhow!("sessions is non-empty (unreachable)"))?;
+    load_session(&latest.filename)
+}
+
 /// Load a session from the sessions directory by its filename (without .json extension).
+/// Special value "last" loads the most recently created session.
 pub fn load_session(filename: &str) -> anyhow::Result<Vec<Message>> {
+    // Special keyword "last" loads the most recent session
+    if filename == "last" {
+        return load_last_session();
+    }
     let dir = crate::consts::sessions_dir();
 
     // Try with exact filename, then with .json appended

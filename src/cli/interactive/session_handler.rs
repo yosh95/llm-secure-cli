@@ -50,7 +50,7 @@ pub fn handle_session_cmd(session: &mut ActiveSession, args: &str) {
                     ui::print_rule(None, Some("cyan"));
                     println!(
                         "{}",
-                        "Usage: /session load|delete <id>  or  /session clear".dimmed()
+                        "Usage: /session load|delete <id>  or  /session clear  (use \"last\" for most recent)".dimmed()
                     );
                 }
             }

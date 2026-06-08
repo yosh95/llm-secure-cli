@@ -108,9 +108,16 @@ impl Completer for ChatCompleter {
                             } else {
                                 pos
                             };
-                            // Complete session filenames
+                            // Complete session filenames (plus "last" shortcut)
                             let dir = crate::consts::sessions_dir();
                             let mut matches = Vec::new();
+                            // Suggest "last" shortcut for most recent session
+                            if "last".starts_with(session_prefix) {
+                                matches.push(Pair {
+                                    display: "last  (most recent session)".to_string(),
+                                    replacement: "last".to_string(),
+                                });
+                            }
                             if dir.exists()
                                 && let Ok(entries) = std::fs::read_dir(&dir)
                             {
