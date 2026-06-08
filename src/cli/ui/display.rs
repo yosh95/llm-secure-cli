@@ -261,7 +261,8 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
 pub fn print_tool_call(name: &str, args: &serde_json::Value) {
     let term = Term::stdout();
     let (_, width) = term.size();
-    let buf = format_tool_call(name, args, width as usize);
+    let width = (width as usize).min(140);
+    let buf = format_tool_call(name, args, width);
     print!("{buf}");
 }
 
