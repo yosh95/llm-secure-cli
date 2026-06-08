@@ -19,15 +19,55 @@ pub fn is_python_available() -> bool {
         .is_ok_and(|s| s.success())
 }
 
+/// RAII guard that ensures the Python subprocess is killed and the temp file
+/// is cleaned up when dropped (including on Ctrl+C / Future cancellation).
+///
+/// Without this guard, `tokio::process::Child` is silently detached on drop,
+/// leaving orphan processes that accumulate and can intercept subsequent
+/// Ctrl+C signals, making the shell unresponsive to interrupts.
+struct PythonProcessGuard {
+    child: Option<tokio::process::Child>,
+    tmp_path: std::path::PathBuf,
+}
+
+impl PythonProcessGuard {
+    fn new(child: tokio::process::Child, tmp_path: std::path::PathBuf) -> Self {
+        Self {
+            child: Some(child),
+            tmp_path,
+        }
+    }
+
+    /// Take ownership of the child for normal completion (Drop won't kill it).
+    fn take_child(&mut self) -> Option<tokio::process::Child> {
+        self.child.take()
+    }
+}
+
+impl Drop for PythonProcessGuard {
+    fn drop(&mut self) {
+        if let Some(ref mut child) = self.child {
+            // Send SIGKILL to prevent orphan processes.
+            let _ = child.start_kill();
+            // Try to reap the child synchronously (non-blocking).
+            // Since we just killed it with start_kill(), try_wait() should
+            // immediately return the exit status.
+            let _ = child.try_wait();
+        }
+        // Best-effort cleanup of the temp file.
+        let _ = std::fs::remove_file(&self.tmp_path);
+    }
+}
+
 /// Executes arbitrary Python code supplied by the LLM.
 ///
 /// The code is written to a temporary file and executed via `python3`.
 /// Security is provided by:
 ///   1. Docker container isolation (the primary sandbox)
 ///   2. Verifier Committee semantic verification (Phase 3)
-///   3. CASS risk classification (Critical → always requires Verifier)
+///   3. CASS risk classification (Critical -> always requires Verifier)
 ///
-/// No AST-level sandboxing, no restricted builtins, no blocked modules —
+/// No AST-level sandboxing, no restricted builtins, no blocked modules --
 /// those approaches proved brittle and incomplete in practice.
 pub async fn execute_python(
     args: HashMap<String, Value>,
@@ -80,30 +120,36 @@ pub async fn execute_python(
     {
         Ok(child) => child,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // This shouldn't happen since we check availability at registration,
-            // but handle it gracefully just in case.
+            // Clean up temp file before returning error
+            let _ = std::fs::remove_file(&tmp_path);
             return Err(anyhow::anyhow!(
                 "python3 not found in system PATH. \
                  Ensure python3 is installed and available."
             ));
         }
-        Err(e) => return Err(anyhow::anyhow!("Failed to start python3: {e}")),
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(anyhow::anyhow!("Failed to start python3: {e}"));
+        }
     };
 
-    let mut stdout_reader = BufReader::new(
-        child
-            .stdout
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("Failed to open stdout"))?,
-    )
+    // Set up stdout/stderr readers BEFORE moving child into the guard.
+    // The readers take ownership of the pipes, so moving `child` afterwards is safe.
+    let mut stdout_reader = BufReader::new(child.stdout.take().ok_or_else(|| {
+        let _ = std::fs::remove_file(&tmp_path);
+        anyhow::anyhow!("Failed to open stdout")
+    })?)
     .lines();
-    let mut stderr_reader = BufReader::new(
-        child
-            .stderr
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("Failed to open stderr"))?,
-    )
+    let mut stderr_reader = BufReader::new(child.stderr.take().ok_or_else(|| {
+        let _ = std::fs::remove_file(&tmp_path);
+        anyhow::anyhow!("Failed to open stderr")
+    })?)
     .lines();
+
+    // Now move the child into the RAII guard.
+    // If this function exits early (timeout, Ctrl+C cancellation via outer select!),
+    // the guard's Drop will kill the subprocess and clean up the temp file.
+    let mut guard = PythonProcessGuard::new(child, tmp_path);
 
     let mut stdout_res = String::new();
     let mut stderr_res = String::new();
@@ -138,13 +184,7 @@ pub async fn execute_python(
                 }
             }
             () = &mut sleep => {
-                if let Err(e) = child.kill().await {
-                    tracing::warn!("Failed to kill python subprocess: {}", e);
-                }
-                // Clean up the temp file on timeout
-                if let Err(e) = std::fs::remove_file(&tmp_path) {
-                    tracing::warn!("Failed to remove temp file {:?}: {}", tmp_path, e);
-                }
+                // Guard's Drop will kill the child and clean up the temp file.
                 return Err(anyhow::anyhow!(
                     "Python execution timed out after {timeout_secs} seconds"
                 ));
@@ -152,10 +192,11 @@ pub async fn execute_python(
         }
     }
 
-    // Clean up temp file after execution
-    if let Err(e) = std::fs::remove_file(&tmp_path) {
-        tracing::warn!("Failed to remove temp file {:?}: {}", tmp_path, e);
-    }
+    // Take the child back from the guard so Drop won't kill it
+    // (it's about to exit naturally -- we just need to reap its status).
+    let mut child = guard
+        .take_child()
+        .ok_or_else(|| anyhow::anyhow!("Child process state inconsistent"))?;
 
     match child.wait().await {
         Ok(status) => Ok(json!({
@@ -173,4 +214,5 @@ pub async fn execute_python(
         })),
         Err(e) => Err(anyhow::anyhow!("Execution error: {e}")),
     }
+    // guard drops here: child is None (taken), so only temp file cleanup runs.
 }
