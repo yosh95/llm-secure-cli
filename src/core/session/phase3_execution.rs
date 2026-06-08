@@ -28,9 +28,17 @@ impl ActiveSession {
 
         let args_map: HashMap<String, Value> =
             args.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+
+        // Start a spinner with the tool name to show elapsed time (same style as LLM API calls)
+        let mut spin = crate::utils::spinner::Spinner::start(name);
+
         let result = tokio::select! {
-            res = self.execute_tool(name, &args_map) => res,
+            res = self.execute_tool(name, &args_map) => {
+                spin.finish("done");
+                res
+            }
             _ = tokio::signal::ctrl_c() => {
+                spin.stop();
                 println!("\n^C - Interrupted.");
                 // We return an error string to the LLM
                 return Value::String("Error: Execution interrupted by user.".into());
