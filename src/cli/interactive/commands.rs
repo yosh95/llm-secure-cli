@@ -51,6 +51,11 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
         description: "Show detailed OpenRouter credit info",
     },
     CommandEntry {
+        name: "rankings",
+        aliases: &[],
+        description: "Show OpenRouter model rankings by token usage",
+    },
+    CommandEntry {
         name: "edit_history",
         aliases: &["eh"],
         description: "View/edit the conversation history in TOML format",

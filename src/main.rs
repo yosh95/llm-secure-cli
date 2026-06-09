@@ -60,6 +60,12 @@ enum Commands {
         #[clap(default_value = "openrouter")]
         provider: String,
     },
+    /// Show OpenRouter model rankings (token usage leaderboard)
+    Rankings {
+        /// Provider to check rankings for
+        #[clap(default_value = "openrouter")]
+        provider: String,
+    },
     /// Verify Agent Skills for safety (structural, signature, and semantic checks)
     VerifySkill {
         /// Path to the skill directory or a directory containing multiple skills
@@ -187,6 +193,10 @@ async fn handle_subcommand(
         }
         Commands::Credits { provider } => {
             llm_secure_cli::cli::commands::credits::run_credits(&ctx.config_manager, &provider)
+                .await;
+        }
+        Commands::Rankings { provider } => {
+            llm_secure_cli::cli::commands::rankings::run_rankings(&ctx.config_manager, &provider)
                 .await;
         }
         Commands::VerifySkill {

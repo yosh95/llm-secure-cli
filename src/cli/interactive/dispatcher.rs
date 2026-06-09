@@ -95,6 +95,10 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             crate::cli::commands::credits::run_credits_interactive(session).await;
             CommandResult::Handled
         }
+        "rankings" => {
+            crate::cli::commands::rankings::run_rankings_interactive(session).await;
+            CommandResult::Handled
+        }
         _ => {
             let full_cmd = format!("/{cmd}");
             if !crate::cli::interactive::commands::is_valid_command(&full_cmd) {
@@ -179,6 +183,7 @@ fn print_help() {
     println!(
         "  /credits           Show detailed OpenRouter credit info (uses both /credits and /key APIs)"
     );
+    println!("  /rankings          Show OpenRouter model rankings (token usage leaderboard)");
     println!("  /raw               Show raw conversation history");
     println!("  F2                 Open external editor to edit the current prompt (multi-line)");
     ui::print_rule(None, Some("cyan"));
