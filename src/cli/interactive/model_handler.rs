@@ -151,6 +151,35 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
         return;
     }
 
+    // `/model -i` or `/model --info [provider:model]`: show detailed model info (endpoints etc.)
+    if args_trimmed == "-i"
+        || args_trimmed == "--info"
+        || args_trimmed.starts_with("-i ")
+        || args_trimmed.starts_with("--info ")
+    {
+        let model_spec = if args_trimmed == "-i" || args_trimmed == "--info" {
+            // Use current model if no argument
+            format!("{}:{}", current_provider, current_model)
+        } else {
+            args_trimmed
+                .strip_prefix("-i ")
+                .or_else(|| args_trimmed.strip_prefix("--info "))
+                .unwrap_or("")
+                .trim()
+                .to_string()
+        };
+
+        // Resolve provider:model
+        let (ep_provider, ep_model) = if let Some((p, m)) = model_spec.split_once(':') {
+            (p.to_string(), m.to_string())
+        } else {
+            (current_provider.clone(), model_spec)
+        };
+
+        handle_endpoints_cmd(&session.ctx.config_manager, &ep_provider, &ep_model).await;
+        return;
+    }
+
     // With argument: parse "provider:model" or just "model" (use current provider)
     // Also check aliases first
     let state = match session.ctx.config_manager.get_state() {
@@ -231,4 +260,399 @@ async fn handle_provider_only_switch(session: &mut ActiveSession, provider: &str
         }
         Err(e) => ui::report_error(&format!("Failed to switch provider: {e}")),
     }
+}
+
+/// Fetch and display OpenRouter model endpoints (provider-specific pricing & details).
+async fn handle_endpoints_cmd(
+    config_manager: &crate::config::ConfigManager,
+    provider: &str,
+    model: &str,
+) {
+    if provider != "openrouter" {
+        ui::report_error(&format!(
+            "Endpoints are only available for OpenRouter models. Current provider: '{provider}'."
+        ));
+        return;
+    }
+
+    let api_key = match config_manager.get_api_key("openrouter") {
+        Some(key) => key,
+        None => {
+            ui::report_error(
+                "OpenRouter API key is not configured. Set OPENROUTER_API_KEY in your environment.",
+            );
+            return;
+        }
+    };
+
+    // The model slug for OpenRouter is like "openai/gpt-4o" — we need author and slug
+    // If the model doesn't have a '/', assume it's just a slug and use provider as author
+    let (author, slug) = if let Some((a, s)) = model.split_once('/') {
+        (a.to_string(), s.to_string())
+    } else {
+        // If no '/' in the model, use the provider portion before ':' if it exists
+        // But we already received provider and model separately, so model is the slug
+        (provider.to_string(), model.to_string())
+    };
+
+    let url = format!(
+        "https://openrouter.ai/api/v1/models/{}/{}/endpoints",
+        urlencoding(&author),
+        urlencoding(&slug),
+    );
+
+    ui::report_info(&format!("Fetching endpoints for {provider}:{model}..."));
+
+    let mut headers = std::collections::HashMap::new();
+    headers.insert("Authorization".to_string(), format!("Bearer {api_key}"));
+
+    match crate::utils::http::get_json::<serde_json::Value>(url, headers).await {
+        Ok(json) => {
+            let data = json.get("data").cloned().unwrap_or(json);
+            display_model_endpoints(&data).await;
+        }
+        Err(e) => {
+            // Fallback: try without /endpoints suffix
+            let alt_url = format!(
+                "https://openrouter.ai/api/v1/models/{}/{}",
+                urlencoding(&author),
+                urlencoding(&slug),
+            );
+            match crate::utils::http::get_json::<serde_json::Value>(
+                alt_url,
+                std::collections::HashMap::new(),
+            )
+            .await
+            {
+                Ok(json) => {
+                    let data = json.get("data").cloned().unwrap_or(json);
+                    display_model_endpoints(&data).await;
+                }
+                Err(e2) => {
+                    ui::report_error(&format!("Failed to fetch endpoints: {e} (alt: {e2})"));
+                }
+            }
+        }
+    }
+}
+
+/// URL-encode a string component for safe path usage.
+fn urlencoding(s: &str) -> String {
+    s.split('/')
+        .map(|part| {
+            part.chars()
+                .map(|c| match c {
+                    'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
+                    _ => format!("%{:02X}", c as u8),
+                })
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// Display the model endpoints data in a formatted way.
+async fn display_model_endpoints(data: &serde_json::Value) {
+    let model_id = data.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let name = data
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or(model_id);
+    let description = data
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    // Model info
+    ui::print_rule(Some(&format!("📋 {name}")), Some("cyan"));
+    if !description.is_empty() {
+        println!("  {} {}", "Description:".cyan(), description);
+    }
+    println!("  {} {}", "Model ID:".cyan(), model_id.bold());
+
+    // Architecture info
+    if let Some(arch) = data.get("architecture") {
+        let modality = arch
+            .get("modality")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        let instruct_type = arch
+            .get("instruct_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        let tokenizer = arch
+            .get("tokenizer")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+
+        let input_mods: Vec<&str> = arch
+            .get("input_modalities")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+            .unwrap_or_default();
+        let output_mods: Vec<&str> = arch
+            .get("output_modalities")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+            .unwrap_or_default();
+
+        println!("  {} {}", "Modality:".cyan(), modality);
+        println!("  {} {}", "Tokenizer:".cyan(), tokenizer);
+        println!("  {} {}", "Instruct Type:".cyan(), instruct_type);
+        println!("  {} {}", "Input Modalities:".cyan(), input_mods.join(", "));
+        println!(
+            "  {} {}",
+            "Output Modalities:".cyan(),
+            output_mods.join(", ")
+        );
+    }
+
+    println!();
+
+    // Endpoints
+    if let Some(endpoints) = data.get("endpoints").and_then(|v| v.as_array()) {
+        if endpoints.is_empty() {
+            println!(
+                "  No endpoint details available.
+"
+            );
+            ui::print_rule(None, Some("cyan"));
+            return;
+        }
+
+        println!(
+            "  {} {} available endpoint(s)
+",
+            "🔌 Providers —".cyan(),
+            endpoints.len()
+        );
+
+        for (i, ep) in endpoints.iter().enumerate() {
+            let _provider_name = ep
+                .get("provider_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown");
+            let ep_name = ep.get("name").and_then(|v| v.as_str()).unwrap_or("");
+
+            // Status indicator
+            let status = ep.get("status").and_then(|v| v.as_i64()).unwrap_or(-1);
+            let status_str = match status {
+                0 => "🟢 Online",
+                1 => "🟡 Degraded",
+                2 => "🔴 Offline",
+                _ => "⚪ Unknown",
+            };
+
+            println!(
+                "  {} {}. {} [{}]",
+                "──".dimmed(),
+                i + 1,
+                ep_name.bold().cyan(),
+                status_str
+            );
+
+            // Pricing
+            if let Some(pricing) = ep.get("pricing") {
+                let prompt_str = pricing
+                    .get("prompt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0");
+                let completion_str = pricing
+                    .get("completion")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0");
+                let image_str = pricing.get("image").and_then(|v| v.as_str()).unwrap_or("0");
+
+                let prompt_per_m = format_usd_per_m(prompt_str);
+                let completion_per_m = format_usd_per_m(completion_str);
+                let image_per = format_usd(image_str);
+
+                println!("     {} Input:    {}", "💰".dimmed(), prompt_per_m);
+                println!("     {} Output:   {}", "💰".dimmed(), completion_per_m);
+                if image_str != "0" {
+                    println!("     {} Image:    {}", "🖼️".dimmed(), image_per);
+                }
+            }
+
+            // Context & output limits
+            let ctx_len = ep
+                .get("context_length")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let max_comp = ep.get("max_completion_tokens").and_then(|v| v.as_i64());
+            let _max_prompt = ep.get("max_prompt_tokens").and_then(|v| v.as_i64());
+
+            println!(
+                "     {} Context:  {} tokens",
+                "📐".dimmed(),
+                format_number(ctx_len)
+            );
+            if let Some(mc) = max_comp {
+                println!(
+                    "     {} Max out:  {} tokens",
+                    "📐".dimmed(),
+                    format_number(mc)
+                );
+            }
+
+            // Quantization
+            if let Some(quant) = ep.get("quantization").and_then(|v| v.as_str())
+                && !quant.is_empty()
+            {
+                println!("     {} Quant:    {}", "🔬".dimmed(), quant);
+            }
+
+            // Supported parameters
+            if let Some(params) = ep.get("supported_parameters").and_then(|v| v.as_array()) {
+                let param_names: Vec<&str> = params.iter().filter_map(|v| v.as_str()).collect();
+                if !param_names.is_empty() {
+                    println!(
+                        "     {} Params:   {}",
+                        "⚙️".dimmed(),
+                        param_names.join(", ")
+                    );
+                }
+            }
+
+            // Caching
+            let supports_caching = ep
+                .get("supports_implicit_caching")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if supports_caching {
+                println!(
+                    "     {} Caching:  ✅ Implicit caching supported",
+                    "💾".dimmed()
+                );
+            }
+
+            // Performance metrics (latency & throughput)
+            if let Some(latency) = ep.get("latency_last_30m") {
+                let p50 = latency.get("p50").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let p90 = latency.get("p90").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                println!(
+                    "     {} Latency:  p50={:.1}s  p90={:.1}s (last 30m)",
+                    "⏱️".dimmed(),
+                    p50,
+                    p90
+                );
+            }
+            if let Some(throughput) = ep.get("throughput_last_30m") {
+                let p50 = throughput
+                    .get("p50")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                let p90 = throughput
+                    .get("p90")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                println!(
+                    "     {} Throughput: p50={:.0} t/s  p90={:.0} t/s (last 30m)",
+                    "🚀".dimmed(),
+                    p50,
+                    p90
+                );
+            }
+
+            // Uptime
+            let uptime_1d = ep.get("uptime_last_1d").and_then(|v| v.as_f64());
+            let uptime_5m = ep.get("uptime_last_5m").and_then(|v| v.as_f64());
+            if let Some(u) = uptime_5m {
+                println!(
+                    "     {} Uptime:   {:5.1}% (5m)  {}% (1d)",
+                    "📊".dimmed(),
+                    u,
+                    uptime_1d.map_or("N/A".to_string(), |v| format!("{:5.1}", v))
+                );
+            }
+
+            println!();
+        }
+    } else {
+        // If no endpoints array, show the model-level pricing directly
+        println!(
+            "  No endpoint-level details. Showing model-level pricing:
+"
+        );
+        if let Some(pricing) = data.get("pricing") {
+            let prompt_str = pricing
+                .get("prompt")
+                .and_then(|v| v.as_str())
+                .unwrap_or("0");
+            let completion_str = pricing
+                .get("completion")
+                .and_then(|v| v.as_str())
+                .unwrap_or("0");
+            let image_str = pricing.get("image").and_then(|v| v.as_str()).unwrap_or("0");
+
+            println!(
+                "     {} Input:    {}",
+                "💰".dimmed(),
+                format_usd_per_m(prompt_str)
+            );
+            println!(
+                "     {} Output:   {}",
+                "💰".dimmed(),
+                format_usd_per_m(completion_str)
+            );
+            if image_str != "0" {
+                println!("     {} Image:    {}", "🖼️".dimmed(), format_usd(image_str));
+            }
+        }
+
+        let ctx_len = data
+            .get("context_length")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        println!(
+            "     {} Context:  {} tokens",
+            "📐".dimmed(),
+            format_number(ctx_len)
+        );
+
+        // Supported parameters from model level
+        if let Some(params) = data.get("supported_parameters").and_then(|v| v.as_array()) {
+            let param_names: Vec<&str> = params.iter().filter_map(|v| v.as_str()).collect();
+            if !param_names.is_empty() {
+                println!(
+                    "     {} Params:   {}",
+                    "⚙️".dimmed(),
+                    param_names.join(", ")
+                );
+            }
+        }
+    }
+
+    ui::print_rule(None, Some("cyan"));
+}
+
+/// Format a price string (USD per token) to a human-readable "$X.XX/1M tokens" format.
+fn format_usd_per_m(price_str: &str) -> String {
+    let price: f64 = price_str.parse().unwrap_or(0.0);
+    let per_m = price * 1_000_000.0;
+    format!("${:.4}/1M tokens", per_m)
+}
+
+/// Format a price as USD.
+fn format_usd(price_str: &str) -> String {
+    let price: f64 = price_str.parse().unwrap_or(0.0);
+    if price == 0.0 {
+        "Free".to_string()
+    } else {
+        format!("${:.2}", price)
+    }
+}
+
+/// Format a large number with comma separators.
+fn format_number(n: i64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    let len = s.len();
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (len - i).is_multiple_of(3) {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result
 }

@@ -73,7 +73,7 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
     CommandEntry {
         name: "model",
         aliases: &["m"],
-        description: "List models or switch (provider:model)",
+        description: "List/switch models or show model info (-i/--info)",
     },
     CommandEntry {
         name: "quit",

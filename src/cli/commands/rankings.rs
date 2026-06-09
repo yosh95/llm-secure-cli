@@ -226,11 +226,10 @@ fn display_rankings(response: &Value, top_n: usize) {
     if other_tokens > 0 {
         let other_share = (other_tokens as f64 / grand_total as f64) * 100.0;
         println!(
-            "  {}  {:<48}  {:>16}  {:>6.1}%",
-            format!("{:>3}", "").dimmed(),
-            "(other models)".to_string().dimmed(),
-            format_tokens(other_tokens).dimmed(),
-            other_share,
+            "       {:<48}  {:>16}  {:>6.1}%",
+            "(other models)".to_string(),
+            format_tokens(other_tokens),
+            other_share
         );
     }
 

@@ -186,9 +186,78 @@ impl Completer for ChatCompleter {
                     "/model" | "/m" => {
                         let models_map = self.ctx.config_manager.get_cached_models_sync();
                         let mut matches = Vec::new();
-                        // Suggest -u / --update flag
+                        // If completing "-i" / "--info" subcommand (model info)
+                        if arg_prefix == "-i"
+                            || arg_prefix.starts_with("-i ")
+                            || arg_prefix == "--info"
+                            || arg_prefix.starts_with("--info ")
+                        {
+                            let flag_part = if arg_prefix.starts_with("--info") {
+                                "--info"
+                            } else {
+                                "-i"
+                            };
+                            let prefix_after_flag =
+                                arg_prefix.strip_prefix(flag_part).unwrap_or("");
+                            let start_of_model = start + flag_part.len() + 1;
+                            // After "-i " or "--info " complete with model names
+                            if prefix_after_flag.starts_with(' ') && !prefix_after_flag.is_empty() {
+                                let model_prefix = prefix_after_flag.trim_start();
+                                // Add aliases
+                                if let Ok(state) = self.ctx.config_manager.get_state() {
+                                    for alias in state.model_aliases.keys() {
+                                        if alias.starts_with(model_prefix) {
+                                            matches.push(Pair {
+                                                display: format!("{alias} (alias)"),
+                                                replacement: alias.clone(),
+                                            });
+                                        }
+                                    }
+                                }
+                                // Suggest provider:model pairs
+                                let mut providers: Vec<&String> = models_map.keys().collect();
+                                providers.sort();
+                                for p in providers {
+                                    if let Some(models) = models_map.get(p) {
+                                        let mut sorted_models = models.clone();
+                                        sorted_models.sort();
+                                        for m in sorted_models {
+                                            let entry = format!("{p}:{m}");
+                                            if entry.starts_with(model_prefix) {
+                                                matches.push(Pair {
+                                                    display: entry.clone(),
+                                                    replacement: entry,
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+                                matches.sort_by(|a, b| a.display.cmp(&b.display));
+                                matches.dedup_by(|a, b| a.display == b.display);
+                                return Ok((start_of_model, matches));
+                            }
+                            // If prefix_after_flag is empty (e.g., arg_prefix == "-i"),
+                            // complete to "-i " (with trailing space) so user can then type a model name
+                            if prefix_after_flag.is_empty() {
+                                matches.push(Pair {
+                                    display: format!(
+                                        "{flag_part}  (model info, then specify model)"
+                                    ),
+                                    replacement: format!("{flag_part} "),
+                                });
+                                matches.sort_by(|a, b| a.display.cmp(&b.display));
+                                return Ok((start, matches));
+                            }
+                            // If "-i " or "--info " is fully typed, let the next completion step handle model names
+                            if prefix_after_flag == " " {
+                                return Ok((start_of_model, Vec::new()));
+                            }
+                            matches.sort_by(|a, b| a.display.cmp(&b.display));
+                            return Ok((start, matches));
+                        }
+                        // Suggest -u / --update and -i / --info flags
                         if arg_prefix.starts_with('-') {
-                            for flag in &["-u", "--update"] {
+                            for flag in &["-i", "--info", "-u", "--update"] {
                                 if flag.starts_with(arg_prefix) {
                                     matches.push(Pair {
                                         display: flag.to_string(),
