@@ -531,7 +531,7 @@ async fn display_model_endpoints(data: &serde_json::Value) {
                 let p50 = latency.get("p50").and_then(|v| v.as_f64()).unwrap_or(0.0);
                 let p90 = latency.get("p90").and_then(|v| v.as_f64()).unwrap_or(0.0);
                 println!(
-                    "     {} Latency:  p50={:.1}s  p90={:.1}s (last 30m)",
+                    "     {} Latency:  p50={:.0}ms  p90={:.0}ms (last 30m)",
                     "⏱️".dimmed(),
                     p50,
                     p90
