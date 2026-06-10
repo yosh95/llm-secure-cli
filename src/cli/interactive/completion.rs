@@ -339,6 +339,79 @@ impl Completer for ChatCompleter {
                         matches.sort_by(|a, b| a.display.cmp(&b.display));
                         return Ok((start, matches));
                     }
+                    "/verifier" | "/v" => {
+                        let parts: Vec<&str> = arg_prefix.split_whitespace().collect();
+                        if parts.is_empty() || (parts.len() == 1 && !arg_prefix.ends_with(' ')) {
+                            // Completing subcommand: add, delete, list
+                            let prefix = parts.first().copied().unwrap_or("");
+                            let subs = ["add", "delete", "list"];
+                            let mut matches = Vec::new();
+                            for sub in &subs {
+                                if sub.starts_with(prefix) {
+                                    matches.push(Pair {
+                                        display: sub.to_string(),
+                                        replacement: format!("{sub} "),
+                                    });
+                                }
+                            }
+                            matches.sort_by(|a, b| a.display.cmp(&b.display));
+                            return Ok((start, matches));
+                        }
+                        if parts.len() == 1 && arg_prefix.ends_with(' ') {
+                            // "/verifier " → complete subcommand
+                            let subs = ["add", "delete", "list"];
+                            let mut matches = Vec::new();
+                            for sub in &subs {
+                                matches.push(Pair {
+                                    display: sub.to_string(),
+                                    replacement: format!("{sub} "),
+                                });
+                            }
+                            matches.sort_by(|a, b| a.display.cmp(&b.display));
+                            return Ok((pos, matches));
+                        }
+                        if (parts[0] == "add"
+                            || parts[0] == "delete"
+                            || parts[0] == "del"
+                            || parts[0] == "remove"
+                            || parts[0] == "rm")
+                            && parts.len() >= 2
+                        {
+                            // Completing provider:model after "add" or "delete"
+                            let target_prefix = if parts.len() == 2 && !arg_prefix.ends_with(' ') {
+                                parts[1]
+                            } else if parts.len() == 2 && arg_prefix.ends_with(' ') {
+                                // After a space, complete from empty
+                                ""
+                            } else {
+                                return Ok((0, Vec::new()));
+                            };
+                            let start_of_target = pos - target_prefix.len();
+                            let models_map = self.ctx.config_manager.get_cached_models_sync();
+                            let mut matches = Vec::new();
+                            // Suggest provider:model pairs
+                            let mut providers: Vec<&String> = models_map.keys().collect();
+                            providers.sort();
+                            for p in providers {
+                                if let Some(models) = models_map.get(p) {
+                                    let mut sorted_models = models.clone();
+                                    sorted_models.sort();
+                                    for m in sorted_models {
+                                        let entry = format!("{p}:{m}");
+                                        if entry.starts_with(target_prefix) {
+                                            matches.push(Pair {
+                                                display: entry.clone(),
+                                                replacement: entry,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                            matches.sort_by(|a, b| a.display.cmp(&b.display));
+                            matches.dedup_by(|a, b| a.display == b.display);
+                            return Ok((start_of_target, matches));
+                        }
+                    }
                     "/alias" => {
                         let parts: Vec<&str> = arg_prefix.split_whitespace().collect();
                         // `/alias -d <name>` or `/alias --delete <name>`: complete alias names

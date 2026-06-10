@@ -83,6 +83,10 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
         "t" | "template" => {
             return handle_template_cmd(session, args).await;
         }
+        "verifier" | "v" => {
+            model_handler::handle_verifier_cmd(session, args).await;
+            CommandResult::Handled
+        }
         "view" => {
             content_handler::handle_view_cmd(session, args).await;
             CommandResult::Handled
@@ -175,6 +179,9 @@ fn print_help() {
         "  /m, /model [-u] [<name>]  List models (/model -u to refresh ALL providers cache) or switch to provider:model"
     );
     println!("  /alias [-d <name>] [<name> <target>]  List/create/delete model aliases");
+    println!(
+        "  /v, /verifier [add|delete <provider:model>|list]  Add/delete/list verifier committee members (persisted to state.toml)"
+    );
     println!("  /s, /summarize     Summarize history and clear it");
     println!("  /t, /template [<name>]  List templates or insert one into prompt");
     println!(

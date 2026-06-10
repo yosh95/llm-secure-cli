@@ -131,6 +131,8 @@ pub fn handle_info(session: &ActiveSession) {
     // Validator Info
     let (members, _) = session.ctx.config_manager.get_verifier_committee();
     let v_enabled = session.ctx.config_manager.get_verifier_enabled();
+    let app_state = session.ctx.config_manager.get_state().ok();
+    let runtime_members: Vec<String> = app_state.map(|s| s.verifier_committee).unwrap_or_default();
 
     if members.is_empty() {
         let status = if v_enabled {
@@ -148,15 +150,23 @@ pub fn handle_info(session: &ActiveSession) {
         } else {
             "Verifier Committee"
         };
-        let (p, m) = &members[0];
-        if count == 1 {
-            ui::print_key_value(label, &format!("{p}:{m}"));
-        } else {
-            ui::print_key_value(label, &format!("{count} members (any-flag)"));
-            ui::print_key_value("  Primary", &format!("{p}:{m}"));
-            for (i, (p, m)) in members.iter().enumerate().skip(1) {
-                ui::print_key_value(&format!("  Member {i}"), &format!("{p}:{m}"));
-            }
+        ui::print_key_value(label, &format!("{count} member(s)"));
+
+        // Show runtime (state.toml) members with a marker
+        let runtime_set: std::collections::HashSet<&str> =
+            runtime_members.iter().map(|s| s.as_str()).collect();
+
+        for (i, (p, m)) in members.iter().enumerate() {
+            let pm_str = format!("{p}:{m}");
+            let source_marker = if runtime_set.contains(pm_str.as_str()) {
+                " (state.toml)".dimmed().to_string()
+            } else {
+                " (config.toml)".dimmed().to_string()
+            };
+            ui::print_key_value(
+                &format!("  Member {}", i + 1),
+                &format!("{}{}", format!("{p}:{m}").bold().cyan(), source_marker),
+            );
         }
     }
     let v_status = if v_enabled {

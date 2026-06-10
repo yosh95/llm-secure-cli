@@ -262,6 +262,128 @@ async fn handle_provider_only_switch(session: &mut ActiveSession, provider: &str
     }
 }
 
+pub async fn handle_verifier_cmd(session: &mut ActiveSession, args: &str) {
+    let args_trimmed = args.trim();
+    let config_manager = &session.ctx.config_manager;
+
+    // `/verifier` (no args): list all verifier committee members
+    if args_trimmed.is_empty() {
+        let state = match config_manager.get_state() {
+            Ok(s) => s,
+            Err(e) => {
+                ui::report_error(&format!("Failed to load state: {e}"));
+                return;
+            }
+        };
+        let (members, enabled) = config_manager.get_verifier_committee();
+        let runtime_members = state.verifier_committee;
+
+        if members.is_empty() {
+            let status = if enabled {
+                "Enabled (no members)".yellow()
+            } else {
+                "Disabled".yellow()
+            };
+            println!("Verifier Status: {}", status.bold());
+            println!("  No verifier committee members configured.");
+            println!("  Usage: /verifier add <provider:model>");
+            println!("         /verifier delete <provider:model>");
+            println!("         /verifier list");
+            return;
+        }
+
+        let status = if enabled {
+            "ENABLED".green()
+        } else {
+            "DISABLED".yellow()
+        };
+        println!("Verifier Status: {}\n", status.bold());
+
+        ui::print_rule(Some("Verifier Committee Members"), Some("cyan"));
+        for (i, (p, m)) in members.iter().enumerate() {
+            let pm_str = format!("{p}:{m}");
+            // Mark if this member was set via state.toml (runtime) or config.toml (fallback)
+            let source = if runtime_members.contains(&pm_str) {
+                " (state.toml)".dimmed().to_string()
+            } else {
+                " (config.toml)".dimmed().to_string()
+            };
+            println!("  {}. {}  {}", i + 1, pm_str.bold().cyan(), source);
+        }
+        ui::print_rule(None, Some("cyan"));
+        println!(
+            "{}",
+            "Usage: /verifier add|delete <provider:model>".dimmed()
+        );
+        return;
+    }
+
+    let parts: Vec<&str> = args_trimmed.splitn(2, ' ').collect();
+    let subcmd = parts[0];
+    let subargs = if parts.len() > 1 { parts[1].trim() } else { "" };
+
+    match subcmd {
+        "add" => {
+            if subargs.is_empty() {
+                ui::report_error("Usage: /verifier add <provider:model>");
+                return;
+            }
+            // Validate provider:model format
+            if !subargs.contains(':') {
+                ui::report_error("Invalid format. Use provider:model (e.g., ollama:gemma4:e2b)");
+                return;
+            }
+            match config_manager.add_verifier_committee_member(subargs) {
+                Ok(()) => {
+                    ui::report_success(&format!(
+                        "Verifier committee member '{}' added (persisted to state.toml).",
+                        subargs
+                    ));
+                }
+                Err(e) => ui::report_error(&format!("Failed to add verifier member: {e}")),
+            }
+        }
+        "delete" | "del" | "remove" | "rm" => {
+            if subargs.is_empty() {
+                ui::report_error("Usage: /verifier delete <provider:model>");
+                return;
+            }
+            match config_manager.remove_verifier_committee_member(subargs) {
+                Ok(true) => {
+                    ui::report_success(&format!(
+                        "Verifier committee member '{}' removed (persisted to state.toml).",
+                        subargs
+                    ));
+                }
+                Ok(false) => {
+                    ui::report_info(&format!(
+                        "Verifier committee member '{}' not found.",
+                        subargs
+                    ));
+                }
+                Err(e) => ui::report_error(&format!("Failed to remove verifier member: {e}")),
+            }
+        }
+        "list" | "ls" => {
+            let members = config_manager.list_verifier_committee_members();
+            if members.is_empty() {
+                ui::report_info("No verifier committee members in state.toml.");
+            } else {
+                ui::print_rule(Some("Verifier Committee (state.toml)"), Some("cyan"));
+                for (i, m) in members.iter().enumerate() {
+                    println!("  {}. {}", i + 1, m.bold().cyan());
+                }
+                ui::print_rule(None, Some("cyan"));
+            }
+        }
+        _ => {
+            ui::report_error(&format!(
+                "Unknown subcommand: '{subcmd}'. Use: add, delete, list"
+            ));
+        }
+    }
+}
+
 /// Fetch and display OpenRouter model endpoints (provider-specific pricing & details).
 async fn handle_endpoints_cmd(
     config_manager: &crate::config::ConfigManager,

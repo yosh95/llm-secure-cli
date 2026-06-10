@@ -89,10 +89,11 @@ pub struct AppState {
     /// Unified field replacing the old separate last_used_provider + last_used_model.
     pub last_model: Option<String>,
     /// Verifier committee members (provider:model strings).
-    /// DEPRECATED: Use SecurityConfig.verifier_committee in config.toml.
-    /// Kept for backward compatibility during migration.
+    /// Managed at runtime via `/verifier add|delete` commands.
+    /// On startup, falls back to `security.verifier_committee` in config.toml
+    /// if this list is empty.
     #[serde(default)]
-    pub verifier_committee_members: Vec<String>,
+    pub verifier_committee: Vec<String>,
     /// Whether to display tool execution results to the user.
     /// Default (None/false) = hidden (not shown).
     #[serde(default)]
@@ -113,16 +114,18 @@ pub struct ModelAlias {
 /// the call requires human approval. Only if **all** members return Allowed is the
 /// call auto-approved.
 ///
-/// # Backward Compatibility
+/// Committee members can be managed at runtime via:
+///   `/verifier add <provider:model>`   — adds a member (persisted to state.toml)
+///   `/verifier delete <provider:model>` — removes a member
+///   `/verifier list`                    — lists current members
 ///
-/// If `verifier_provider` and `verifier_model` are set (the legacy single-verifier
-/// config), that pair is treated as the first committee member. Additional members
-/// can be added via `verifier_committee` without removing the legacy fields.
+/// The `security.verifier_committee` in config.toml serves as a **fallback**
+/// when state.toml has no runtime-configured members.
 ///
 /// # Default
 ///
-/// When neither legacy fields nor `verifier_committee` are configured, the verifier
-/// is disabled and falls back to manual human approval for all tool calls.
+/// When neither runtime members nor config.toml `verifier_committee` are set,
+/// the verifier falls back to manual human approval for all tool calls.
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SecurityConfig {
@@ -139,6 +142,8 @@ pub struct SecurityConfig {
     pub verifier_enabled: bool,
 
     /// Verifier Committee members (provider:model strings, e.g. "openai:gpt-4o").
+    /// Used as a FALLBACK when state.toml has no runtime-configured members
+    /// (managed via `/verifier add|delete`).
     /// When empty, the verifier falls back to manual human approval.
     #[serde(default)]
     pub verifier_committee: Vec<String>,

@@ -58,13 +58,13 @@ pub async fn analyze_skill_semantic(
     let p = match provider {
         Some(p) if !p.is_empty() => p,
         _ => return SkillSemanticVerdict::Error {
-            message: "Verifier not configured. Configure verifier_committee in the [security] section of config.toml, or pass --provider/--model flags.".to_string(),
+            message: "Verifier not configured. Use /verifier add <provider:model>, or pass --provider/--model flags, or set verifier_committee in config.toml.".to_string(),
         },
     };
     let m = match model {
         Some(m) if !m.is_empty() => m,
         _ => return SkillSemanticVerdict::Error {
-            message: "Verifier not configured. Configure verifier_committee in the [security] section of config.toml, or pass --provider/--model flags.".to_string(),
+            message: "Verifier not configured. Use /verifier add <provider:model>, or pass --provider/--model flags, or set verifier_committee in config.toml.".to_string(),
         },
     };
 

@@ -111,6 +111,11 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
         description: "Toggle or show status of tool execution",
     },
     CommandEntry {
+        name: "verifier",
+        aliases: &["v"],
+        description: "Add/delete/list verifier committee members",
+    },
+    CommandEntry {
         name: "view",
         aliases: &[],
         description: "Open saved image or file with system default app",

@@ -30,7 +30,12 @@ auto_approve = false
 verifier_enabled = true
 
 # Verifier Committee members (provider:model strings, e.g. "ollama:gemma4:e2b").
-# When empty, the verifier falls back to manual human approval.
+# You can manage committee members at runtime using:
+#   /verifier add <provider:model>     — persists to state.toml
+#   /verifier delete <provider:model>  — removes from state.toml
+#   /verifier list                     — shows current members
+#
+# The list below is used as a FALLBACK when state.toml has no members configured.
 # verifier_committee = ["ollama:gemma4:e2b", "openai:gpt-4o-mini"]
 
 # Committee voting policy: "majority" (default) or "any-flag".

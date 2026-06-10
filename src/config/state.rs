@@ -170,21 +170,40 @@ impl ConfigManager {
         Ok(())
     }
 
-    // ── Verifier committee (config.toml) ───────────────────────────────────
+    // ── Verifier committee (state.toml) ────────────────────────────────────
 
-    /// Resolve the verifier committee configuration from SecurityConfig (config.toml).
+    /// Resolve the verifier committee configuration.
+    ///
+    /// Priority (highest first):
+    ///   1. Runtime-managed `state.verifier_committee` (via `/verifier add|delete`)
+    ///   2. Static `security.verifier_committee` from config.toml (fallback)
+    ///   3. Legacy `state.verifier_committee_members` (backward compat, removed field)
     ///
     /// Returns a tuple of:
     /// - All committee members as (provider, model) pairs.
     /// - Whether the verifier is enabled and has at least one member configured.
-    ///
-    /// Members are resolved from `security.verifier_committee` in config.toml.
-    /// Falls back to `verifier_committee_members` in state.toml for backward compat.
     pub fn get_verifier_committee(&self) -> (Vec<(String, String)>, bool) {
         let mut members: Vec<(String, String)> = Vec::new();
 
-        // Primary source: SecurityConfig from config.toml
-        if let Ok(config) = self.get_config() {
+        // Primary source: runtime state (managed via /verifier add|delete)
+        if let Ok(state) = self.get_state() {
+            for pm in &state.verifier_committee {
+                if let Some((provider, model)) = pm.split_once(':')
+                    && !provider.is_empty()
+                    && !model.is_empty()
+                {
+                    let pair = (provider.to_string(), model.to_string());
+                    if !members.contains(&pair) {
+                        members.push(pair);
+                    }
+                }
+            }
+        }
+
+        // Fallback: config.toml (only if state list is empty)
+        if members.is_empty()
+            && let Ok(config) = self.get_config()
+        {
             for pm in &config.security.verifier_committee {
                 if let Some((provider, model)) = pm.split_once(':')
                     && !provider.is_empty()
@@ -196,77 +215,51 @@ impl ConfigManager {
                     }
                 }
             }
-
-            let enabled = config.security.verifier_enabled && !members.is_empty();
-            return (members, enabled);
         }
 
-        // Fallback: state.toml (backward compat)
-        let state = self.get_state().unwrap_or_else(|_| Default::default());
-        for pm in &state.verifier_committee_members {
-            if let Some((provider, model)) = pm.split_once(':')
-                && !provider.is_empty()
-                && !model.is_empty()
-            {
-                let pair = (provider.to_string(), model.to_string());
-                if !members.contains(&pair) {
-                    members.push(pair);
-                }
-            }
-        }
-
-        let enabled = !members.is_empty();
+        let enabled = self.get_verifier_enabled() && !members.is_empty();
         (members, enabled)
     }
 
-    /// DEPRECATED: Use security.verifier_committee in config.toml.
-    pub fn set_primary_verifier(&self, provider_model: &str) -> anyhow::Result<()> {
-        let mut write = self
-            .app_state
-            .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        write.verifier_committee_members.clear();
-        write
-            .verifier_committee_members
-            .push(provider_model.to_string());
-        Self::persist_state(&write);
-        tracing::warn!(
-            "set_primary_verifier() is deprecated — use security.verifier_committee in config.toml"
-        );
-        Ok(())
-    }
-
-    /// DEPRECATED: Use security.verifier_committee in config.toml.
+    /// Add a verifier committee member (provider:model) to state.toml.
+    ///
+    /// This persists to state.toml so it survives restarts.
+    /// Duplicate entries are silently ignored.
     pub fn add_verifier_committee_member(&self, provider_model: &str) -> anyhow::Result<()> {
         let mut write = self
             .app_state
             .write()
             .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let pm = provider_model.to_string();
-        if !write.verifier_committee_members.contains(&pm) {
-            write.verifier_committee_members.push(pm);
+        if !write.verifier_committee.contains(&pm) {
+            write.verifier_committee.push(pm);
         }
         Self::persist_state(&write);
-        tracing::warn!(
-            "add_verifier_committee_member() is deprecated — use security.verifier_committee in config.toml"
-        );
         Ok(())
     }
 
-    /// DEPRECATED: Use security.verifier_committee in config.toml.
+    /// Remove a verifier committee member (provider:model) from state.toml.
+    ///
+    /// Returns `true` if the member existed and was removed, `false` otherwise.
     pub fn remove_verifier_committee_member(&self, provider_model: &str) -> anyhow::Result<bool> {
         let mut write = self
             .app_state
             .write()
             .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        let len_before = write.verifier_committee_members.len();
-        write
-            .verifier_committee_members
-            .retain(|m| m != provider_model);
-        let removed = write.verifier_committee_members.len() < len_before;
+        let len_before = write.verifier_committee.len();
+        write.verifier_committee.retain(|m| m != provider_model);
+        let removed = write.verifier_committee.len() < len_before;
         if removed {
             Self::persist_state(&write);
         }
         Ok(removed)
+    }
+
+    /// List all verifier committee members from state.toml.
+    pub fn list_verifier_committee_members(&self) -> Vec<String> {
+        self.get_state()
+            .ok()
+            .map(|s| s.verifier_committee.clone())
+            .unwrap_or_default()
     }
 }
