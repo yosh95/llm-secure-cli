@@ -263,10 +263,42 @@ pub struct McpServerConfig {
     pub api_url: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PqcConfig {
+    /// PQC signature variant (ML-DSA).
+    /// "ml-dsa-44" (lowest), "ml-dsa-65" (medium), or "ml-dsa-87" (highest).
+    #[serde(default = "default_pqc_signature_variant")]
+    pub signature_variant: String,
+
+    /// PQC KEM variant (ML-KEM).
+    /// "ml-kem-512" (lowest), "ml-kem-768" (medium), or "ml-kem-1024" (highest).
+    #[serde(default = "default_pqc_kem_variant")]
+    pub kem_variant: String,
+}
+
+fn default_pqc_signature_variant() -> String {
+    "ml-dsa-44".to_string()
+}
+
+fn default_pqc_kem_variant() -> String {
+    "ml-kem-512".to_string()
+}
+
+impl Default for PqcConfig {
+    fn default() -> Self {
+        Self {
+            signature_variant: default_pqc_signature_variant(),
+            kem_variant: default_pqc_kem_variant(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct AppConfig {
     #[serde(default)]
     pub general: GeneralConfig,
+    #[serde(default)]
+    pub pqc: PqcConfig,
     #[serde(default)]
     pub security: SecurityConfig,
     #[serde(default)]

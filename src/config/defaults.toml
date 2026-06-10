@@ -47,6 +47,29 @@ verifier_enabled = true
 # committee_policy = "majority"
 
 
+
+# =============================================================================
+# PQC (Post-Quantum Cryptography) Settings
+# =============================================================================
+
+[pqc]
+# PQC signature variant for ML-DSA (FIPS 204).
+# Available options:
+#   "ml-dsa-44"  — NIST Security Level 2 (lowest, fastest, smallest keys)
+#   "ml-dsa-65"  — NIST Security Level 3 (balanced)
+#   "ml-dsa-87"  — NIST Security Level 5 (highest, slowest, largest keys)
+# Default: ml-dsa-44 (lowest for performance)
+# signature_variant = "ml-dsa-44"
+
+# PQC KEM variant for ML-KEM (FIPS 203).
+# Available options:
+#   "ml-kem-512"  — NIST Security Level 1 (lowest, fastest, smallest keys)
+#   "ml-kem-768"  — NIST Security Level 3 (balanced)
+#   "ml-kem-1024" — NIST Security Level 5 (highest, slowest, largest keys)
+# Default: ml-kem-512 (lowest for performance)
+# kem_variant = "ml-kem-512"
+
+
 # =============================================================================
 # OpenAI Compatible Providers
 # =============================================================================

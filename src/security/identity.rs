@@ -3,8 +3,6 @@ use crate::security::pqc_cose::HybridSigner;
 use anyhow::{Result, anyhow};
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
-use fips203::traits::KeyGen;
-use fips203::traits::SerDes;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -172,7 +170,8 @@ impl IdentityManager {
         // ML-DSA variants
         let pqc_path = dir.join("id_mldsa87");
         if !pqc_path.exists() {
-            let (pk, sk) = PqcProvider::generate_keypair(PQCVariant::MLDSA87)?;
+            let (pk, sk) =
+                PqcProvider::generate_keypair(crate::security::pqc::DEFAULT_PQC_VARIANT)?;
             store.save_private_key(&pqc_path, &sk, passphrase.as_deref())?;
             fs::write(dir.join("id_mldsa87.pub"), pk)?;
         }
@@ -180,10 +179,10 @@ impl IdentityManager {
         // ML-KEM (FIPS 203)
         let kem_path = dir.join("id_kem1024");
         if !kem_path.exists() {
-            let (pk, sk) = fips203::ml_kem_1024::KG::try_keygen()
-                .map_err(|e| anyhow!("KEM keygen failed: {e}"))?;
-            store.save_private_key(&kem_path, &sk.into_bytes(), passphrase.as_deref())?;
-            fs::write(dir.join("id_kem1024.pub"), pk.into_bytes())?;
+            let (pk, sk) =
+                PqcProvider::generate_kem_keypair(crate::security::pqc::DEFAULT_KEM_VARIANT)?;
+            store.save_private_key(&kem_path, &sk, passphrase.as_deref())?;
+            fs::write(dir.join("id_kem1024.pub"), &pk)?;
         }
 
         Ok(())
@@ -229,7 +228,8 @@ impl IdentityManager {
         // ML-DSA variants
         let pqc_path = dir.join("id_mldsa87");
         if !pqc_path.exists() {
-            let (pk, sk) = PqcProvider::generate_keypair(PQCVariant::MLDSA87)?;
+            let (pk, sk) =
+                PqcProvider::generate_keypair(crate::security::pqc::DEFAULT_PQC_VARIANT)?;
             store.save_private_key(&pqc_path, &sk, passphrase)?;
             fs::write(dir.join("id_mldsa87.pub"), pk)?;
         }
@@ -237,10 +237,10 @@ impl IdentityManager {
         // ML-KEM (FIPS 203)
         let kem_path = dir.join("id_kem1024");
         if !kem_path.exists() {
-            let (pk, sk) = fips203::ml_kem_1024::KG::try_keygen()
-                .map_err(|e| anyhow!("KEM keygen failed: {e}"))?;
-            store.save_private_key(&kem_path, &sk.into_bytes(), passphrase)?;
-            fs::write(dir.join("id_kem1024.pub"), pk.into_bytes())?;
+            let (pk, sk) =
+                PqcProvider::generate_kem_keypair(crate::security::pqc::DEFAULT_KEM_VARIANT)?;
+            store.save_private_key(&kem_path, &sk, passphrase)?;
+            fs::write(dir.join("id_kem1024.pub"), &pk)?;
         }
 
         Ok(())
@@ -294,7 +294,7 @@ impl IdentityManager {
     /// Uses the default [`FileSystemKeyStore`].
     pub fn get_pqc_private_key(_variant: PQCVariant) -> Result<Vec<u8>> {
         let store = FileSystemKeyStore;
-        Self::get_pqc_private_key_with_store(&store, PQCVariant::MLDSA87)
+        Self::get_pqc_private_key_with_store(&store, crate::security::pqc::DEFAULT_PQC_VARIANT)
     }
 
     /// Load an ML-DSA private key using a custom [`KeyStore`].

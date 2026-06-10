@@ -452,8 +452,7 @@ fn test_pqc_variant_from_str_case_insensitive() {
 #[test]
 fn test_pqc_variant_from_str_invalid() {
     assert!(PQCVariant::from_str("ML-DSA-128").is_err());
-    assert!(PQCVariant::from_str("ML-DSA-44").is_err());
-    assert!(PQCVariant::from_str("ML-DSA-65").is_err());
+    assert!(PQCVariant::from_str("ML-DSA-256").is_err());
     assert!(PQCVariant::from_str("RSA-2048").is_err());
     assert!(PQCVariant::from_str("").is_err());
 }

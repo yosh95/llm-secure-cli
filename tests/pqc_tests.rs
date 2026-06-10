@@ -73,8 +73,12 @@ fn test_secure_storage_hybrid_encryption() {
     let (pk, sk) = fips203::ml_kem_1024::KG::try_keygen().expect("ML-KEM-1024 keygen failed");
     let original_data = b"Sensitive post-quantum data content";
 
-    let packet =
-        SecureStorage::encrypt(original_data, &pk.clone().into_bytes()).expect("Encryption failed");
+    let packet = SecureStorage::encrypt_with_variant(
+        original_data,
+        &pk.clone().into_bytes(),
+        llm_secure_cli::security::pqc::KEMVariant::MLKEM1024,
+    )
+    .expect("Encryption failed");
     let decrypted_data =
         SecureStorage::decrypt(&packet, &sk.into_bytes()).expect("Decryption failed");
 
@@ -183,17 +187,16 @@ fn test_pqc_agility_manager() {
 
     let config = AppConfig::default();
 
-    // Risk-level-based PQC variant switching is discontinued.
-    // All operations use ML-DSA-87 (NIST Level 5) — the highest available strength.
+    // Default signature_variant is "ml-dsa-44" (lowest security, fastest).
     let level = PQCAgilityManager::get_required_level(&config, "ls", None);
-    assert_eq!(level, PQCVariant::MLDSA87);
+    assert_eq!(level, PQCVariant::MLDSA44);
 
     let level = PQCAgilityManager::get_required_level(&config, "execute_python", None);
-    assert_eq!(level, PQCVariant::MLDSA87);
+    assert_eq!(level, PQCVariant::MLDSA44);
 
     let args = serde_json::json!({"path": "/etc/shadow"});
     let level = PQCAgilityManager::get_required_level(&config, "read_file", Some(&args));
-    assert_eq!(level, PQCVariant::MLDSA87);
+    assert_eq!(level, PQCVariant::MLDSA44);
 }
 
 #[test]
