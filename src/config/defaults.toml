@@ -16,9 +16,6 @@ max_output_chars = 50000
 # =============================================================================
 # Security Settings
 # =============================================================================
-# WARNING: Changing these settings in config.toml will be detected by
-# Integrity Check (the config hash is part of the signed manifest).
-#
 # DO NOT set API keys here — use environment variables instead.
 
 [security]

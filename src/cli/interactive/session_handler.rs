@@ -173,15 +173,7 @@ pub fn handle_info(session: &ActiveSession) {
         if show_output { "Visible" } else { "Hidden" },
     );
 
-    // Security & Integrity
-    let integrity_status = match crate::security::integrity::IntegrityVerifier::new().verify() {
-        Ok(true) => "Verified (PQC-Signed)".green().to_string(),
-        Ok(false) => "TAMPERED/Mismatch".red().to_string(),
-        Err(_) => "Not Established (Run /identity manifest)"
-            .yellow()
-            .to_string(),
-    };
-    ui::print_key_value("System Integrity", &integrity_status);
+    // Security
     ui::print_key_value("Security Level", "high");
 
     ui::print_rule(Some("Statistics"), Some("cyan"));

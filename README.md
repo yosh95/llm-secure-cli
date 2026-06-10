@@ -137,7 +137,7 @@ flowchart TB
 6.  Help: Type `/help` inside the chat to see all commands.
 
 ### Docker Isolation (Optional)
-Run the agent in a completely isolated container to protect your host system. In `high` security mode (default), you must initialize the integrity manifest within the mounted volume.
+Run the agent in a completely isolated container to protect your host system.
 
 1. **Build**: `docker build -t llm-secure-cli .`
 2. **Setup API Keys**:
@@ -202,7 +202,6 @@ As a tool designed with **CISSP/CISA/CCSP** principles in mind, `llm-secure-cli`
 ### 2. Identity & Non-Repudiation (Experimental Reference)
 - **Distributed Trust Model**: Implements a decentralized identity model where clients and servers only exchange public keys. This is designed to explore how to prevent lateral movement if a single component is compromised; however, it requires thorough evaluation before use in production environments.
 - **Hybrid Identity Tokens**: Uses **COSE (RFC 9052)** binary structures combining **Ed25519** with **Post-Quantum Cryptography (ML-DSA)**. This serves as a reference for how long-term non-repudiation might be handled in autonomous agent systems.
-- **Client Integrity Attestation**: The client generates a signed manifest of its own source code state to demonstrate the integrity of the execution environment.
 - **Bi-directional Verification**: Tool results can be signed by the responder, allowing the requester to verify that the observations are authentic and untampered within the protocol's scope.
 
 ### 3. Observability & Audit Compliance (Tier 3 Reference Implementation)
@@ -227,8 +226,6 @@ llsc "query"                         # One-shot query
 ### Subcommands
 ```bash
 llsc identity keygen                 # Generate Ed25519 and PQC (ML-DSA/ML-KEM) key pairs
-llsc identity manifest               # Rebuild integrity manifest for system verification
-llsc identity verify                 # Run full integrity verification
 llsc identity verify-session <id>    # Verify session integrity using Merkle Anchor
 llsc identity list-sessions          # List available anchored sessions
 llsc decrypt-log <input> [-o <out>]  # Decrypt PQC-encrypted audit logs
@@ -243,7 +240,7 @@ Inside the `llsc` interactive session:
 - `/vcommittee [set|add|remove|list] [<provider:model>]`: Manage verifier committee members.
 - `F2`: Open external editor to edit the current prompt (multi-line composition).
 - `/clear`, `/c`: Clear conversation history.
-- `/info`, `/i`: Show session info, integrity, and security status.
+- `/info`, `/i`: Show session info and security status.
 - `/edit_history`, `/eh`: View/edit the conversation history in TOML format.
 - `/raw`: Show conversation as raw text.
 - `/session [load|delete <id>|clear]`: List, load, delete, or clear saved sessions.
@@ -276,7 +273,6 @@ Inside the `llsc` interactive session:
 
 | Variable | Description | Default |
 |---|---|---|
-| `LLM_SECURE_INTEGRITY_SKIP_PROMPT` | Suppress integrity check prompts (warnings still shown). Useful for CI/testing. | unset (off) |
 | `LLM_SECURE_AUTO_APPROVE` | Automatically answer "Yes" to all confirmation prompts (for testing). | unset (off) |
 | `BRAVE_API_KEY` | API key for the built-in Brave Search tool. | — |
 | `LLM_CLI_KEY_PASSPHRASE` | Passphrase for encrypted key storage. | — |

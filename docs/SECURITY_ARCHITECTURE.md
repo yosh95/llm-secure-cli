@@ -210,36 +210,8 @@ Public keys and remote attestation manifests are distributed via an OOB
 trusted channel (e.g., MDM, Secure Enclave, or enterprise PKI). This design
 eliminates Trust-On-First-use (TOFU) in production deployments.
 
-A bootstrap mode is available for standalone development environments. 
-Simply run `llsc identity manifest` to generate the initial manifest.
-Once the manifest is generated, all subsequent runs will strictly enforce
-integrity against it.
+A bootstrap mode is available for standalone development environments.
 
-
-### Integrity Check Prompts (`LLM_SECURE_INTEGRITY_SKIP_PROMPT`)
-
-On startup, the application performs a **system integrity check** by comparing
-SHA-256 hashes of the binary and configuration against a signed manifest
-(`integrity_manifest.json`). If the manifest is missing or the hashes do not
-match, the system normally displays a warning and prompts the user to either
-re-sign the manifest or abort execution.
-
-Setting the environment variable `LLM_SECURE_INTEGRITY_SKIP_PROMPT=1`
-suppresses these prompts without aborting execution:
-
-- **Warnings are still displayed** so that integrity issues remain visible.
-- **No interactive prompt** is shown, preventing the process from blocking in
-  non-interactive environments (CI pipelines, automated tests, Docker without TTY).
-- **Execution continues** regardless of the integrity state.
-
-This is designed for **testing and CI/CD scenarios** where the integrity
-manifest may not be present or up-to-date, but the process must not hang
-waiting for user input.
-
-> **Note:** This environment variable is a *convenience for automation*, not a
-> security bypass. Integrity verification results are still logged and
-> displayed. For production deployments, ensure the manifest is properly
-> generated via `llsc identity manifest`.
 
 
 ---
@@ -298,21 +270,11 @@ use the highest available NIST Level 5 strength regardless of tool risk level:
 
 The application always uses ML-DSA-87 (FIPS 204 Level 5) for signing and ML-KEM-1024 (FIPS 203 Level 5) for encryption. There is no runtime variant selection — the highest NIST Level 5 is always used.
 
-### Remote Attestation
+### Remote Attestation (Planned)
 
-On startup, the client generates a SHA-256 manifest of all critical security
-source files and configuration files (defined by glob patterns in
-`integrity.rs`), signed with an ML-DSA key. This manifest covers all Rust source files, configuration templates (`.toml`), and project metadata (e.g., `Cargo.toml`).
- Remote servers verify this
-manifest to confirm the agent is running an authentic, unmodified stack.
-The system also detects unauthorized new files that match the critical
-patterns, preventing backdoor installation.
-
-Rebuild the manifest after any code update or configuration change:
-
-```bash
-llsc identity manifest
-```
+Remote attestation is a future feature. It will allow a client to verify
+that an agent process is running an authentic, unmodified stack through
+cryptographic proofs.
 
 ### Audit Chain Continuity
 

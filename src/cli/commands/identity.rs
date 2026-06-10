@@ -1,7 +1,6 @@
 use crate::cli::ui;
 use crate::consts::{audit_log_path, key_dir};
 use crate::security::identity::IdentityManager;
-use crate::security::integrity::IntegrityVerifier;
 use crate::security::merkle_anchor::SessionAnchorManager;
 use std::fs;
 
@@ -20,40 +19,6 @@ pub fn run_keygen() {
         }
         Err(e) => {
             ui::report_error(&format!("Failed to generate keys: {e}"));
-        }
-    }
-}
-
-pub fn run_manifest() {
-    ui::report_success("Generating Integrity Manifest...");
-    let verifier = IntegrityVerifier::new();
-    match verifier.rebuild_manifest() {
-        Ok(()) => {
-            ui::report_success(&format!(
-                "Integrity manifest saved to {}",
-                verifier.manifest_path.display()
-            ));
-        }
-        Err(e) => {
-            ui::report_error(&format!("Failed to generate manifest: {e}"));
-        }
-    }
-}
-
-pub fn run_verify(_tail: Option<usize>) {
-    ui::report_success("Running full integrity check...");
-    let verifier = IntegrityVerifier::new();
-    match verifier.verify() {
-        Ok(true) => {
-            ui::report_success("OK: System integrity verified.");
-        }
-        Ok(false) => {
-            ui::report_error(
-                "FAILED: System integrity failure detected (Binary or Config mismatch).",
-            );
-        }
-        Err(e) => {
-            ui::report_error(&format!("ERROR: Verification error: {e}"));
         }
     }
 }

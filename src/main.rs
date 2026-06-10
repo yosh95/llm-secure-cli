@@ -92,14 +92,6 @@ enum Commands {
 enum IdentityCommands {
     /// Generate Ed25519 and PQC key pairs
     Keygen,
-    /// Generate/Update integrity manifest
-    Manifest,
-    /// Full integrity verification
-    Verify {
-        /// Verify only the last N lines
-        #[clap(long)]
-        tail: Option<usize>,
-    },
     /// Verify session integrity using Merkle Anchor
     VerifySession {
         /// Session Trace ID to verify
@@ -171,12 +163,6 @@ async fn handle_subcommand(
     match command {
         Commands::Identity { subcommand } => match subcommand {
             Some(IdentityCommands::Keygen) => llm_secure_cli::cli::commands::identity::run_keygen(),
-            Some(IdentityCommands::Manifest) => {
-                llm_secure_cli::cli::commands::identity::run_manifest();
-            }
-            Some(IdentityCommands::Verify { tail }) => {
-                llm_secure_cli::cli::commands::identity::run_verify(tail);
-            }
             Some(IdentityCommands::VerifySession { trace_id }) => {
                 llm_secure_cli::cli::commands::identity::run_verify_session(&trace_id);
             }

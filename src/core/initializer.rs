@@ -94,8 +94,8 @@ pub async fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<Ap
         crate::config::init::init_config();
     }
 
-    // 3. Security & Integrity Checks
-    ensure_identity_and_integrity(&ctx, is_atty).await?;
+    // 3. Identity Key Setup
+    ensure_identity(&ctx, is_atty).await?;
 
     // 4. Register Tools
     {
@@ -120,28 +120,11 @@ pub async fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<Ap
     Ok(ctx)
 }
 
-/// Returns `true` if the integrity prompts should be skipped.
-/// Uses the `auto_approve` setting from the \[security\] section of config.toml.
-/// When enabled, integrity check prompts are suppressed — only warnings are
-/// displayed, and execution continues without aborting.
-/// This is useful for non-interactive environments (e.g., tests).
-fn integrity_skip_prompt(ctx: &Arc<AppContext>) -> bool {
-    ctx.config_manager
-        .get_config()
-        .ok()
-        .map(|c| c.security.auto_approve)
-        .unwrap_or(false)
-}
-
-async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> anyhow::Result<()> {
+async fn ensure_identity(ctx: &Arc<AppContext>, is_atty: bool) -> anyhow::Result<()> {
     use crate::security::identity::IdentityManager;
-    use crate::security::integrity::IntegrityVerifier;
 
-    // 1. Ensure Identity Keys
-    // When LLM_SECURE_INTEGRITY_SKIP_PROMPT is set, skip the identity keys prompt
-    // to avoid blocking in non-interactive environments.
-    if !integrity_skip_prompt(ctx)
-        && !IdentityManager::has_keys()
+    // Ensure Identity Keys
+    if !IdentityManager::has_keys()
         && is_atty
         && ctx
             .ui
@@ -154,83 +137,6 @@ async fn ensure_identity_and_integrity(ctx: &Arc<AppContext>, is_atty: bool) -> 
                 .report_error(&format!("Failed to generate keys: {e}"));
         } else {
             ctx.ui.report_success("Identity keys generated.");
-        }
-    }
-
-    // 2. System Integrity Check
-    let verifier = IntegrityVerifier::new();
-    let _config = ctx.config_manager.get_config()?;
-
-    if verifier.manifest_path.exists() {
-        match verifier.verify() {
-            Ok(true) => {
-                // Integrity OK
-            }
-            Ok(false) => {
-                ctx.ui.report_warning("CRITICAL: SYSTEM INTEGRITY MISMATCH");
-                ctx.ui.report_warning(
-                    "The binary or configuration has changed since the last manifest update.",
-                );
-                ctx.ui.report_warning(
-                    "(This occurs after 'cargo install' or manual configuration edits)",
-                );
-
-                if integrity_skip_prompt(ctx) {
-                    ctx.ui.report_warning(
-                        "LLM_SECURE_INTEGRITY_SKIP_PROMPT is set — continuing without re-signing.",
-                    );
-                } else if is_atty
-                    && ctx
-                        .ui
-                        .ask_confirm_simple(
-                            "Would you like to re-authorize (re-sign) the current system state?",
-                        )
-                        .await
-                        == Some(ui::ConfirmResult::Yes)
-                {
-                    if let Err(e) = verifier.rebuild_manifest() {
-                        ctx.ui
-                            .report_error(&format!("Failed to rebuild manifest: {e}"));
-                        return Err(anyhow::anyhow!("Integrity manifest rebuild failed: {e}"));
-                    } else {
-                        ctx.ui.report_success("Integrity manifest updated.");
-                    }
-                } else {
-                    ctx.ui
-                        .report_error("Execution aborted due to integrity failure.");
-                    return Err(anyhow::anyhow!(
-                        "Execution aborted: integrity verification failed."
-                    ));
-                }
-            }
-            Err(_e) => {}
-        }
-    } else {
-        let msg = "SECURITY FAILURE: Integrity manifest not found. A signed manifest is required.";
-
-        ctx.ui.report_warning(msg);
-        if integrity_skip_prompt(ctx) {
-            ctx.ui.report_warning(
-                "LLM_SECURE_INTEGRITY_SKIP_PROMPT is set — continuing without generating manifest.",
-            );
-        } else if is_atty
-            && ctx
-                .ui
-                .ask_confirm_simple("Generate and sign integrity manifest now?")
-                .await
-                == Some(ui::ConfirmResult::Yes)
-        {
-            if let Err(e) = verifier.rebuild_manifest() {
-                ctx.ui
-                    .report_error(&format!("Failed to build manifest: {e}"));
-                return Err(anyhow::anyhow!("Integrity manifest build failed: {e}"));
-            } else {
-                ctx.ui.report_success("Integrity manifest generated.");
-            }
-        } else {
-            return Err(anyhow::anyhow!(
-                "Execution aborted: integrity manifest not found."
-            ));
         }
     }
 

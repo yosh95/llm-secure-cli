@@ -1,6 +1,5 @@
 pub mod audit;
 pub mod identity;
-pub mod integrity;
 pub mod key_storage;
 pub mod merkle;
 pub mod merkle_anchor;
