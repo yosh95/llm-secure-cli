@@ -14,8 +14,12 @@ pub fn run_keygen() {
                 key_dir().display()
             );
             println!("- Ed25519 (Classical Signature)");
-            println!("- ML-DSA-44, 65, 87 (Post-Quantum Signatures)");
-            println!("- ML-KEM-768 (Post-Quantum Key Encapsulation)");
+            println!(
+                "- ML-DSA-44 (Post-Quantum Signature) — configurable via [pqc] signature_variant"
+            );
+            println!(
+                "- ML-KEM-512 (Post-Quantum Key Encapsulation) — configurable via [pqc] kem_variant"
+            );
         }
         Err(e) => {
             ui::report_error(&format!("Failed to generate keys: {e}"));

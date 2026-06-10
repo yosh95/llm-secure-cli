@@ -29,20 +29,27 @@ impl ActiveSession {
         let args_map: HashMap<String, Value> =
             args.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
 
-        // Start a spinner with the tool name to show elapsed time (same style as LLM API calls)
-        let mut spin = crate::utils::spinner::Spinner::start(name);
+        let is_stdout = self.client.get_state().stdout;
 
-        let result = tokio::select! {
-            res = self.execute_tool(name, &args_map) => {
-                spin.finish("done");
-                res
-            }
-            _ = tokio::signal::ctrl_c() => {
-                spin.stop();
-                println!("\n^C - Interrupted.");
-                // We return an error string to the LLM
-                return Value::String("Error: Execution interrupted by user.".into());
-            }
+        let result = if is_stdout {
+            self.execute_tool(name, &args_map).await
+        } else {
+            // Start a spinner with the tool name to show elapsed time (same style as LLM API calls)
+            let mut spin = crate::utils::spinner::Spinner::start(name);
+
+            let res = tokio::select! {
+                res = self.execute_tool(name, &args_map) => {
+                    spin.finish("done");
+                    res
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    spin.stop();
+                    eprintln!("\n^C - Interrupted.");
+                    // We return an error string to the LLM
+                    return Value::String("Error: Execution interrupted by user.".into());
+                }
+            };
+            res
         };
 
         let audit_ctx = serde_json::json!({
@@ -121,33 +128,35 @@ impl ActiveSession {
         // Display the tool result to the user conditionally (based on state.toml setting).
         // Default is hidden — useful when tool output is very large.
         // The result is always sent to the LLM and logged to the audit trail.
-        let show_result = self.ctx.config_manager.get_show_tool_result();
-        if show_result {
-            let display_str = final_v
-                .as_str()
-                .map_or_else(|| final_v.to_string(), std::borrow::ToOwned::to_owned);
+        if !is_stdout {
+            let show_result = self.ctx.config_manager.get_show_tool_result();
+            if show_result {
+                let display_str = final_v
+                    .as_str()
+                    .map_or_else(|| final_v.to_string(), std::borrow::ToOwned::to_owned);
 
-            self.ctx.ui.print_tool_result(&display_str);
-        } else {
-            // Show a brief summary instead of the full output
-            use colored::Colorize;
-            let item_count = stats.item_count;
-            let lines = stats.line_count;
-            let summary = if let Some(count) = item_count {
-                format!(
-                    " — {} {}, {} lines",
-                    crate::utils::format_number(count),
-                    stats.item_label,
-                    crate::utils::format_number(lines)
-                )
+                self.ctx.ui.print_tool_result(&display_str);
             } else {
-                format!(" — {} lines", crate::utils::format_number(lines))
-            };
-            println!(
-                "  {}{}",
-                "Tool result hidden (use /tool_output on to show)".dimmed(),
-                summary.dimmed()
-            );
+                // Show a brief summary instead of the full output
+                use colored::Colorize;
+                let item_count = stats.item_count;
+                let lines = stats.line_count;
+                let summary = if let Some(count) = item_count {
+                    format!(
+                        " — {} {}, {} lines",
+                        crate::utils::format_number(count),
+                        stats.item_label,
+                        crate::utils::format_number(lines)
+                    )
+                } else {
+                    format!(" — {} lines", crate::utils::format_number(lines))
+                };
+                eprintln!(
+                    "  {}{}",
+                    "Tool result hidden (use /tool_output on to show)".dimmed(),
+                    summary.dimmed()
+                );
+            }
         }
 
         // Show stats (stderr info included)

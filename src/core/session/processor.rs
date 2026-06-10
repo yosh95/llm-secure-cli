@@ -57,23 +57,31 @@ impl ActiveSession {
         } else {
             Vec::new()
         };
-        let send_future = self.client.send(data, tool_schemas);
 
-        // Animated spinner to indicate progress and keep SSH alive.
-        let mut spin =
-            crate::utils::spinner::Spinner::start(&format!("Thinking ({thinking_label}) …"));
+        let is_stdout = self.client.get_state().stdout;
 
-        let result = tokio::select! {
-            res = send_future => {
-                spin.finish("done");
-                res?
-            }
-            _ = tokio::signal::ctrl_c() => {
-                spin.stop();
-                println!("^C - Interrupted.");
-                self.handle_interruption();
-                return Err(anyhow::anyhow!("Interrupted by user"));
-            }
+        let result = if is_stdout {
+            self.client.send(data, tool_schemas).await?
+        } else {
+            let send_future = self.client.send(data, tool_schemas);
+
+            // Animated spinner to indicate progress and keep SSH alive.
+            let mut spin =
+                crate::utils::spinner::Spinner::start(&format!("Thinking ({thinking_label}) …"));
+
+            let res = tokio::select! {
+                res = send_future => {
+                    spin.finish("done");
+                    res?
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    spin.stop();
+                    eprintln!("^C - Interrupted.");
+                    self.handle_interruption();
+                    return Err(anyhow::anyhow!("Interrupted by user"));
+                }
+            };
+            res
         };
 
         if let Some(usage) = &result.usage {
@@ -81,15 +89,17 @@ impl ActiveSession {
             self.total_usage.completion_tokens += usage.completion_tokens;
             self.total_usage.total_tokens += usage.total_tokens;
 
-            use colored::Colorize;
-            println!(
-                "{}",
-                format!(
-                    "Tokens: {} (↑) / {} (↓) / {} (Total)",
-                    usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
-                )
-                .dimmed()
-            );
+            if !is_stdout {
+                use colored::Colorize;
+                eprintln!(
+                    "{}",
+                    format!(
+                        "Tokens: {} (↑) / {} (↓) / {} (Total)",
+                        usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
+                    )
+                    .dimmed()
+                );
+            }
         }
 
         Ok((result.content, None))
@@ -97,6 +107,23 @@ impl ActiveSession {
 
     /// Displays Thought blocks and Assistant text results.
     fn display_interaction_output(&self, text: Option<String>, thought: Option<String>) {
+        let is_stdout = self.client.get_state().stdout;
+
+        if is_stdout {
+            // In stdout/pipe mode: print only the raw response text, no ANSI, no markdown, no decoration
+            if let Some(text) = text
+                && !text.trim().is_empty()
+            {
+                print!("{}", text);
+                if !text.ends_with('\n') {
+                    println!();
+                }
+                use std::io::Write;
+                std::io::stdout().flush().ok();
+            }
+            return;
+        }
+
         if let Some(t) = thought
             && !t.trim().is_empty()
         {
@@ -119,6 +146,9 @@ impl ActiveSession {
 
     /// Processes images or other data types in the assistant's message.
     async fn handle_media_output(&self) {
+        if self.client.get_state().stdout {
+            return;
+        }
         let config = match self.ctx.config_manager.get_config() {
             Ok(c) => c,
             Err(e) => {

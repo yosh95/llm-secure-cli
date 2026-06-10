@@ -1,4 +1,4 @@
-use crate::security::pqc::{PQCVariant, PqcProvider};
+use crate::security::pqc::{DEFAULT_KEM_VARIANT, DEFAULT_PQC_VARIANT, PQCVariant, PqcProvider};
 use crate::security::pqc_cose::HybridSigner;
 use anyhow::{Result, anyhow};
 use chrono::Utc;
@@ -122,7 +122,7 @@ impl IdentityManager {
     pub fn has_keys() -> bool {
         // Accept both raw and LKEF-magic encrypted key files.
         let dir = Self::get_key_dir("self", "me");
-        (dir.join("id_ed25519").exists()) && (dir.join("id_mldsa87").exists())
+        (dir.join("id_ed25519").exists()) && (dir.join(DEFAULT_PQC_VARIANT.key_filename()).exists())
     }
 
     // ── Key generation ──
@@ -148,7 +148,8 @@ impl IdentityManager {
         }
 
         // If keys already exist, do nothing.
-        if dir.join("id_ed25519").exists() && dir.join("id_mldsa87").exists() {
+        if dir.join("id_ed25519").exists() && dir.join(DEFAULT_PQC_VARIANT.key_filename()).exists()
+        {
             return Ok(());
         }
 
@@ -168,21 +169,21 @@ impl IdentityManager {
         }
 
         // ML-DSA variants
-        let pqc_path = dir.join("id_mldsa87");
+        let pqc_path = dir.join(DEFAULT_PQC_VARIANT.key_filename());
         if !pqc_path.exists() {
             let (pk, sk) =
                 PqcProvider::generate_keypair(crate::security::pqc::DEFAULT_PQC_VARIANT)?;
             store.save_private_key(&pqc_path, &sk, passphrase.as_deref())?;
-            fs::write(dir.join("id_mldsa87.pub"), pk)?;
+            fs::write(dir.join(DEFAULT_PQC_VARIANT.pub_key_filename()), pk)?;
         }
 
         // ML-KEM (FIPS 203)
-        let kem_path = dir.join("id_kem1024");
+        let kem_path = dir.join(DEFAULT_KEM_VARIANT.key_filename());
         if !kem_path.exists() {
             let (pk, sk) =
                 PqcProvider::generate_kem_keypair(crate::security::pqc::DEFAULT_KEM_VARIANT)?;
             store.save_private_key(&kem_path, &sk, passphrase.as_deref())?;
-            fs::write(dir.join("id_kem1024.pub"), &pk)?;
+            fs::write(dir.join(DEFAULT_KEM_VARIANT.pub_key_filename()), &pk)?;
         }
 
         Ok(())
@@ -209,7 +210,8 @@ impl IdentityManager {
         }
 
         // If keys already exist, do nothing.
-        if dir.join("id_ed25519").exists() && dir.join("id_mldsa87").exists() {
+        if dir.join("id_ed25519").exists() && dir.join(DEFAULT_PQC_VARIANT.key_filename()).exists()
+        {
             return Ok(());
         }
 
@@ -226,21 +228,21 @@ impl IdentityManager {
         }
 
         // ML-DSA variants
-        let pqc_path = dir.join("id_mldsa87");
+        let pqc_path = dir.join(DEFAULT_PQC_VARIANT.key_filename());
         if !pqc_path.exists() {
             let (pk, sk) =
                 PqcProvider::generate_keypair(crate::security::pqc::DEFAULT_PQC_VARIANT)?;
             store.save_private_key(&pqc_path, &sk, passphrase)?;
-            fs::write(dir.join("id_mldsa87.pub"), pk)?;
+            fs::write(dir.join(DEFAULT_PQC_VARIANT.pub_key_filename()), pk)?;
         }
 
         // ML-KEM (FIPS 203)
-        let kem_path = dir.join("id_kem1024");
+        let kem_path = dir.join(DEFAULT_KEM_VARIANT.key_filename());
         if !kem_path.exists() {
             let (pk, sk) =
                 PqcProvider::generate_kem_keypair(crate::security::pqc::DEFAULT_KEM_VARIANT)?;
             store.save_private_key(&kem_path, &sk, passphrase)?;
-            fs::write(dir.join("id_kem1024.pub"), &pk)?;
+            fs::write(dir.join(DEFAULT_KEM_VARIANT.pub_key_filename()), &pk)?;
         }
 
         Ok(())
@@ -261,12 +263,12 @@ impl IdentityManager {
     }
 
     pub fn get_pqc_public_key(_variant: PQCVariant) -> Result<Vec<u8>> {
-        Self::get_public_key_for("self", "me", "id_mldsa87.pub")
+        Self::get_public_key_for("self", "me", &_variant.pub_key_filename())
     }
 
     pub fn get_kem_public_key() -> Result<Vec<u8>> {
         Ok(fs::read(
-            Self::get_key_dir("self", "me").join("id_kem1024.pub"),
+            Self::get_key_dir("self", "me").join(DEFAULT_KEM_VARIANT.pub_key_filename()),
         )?)
     }
 
@@ -302,7 +304,11 @@ impl IdentityManager {
         store: &dyn KeyStore,
         _variant: PQCVariant,
     ) -> Result<Vec<u8>> {
-        let path = store.base_dir().join("self").join("me").join("id_mldsa87");
+        let path = store
+            .base_dir()
+            .join("self")
+            .join("me")
+            .join(_variant.key_filename());
         store.load_private_key(&path)
     }
 
@@ -316,7 +322,11 @@ impl IdentityManager {
 
     /// Load the ML-KEM-768 private key using a custom [`KeyStore`].
     pub fn get_kem_private_key_with_store(store: &dyn KeyStore) -> Result<Vec<u8>> {
-        let path = store.base_dir().join("self").join("me").join("id_kem1024");
+        let path = store
+            .base_dir()
+            .join("self")
+            .join("me")
+            .join(DEFAULT_KEM_VARIANT.key_filename());
         store.load_private_key(&path)
     }
 
@@ -350,8 +360,13 @@ impl IdentityManager {
         let store = FileSystemKeyStore;
         let ed_sk =
             store.load_private_key(&store.base_dir().join("self").join("me").join("id_ed25519"))?;
-        let pqc_sk =
-            store.load_private_key(&store.base_dir().join("self").join("me").join("id_mldsa87"))?;
+        let pqc_sk = store.load_private_key(
+            &store
+                .base_dir()
+                .join("self")
+                .join("me")
+                .join(DEFAULT_PQC_VARIANT.key_filename()),
+        )?;
 
         // Create Hybrid COSE Token
         let cose_token = HybridSigner::create_hybrid_token(

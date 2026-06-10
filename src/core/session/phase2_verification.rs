@@ -32,6 +32,11 @@ impl ActiveSession {
         args: &serde_json::Map<String, Value>,
         config: &crate::config::models::AppConfig,
     ) -> anyhow::Result<(serde_json::Map<String, Value>, bool, Option<Value>)> {
+        // In stdout/pipe mode: auto-approve all tool calls (no human interaction possible)
+        if self.client.get_state().stdout {
+            return Ok((args.clone(), true, None));
+        }
+
         // 2a. Resolve Verifier Committee members
         let (committee_members, verifier_available) =
             self.ctx.config_manager.get_verifier_committee();
