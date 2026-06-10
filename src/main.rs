@@ -41,11 +41,15 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Identity and Integrity management
-    Identity {
-        #[clap(subcommand)]
-        subcommand: Option<IdentityCommands>,
+    /// Generate Ed25519 and PQC key pairs
+    Keygen,
+    /// Verify session integrity using Merkle Anchor
+    VerifySession {
+        /// Session Trace ID to verify
+        trace_id: String,
     },
+    /// List available sessions (anchored)
+    ListSessions,
     /// Decrypt PQC-encrypted audit logs
     DecryptLog {
         /// Path to the encrypted audit log
@@ -86,19 +90,6 @@ enum Commands {
         #[clap(long)]
         model: Option<String>,
     },
-}
-
-#[derive(Subcommand)]
-enum IdentityCommands {
-    /// Generate Ed25519 and PQC key pairs
-    Keygen,
-    /// Verify session integrity using Merkle Anchor
-    VerifySession {
-        /// Session Trace ID to verify
-        trace_id: String,
-    },
-    /// List available sessions (anchored)
-    ListSessions,
 }
 
 #[tokio::main]
@@ -161,16 +152,13 @@ async fn handle_subcommand(
     ctx: &std::sync::Arc<llm_secure_cli::core::context::AppContext>,
 ) {
     match command {
-        Commands::Identity { subcommand } => match subcommand {
-            Some(IdentityCommands::Keygen) => llm_secure_cli::cli::commands::identity::run_keygen(),
-            Some(IdentityCommands::VerifySession { trace_id }) => {
-                llm_secure_cli::cli::commands::identity::run_verify_session(&trace_id);
-            }
-            Some(IdentityCommands::ListSessions) => {
-                llm_secure_cli::cli::commands::identity::list_anchors();
-            }
-            None => println!("Please specify an identity subcommand."),
-        },
+        Commands::Keygen => llm_secure_cli::cli::commands::identity::run_keygen(),
+        Commands::VerifySession { trace_id } => {
+            llm_secure_cli::cli::commands::identity::run_verify_session(&trace_id);
+        }
+        Commands::ListSessions => {
+            llm_secure_cli::cli::commands::identity::list_anchors();
+        }
         Commands::DecryptLog { input, output } => {
             llm_secure_cli::cli::commands::pqc_decrypt::decrypt_log_file(
                 input.into(),

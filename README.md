@@ -225,9 +225,9 @@ llsc "query"                         # One-shot query
 
 ### Subcommands
 ```bash
-llsc identity keygen                 # Generate Ed25519 and PQC (ML-DSA/ML-KEM) key pairs
-llsc identity verify-session <id>    # Verify session integrity using Merkle Anchor
-llsc identity list-sessions          # List available anchored sessions
+llsc keygen                         # Generate Ed25519 and PQC (ML-DSA/ML-KEM) key pairs
+llsc verify-session <id>             # Verify session integrity using Merkle Anchor
+llsc list-sessions                   # List available anchored sessions
 llsc decrypt-log <input> [-o <out>]  # Decrypt PQC-encrypted audit logs
 llsc verify-skill <path>             # Verify Agent Skills for safety (structural, signature, semantic)
 ```
