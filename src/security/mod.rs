@@ -7,7 +7,6 @@ pub mod permissions;
 pub mod policy;
 pub mod pqc;
 pub mod pqc_cose;
-pub mod skill;
 
 pub mod static_analyzer;
 pub mod verifier;

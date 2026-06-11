@@ -232,7 +232,6 @@ llsc keygen                         # Generate Ed25519 and PQC (ML-DSA/ML-KEM) k
 llsc verify-session <id>             # Verify session integrity using Merkle Anchor
 llsc list-sessions                   # List available anchored sessions
 llsc decrypt-log <input> [-o <out>]  # Decrypt PQC-encrypted audit logs
-llsc verify-skill <path>             # Verify Agent Skills for safety (structural, signature, semantic)
 ```
 
 ### Interactive Session Commands
@@ -297,18 +296,6 @@ verifier_committee_members = ["ollama:gemma4:e2b", "openai:gpt-4o-mini", "openro
 ```
 
 **Note**: The `[security]` section in `config.toml` is currently unused — verifier settings are managed through `state.toml` (via the `/vcommittee` interactive command). This will be consolidated in a future release.
-
----
-
-## Agent Skill Verification
-
-`llsc` provides a three-tier verification pipeline for [Agent Skills](https://agentskills.io/specification) — structural validation, Ed25519/ML-DSA signature verification, and Verifier Committee Semantic Firewall analysis — that audits skills before installation without executing them.  See **[docs/AGENT_SKILLS.md](docs/AGENT_SKILLS.md)** for the full rationale, usage, and threat model.
-
-```bash
-llsc verify-skill ./path/to/skill/           # Human-readable report
-llsc verify-skill ~/.claude/skills/ --recursive  # Batch scan
-llsc verify-skill ./skill/ --semantic        # Full Semantic Firewall analysis
-```
 
 ## Development & Benchmarks
 To run the local security primitive benchmarks (Static Analysis, PQC Keygen/Sign/Verify):
