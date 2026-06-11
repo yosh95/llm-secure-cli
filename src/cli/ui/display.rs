@@ -123,117 +123,87 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
     ));
 
     if let Some(obj) = args.as_object() {
-        if name == "execute_python" {
-            let code = obj.get("code").and_then(|v| v.as_str()).unwrap_or_default();
-            let explanation = obj.get("explanation").and_then(|v| v.as_str());
+        let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
-            if let Some(exp) = explanation {
-                push_line(
-                    &mut buf,
-                    &format!(
-                        "    {} {}: {}",
-                        "\u{2022}".bright_black(),
-                        "explanation".cyan(),
-                        exp
-                    ),
-                );
-            }
-
+        if let Some(exp) = explanation {
+            let val_str = exp.to_string();
             push_line(
                 &mut buf,
-                &format!("    {} {}:", "\u{2022}".bright_black(), "code".cyan()),
+                &format!(
+                    "    {} {}: {}",
+                    "\u{2022}".bright_black(),
+                    "explanation".cyan(),
+                    val_str
+                ),
             );
-            let highlighted = crate::cli::syntax_highlight::highlight_python(code);
-            for line in highlighted.lines() {
-                push_line(&mut buf, &format!("        {line}"));
-            }
+        }
 
-            for (k, v) in obj {
-                if k != "code" && k != "explanation" {
-                    let val_str = v
-                        .as_str()
-                        .map_or_else(|| v.to_string(), std::string::ToString::to_string);
+        let path_like = [
+            "path",
+            "url",
+            "directory",
+            "query",
+            "pattern",
+            "file_pattern",
+            "content",
+            "code",
+            "old",
+            "new",
+            "ignore_patterns",
+            "exclude_patterns",
+            "include_hidden",
+            "max_files",
+            "depth",
+        ];
+        let start_keys = ["start_line"];
+        let end_keys = ["end_line"];
+
+        let mut remaining_keys: Vec<&String> = Vec::new();
+        for k in obj.keys() {
+            if k != "explanation" {
+                remaining_keys.push(k);
+            }
+        }
+
+        remaining_keys.sort_by(|a, b| {
+            let a_is_path = path_like.contains(&a.as_str());
+            let b_is_path = path_like.contains(&b.as_str());
+            let a_is_start = start_keys.contains(&a.as_str());
+            let b_is_start = start_keys.contains(&b.as_str());
+            let a_is_end = end_keys.contains(&a.as_str());
+            let b_is_end = end_keys.contains(&b.as_str());
+
+            if a_is_path && !b_is_path {
+                std::cmp::Ordering::Less
+            } else if !a_is_path && b_is_path {
+                std::cmp::Ordering::Greater
+            } else if a_is_start && !b_is_start {
+                std::cmp::Ordering::Less
+            } else if !a_is_start && b_is_start {
+                std::cmp::Ordering::Greater
+            } else if a_is_end && !b_is_end {
+                std::cmp::Ordering::Less
+            } else if !a_is_end && b_is_end {
+                std::cmp::Ordering::Greater
+            } else {
+                a.cmp(b)
+            }
+        });
+
+        for k in remaining_keys {
+            if let Some(v) = obj.get(k) {
+                if name == "execute_python" && k == "code" {
+                    // Apply syntax highlighting for Python code
                     push_line(
                         &mut buf,
-                        &format!(
-                            "    {} {}: {}",
-                            "\u{2022}".bright_black(),
-                            k.cyan(),
-                            val_str
-                        ),
+                        &format!("    {} {}:", "\u{2022}".bright_black(), "code".cyan()),
                     );
-                }
-            }
-        } else {
-            let explanation = obj.get("explanation").and_then(|v| v.as_str());
-
-            if let Some(exp) = explanation {
-                let val_str = exp.to_string();
-                push_line(
-                    &mut buf,
-                    &format!(
-                        "    {} {}: {}",
-                        "\u{2022}".bright_black(),
-                        "explanation".cyan(),
-                        val_str
-                    ),
-                );
-            }
-
-            let path_like = [
-                "path",
-                "url",
-                "directory",
-                "query",
-                "pattern",
-                "file_pattern",
-                "content",
-                "code",
-                "old",
-                "new",
-                "ignore_patterns",
-                "exclude_patterns",
-                "include_hidden",
-                "max_files",
-                "depth",
-            ];
-            let start_keys = ["start_line"];
-            let end_keys = ["end_line"];
-
-            let mut remaining_keys: Vec<&String> = Vec::new();
-            for k in obj.keys() {
-                if k != "explanation" {
-                    remaining_keys.push(k);
-                }
-            }
-
-            remaining_keys.sort_by(|a, b| {
-                let a_is_path = path_like.contains(&a.as_str());
-                let b_is_path = path_like.contains(&b.as_str());
-                let a_is_start = start_keys.contains(&a.as_str());
-                let b_is_start = start_keys.contains(&b.as_str());
-                let a_is_end = end_keys.contains(&a.as_str());
-                let b_is_end = end_keys.contains(&b.as_str());
-
-                if a_is_path && !b_is_path {
-                    std::cmp::Ordering::Less
-                } else if !a_is_path && b_is_path {
-                    std::cmp::Ordering::Greater
-                } else if a_is_start && !b_is_start {
-                    std::cmp::Ordering::Less
-                } else if !a_is_start && b_is_start {
-                    std::cmp::Ordering::Greater
-                } else if a_is_end && !b_is_end {
-                    std::cmp::Ordering::Less
-                } else if !a_is_end && b_is_end {
-                    std::cmp::Ordering::Greater
+                    let code_str = v.as_str().unwrap_or("");
+                    let highlighted = crate::cli::syntax_highlight::highlight_python(code_str);
+                    for line in highlighted.lines() {
+                        push_line(&mut buf, &format!("        {line}"));
+                    }
                 } else {
-                    a.cmp(b)
-                }
-            });
-
-            for k in remaining_keys {
-                if let Some(v) = obj.get(k) {
                     let val_str = v
                         .as_str()
                         .map_or_else(|| v.to_string(), std::string::ToString::to_string);

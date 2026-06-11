@@ -103,18 +103,7 @@ pub async fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<Ap
         crate::tools::registry::register_builtin_tools(&mut registry, &ctx.config_manager);
     }
 
-    // 5. Initialize Remote Tools (MCP)
-    if let Err(e) = crate::tools::registry::initialize_remote_tools(
-        ctx.tool_registry.clone(),
-        &ctx.config_manager,
-        &ctx.mcp_manager,
-    )
-    .await
-    {
-        tracing::warn!("Failed to initialize remote tools: {}", e);
-    }
-
-    // 6. Register LLM Clients
+    // 5. Register LLM Clients
     register_clients(&ctx).await;
 
     Ok(ctx)

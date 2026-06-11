@@ -250,20 +250,6 @@ impl SecurityConfig {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct McpServerConfig {
-    pub name: String,
-    pub command: String,
-    #[serde(default)]
-    pub args: Vec<String>,
-    /// Transport type: "stdio" (default) or "streamable-http"
-    #[serde(default)]
-    pub transport: String,
-    /// Base URL for Streamable HTTP transport (e.g., "<https://example.com/mcp>")
-    #[serde(default)]
-    pub api_url: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
 pub struct PqcConfig {
     /// PQC signature variant (ML-DSA).
     /// "ml-dsa-44" (lowest), "ml-dsa-65" (medium), or "ml-dsa-87" (highest).
@@ -302,7 +288,6 @@ pub struct AppConfig {
     #[serde(default)]
     pub security: SecurityConfig,
     #[serde(default)]
-    pub mcp_servers: Vec<McpServerConfig>,
     #[serde(flatten)]
     pub providers: HashMap<String, ProviderConfig>,
 }

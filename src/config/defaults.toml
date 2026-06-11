@@ -100,24 +100,3 @@ api_url = "https://openrouter.ai/api/v1"
 # [my_local_llm]
 # api_url = "http://192.168.1.10:8080/v1"
 # formatter = "generic"
-
-# =============================================================================
-# MCP Servers (Model Context Protocol)
-# =============================================================================
-# MCP servers provide tools to the AI agent. Supported transport types:
-#   - "stdio" (default): Launch a local process and communicate via stdin/stdout
-#   - "streamable-http": Connect to a remote MCP server over HTTPS
-#
-# Example stdio server:
-# [[mcp_servers]]
-# name = "filesystem"
-# command = "npx"
-# args = ["-y", "@modelcontextprotocol/server-filesystem"]
-# transport = "stdio"
-#
-# Example Streamable HTTP server:
-# [[mcp_servers]]
-# name = "remote-tools"
-# command = ""  # Not used for HTTP transport
-# transport = "streamable-http"
-# api_url = "https://mcp.example.com/v1"

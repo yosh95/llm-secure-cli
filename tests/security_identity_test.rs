@@ -95,16 +95,4 @@ mod tests {
             assert!(PqcProvider::verify(variant, &pk, &tampered_message, &sig).is_err());
         }
     }
-
-    #[test]
-    fn test_mcp_zero_trust_logic_flow() {
-        let server_name = "docker-mcp-server";
-        let tool_name = format!("{}__{}", server_name, "run_command");
-        let parts: Vec<&str> = tool_name.split("__").collect();
-        assert_eq!(parts[0], server_name);
-
-        let zero_trust_enabled = true;
-        let approved = !zero_trust_enabled;
-        assert!(!approved, "Zero trust must force approval to false");
-    }
 }

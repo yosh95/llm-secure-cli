@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 pub type ToolFuture = Pin<Box<dyn Future<Output = anyhow::Result<Value>> + Send>>;
 pub type ToolFunc = Arc<dyn Fn(HashMap<String, Value>, Arc<AppConfig>) -> ToolFuture + Send + Sync>;
@@ -14,7 +13,6 @@ pub struct Tool {
     pub description: String,
     pub parameters: Value,
     pub func: ToolFunc,
-    pub is_local: bool,
 }
 
 pub struct ToolRegistry {
@@ -37,14 +35,7 @@ impl Default for ToolRegistry {
 }
 
 impl ToolRegistry {
-    pub fn register(
-        &mut self,
-        name: &str,
-        description: &str,
-        parameters: Value,
-        func: ToolFunc,
-        is_local: bool,
-    ) {
+    pub fn register(&mut self, name: &str, description: &str, parameters: Value, func: ToolFunc) {
         let mut params = parameters.clone();
         if let Some(obj) = params.as_object_mut() {
             if !obj.contains_key("properties") {
@@ -76,30 +67,8 @@ impl ToolRegistry {
                 description: description.to_string(),
                 parameters: params,
                 func,
-                is_local,
             },
         );
-    }
-
-    pub fn register_remote_tool(&mut self, tool: &Value) {
-        let name = tool["name"]
-            .as_str()
-            .unwrap_or("unknown_remote_tool")
-            .to_string();
-        let description = tool["description"].as_str().unwrap_or_default().to_string();
-        let parameters = tool["parameters"].clone();
-
-        let name_for_error = name.clone();
-        let func: ToolFunc = Arc::new(move |_args, _config| {
-            let n = name_for_error.clone();
-            Box::pin(async move {
-                Err(anyhow::anyhow!(
-                    "MCP tool '{n}' should be executed via async path in ChatSession::execute_tool"
-                ))
-            })
-        });
-
-        self.register(&name, &description, parameters, func, false);
     }
 
     #[must_use]
@@ -148,25 +117,10 @@ impl ToolRegistry {
     }
 }
 
-pub async fn initialize_remote_tools(
-    registry: Arc<RwLock<ToolRegistry>>,
-    config_manager: &crate::config::ConfigManager,
-    mcp_manager: &crate::tools::mcp::manager::McpManager,
-) -> anyhow::Result<()> {
-    let tools = mcp_manager.initialize_servers(config_manager).await?;
-
-    let mut registry = registry.write().await;
-    for tool in tools {
-        registry.register_remote_tool(&tool);
-    }
-
-    Ok(())
-}
-
 pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::config::ConfigManager) {
     let maybe_register =
         |r: &mut ToolRegistry, name: &str, description: &str, parameters: Value, func: ToolFunc| {
-            r.register(name, description, parameters, func, true);
+            r.register(name, description, parameters, func);
         };
 
     if let Some(brave_key) = config_manager.get_api_key("brave") {

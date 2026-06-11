@@ -77,8 +77,7 @@ pub async fn execute_python(
         Some(Value::String(s)) => s.clone(),
         Some(other) => {
             return Err(anyhow::anyhow!(
-                "Invalid type for 'code': expected a string, got {other}. \
-                 Provide the Python source code as a single string.",
+                "Invalid type for 'code': expected a string, got {other}.                  Provide the Python source code as a single string.",
             ));
         }
         None => {
@@ -123,8 +122,7 @@ pub async fn execute_python(
             // Clean up temp file before returning error
             let _ = std::fs::remove_file(&tmp_path);
             return Err(anyhow::anyhow!(
-                "python3 not found in system PATH. \
-                 Ensure python3 is installed and available."
+                "python3 not found in system PATH.                  Ensure python3 is installed and available."
             ));
         }
         Err(e) => {

@@ -76,7 +76,6 @@ flowchart TB
     subgraph Tools["External Tools"]
         H1["execute_python<br/>(Universal Executor)"]
         H2["brave_search<br/>(Web Search)"]
-        H3["MCP Servers<br/>(Remote / Custom)"]
     end
 
     A --> B
@@ -91,9 +90,8 @@ flowchart TB
     
     G --> H1
     G --> H2
-    G --> H3
     
-    H1 & H2 & H3 -->|"Observations / Results"| D
+    H1 & H2 -->|"Observations / Results"| D
 ```
 
   <br>
@@ -121,6 +119,12 @@ flowchart TB
     # Generic provider name support
     # ANYNAME_API_KEY can be used if you define [ANYNAME] in config.toml
     ```
+> **Note:** This CLI intentionally omits a dedicated MCP (Model Context Protocol) client.
+> The `execute_python` tool allows the LLM to communicate with any MCP server directly
+> via Python's `requests` or similar libraries, making a native MCP client redundant.
+> All external APIs are accessed through the universal executor, keeping the tool surface
+> minimal and the security boundary simple.
+
 
 ### 3. Chat: Type `llsc` to start an interactive session.
 
@@ -175,7 +179,6 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
     - **Universal Executor**: `execute_python` — run arbitrary Python code for any file operation, data processing, or computation task.
     - **Web Search**: `brave_search` — Brave LLM Context API for grounded, pre-extracted web content (LLM-optimized).
 - High-Assurance via Verifier Committee: Every tool call is verified by the **Verifier Committee** — N independent LLMs operating concurrently under an "any-flag" policy — as a Semantic Firewall against unsafe or misaligned tool calls.
-- MCP (Model Context Protocol): Connect to remote resources or services via custom servers.
 - Operational Stability: A clean, flicker-free UI designed for long-term "Deep Work" sessions.
 - Human-in-the-Loop: The Verifier Committee auto-approves safe tool calls; potentially unsafe calls always require human confirmation.
 
