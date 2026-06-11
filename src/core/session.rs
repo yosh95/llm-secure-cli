@@ -162,7 +162,27 @@ impl ActiveSession {
         });
 
         if should_remove {
+            // Remove the Assistant message with unanswered tool calls
             state.conversation.pop();
+            // Also remove the preceding User message from the same turn to avoid
+            // orphaned user input that would confuse the LLM on session reload.
+            if let Some(last) = state.conversation.last()
+                && last.role == Role::User
+            {
+                state.conversation.pop();
+            }
         }
+
+        // Auto-save the conversation up to this point so that Ctrl+C during
+        // a ReAct loop (API call, verification, or tool execution) does not
+        // cause the entire conversation to be lost.  This complements the
+        // auto_save call in process_and_print() which only fires on a clean
+        // exit (no more tool calls).  Saving here is safe because:
+        //   - If no Assistant was removed and save is redundant → same content
+        //   - If Assistant+User were removed → clean state after the last
+        //     completed turn, which is exactly what the user expects
+        //   - The call is idempotent (writes over the previous file) and the
+        //     resulting file is always parseable as a valid SessionFile.
+        crate::utils::session_store::auto_save(self);
     }
 }
