@@ -249,6 +249,7 @@ impl ActiveSession {
         // Obtain an AbortHandle *before* the select! so we can cancel the task
         // if the timeout or Ctrl-C branch wins.
         let abort_handle = handle.abort_handle();
+        let mut cancel_rx = self.cancel_token.receiver();
 
         let res = tokio::select! {
             res = handle => {
@@ -262,7 +263,7 @@ impl ActiveSession {
                 eprintln!("Verifier timed out after {VERIFIER_TIMEOUT_SECS}s.");
                 VerificationOutcome::FallbackRequired(format!("Verifier timed out after {VERIFIER_TIMEOUT_SECS}s"))
             }
-            _ = tokio::signal::ctrl_c() => {
+            _ = cancel_rx.changed() => {
                 // Abort the background verifier task to prevent resource leaks.
                 abort_handle.abort();
                 spin.stop();

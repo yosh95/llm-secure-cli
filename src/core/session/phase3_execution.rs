@@ -37,12 +37,13 @@ impl ActiveSession {
             // Start a spinner with the tool name to show elapsed time (same style as LLM API calls)
             let mut spin = crate::utils::spinner::Spinner::start(name);
 
+            let mut cancel_rx = self.cancel_token.receiver();
             let res = tokio::select! {
                 res = self.execute_tool(name, &args_map) => {
                     spin.finish("done");
                     res
                 }
-                _ = tokio::signal::ctrl_c() => {
+                _ = cancel_rx.changed() => {
                     spin.stop();
                     eprintln!("\n^C - Interrupted.");
                     // We return an error string to the LLM

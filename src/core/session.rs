@@ -3,10 +3,11 @@ use crate::llm::models::{DataSource, MessagePart, Role};
 use crate::security::audit::AuditEntry;
 use crate::security::merkle_anchor::SessionAnchorManager;
 use serde_json;
+use std::sync::{Arc, OnceLock};
+use tokio::sync::watch;
 use uuid;
 
 use crate::core::context::AppContext;
-use std::sync::Arc;
 
 pub mod input_handler;
 pub mod phase1_static;
@@ -14,6 +15,73 @@ pub mod phase2_verification;
 pub mod phase3_execution;
 pub mod processor;
 pub mod tool_executor;
+
+// ── Global Ctrl+C handler ────────────────────────────────────────────────
+//
+// `tokio::signal::ctrl_c()` must NOT be called in multiple places. Each call
+// registers a new callback in the global signal_hook_registry, and repeated
+// creation/destruction can cause the internal state to desync — leading to
+// SIGINT being silently swallowed (the reported deadlock).
+//
+// Instead, ONE background task watches SIGINT for the entire process lifetime
+// and broadcasts via a `watch::Sender<bool>`.  All concurrent operations
+// (LLM API call, verifier wait, tool execution) use a `watch::Receiver` from
+// this sender in their `tokio::select!` — no duplicate registrations.
+
+static CANCEL_SENDER: OnceLock<watch::Sender<bool>> = OnceLock::new();
+
+/// Ensure the global SIGINT listener is running (exactly once per process).
+fn ensure_global_cancel_handler() {
+    CANCEL_SENDER.get_or_init(|| {
+        let (tx, _rx) = watch::channel(false);
+        let tx2 = tx.clone();
+        tokio::spawn(async move {
+            loop {
+                // Single, permanent listener — created once, never dropped.
+                tokio::signal::ctrl_c().await.ok();
+                tracing::debug!("SIGINT received — notifying session cancellation watchers");
+                let _ = tx2.send(true);
+            }
+        });
+        tx
+    });
+}
+
+/// A lightweight cancellation token backed by the global SIGINT handler.
+///
+/// Each `.receiver()` returns a fresh `watch::Receiver<bool>` that will
+/// complete on the *next* Ctrl+C.  Multiple concurrent receivers (LLM call,
+/// verifier, tool execution) all share the same single OS signal registration.
+#[derive(Clone)]
+pub struct SessionCancel;
+
+impl SessionCancel {
+    /// Create a new token — idempotent w.r.t. the global handler.
+    /// Safe to call multiple times; the background task starts at most once.
+    #[must_use]
+    pub fn new() -> Self {
+        ensure_global_cancel_handler();
+        Self
+    }
+
+    /// Return a receiver that completes on the NEXT Ctrl+C.
+    /// Each call is independent; the returned receiver starts fresh so its
+    /// first `.changed()` always waits for a future signal.
+    #[must_use]
+    #[allow(clippy::expect_used)]
+    pub fn receiver(&self) -> watch::Receiver<bool> {
+        CANCEL_SENDER
+            .get()
+            .expect("SessionCancel::new() must have been called")
+            .subscribe()
+    }
+}
+
+impl Default for SessionCancel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// A session that is actively running and has an initialized LLM client.
 pub struct ActiveSession {
@@ -24,6 +92,10 @@ pub struct ActiveSession {
     pub trace_id: String,
     pub audit_entries: Vec<AuditEntry>,
     pub total_usage: crate::llm::models::Usage,
+    /// Shared cancellation token for Ctrl+C.  The single background listener
+    /// (started once per process via `CANCEL_SENDER`) broadcasts to all
+    /// concurrent operations through independent `watch::Receiver`s.
+    pub cancel_token: SessionCancel,
     /// Set to true after `finalize_audit` has run once — prevents double-anchoring
     /// whether the session is closed via `close()` or via `Drop`.
     audit_finalized: bool,
@@ -68,6 +140,7 @@ impl ActiveSession {
             trace_id,
             audit_entries: entry.into_iter().collect(),
             total_usage: crate::llm::models::Usage::default(),
+            cancel_token: SessionCancel::new(),
             audit_finalized: false,
         })
     }

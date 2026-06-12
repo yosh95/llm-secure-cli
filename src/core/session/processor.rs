@@ -69,12 +69,14 @@ impl ActiveSession {
             let mut spin =
                 crate::utils::spinner::Spinner::start(&format!("Thinking ({thinking_label}) …"));
 
+            let mut cancel_rx = self.cancel_token.receiver();
+
             let res = tokio::select! {
                 res = send_future => {
                     spin.finish("done");
                     res?
                 }
-                _ = tokio::signal::ctrl_c() => {
+                _ = cancel_rx.changed() => {
                     spin.stop();
                     eprintln!("^C - Interrupted.");
                     self.handle_interruption();
