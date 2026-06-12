@@ -146,13 +146,13 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
         maybe_register(
             r,
             "execute_python",
-            "Execute arbitrary Python code. Multi-purpose tool for: file ops (read/write/edit/list), grep/search (re, fnmatch), web fetching (requests/urllib), PDF text extraction (pdftotext via subprocess), data processing, AND arbitrary shell commands (via subprocess).",
+            "Execute Python/shell code in a fresh process each call. Supports: file I/O, regex/fnmatch search, web requests (requests/urllib), PDF text extraction (pdftotext), data processing, and arbitrary commands (subprocess). **State never persists between runs.**",
             json!({
                 "type": "object",
                 "properties": {
                     "code": {
                         "type": "string",
-                        "description": "Python source code to execute. Can use any standard library or installed third-party package. **Always include all necessary import statements** (e.g., `import requests`, `import json`, `import re`, `from pathlib import Path`). Use print() for output. For multi-line strings, use triple quotes (\"\"\") instead of embedding literal newlines inside single-line string literals."
+                        "description": "Python source code to execute (runs in a fresh process each call; **no state carries over**). Can use any standard library or installed third-party package. **Always include all necessary import statements** (e.g., `import requests`, `import json`, `import re`, `from pathlib import Path`). Use print() for output. For multi-line strings, use triple quotes (\"\"\") instead of embedding literal newlines inside single-line string literals."
                     }
                 },
                 "required": ["code"]
