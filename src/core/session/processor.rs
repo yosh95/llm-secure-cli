@@ -86,24 +86,6 @@ impl ActiveSession {
             res
         };
 
-        if let Some(usage) = &result.usage {
-            self.total_usage.prompt_tokens += usage.prompt_tokens;
-            self.total_usage.completion_tokens += usage.completion_tokens;
-            self.total_usage.total_tokens += usage.total_tokens;
-
-            if !is_stdout {
-                use colored::Colorize;
-                eprintln!(
-                    "{}",
-                    format!(
-                        "Tokens: {} (↑) / {} (↓) / {} (Total)",
-                        usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
-                    )
-                    .dimmed()
-                );
-            }
-        }
-
         Ok((result.content, None))
     }
 
