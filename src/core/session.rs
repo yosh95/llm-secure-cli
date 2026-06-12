@@ -36,12 +36,12 @@ fn ensure_global_cancel_handler() {
         let (tx, _rx) = watch::channel(false);
         let tx2 = tx.clone();
         tokio::spawn(async move {
-            loop {
-                // Single, permanent listener — created once, never dropped.
-                tokio::signal::ctrl_c().await.ok();
-                tracing::debug!("SIGINT received — notifying session cancellation watchers");
-                let _ = tx2.send(true);
-            }
+            // One-shot listener — SIGINTを1回だけ待つ。
+            // 永久ループを避けることで、tokio::signal::ctrl_c() の内部レジストリと
+            // rustyline の端末設定との競合を防ぐ（WouldBlock エラーの防止）。
+            tokio::signal::ctrl_c().await.ok();
+            tracing::debug!("SIGINT received — notifying session cancellation watchers");
+            let _ = tx2.send(true);
         });
         tx
     });

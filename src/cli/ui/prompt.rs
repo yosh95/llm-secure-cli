@@ -121,6 +121,16 @@ pub fn get_user_input(prompt: &str) -> Option<String> {
         }
         Err(ReadlineError::Eof) => None,
         Err(err) => {
+            if matches!(&err, ReadlineError::Io(e) if e.kind() == std::io::ErrorKind::WouldBlock) {
+                // Terminal settings may be corrupted; restore and retry
+                eprintln!(
+                    "\r{} WouldBlock - terminal busy, resetting...",
+                    "WARNING".yellow().bold()
+                );
+                let _ = std::process::Command::new("stty").args(["sane"]).status();
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                return get_user_input(prompt);
+            }
             eprintln!("Error: {err:?}");
             None
         }

@@ -392,6 +392,16 @@ impl ActiveSession {
                     return;
                 }
                 Err(err) => {
+                    if matches!(&err, ReadlineError::Io(e) if e.kind() == std::io::ErrorKind::WouldBlock)
+                    {
+                        // Terminal settings may be corrupted; restore and retry
+                        eprintln!(
+                            "\r{} WouldBlock - terminal busy, resetting...",
+                            "WARNING".yellow().bold()
+                        );
+                        let _ = std::process::Command::new("stty").args(["sane"]).status();
+                        continue;
+                    }
                     ui::report_error(&format!("Error: {err:?}"));
                     break;
                 }
