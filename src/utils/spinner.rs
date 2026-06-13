@@ -1,16 +1,16 @@
 use std::io::Write;
 use std::time::Duration;
 
-/// A minimal spinner that displays an animated indicator while a task runs.
+/// A minimal elapsed-time display that shows a message with ticking seconds.
 ///
-/// Uses only `tokio::time` and `std::io` — no external dependencies.
+/// Uses only `tokio::time` and `std::io` \u2014 no external dependencies.
 ///
 /// # Example
 ///
 /// ```ignore
-/// let spin = Spinner::start("Loading …");
+/// let spin = Spinner::start("Loading \u2026");
 /// do_work().await;
-/// spin.finish("done");  // → "Loading ... 3.2s done"
+/// spin.finish("done");  // \u2192 "Loading ... 3.2s done"
 /// ```
 ///
 /// On early returns (e.g. `?` operator), `Drop` automatically cleans up the line.
@@ -28,11 +28,11 @@ fn terminal_width() -> u16 {
         .map_or(80, |(_, cols)| cols)
 }
 
-/// Reserve space for: `spinner_char` (1-3 chars) + space + "XX.Xs" (6 chars)
-const RESERVED_COLS: u16 = 12;
+/// Reserve space for: space + "XX.Xs" (6 chars)
+const RESERVED_COLS: u16 = 7;
 
 /// Truncate `msg` at the **beginning** so the tail (model name) is preserved.
-/// e.g. "openai/gpt-4o-mini-longname..." → "…/gpt-4o-mini-longname"
+/// e.g. "openai/gpt-4o-mini-longname..." \u2192 "\u2026/gpt-4o-mini-longname"
 fn truncate_msg(msg: &mut String, term_width: u16) {
     let max_msg_len = term_width.saturating_sub(RESERVED_COLS) as usize;
     if msg.len() > max_msg_len && max_msg_len > 3 {
@@ -40,13 +40,6 @@ fn truncate_msg(msg: &mut String, term_width: u16) {
         *msg = "\u{2026}".to_string() + &suffix;
     }
 }
-
-// ── Spinner characters ──
-/// Modern braille-pattern spinner (works everywhere, including Termux).
-const SPINNER_CHARS: &[&str] = &[
-    "\u{280B}", "\u{2819}", "\u{2839}", "\u{2838}", "\u{283C}", "\u{2834}", "\u{2826}", "\u{2827}",
-    "\u{2807}", "\u{280F}",
-];
 
 // ── Cursor positioning ──
 fn cursor_to_col1() -> &'static str {
@@ -67,31 +60,27 @@ impl Spinner {
         let goto = cursor_to_col1();
 
         print!(
-            "{erase}{goto}{sp} {msg} 0.0s",
+            "{erase}{goto}{msg} 0.0s",
             erase = ERASE_LINE,
             goto = goto,
-            sp = SPINNER_CHARS[0],
             msg = msg
         );
         std::io::stdout().flush().ok();
 
         let handle = tokio::spawn(async move {
             let start = tokio::time::Instant::now();
-            let mut idx: usize = 1;
             let goto = cursor_to_col1();
             loop {
-                tokio::time::sleep(Duration::from_millis(80)).await;
+                tokio::time::sleep(Duration::from_millis(200)).await;
                 let elapsed = start.elapsed();
                 print!(
-                    "{erase}{goto}{sp} {msg} {elapsed:.1}s",
+                    "{erase}{goto}{msg} {elapsed:.1}s",
                     erase = ERASE_LINE,
                     goto = goto,
-                    sp = SPINNER_CHARS[idx],
                     msg = msg_for_spawn,
                     elapsed = elapsed.as_secs_f64()
                 );
                 std::io::stdout().flush().ok();
-                idx = (idx + 1) % SPINNER_CHARS.len();
             }
         });
 
