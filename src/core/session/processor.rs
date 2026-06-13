@@ -181,10 +181,21 @@ impl ActiveSession {
         // Clone to avoid borrow checker issues during loop
         let last_msg = self.client.get_state().conversation.last().cloned();
 
+        // Capture cancellation baseline to detect Ctrl+C between tool calls.
+        // When the counter differs, a Ctrl+C has occurred and we abort remaining calls.
+        let cancel_rx = self.cancel_token.receiver();
+        let cancel_base = *cancel_rx.borrow();
+
         if let Some(msg) = last_msg
             && (msg.role == Role::Assistant || msg.role == Role::Model)
         {
             for part in &msg.parts {
+                // If user pressed Ctrl+C between tool calls, abort immediately.
+                if *cancel_rx.borrow() != cancel_base {
+                    self.handle_interruption();
+                    return Err(anyhow::anyhow!("Interrupted by user"));
+                }
+
                 if let MessagePart::Part(cp) = part
                     && let Some(fc) = &cp.function_call
                 {

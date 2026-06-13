@@ -28,20 +28,19 @@ pub mod tool_executor;
 // (LLM API call, verifier wait, tool execution) use a `watch::Receiver` from
 // this sender in their `tokio::select!` — no duplicate registrations.
 
-static CANCEL_SENDER: OnceLock<watch::Sender<bool>> = OnceLock::new();
+static CANCEL_SENDER: OnceLock<watch::Sender<u64>> = OnceLock::new();
 
 /// Ensure the global SIGINT listener is running (exactly once per process).
 fn ensure_global_cancel_handler() {
     CANCEL_SENDER.get_or_init(|| {
-        let (tx, _rx) = watch::channel(false);
+        let (tx, _rx) = watch::channel(0u64);
         let tx2 = tx.clone();
         tokio::spawn(async move {
-            // One-shot listener — SIGINTを1回だけ待つ。
-            // 永久ループを避けることで、tokio::signal::ctrl_c() の内部レジストリと
-            // rustyline の端末設定との競合を防ぐ（WouldBlock エラーの防止）。
-            tokio::signal::ctrl_c().await.ok();
-            tracing::debug!("SIGINT received — notifying session cancellation watchers");
-            let _ = tx2.send(true);
+            loop {
+                tokio::signal::ctrl_c().await.ok();
+                tracing::debug!("SIGINT received — notifying session cancellation watchers");
+                tx2.send_modify(|v| *v += 1);
+            }
         });
         tx
     });
@@ -49,9 +48,11 @@ fn ensure_global_cancel_handler() {
 
 /// A lightweight cancellation token backed by the global SIGINT handler.
 ///
-/// Each `.receiver()` returns a fresh `watch::Receiver<bool>` that will
+/// Each `.receiver()` returns a fresh `watch::Receiver<u64>` that will
 /// complete on the *next* Ctrl+C.  Multiple concurrent receivers (LLM call,
 /// verifier, tool execution) all share the same single OS signal registration.
+/// The handler runs in a loop and increments a counter on each Ctrl+C,
+/// so cancellation works for an arbitrary number of sequential interruptions.
 #[derive(Clone)]
 pub struct SessionCancel;
 
@@ -69,7 +70,7 @@ impl SessionCancel {
     /// first `.changed()` always waits for a future signal.
     #[must_use]
     #[allow(clippy::expect_used)]
-    pub fn receiver(&self) -> watch::Receiver<bool> {
+    pub fn receiver(&self) -> watch::Receiver<u64> {
         CANCEL_SENDER
             .get()
             .expect("SessionCancel::new() must have been called")
