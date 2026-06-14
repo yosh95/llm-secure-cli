@@ -71,12 +71,13 @@ pub fn humanize_tool_result(_name: &str, v: &serde_json::Value) -> String {
                 .get("stderr")
                 .and_then(|v| v.as_str())
                 .unwrap_or_default();
-            let exit_code = obj
-                .get("exit_code")
-                .and_then(serde_json::Value::as_i64)
-                .unwrap_or(-1);
+            let exit_code = obj.get("exit_code").and_then(serde_json::Value::as_i64);
+            let note = obj.get("note").and_then(|v| v.as_str());
 
-            let mut output = format!("Exit Code: {exit_code}\n");
+            let mut output = match exit_code {
+                Some(code) => format!("Exit Code: {code}\n"),
+                None => "Exit Code: N/A (process did not complete)\n".to_string(),
+            };
             if !stdout.is_empty() {
                 output.push_str("STDOUT:\n");
                 output.push_str(stdout);
@@ -90,6 +91,11 @@ pub fn humanize_tool_result(_name: &str, v: &serde_json::Value) -> String {
                 if !stderr.ends_with('\n') {
                     output.push('\n');
                 }
+            }
+            if let Some(n) = note
+                && !n.is_empty()
+            {
+                output.push_str(&format!("NOTE: {n}\n"));
             }
             return output;
         }

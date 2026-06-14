@@ -1,4 +1,5 @@
 use crate::config::models::AppConfig;
+use crate::core::session::SessionCancel;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -159,7 +160,33 @@ pub async fn execute_python(
     let mut stdout_done = false;
     let mut stderr_done = false;
 
+    // Subscribe to Ctrl+C via the global SIGINT watcher (no race with outer select!
+    // because we use a synchronous value check, not an async branch).
+    let cancel_token = SessionCancel::new();
+    let mut cancel_rx = cancel_token.receiver();
+    let cancel_base = *cancel_rx.borrow();
+
     while !stdout_done || !stderr_done {
+        // Synchronous Ctrl+C check — no race with the outer select! in phase3_execution.rs.
+        // If a signal arrived since we last checked, return partial output immediately.
+        if *cancel_rx.borrow() != cancel_base {
+            // Guard's Drop will kill the child and clean up the temp file.
+            return Ok(json!({
+                "stdout": crate::tools::executor_utils::truncate_output(
+                    &stdout_res,
+                    config.general.max_output_lines,
+                    config.general.max_output_chars
+                ),
+                "stderr": crate::tools::executor_utils::truncate_output(
+                    &stderr_res,
+                    config.general.max_output_lines,
+                    config.general.max_output_chars
+                ),
+                "exit_code": serde_json::Value::Null,
+                "note": "Python execution was interrupted by user (Ctrl+C) — the output above may be incomplete (process was killed)."
+            }));
+        }
+
         tokio::select! {
             line = stdout_reader.next_line(), if !stdout_done => {
                 match line {
@@ -181,11 +208,43 @@ pub async fn execute_python(
                     Err(_) => stderr_done = true,
                 }
             }
+            _ = cancel_rx.changed() => {
+                // Ctrl+C while waiting on I/O — same handler as sync check above.
+                return Ok(json!({
+                    "stdout": crate::tools::executor_utils::truncate_output(
+                        &stdout_res,
+                        config.general.max_output_lines,
+                        config.general.max_output_chars
+                    ),
+                    "stderr": crate::tools::executor_utils::truncate_output(
+                        &stderr_res,
+                        config.general.max_output_lines,
+                        config.general.max_output_chars
+                    ),
+                    "exit_code": serde_json::Value::Null,
+                    "note": "Python execution was interrupted by user (Ctrl+C) — the output above may be incomplete (process was killed)."
+                }));
+            }
             () = &mut sleep => {
                 // Guard's Drop will kill the child and clean up the temp file.
-                return Err(anyhow::anyhow!(
-                    "Python execution timed out after {timeout_secs} seconds"
-                ));
+                // Return partial output with a note about the timeout.
+                return Ok(json!({
+                    "stdout": crate::tools::executor_utils::truncate_output(
+                        &stdout_res,
+                        config.general.max_output_lines,
+                        config.general.max_output_chars
+                    ),
+                    "stderr": crate::tools::executor_utils::truncate_output(
+                        &stderr_res,
+                        config.general.max_output_lines,
+                        config.general.max_output_chars
+                    ),
+                    "exit_code": serde_json::Value::Null,
+                    "note": format!(
+                        "Python execution timed out after {} seconds — the output above may be incomplete (process was killed).",
+                        timeout_secs
+                    )
+                }));
             }
         }
     }
