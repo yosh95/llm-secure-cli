@@ -7,7 +7,7 @@ use std::time::Duration;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let spin = Spinner::start("Loading \u2026");
 /// do_work().await;
 /// spin.finish("done");  // \u2192 "Loading ... 3.2s done"
