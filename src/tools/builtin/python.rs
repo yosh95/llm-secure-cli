@@ -183,7 +183,7 @@ pub async fn execute_python(
                     config.general.max_output_chars
                 ),
                 "exit_code": serde_json::Value::Null,
-                "note": "Python execution was interrupted by user (Ctrl+C) — the output above may be incomplete (process was killed)."
+                "note": "Python execution was interrupted by user (Ctrl+C) — the output may be incomplete (process was killed)."
             }));
         }
 
