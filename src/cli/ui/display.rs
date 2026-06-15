@@ -125,19 +125,6 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
     if let Some(obj) = args.as_object() {
         let explanation = obj.get("explanation").and_then(|v| v.as_str());
 
-        if let Some(exp) = explanation {
-            let val_str = exp.to_string();
-            push_line(
-                &mut buf,
-                &format!(
-                    "    {} {}: {}",
-                    "\u{2022}".bright_black(),
-                    "explanation".cyan(),
-                    val_str
-                ),
-            );
-        }
-
         let path_like = [
             "path",
             "url",
@@ -218,6 +205,19 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
                     );
                 }
             }
+        }
+
+        if let Some(exp) = explanation {
+            let val_str = exp.to_string();
+            push_line(
+                &mut buf,
+                &format!(
+                    "    {} {}: {}",
+                    "\u{2022}".bright_black(),
+                    "explanation".cyan(),
+                    val_str
+                ),
+            );
         }
     } else {
         push_line(&mut buf, &format!("    {args}"));
