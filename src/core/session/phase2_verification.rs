@@ -244,7 +244,8 @@ impl ActiveSession {
     ) -> anyhow::Result<VerificationOutcome> {
         const VERIFIER_TIMEOUT_SECS: u64 = 60;
 
-        let mut spin = crate::utils::spinner::Spinner::start("Running security verification…");
+        let mut spin =
+            crate::utils::elapsed_timer::ElapsedTimer::start("Running security verification…");
 
         // Obtain an AbortHandle *before* the select! so we can cancel the task
         // if the timeout or Ctrl-C branch wins.

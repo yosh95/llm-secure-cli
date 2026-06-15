@@ -65,9 +65,10 @@ impl ActiveSession {
         } else {
             let send_future = self.client.send(data, tool_schemas);
 
-            // Animated spinner to indicate progress and keep SSH alive.
-            let mut spin =
-                crate::utils::spinner::Spinner::start(&format!("Thinking ({thinking_label}) …"));
+            // Elapsed timer to indicate progress and keep SSH alive.
+            let mut spin = crate::utils::elapsed_timer::ElapsedTimer::start(&format!(
+                "Thinking ({thinking_label}) …"
+            ));
 
             let mut cancel_rx = self.cancel_token.receiver();
 

@@ -8,13 +8,13 @@ use std::time::Duration;
 /// # Example
 ///
 /// ```text
-/// let spin = Spinner::start("Loading \u2026");
+/// let spin = ElapsedTimer::start("Loading \u2026");
 /// do_work().await;
 /// spin.finish("done");  // \u2192 "Loading ... 3.2s done"
 /// ```
 ///
 /// On early returns (e.g. `?` operator), `Drop` automatically cleans up the line.
-pub struct Spinner {
+pub struct ElapsedTimer {
     handle: Option<tokio::task::JoinHandle<()>>,
     msg: String,
     start: tokio::time::Instant,
@@ -49,7 +49,7 @@ fn cursor_to_col1() -> &'static str {
 const ERASE_LINE: &str = "\x1b[2K";
 
 // ── Implementation ──
-impl Spinner {
+impl ElapsedTimer {
     #[must_use]
     pub fn start(msg: &str) -> Self {
         let mut msg = msg.to_string();
@@ -117,7 +117,7 @@ impl Spinner {
     }
 }
 
-impl Drop for Spinner {
+impl Drop for ElapsedTimer {
     fn drop(&mut self) {
         self.stop();
     }

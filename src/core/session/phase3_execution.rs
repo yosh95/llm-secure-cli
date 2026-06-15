@@ -34,8 +34,8 @@ impl ActiveSession {
         let result = if is_stdout {
             self.execute_tool(name, &args_map).await
         } else {
-            // Start a spinner with the tool name to show elapsed time (same style as LLM API calls)
-            let mut spin = crate::utils::spinner::Spinner::start(name);
+            // Start an elapsed timer with the tool name to show elapsed time (same style as LLM API calls)
+            let mut spin = crate::utils::elapsed_timer::ElapsedTimer::start(name);
 
             // Note: Ctrl+C is handled internally by tools that support it
             // (e.g., execute_python checks for SIGINT on every I/O iteration).
