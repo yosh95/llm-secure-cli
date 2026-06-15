@@ -1,94 +1,114 @@
-//! Simple Python syntax highlighter for terminal display.
+//! Simple shell syntax highlighter for terminal display.
 //!
-//! Uses a state machine to track triple-quoted strings across lines,
-//! then applies ANSI colour codes to keywords, strings, comments,
-//! numbers, and decorators.
+//! Uses a state machine to track quoted strings across lines,
+//! then applies ANSI colour codes to commands, flags, variables,
+//! strings, comments, and numbers.
 
 use colored::Colorize;
 use std::collections::HashSet;
 
-/// Returns `code` with ANSI escape sequences that colour Python syntax.
+/// Returns `code` with ANSI escape sequences that colour shell syntax.
 #[must_use]
-pub fn highlight_python(code: &str) -> String {
-    let keywords: HashSet<&str> = [
-        "def", "class", "return", "if", "elif", "else", "for", "while", "import", "from", "as",
-        "try", "except", "finally", "raise", "with", "yield", "lambda", "pass", "break",
-        "continue", "and", "or", "not", "in", "is", "None", "True", "False", "async", "await",
-        "global", "nonlocal", "assert", "del", "match", "case",
-    ]
-    .iter()
-    .copied()
-    .collect();
-
-    let builtins: HashSet<&str> = [
-        "print",
-        "len",
-        "range",
-        "int",
-        "str",
-        "float",
-        "list",
-        "dict",
-        "set",
-        "tuple",
-        "bool",
+pub fn highlight_shell(code: &str) -> String {
+    let commands: HashSet<&str> = [
+        "curl",
+        "wget",
+        "ls",
+        "cd",
+        "cat",
+        "grep",
+        "find",
+        "echo",
+        "git",
+        "docker",
+        "sudo",
+        "pip",
+        "npm",
+        "cargo",
+        "ps",
+        "kill",
+        "which",
+        "chmod",
+        "mkdir",
+        "rm",
+        "cp",
+        "mv",
+        "touch",
+        "head",
+        "tail",
+        "sort",
+        "uniq",
+        "wc",
+        "tee",
+        "xargs",
+        "sed",
+        "awk",
+        "env",
+        "export",
+        "alias",
         "type",
-        "open",
-        "enumerate",
-        "zip",
-        "map",
-        "filter",
-        "sorted",
-        "reversed",
-        "any",
-        "all",
-        "sum",
-        "min",
-        "max",
-        "abs",
-        "round",
-        "isinstance",
-        "hasattr",
-        "getattr",
-        "setattr",
-        "super",
-        "self",
-        "__init__",
+        "file",
+        "stat",
+        "du",
+        "df",
+        "make",
+        "cmake",
+        "gcc",
+        "clang",
+        "rustc",
+        "go",
+        "node",
+        "deno",
+        "bun",
+        "npx",
+        "yarn",
+        "python3",
+        "python",
+        "ruby",
+        "perl",
+        "php",
+        "systemctl",
+        "journalctl",
+        "service",
+        "apt",
+        "yum",
+        "dnf",
+        "ping",
+        "ssh",
+        "scp",
+        "rsync",
+        "tar",
+        "gzip",
+        "gunzip",
+        "set",
+        "shopt",
+        "test",
+        "let",
+        "exit",
+        "return",
+        "if",
+        "then",
+        "else",
+        "elif",
+        "fi",
+        "for",
+        "while",
+        "do",
+        "done",
+        "case",
+        "esac",
+        "in",
+        "function",
+        "select",
+        "until",
     ]
     .iter()
     .copied()
     .collect();
 
     let mut result = String::with_capacity(code.len() + code.len() / 3);
-    let mut in_triple_single = false;
-    let mut in_triple_double = false;
 
     for line in code.lines() {
-        // multi-line triple-quoted string continuation
-        if in_triple_single {
-            if let Some(pos) = line.find(triple_single_literal()) {
-                result.push_str(&line[..pos + 3].bright_green().to_string());
-                result.push('\n');
-                in_triple_single = false;
-            } else {
-                result.push_str(&line.bright_green().to_string());
-                result.push('\n');
-            }
-            continue;
-        }
-        if in_triple_double {
-            if let Some(pos) = line.find(triple_double_literal()) {
-                result.push_str(&line[..pos + 3].bright_green().to_string());
-                result.push('\n');
-                in_triple_double = false;
-            } else {
-                result.push_str(&line.bright_green().to_string());
-                result.push('\n');
-            }
-            continue;
-        }
-
-        // normal line -- tokenise character-by-character
         let chars: Vec<char> = line.chars().collect();
         let len = chars.len();
         let mut i: usize = 0;
@@ -96,53 +116,46 @@ pub fn highlight_python(code: &str) -> String {
         while i < len {
             let c = chars[i];
 
-            // Comment
+            // Comment (#)
             if c == '#' {
                 result.push_str(&chars[i..].iter().collect::<String>().dimmed().to_string());
                 break;
             }
 
-            // String literals
-            if c == '\'' || c == '"' {
-                let quote = c;
-                let mut j = i;
-
-                // Triple-quote?
-                if j + 2 < len && chars[j + 1] == quote && chars[j + 2] == quote {
-                    j += 3;
-                    let mut closed = false;
-                    while j + 2 < len {
-                        if chars[j] == quote && chars[j + 1] == quote && chars[j + 2] == quote {
-                            j += 3;
-                            closed = true;
-                            break;
-                        }
-                        j += 1;
-                    }
-                    if !closed {
-                        if quote == '\'' {
-                            in_triple_single = true;
-                        } else {
-                            in_triple_double = true;
-                        }
-                        j = len;
-                    }
-                } else {
-                    // regular single/double-quoted string
+            // Single-quoted string: '...'  — literal, no escaping
+            if c == '\'' {
+                let mut j = i + 1;
+                while j < len && chars[j] != '\'' {
                     j += 1;
-                    while j < len {
-                        if chars[j] == '\\' && j + 1 < len {
-                            j += 2;
-                            continue;
-                        }
-                        if chars[j] == quote {
-                            j += 1;
-                            break;
-                        }
-                        j += 1;
-                    }
                 }
+                if j < len {
+                    j += 1; // closing quote
+                }
+                result.push_str(
+                    &chars[i..j]
+                        .iter()
+                        .collect::<String>()
+                        .bright_green()
+                        .to_string(),
+                );
+                i = j;
+                continue;
+            }
 
+            // Double-quoted string: "..." — supports $, \, ``
+            if c == '"' {
+                let mut j = i + 1;
+                while j < len {
+                    if chars[j] == '\\' && j + 1 < len {
+                        j += 2;
+                        continue;
+                    }
+                    if chars[j] == '"' {
+                        j += 1;
+                        break;
+                    }
+                    j += 1;
+                }
                 result.push_str(
                     &chars[i..j.min(len)]
                         .iter()
@@ -154,23 +167,15 @@ pub fn highlight_python(code: &str) -> String {
                 continue;
             }
 
-            // Decorator
-            if c == '@' && (i == 0 || chars[..i].iter().all(|ch| ch.is_whitespace())) {
-                let j = word_end(&chars, i);
-                result.push_str(
-                    &chars[i..j]
-                        .iter()
-                        .collect::<String>()
-                        .bright_red()
-                        .to_string(),
-                );
-                i = j;
-                continue;
-            }
-
-            // Number
-            if c.is_ascii_digit() || (c == '.' && i + 1 < len && chars[i + 1].is_ascii_digit()) {
-                let j = number_end(&chars, i);
+            // Backtick: `...` — command substitution
+            if c == '`' {
+                let mut j = i + 1;
+                while j < len && chars[j] != '`' {
+                    j += 1;
+                }
+                if j < len {
+                    j += 1;
+                }
                 result.push_str(
                     &chars[i..j]
                         .iter()
@@ -182,14 +187,84 @@ pub fn highlight_python(code: &str) -> String {
                 continue;
             }
 
-            // Word (identifier / keyword / builtin)
-            if c.is_alphabetic() || c == '_' {
-                let j = word_end(&chars, i);
+            // Variable: $VAR, ${VAR}, $(...)
+            if c == '$' {
+                let mut j = i + 1;
+                if j < len && chars[j] == '{' {
+                    // ${...}
+                    j += 1;
+                    while j < len && chars[j] != '}' {
+                        j += 1;
+                    }
+                    if j < len {
+                        j += 1;
+                    }
+                } else if j < len && chars[j] == '(' {
+                    // $(...) — command substitution
+                    let mut depth = 1;
+                    j += 1;
+                    while j < len && depth > 0 {
+                        if chars[j] == '(' {
+                            depth += 1;
+                        } else if chars[j] == ')' {
+                            depth -= 1;
+                        }
+                        j += 1;
+                    }
+                } else {
+                    // $VAR
+                    while j < len && (chars[j].is_alphanumeric() || chars[j] == '_') {
+                        j += 1;
+                    }
+                }
+                result.push_str(
+                    &chars[i..j]
+                        .iter()
+                        .collect::<String>()
+                        .bright_magenta()
+                        .to_string(),
+                );
+                i = j;
+                continue;
+            }
+
+            // Number
+            if c.is_ascii_digit() {
+                let mut j = i;
+                while j < len && (chars[j].is_ascii_digit() || chars[j] == '.' || chars[j] == '_') {
+                    j += 1;
+                }
+                result.push_str(
+                    &chars[i..j]
+                        .iter()
+                        .collect::<String>()
+                        .bright_magenta()
+                        .to_string(),
+                );
+                i = j;
+                continue;
+            }
+
+            // Word (command or flag)
+            if c.is_alphabetic() || c == '_' || c == '-' {
+                let mut j = i;
+                while j < len && (chars[j].is_alphanumeric() || chars[j] == '_' || chars[j] == '-')
+                {
+                    j += 1;
+                }
                 let word: String = chars[i..j].iter().collect();
-                if keywords.contains(word.as_str()) {
-                    result.push_str(&word.bright_yellow().bold().to_string());
-                } else if builtins.contains(word.as_str()) {
-                    result.push_str(&word.bright_cyan().to_string());
+
+                // Check if this is the first word (command name)
+                let is_first_word = i == 0
+                    || chars[..i]
+                        .iter()
+                        .all(|ch| ch.is_whitespace() || *ch == '|' || *ch == ';' || *ch == '&');
+
+                if is_first_word && commands.contains(word.as_str()) {
+                    result.push_str(&word.bright_cyan().bold().to_string());
+                } else if word.starts_with('-') {
+                    // Flags: -x, --option
+                    result.push_str(&word.yellow().to_string());
                 } else {
                     result.push_str(&word);
                 }
@@ -197,7 +272,14 @@ pub fn highlight_python(code: &str) -> String {
                 continue;
             }
 
-            // Everything else -- pass through unchanged
+            // Operators: |, >, <, &, ;
+            if c == '|' || c == '>' || c == '<' || c == '&' || c == ';' {
+                result.push_str(&c.to_string().bright_black().to_string());
+                i += 1;
+                continue;
+            }
+
+            // Everything else
             result.push(c);
             i += 1;
         }
@@ -205,7 +287,7 @@ pub fn highlight_python(code: &str) -> String {
         result.push('\n');
     }
 
-    // Trim trailing newline we added onto the last line
+    // Trim trailing newline
     if result.ends_with('\n') && !code.ends_with('\n') {
         result.pop();
     }
@@ -213,91 +295,35 @@ pub fn highlight_python(code: &str) -> String {
     result
 }
 
-/// Returns the triple-single-quote literal: '''
-fn triple_single_literal() -> &'static str {
-    "'''"
-}
-
-/// Returns the triple-double-quote literal: """
-fn triple_double_literal() -> &'static str {
-    "\"\"\""
-}
-
-fn word_end(chars: &[char], start: usize) -> usize {
-    let mut j = start;
-    while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_') {
-        j += 1;
-    }
-    j
-}
-
-fn number_end(chars: &[char], start: usize) -> usize {
-    let mut j = start;
-
-    // hex / bin / oct prefix
-    if j + 1 < chars.len() && chars[j] == '0' {
-        match chars[j + 1] {
-            'x' | 'X' | 'b' | 'B' | 'o' | 'O' => {
-                j += 2;
-                while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_') {
-                    j += 1;
-                }
-                return j;
-            }
-            _ => {}
-        }
-    }
-
-    let mut seen_dot = false;
-    while j < chars.len() {
-        if chars[j].is_ascii_digit() || chars[j] == '_' {
-            j += 1;
-        } else if chars[j] == '.'
-            && !seen_dot
-            && j + 1 < chars.len()
-            && chars[j + 1].is_ascii_digit()
-        {
-            seen_dot = true;
-            j += 1;
-        } else {
-            break;
-        }
-    }
-    j
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_highlight_keywords() {
-        let code = "def foo():\n    return True\n";
-        let result = highlight_python(code);
-        assert!(result.contains("foo"));
+    fn test_highlight_command() {
+        let code = "curl https://example.com";
+        let result = highlight_shell(code);
+        assert!(result.contains("curl"));
     }
 
     #[test]
-    fn test_highlight_triple_string_multiline() {
-        let code = "s = '''\nhello\nworld\n'''\nx = 1\n";
-        let result = highlight_python(code);
-        assert!(result.contains("hello"));
-        assert!(result.contains("x"));
+    fn test_highlight_comment() {
+        let code = "ls -la  # list files";
+        let result = highlight_shell(code);
+        assert!(result.contains("list files"));
     }
 
     #[test]
-    fn test_triple_double_multiline() {
-        let code = "s = \"\"\"\nhello\nworld\n\"\"\"\nx = 1\n";
-        let result = highlight_python(code);
-        assert!(result.contains("hello"));
-        assert!(result.contains("x"));
+    fn test_highlight_variable() {
+        let code = "echo $HOME";
+        let result = highlight_shell(code);
+        assert!(result.contains("HOME"));
     }
 
     #[test]
-    fn test_multibyte_chars_no_panic() {
-        // Regression: slicing with byte indices on multibyte chars panics
-        let code = "print(f\"1から50までの合計: {total}\")  # 日本語\n";
-        let result = highlight_python(code);
-        assert!(result.contains("から"));
+    fn test_highlight_flag() {
+        let code = "ls -la --color=auto";
+        let result = highlight_shell(code);
+        assert!(result.contains("--color"));
     }
 }

@@ -142,26 +142,22 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
         );
     }
 
-    if crate::tools::builtin::python::is_python_available() {
-        maybe_register(
-            r,
-            "execute_python",
-            "Execute Python/shell code in a fresh process each call. Supports: file I/O, regex/fnmatch search, web requests (requests/urllib), PDF text extraction (pdftotext), data processing, and arbitrary commands (subprocess). **State never persists between runs.**",
-            json!({
-                "type": "object",
-                "properties": {
-                    "code": {
-                        "type": "string",
-                        "description": "Python source code to execute (runs in a fresh process each call; **no state carries over**). Can use any standard library or installed third-party package. **Always include all necessary import statements** (e.g., `import requests`, `import json`, `import re`, `from pathlib import Path`). Use print() for output. For multi-line strings, use triple quotes (\"\"\") instead of embedding literal newlines inside single-line string literals."
-                    }
-                },
-                "required": ["code"]
-            }),
-            Arc::new(|args, config| {
-                Box::pin(async move {
-                    crate::tools::builtin::python::execute_python(args, config).await
-                })
-            }),
-        );
-    }
+    maybe_register(
+        r,
+        "execute_shell",
+        "Execute shell commands. Supports pipes, redirects, command substitution, and most standard Unix/Windows shell syntax.",
+        json!({
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "Shell command(s) to execute. Runs in a fresh process each call; **no state carries over**."
+                }
+            },
+            "required": ["command"]
+        }),
+        Arc::new(|args, config| {
+            Box::pin(async move { crate::tools::builtin::shell::execute_shell(args, config).await })
+        }),
+    );
 }

@@ -74,7 +74,7 @@ flowchart TB
     end
 
     subgraph Tools["External Tools"]
-        H1["execute_python<br/>(Universal Executor)"]
+        H1["execute_shell<br/>(Universal Executor)"]
         H2["brave_search<br/>(Web Search)"]
     end
 
@@ -118,7 +118,7 @@ flowchart TB
     # ANYNAME_API_KEY can be used if you define [ANYNAME] in config.toml
     ```
 > **Note:** This CLI intentionally omits a dedicated MCP (Model Context Protocol) client.
-> The `execute_python` tool allows the LLM to communicate with any MCP server directly
+> The `execute_shell` tool allows the LLM to communicate with any MCP server directly
 > via Python's `requests` or similar libraries, making a native MCP client redundant.
 > All external APIs are accessed through the universal executor, keeping the tool surface
 > minimal and the security boundary simple. (A reference MCP test server is available at `examples/mcp_test_server.rs`.)
@@ -173,14 +173,14 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 
 - **Unified Provider Access**: Seamlessly switch between any OpenAI-compatible APIs (**OpenRouter, OpenAI, Ollama, LiteLLM**, and any custom OpenAI-compatible endpoint). Custom providers (e.g., Anthropic Claude, Google Gemini) can be added via config with the appropriate `formatter` setting (`"generic"` for standard OpenAI-compatible, `"high_feature"` for Anthropic/Gemini-style payload formatting with native PDF support).
 - **Autonomous Agent**: A streamlined set of built-in tools for complex automation:
-    - **Universal Executor**: `execute_python` — run arbitrary Python code for any file operation, data processing, or computation task.
+    - **Universal Executor**: `execute_shell` — run arbitrary Python code for any file operation, data processing, or computation task.
     - **Web Search**: `brave_search` — Brave LLM Context API for grounded, pre-extracted web content (LLM-optimized).
 - **High-Assurance via Verifier Committee**: Every tool call is verified by the **Verifier Committee** — N independent LLMs operating under a configurable voting policy (majority or any-flag) — as a Semantic Firewall against unsafe or misaligned tool calls.
 - **Operational Stability**: A clean, flicker-free UI designed for long-term "Deep Work" sessions.
 - **Human-in-the-Loop**: The Verifier Committee auto-approves safe tool calls; potentially unsafe calls always require human confirmation.
 
 ### Autonomous Agent Capabilities
-The AI agent autonomously selects tools to perform tasks. For example, it can search for a bug with Python file operations, read the relevant code, and apply a fix — all through `execute_python`. All actions are logged with cryptographic signatures for auditability.
+The AI agent autonomously selects tools to perform tasks. For example, it can search for a bug with Python file operations, read the relevant code, and apply a fix — all through `execute_shell`. All actions are logged with cryptographic signatures for auditability.
 
 ---
 
