@@ -477,30 +477,24 @@ impl SecureStorage {
     }
 }
 
-pub struct PQCAgilityManager;
+/// Returns the configured PQC signature variant.
+///
+/// Reads from `config.pqc.signature_variant` to determine the level.
+/// Falls back to `DEFAULT_PQC_VARIANT` (ML-DSA-44) if config is missing or invalid.
+#[must_use]
+pub fn get_signature_variant(config: &crate::config::models::AppConfig) -> PQCVariant {
+    let variant_str = &config.pqc.signature_variant;
+    PQCVariant::from_str(variant_str).unwrap_or(DEFAULT_PQC_VARIANT)
+}
 
-impl PQCAgilityManager {
-    /// Returns the PQC signature variant based on the configured security level.
-    /// Reads from `config.pqc.signature_variant` to determine the level.
-    /// Falls back to `DEFAULT_PQC_VARIANT` (ML-DSA-44) if config is missing or invalid.
-    #[must_use]
-    pub fn get_required_level(
-        config: &crate::config::models::AppConfig,
-        _tool_name: &str,
-        _args: Option<&serde_json::Value>,
-    ) -> PQCVariant {
-        let variant_str = &config.pqc.signature_variant;
-        PQCVariant::from_str(variant_str).unwrap_or(DEFAULT_PQC_VARIANT)
-    }
-
-    /// Returns the KEM variant based on the configured security level.
-    /// Reads from `config.pqc.kem_variant` to determine the level.
-    /// Falls back to `DEFAULT_KEM_VARIANT` (ML-KEM-512) if config is missing or invalid.
-    #[must_use]
-    pub fn get_kem_level(config: &crate::config::models::AppConfig) -> KEMVariant {
-        let variant_str = &config.pqc.kem_variant;
-        KEMVariant::from_str(variant_str).unwrap_or(DEFAULT_KEM_VARIANT)
-    }
+/// Returns the configured PQC KEM variant.
+///
+/// Reads from `config.pqc.kem_variant` to determine the level.
+/// Falls back to `DEFAULT_KEM_VARIANT` (ML-KEM-512) if config is missing or invalid.
+#[must_use]
+pub fn get_kem_variant(config: &crate::config::models::AppConfig) -> KEMVariant {
+    let variant_str = &config.pqc.kem_variant;
+    KEMVariant::from_str(variant_str).unwrap_or(DEFAULT_KEM_VARIANT)
 }
 
 pub struct ResponseSigner;

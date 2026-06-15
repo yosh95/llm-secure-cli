@@ -183,19 +183,18 @@ fn test_merkle_session_verification_logic() {
 #[test]
 fn test_pqc_agility_manager() {
     use llm_secure_cli::config::models::AppConfig;
-    use llm_secure_cli::security::pqc::PQCAgilityManager;
+    use llm_secure_cli::security::pqc::get_signature_variant;
 
     let config = AppConfig::default();
 
     // Default signature_variant is "ml-dsa-44" (lowest security, fastest).
-    let level = PQCAgilityManager::get_required_level(&config, "ls", None);
+    let level = get_signature_variant(&config);
     assert_eq!(level, PQCVariant::MLDSA44);
 
-    let level = PQCAgilityManager::get_required_level(&config, "execute_shell", None);
+    let level = get_signature_variant(&config);
     assert_eq!(level, PQCVariant::MLDSA44);
 
-    let args = serde_json::json!({"path": "/etc/shadow"});
-    let level = PQCAgilityManager::get_required_level(&config, "read_file", Some(&args));
+    let level = get_signature_variant(&config);
     assert_eq!(level, PQCVariant::MLDSA44);
 }
 

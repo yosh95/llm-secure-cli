@@ -226,11 +226,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
     // PQC Signing: chain-dependent (signs log_entry.hash), so must run
     // under the lock.  Signature verification is a fixed-cost operation
     // (~1ms for ML-DSA-87), so lock-hold time remains short.
-    let variant = crate::security::pqc::PQCAgilityManager::get_required_level(
-        params.config,
-        params.tool_name,
-        Some(&params.args),
-    );
+    let variant = crate::security::pqc::get_signature_variant(params.config);
     if let Ok(sk) = crate::security::identity::IdentityManager::get_pqc_private_key(variant) {
         match crate::security::pqc::ResponseSigner::sign_response(
             &log_entry.hash,
