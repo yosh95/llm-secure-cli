@@ -128,7 +128,7 @@ fn test_tool_call_arguments_parsed_as_json() {
             "id": "call_1",
             "type": "function",
             "function": {
-                "name": "execute_python",
+                "name": "execute_shell",
                 "arguments": "{\"code\": \"print('hello')\", \"explanation\": \"test\"}"
             }
         }]
@@ -162,7 +162,7 @@ fn test_tool_call_with_invalid_arguments_json() {
             "id": "call_bad",
             "type": "function",
             "function": {
-                "name": "execute_python",
+                "name": "execute_shell",
                 "arguments": "not valid json at all"
             }
         }]

@@ -51,13 +51,13 @@ fn test_security_config_default_values_are_sane() {
 fn test_validate_tool_call_normal_commands_allowed() {
     let config = SecurityConfig::default();
 
-    // A normal python code must pass Phase 1.
+    // A normal shell command must pass Phase 1.
     let mut args = serde_json::Map::new();
     args.insert("code".to_string(), json!("print('hello')"));
-    let result = validate_tool_call("execute_python", &args, &config);
+    let result = validate_tool_call("execute_shell", &args, &config);
     assert!(
         result.is_ok(),
-        "Normal python code should pass: {:?}",
+        "Normal shell command should pass: {:?}",
         result
     );
 }
@@ -71,7 +71,7 @@ fn test_validate_tool_call_control_characters_blocked() {
         let mut args = serde_json::Map::new();
         let code = format!("print('hello{}')", ch);
         args.insert("code".to_string(), json!(code));
-        let result = validate_tool_call("execute_python", &args, &config);
+        let result = validate_tool_call("execute_shell", &args, &config);
         assert!(
             result.is_err(),
             "Control char {:#04x} should be blocked",
@@ -97,7 +97,7 @@ fn test_validate_tool_call_harmless_empty_args_allowed() {
 
     let mut args = serde_json::Map::new();
     args.insert("code".to_string(), json!("print('hello')"));
-    let result = validate_tool_call("execute_python", &args, &config);
+    let result = validate_tool_call("execute_shell", &args, &config);
     assert!(result.is_ok());
 }
 

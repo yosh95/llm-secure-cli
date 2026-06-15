@@ -179,11 +179,11 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
 
         for k in remaining_keys {
             if let Some(v) = obj.get(k) {
-                if name == "execute_shell" && k == "code" {
-                    // Apply syntax highlighting for Python code
+                if name == "execute_shell" && k == "command" {
+                    // Apply syntax highlighting for shell code
                     push_line(
                         &mut buf,
-                        &format!("    {} {}:", "\u{2022}".bright_black(), "code".cyan()),
+                        &format!("    {} {}:", "\u{2022}".bright_black(), "command".cyan()),
                     );
                     let code_str = v.as_str().unwrap_or("");
                     let highlighted = crate::cli::syntax_highlight::highlight_shell(code_str);

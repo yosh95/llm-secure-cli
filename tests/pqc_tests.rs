@@ -191,7 +191,7 @@ fn test_pqc_agility_manager() {
     let level = PQCAgilityManager::get_required_level(&config, "ls", None);
     assert_eq!(level, PQCVariant::MLDSA44);
 
-    let level = PQCAgilityManager::get_required_level(&config, "execute_python", None);
+    let level = PQCAgilityManager::get_required_level(&config, "execute_shell", None);
     assert_eq!(level, PQCVariant::MLDSA44);
 
     let args = serde_json::json!({"path": "/etc/shadow"});

@@ -146,7 +146,7 @@ impl LlmClient for SessionMockClient {
         if self.call_count == 0 {
             self.call_count += 1;
             let mut fc = HashMap::new();
-            fc.insert("name".to_string(), json!("execute_python"));
+            fc.insert("name".to_string(), json!("execute_shell"));
             fc.insert("arguments".to_string(), json!({"code": "print(1 + 1)"}));
             fc.insert("id".to_string(), json!("call_audit_test"));
 
@@ -163,7 +163,7 @@ impl LlmClient for SessionMockClient {
 
             Ok(LlmResponse {
                 content: None,
-                tool_name: Some("execute_python".to_string()),
+                tool_name: Some("execute_shell".to_string()),
                 ..Default::default()
             })
         } else {
@@ -571,7 +571,7 @@ async fn test_audit_verifier_allows() {
     let _lock = AUDIT_LOG_MUTEX.lock().await;
     let _session = run_session(
         TestUi::always_yes(),
-        Some("DECISION: ALLOW\nREASON: Safe Python code"),
+        Some("DECISION: ALLOW\nREASON: Safe shell command"),
     )
     .await;
 
