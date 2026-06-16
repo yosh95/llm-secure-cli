@@ -127,7 +127,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
         maybe_register(
             r,
             "brave_search",
-            "Search the web using Brave Search API. All optional parameters (count, max_tokens, max_urls, freshness, etc.) use API-side defaults.",
+            "Search the web using Brave Search API.",
             json!({
                 "type": "object",
                 "properties": {
@@ -145,13 +145,13 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
     maybe_register(
         r,
         "execute_shell",
-        "Execute shell commands. Supports pipes, redirects, command substitution, and most standard Unix/Windows shell syntax.",
+        "Execute shell commands. Supports pipes, redirects, substitutions, and multiline scripts.",
         json!({
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "Shell command(s) to execute. Runs in a fresh process each call; **no state carries over**."
+                    "description": "Shell command(s) to execute. Multiline scripts, pipes, loops, heredocs supported. Runs in a fresh process per call.",
                 }
             },
             "required": ["command"]
