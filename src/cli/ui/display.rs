@@ -180,13 +180,15 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
         for k in remaining_keys {
             if let Some(v) = obj.get(k) {
                 if name == "execute_shell" && k == "command" {
-                    // Display shell command text
+                    // Display shell command text with syntax highlighting
                     push_line(
                         &mut buf,
                         &format!("    {} {}:", "\u{2022}".bright_black(), "command".cyan()),
                     );
                     let code_str = v.as_str().unwrap_or("");
-                    for line in code_str.lines() {
+                    let highlighted =
+                        crate::utils::shell_highlighter::highlight_shell_command(code_str);
+                    for line in highlighted.lines() {
                         push_line(&mut buf, &format!("        {line}"));
                     }
                 } else {

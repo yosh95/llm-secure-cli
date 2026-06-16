@@ -1,0 +1,764 @@
+//! Shell command syntax highlighter.
+//!
+//! Provides syntax highlighting for shell commands displayed in the terminal.
+//! All implementations are manual (no external syntax highlighting crates).
+//!
+//! # Highlighted elements
+//!
+//! - **Keywords/commands**: `echo`, `cat`, `ls`, `cd`, `grep`, ...
+//! - **Control flow**: `if`, `then`, `else`, `elif`, `fi`, `for`, `while`, ...
+//! - **Operators/Separators**: `&&`, `||`, `|`, `;`, `&`, ...
+//! - **Redirections**: `>`, `>>`, `<`, `<<`, `2>&1`, ...
+//! - **Strings**: `"..."` (double-quoted), `'...'` (single-quoted)
+//! - **Comments**: `# ...` (line comments)
+//! - **Variables**: `$VAR`, `${VAR}`, `$(...)`, `` `...` ``
+
+use colored::Colorize;
+
+/// Highlight a shell command string with ANSI color codes.
+///
+/// Colors used:
+/// - Commands (builtins, common tools): Cyan (bold)
+/// - Control flow keywords: Magenta (bold)
+/// - Operators (`&&`, `||`, `|`, `;`, `&`): Yellow (bold)
+/// - Redirections (`>`, `>>`, `<`, `2>&1`, ...): Bright black (bold)
+/// - Double-quoted strings: Green
+/// - Single-quoted strings: Bright green
+/// - Comments (`# ...`): Bright black (dimmed)
+/// - Variables/substitutions (`$VAR`, `${}`, `$()`, `` ` ``, `$(( ))`): Blue
+#[must_use]
+pub fn highlight_shell_command(input: &str) -> String {
+    let mut output = String::with_capacity(input.len() * 2);
+
+    let chars: Vec<char> = input.chars().collect();
+
+    let len = chars.len();
+
+    let mut i = 0;
+
+    while i < len {
+        // --- Detect line comments (# ...) ---
+
+        if chars[i] == '#' && (i == 0 || chars[i - 1].is_whitespace()) {
+            let start = i;
+
+            while i < len && chars[i] != '\n' {
+                i += 1;
+            }
+
+            output.push_str(
+                &chars[start..i]
+                    .iter()
+                    .collect::<String>()
+                    .bright_black()
+                    .dimmed()
+                    .to_string(),
+            );
+
+            continue;
+        }
+
+        // --- Detect single-quoted strings ---
+
+        if chars[i] == '\'' {
+            let start = i;
+
+            i += 1;
+
+            while i < len && chars[i] != '\'' {
+                if chars[i] == '\\' && i + 1 < len {
+                    i += 1; // skip escaped char
+                }
+
+                i += 1;
+            }
+
+            if i < len {
+                i += 1; // closing quote
+            }
+
+            let segment: String = chars[start..i].iter().collect();
+
+            output.push_str(&segment.bright_green().to_string());
+
+            continue;
+        }
+
+        // --- Detect double-quoted strings ---
+
+        if chars[i] == '"' {
+            let start = i;
+
+            i += 1;
+
+            while i < len && chars[i] != '"' {
+                if chars[i] == '\\' && i + 1 < len {
+                    i += 1; // skip escaped char
+                }
+
+                i += 1;
+            }
+
+            if i < len {
+                i += 1; // closing quote
+            }
+
+            let segment: String = chars[start..i].iter().collect();
+
+            output.push_str(&segment.green().to_string());
+
+            continue;
+        }
+
+        // --- Detect $(...) command substitution ---
+
+        if i + 1 < len && chars[i] == '$' && chars[i + 1] == '(' {
+            let start = i;
+
+            i += 2;
+
+            let mut depth = 1;
+
+            while i < len && depth > 0 {
+                if chars[i] == '(' {
+                    depth += 1;
+                } else if chars[i] == ')' {
+                    depth -= 1;
+                } else if chars[i] == '\'' {
+                    // skip single-quoted string inside $()
+
+                    i += 1;
+
+                    while i < len && chars[i] != '\'' {
+                        if chars[i] == '\\' && i + 1 < len {
+                            i += 1;
+                        }
+
+                        i += 1;
+                    }
+                } else if chars[i] == '"' {
+                    // skip double-quoted string inside $()
+
+                    i += 1;
+
+                    while i < len && chars[i] != '"' {
+                        if chars[i] == '\\' && i + 1 < len {
+                            i += 1;
+                        }
+
+                        i += 1;
+                    }
+                }
+
+                if depth > 0 {
+                    i += 1;
+                }
+            }
+
+            if i < len {
+                i += 1; // closing ')'
+            }
+
+            let segment: String = chars[start..i].iter().collect();
+
+            output.push_str(&segment.blue().to_string());
+
+            continue;
+        }
+
+        // --- Detect $(( ... )) arithmetic expansion ---
+
+        if i + 2 < len && chars[i] == '$' && chars[i + 1] == '(' && chars[i + 2] == '(' {
+            let start = i;
+
+            i += 3;
+
+            let mut depth = 1;
+
+            while i + 1 < len && depth > 0 {
+                if chars[i] == '(' && chars[i + 1] == '(' {
+                    depth += 1;
+
+                    i += 1;
+                } else if chars[i] == ')' && chars[i + 1] == ')' {
+                    depth -= 1;
+
+                    i += 1;
+                }
+
+                i += 1;
+            }
+
+            if i < len {
+                i += 1;
+            }
+
+            let segment: String = chars[start..i].iter().collect();
+
+            output.push_str(&segment.blue().to_string());
+
+            continue;
+        }
+
+        // --- Detect backtick command substitution ---
+
+        if chars[i] == '`' {
+            let start = i;
+
+            i += 1;
+
+            while i < len && chars[i] != '`' {
+                if chars[i] == '\\' && i + 1 < len {
+                    i += 1;
+                }
+
+                i += 1;
+            }
+
+            if i < len {
+                i += 1; // closing backtick
+            }
+
+            let segment: String = chars[start..i].iter().collect();
+
+            output.push_str(&segment.blue().to_string());
+
+            continue;
+        }
+
+        // --- Detect ${...} variable expansion ---
+
+        if i + 2 < len && chars[i] == '$' && chars[i + 1] == '{' {
+            let start = i;
+
+            i += 2;
+
+            let mut depth = 1;
+
+            while i < len && depth > 0 {
+                if chars[i] == '{' {
+                    depth += 1;
+                } else if chars[i] == '}' {
+                    depth -= 1;
+                }
+
+                i += 1;
+            }
+
+            let segment: String = chars[start..i].iter().collect();
+
+            output.push_str(&segment.blue().to_string());
+
+            continue;
+        }
+
+        // --- Detect $VAR (simple variable) ---
+
+        if chars[i] == '$' && i + 1 < len && (chars[i + 1].is_alphanumeric() || chars[i + 1] == '_')
+        {
+            let start = i;
+
+            i += 1;
+
+            while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                i += 1;
+            }
+
+            let segment: String = chars[start..i].iter().collect();
+
+            output.push_str(&segment.blue().to_string());
+
+            continue;
+        }
+
+        // --- Detect special shell variables like $?, $#, $@, $*, $-, $$, $!, $0..$9 ---
+
+        if chars[i] == '$' && i + 1 < len {
+            let special = chars[i + 1];
+
+            if "?#@*-!".contains(special) || special.is_ascii_digit() {
+                let segment: String = chars[i..=i + 1].iter().collect();
+
+                output.push_str(&segment.blue().to_string());
+
+                i += 2;
+
+                continue;
+            }
+        }
+
+        // --- Detect operators/separators (multi-char first) ---
+
+        if i + 1 < len {
+            let two_char = format!("{}{}", chars[i], chars[i + 1]);
+
+            if matches!(
+                two_char.as_str(),
+                "&&" | "||" | ";;" | "|&" | ";&" | ";;&" | "<<<" | "<<-" | ">&" | "<&" | ">|"
+            ) {
+                output.push_str(&two_char.yellow().bold().to_string());
+
+                i += 2;
+
+                continue;
+            }
+
+            // Redirections with file descriptors (2>&1, 1>&2, etc.)
+
+            if chars[i].is_ascii_digit() && i + 2 < len {
+                let three_char = format!("{}{}{}", chars[i], chars[i + 1], chars[i + 2]);
+
+                if matches!(three_char.as_str(), "2>&" | "1>&" | "2>|" | "1>|") {
+                    output.push_str(&three_char.bright_black().bold().to_string());
+
+                    i += 3;
+
+                    continue;
+                }
+            }
+        }
+
+        // --- Single-char operators ---
+
+        if matches!(chars[i], '|' | ';' | '&') {
+            output.push_str(&chars[i].to_string().yellow().bold().to_string());
+
+            i += 1;
+
+            continue;
+        }
+
+        // --- Redirection operators ---
+
+        if matches!(chars[i], '>' | '<') {
+            // Check for >>, <<, <>, >&, <&
+
+            if i + 1 < len {
+                let two = format!("{}{}", chars[i], chars[i + 1]);
+
+                if matches!(two.as_str(), ">>" | "<<" | "<>" | "<&" | ">&" | ">|") {
+                    output.push_str(&two.bright_black().bold().to_string());
+
+                    i += 2;
+
+                    continue;
+                }
+            }
+
+            output.push_str(&chars[i].to_string().bright_black().bold().to_string());
+
+            i += 1;
+
+            continue;
+        }
+
+        // --- Detect words (commands, keywords, etc.) ---
+
+        if chars[i].is_alphanumeric() || chars[i] == '_' || chars[i] == '-' || chars[i] == '.' {
+            let start = i;
+
+            while i < len
+                && (chars[i].is_alphanumeric()
+                    || chars[i] == '_'
+                    || chars[i] == '-'
+                    || chars[i] == '.'
+                    || chars[i] == '/')
+            {
+                i += 1;
+            }
+
+            let word: String = chars[start..i].iter().collect();
+
+            // Check if it's a control flow keyword
+
+            if is_control_keyword(&word) {
+                output.push_str(&word.magenta().bold().to_string());
+            }
+            // Check if it's a command (builtin or common tool)
+            else if is_command(&word) {
+                output.push_str(&word.cyan().bold().to_string());
+            }
+            // Check if it's a redirect target like /dev/null
+            else if word.starts_with("/dev/") {
+                output.push_str(&word.bright_black().to_string());
+            } else {
+                output.push_str(&word);
+            }
+
+            continue;
+        }
+
+        // Default: pass through as-is
+
+        output.push(chars[i]);
+
+        i += 1;
+    }
+
+    output
+}
+
+/// Check if a word is a shell control flow keyword.
+fn is_control_keyword(word: &str) -> bool {
+    matches!(
+        word,
+        "if" | "then"
+            | "else"
+            | "elif"
+            | "fi"
+            | "for"
+            | "while"
+            | "until"
+            | "do"
+            | "done"
+            | "case"
+            | "esac"
+            | "select"
+            | "in"
+            | "function"
+            | "return"
+            | "break"
+            | "continue"
+            | "!" // reserved word (negate exit status)
+    )
+}
+
+/// Check if a word is a common shell command (builtin or well-known tool).
+fn is_command(word: &str) -> bool {
+    // Shell builtins
+
+    if is_builtin(word) {
+        return true;
+    }
+
+    // Common external commands
+
+    is_common_command(word)
+}
+
+/// Check if a word is a shell builtin command.
+fn is_builtin(word: &str) -> bool {
+    matches!(
+        word,
+        // bash builtins
+        "alias" | "bg" | "bind" | "builtin" | "caller"
+
+            | "cd" | "command" | "declare" | "dirs" | "disown"
+
+            | "echo" | "enable" | "eval" | "exec" | "exit"
+
+            | "export" | "fc" | "fg" | "getopts" | "hash"
+
+            | "help" | "history" | "jobs" | "kill" | "let"
+
+            | "local" | "logout" | "popd" | "pushd" | "pwd"
+
+            | "read" | "readonly" | "set" | "shift" | "shopt"
+
+            | "source" | "suspend" | "test" | "times" | "trap"
+
+            | "type" | "typeset" | "ulimit" | "umask" | "unalias"
+
+            | "unset" | "wait"
+
+            // POSIX/ash builtins
+
+            | "." | ":"
+    )
+}
+
+/// Check if a word is a common external command.
+fn is_common_command(word: &str) -> bool {
+    matches!(
+        word,
+        // File system
+        "ls" | "ll" | "la" | "find" | "locate" | "updatedb"
+
+            | "cp" | "mv" | "rm" | "mkdir" | "rmdir" | "touch"
+
+            | "ln" | "chmod" | "chown" | "chgrp" | "df" | "du"
+
+            | "mount" | "umount" | "stat" | "tree" | "basename"
+
+            | "dirname" | "realpath" | "mktemp"
+
+            // Text processing
+
+            | "cat" | "tac" | "less" | "more" | "head" | "tail"
+
+            | "grep" | "egrep" | "fgrep" | "rg" | "ag" | "ack"
+
+            | "sed" | "awk" | "cut" | "sort" | "uniq" | "wc"
+
+            | "tr" | "diff" | "patch" | "cmp" | "comm"
+
+            | "tee" | "fold" | "fmt" | "pr" | "nl" | "od"
+
+            | "string" | "strings" | "rev" | "join" | "paste"
+
+            | "column" | "expand" | "unexpand" | "split" | "csplit"
+
+            | "iconv" | "dos2unix" | "unix2dos"
+
+            | "jq" | "yq"
+
+            // Compression / Archiving
+
+            | "tar" | "gzip" | "gunzip" | "bzip2" | "bunzip2"
+
+            | "xz" | "unxz" | "zstd" | "unzstd" | "lz4"
+
+            | "zip" | "unzip" | "7z" | "rar" | "unrar"
+
+            | "zcat" | "zless" | "zgrep" | "zdiff"
+
+            | "compress" | "lzma" | "unlzma"
+
+            // Process management
+
+            | "ps" | "top" | "htop" | "btm" | "pgrep" | "pkill"
+
+            | "pidof" | "kill" | "killall" | "nice" | "renice"
+
+            | "nohup" | "timeout" | "watch" | "fuser" | "lsof"
+
+            | "uptime" | "w" | "who" | "last"
+
+            // Network
+
+            | "curl" | "wget" | "httpie" | "http"
+
+            | "ssh" | "scp" | "sftp" | "rsync"
+
+            | "ping" | "traceroute" | "tracepath" | "mtr"
+
+            | "netstat" | "ss" | "ip" | "ifconfig" | "iwconfig"
+
+            | "dig" | "nslookup" | "host" | "nmap"
+
+            | "nc" | "netcat" | "socat"
+
+            | "iptables" | "ufw" | "firewall-cmd"
+
+            | "telnet" | "ftp" | "smbclient"
+
+            | "tcpdump" | "tshark" | "tcpflow"
+
+            // Development / Build tools
+
+            | "git" | "svn" | "hg" | "bzr"
+
+            | "make" | "cmake" | "meson" | "ninja" | "just"
+
+            | "cargo" | "rustc" | "rustup" | "clippy"
+
+            | "python" | "python3" | "pip" | "pip3" | "uv"
+
+            | "node" | "npm" | "npx" | "yarn" | "pnpm" | "bun"
+
+            | "deno" | "bunx"
+
+            | "ruby" | "gem" | "bundle" | "rake" | "rails"
+
+            | "go" | "gofmt" | "golang"
+
+            | "java" | "javac" | "gradle" | "mvn" | "mvnw"
+
+            | "kotlin" | "scala" | "sbt"
+
+            | "gcc" | "g++" | "clang" | "clang++"
+
+            | "ld" | "as" | "ar" | "nm" | "objdump" | "readelf"
+
+            | "perl" | "php" | "lua" | "luajit"
+
+            | "swift" | "zig" | "nim" | "dart" | "flutter"
+
+            | "racket" | "sbcl" | "ghc" | "cabal" | "stack"
+
+            | "elixir" | "mix" | "erlc"
+
+            | "haxe" | "julia" | "R" | "matlab" | "octave"
+
+            | "wasm-pack" | "wasmtime" | "wasmer"
+
+            // System administration
+
+            | "sudo" | "doas" | "su" | "chroot" | "env" | "printenv"
+
+            | "which" | "whereis" | "whatis" | "apropos" | "man"
+
+            | "systemctl" | "journalctl" | "service"
+
+            | "docker" | "podman" | "docker-compose" | "nerdctl"
+
+            | "kubectl" | "minikube" | "helm"
+
+            | "apt" | "apt-get" | "apt-cache" | "dpkg"
+
+            | "yum" | "dnf" | "rpm" | "zypper" | "pacman" | "yay"
+
+            | "brew" | "port" | "nix" | "flatpak" | "snap"
+
+            | "cron" | "at" | "crontab"
+
+            | "chsh" | "passwd" | "useradd" | "usermod" | "userdel"
+
+            | "groupadd" | "groupmod" | "groupdel"
+
+            // Files and content
+
+            | "file" | "xxd" | "hexdump" | "hexyl" | "bat"
+
+            | "fzf" | "fd" | "ripgrep"
+
+            | "xargs" | "envsubst" | "stdbuf"
+
+            // Screen / Terminal
+
+            | "clear" | "reset" | "tput" | "stty"
+
+            | "tmux" | "screen" | "byobu"
+
+            | "echo" | "printf" | "yes" | "seq"
+
+            // Date / Time
+
+            | "date" | "cal" | "time" | "sleep"
+
+            // Miscellaneous
+
+            | "nproc" | "uname" | "hostname" | "arch"
+
+            | "id" | "logname" | "groups" | "whoami"
+
+            | "sh" | "bash" | "zsh" | "fish" | "ksh" | "dash" | "ash"
+
+            | "nano" | "vim" | "vi" | "nvim" | "emacs" | "ed" | "ex"
+
+            | "code" | "codium" | "zed"
+
+            | "cc" | "c++"
+
+            | "flex" | "bison" | "yacc" | "lex"
+
+            | "pkg-config" | "autoconf" | "automake" | "libtool"
+
+            | "install" | "strip" | "objcopy"
+
+            | "openssl" | "gpg" | "age" | "sops" | "vault"
+
+            | "cryptsetup" | "luks"
+
+            | "dd" | "fdisk" | "parted" | "mkfs" | "fsck" | "blkid"
+
+            | "free" | "vmstat" | "iostat" | "mpstat" | "sar"
+
+            | "lscpu" | "lsblk" | "lspci" | "lsusb" | "lshw"
+
+            | "dmesg" | "sysctl"
+
+            | "screenfetch" | "neofetch" | "fastfetch"
+    )
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    fn force_color() {
+        colored::control::set_override(true);
+    }
+
+    #[test]
+    fn test_highlight_basic_command() {
+        force_color();
+        let result = highlight_shell_command("ls -la");
+        assert!(
+            result.contains("\x1b["),
+            "Output should contain ANSI escape codes: {:?}",
+            result
+        );
+        assert!(result.contains("ls"), "Should contain the command");
+    }
+
+    #[test]
+    fn test_highlight_pipe_and_separators() {
+        force_color();
+        let result = highlight_shell_command("ls | grep foo && echo 'done'");
+        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(result.contains("ls"), "Should contain ls");
+    }
+
+    #[test]
+    fn test_highlight_strings() {
+        force_color();
+        let result = highlight_shell_command("echo \"hello world\" 'single quoted'");
+        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(result.contains("hello"), "Should contain hello");
+    }
+
+    #[test]
+    fn test_highlight_control_keywords() {
+        force_color();
+        let result = highlight_shell_command("if [ -f file ]; then echo exists; fi");
+        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(result.contains("if"), "Should contain if");
+    }
+
+    #[test]
+    fn test_highlight_comment() {
+        force_color();
+        let result = highlight_shell_command("echo foo # this is a comment");
+        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(result.contains("comment"), "Should contain comment text");
+    }
+
+    #[test]
+    fn test_highlight_redirections() {
+        force_color();
+        let result = highlight_shell_command("cat file.txt > /dev/null 2>&1");
+        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+    }
+
+    #[test]
+    fn test_multiline_script() {
+        force_color();
+        let result = highlight_shell_command("for i in 1 2 3\ndo\n  echo \"$i\"\ndone");
+        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+    }
+
+    #[test]
+    fn test_empty_input() {
+        assert_eq!(
+            highlight_shell_command(""),
+            "",
+            "Empty input should produce empty output"
+        );
+    }
+
+    #[test]
+    fn test_no_special_chars() {
+        let result = highlight_shell_command("just some plain text");
+        assert!(!result.is_empty(), "Should return non-empty output");
+    }
+
+    #[test]
+    fn test_escaped_quotes() {
+        force_color();
+        let result = highlight_shell_command("echo \"hello \\\"world\\\"\"");
+        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+    }
+
+    #[test]
+    fn test_arithmetic_expansion() {
+        force_color();
+        let result = highlight_shell_command("echo $((1 + 2))");
+        assert!(
+            result.contains("\x1b["),
+            "Output should contain ANSI codes: {:?}",
+            result
+        );
+    }
+}
