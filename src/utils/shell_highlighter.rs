@@ -3,27 +3,28 @@
 //! Provides syntax highlighting for shell commands displayed in the terminal.
 //! All implementations are manual (no external syntax highlighting crates).
 //!
-//! Color scheme: **Catppuccin Mocha** inspired — the most popular color scheme
-//! across editors and terminals.
+//! Color scheme: **Vibrant + High Contrast** — optimized for readability on both
+//! light and dark terminal backgrounds, including Docker/pipe environments.
 //!
 //! # Palette
 //!
 //! | Token               | Color          | Hex       |
 //! |---------------------|----------------|-----------|
-//! | Commands            | Yellow         | `#f9e2af` |
-//! | Control keywords    | Mauve          | `#cba6f7` |
-//! | Double-quoted strs  | Green          | `#a6e3a1` |
-//! | Single-quoted strs  | Teal           | `#94e2d5` |
-//! | Operators           | Peach/Orange   | `#fab387` |
-//! | Redirections        | Blue           | `#89b4fa` |
-//! | Variables           | Pink           | `#f5c2e7` |
-//! | Comments            | Overlay0       | `#6c7086` |
-//! | Backtick sub        | Sapphire       | `#74c7ec` |
-//! | Options/Flags       | Subtext1       | `#bac2de` |
-//! | Arithmetic exp      | Rosewater      | `#f5e0dc` |
+//! | Commands            | Gold           | `#e5b567` |
+//! | Control keywords    | Purple         | `#9c6cd3` |
+//! | Double-quoted strs  | Green          | `#6cbf6c` |
+//! | Single-quoted strs  | Teal           | `#4ec9b0` |
+//! | Operators           | Orange         | `#e87d3e` |
+//! | Redirections        | Steel Blue     | `#5a9bcf` |
+//! | Variables           | Pink           | `#d67ad5` |
+//! | Comments            | Gray           | `#5c6370` |
+//! | Backtick sub        | Sky Blue       | `#6eb0d9` |
+//! | Options/Flags       | Silver         | `#9ca2b8` |
+//! | Arithmetic exp      | Rose           | `#d4786c` |
 //!
 //! Design principles:
 //! - High contrast & readability (視認性優先)
+//! - Works well on both light and dark backgrounds
 //! - No `.dimmed()` or gray-washed tones (グレー系不使用)
 //! - Distinct from UI label colors (`cyan` is reserved for UI labels)
 //! - Options/flags (`-la`, `--help`) highlighted to avoid blending into arguments
@@ -31,19 +32,19 @@
 use colored::Colorize;
 
 // ---------------------------------------------------------------------------
-// Catppuccin Mocha palette (truecolor)
+// Vibrant High-Contrast palette (truecolor)
 // ---------------------------------------------------------------------------
-const CMD: (u8, u8, u8) = (249, 226, 175); // Yellow  — commands
-const KEYWORD: (u8, u8, u8) = (203, 166, 247); // Mauve   — control keywords
-const STR_DQ: (u8, u8, u8) = (166, 227, 161); // Green   — double-quoted strings
-const STR_SQ: (u8, u8, u8) = (148, 226, 213); // Teal    — single-quoted strings
-const OPERATOR: (u8, u8, u8) = (250, 179, 135); // Peach   — && || | ; &
-const REDIRECT: (u8, u8, u8) = (137, 180, 250); // Blue    — > < >> 2>&1
-const VARIABLE: (u8, u8, u8) = (245, 194, 231); // Pink    — $VAR ${} $(())
-const COMMENT: (u8, u8, u8) = (108, 112, 134); // Overlay0 — # comments
-const BACKTICK: (u8, u8, u8) = (116, 199, 236); // Sapphire — `cmd`
-const OPTION: (u8, u8, u8) = (186, 194, 222); // Subtext1 — -la --help
-const ARITH: (u8, u8, u8) = (245, 224, 220); // Rosewater — $(( ... ))
+const CMD: (u8, u8, u8) = (229, 181, 103);   // Gold      — commands
+const KEYWORD: (u8, u8, u8) = (156, 108, 211); // Purple    — control keywords
+const STR_DQ: (u8, u8, u8) = (108, 191, 108); // Green     — double-quoted strings
+const STR_SQ: (u8, u8, u8) = (78, 201, 176);  // Teal      — single-quoted strings
+const OPERATOR: (u8, u8, u8) = (232, 125, 62); // Orange    — && || | ; &
+const REDIRECT: (u8, u8, u8) = (90, 155, 207); // Steel Blue — > < >> 2>&1
+const VARIABLE: (u8, u8, u8) = (214, 122, 213); // Pink     — $VAR ${} $(())
+const COMMENT: (u8, u8, u8) = (92, 99, 112);   // Gray      — # comments
+const BACKTICK: (u8, u8, u8) = (110, 176, 217); // Sky Blue  — `cmd`
+const OPTION: (u8, u8, u8) = (156, 162, 184);  // Silver    — -la --help
+const ARITH: (u8, u8, u8) = (212, 120, 108);   // Rose      — $(( ... ))
 
 /// Apply a truecolor foreground to a string, then bold it.
 macro_rules! paint {
