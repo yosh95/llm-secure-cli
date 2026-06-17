@@ -13,5 +13,5 @@ pub fn report_warning(message: &str) {
 }
 
 pub fn report_success(message: &str) {
-    eprintln!("{} {}", "OK".bright_green().bold(), message.bright_green());
+    eprintln!("{} {}", "OK".green().bold(), message.green());
 }

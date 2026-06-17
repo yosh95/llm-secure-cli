@@ -112,11 +112,9 @@ impl ActiveSession {
         if let Some(t) = thought
             && !t.trim().is_empty()
         {
-            self.ctx
-                .ui
-                .print_rule(Some("Thought"), Some("bright_black"));
-            self.ctx.ui.print_block(&t, None, Some("bright_black"));
-            self.ctx.ui.print_rule(None, Some("bright_black"));
+            self.ctx.ui.print_rule(Some("Thought"), Some("cyan"));
+            self.ctx.ui.print_block(&t, None, Some("cyan"));
+            self.ctx.ui.print_rule(None, Some("cyan"));
         }
 
         if let Some(text) = text

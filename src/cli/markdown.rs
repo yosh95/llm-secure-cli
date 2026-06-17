@@ -356,7 +356,7 @@ impl MarkdownRenderer {
                     1 => line.cyan().bold(),
                     2 => line.yellow().bold(),
                     3 => line.green().bold(),
-                    _ => line.bright_black().bold(),
+                    _ => line.cyan().bold(),
                 };
                 output.push_str(&colored_line.to_string());
             } else {

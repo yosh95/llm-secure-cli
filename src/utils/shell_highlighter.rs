@@ -3,24 +3,23 @@
 //! Provides syntax highlighting for shell commands displayed in the terminal.
 //! All implementations are manual (no external syntax highlighting crates).
 //!
-//! Color scheme: **Vibrant + High Contrast** — optimized for readability on both
-//! light and dark terminal backgrounds, including Docker/pipe environments.
+//! Color scheme: **Basic ANSI colors** — optimized for broad terminal compatibility.
 //!
 //! # Palette
 //!
-//! | Token               | Color          | Hex       |
-//! |---------------------|----------------|-----------|
-//! | Commands            | Gold           | `#e5b567` |
-//! | Control keywords    | Purple         | `#9c6cd3` |
-//! | Double-quoted strs  | Green          | `#6cbf6c` |
-//! | Single-quoted strs  | Teal           | `#4ec9b0` |
-//! | Operators           | Orange         | `#e87d3e` |
-//! | Redirections        | Steel Blue     | `#5a9bcf` |
-//! | Variables           | Pink           | `#d67ad5` |
-//! | Comments            | Gray           | `#5c6370` |
-//! | Backtick sub        | Sky Blue       | `#6eb0d9` |
-//! | Options/Flags       | Silver         | `#9ca2b8` |
-//! | Arithmetic exp      | Rose           | `#d4786c` |
+//! | Token               | ANSI Color  |
+//! |---------------------|-------------|
+//! | Commands            | Yellow      |
+//! | Control keywords    | Magenta     |
+//! | Double-quoted strs  | Green       |
+//! | Single-quoted strs  | Green       |
+//! | Operators           | Red         |
+//! | Redirections        | Blue        |
+//! | Variables           | Magenta     |
+//! | Comments            | BrightBlack|
+//! | Backtick sub        | Blue        |
+//! | Options/Flags       | Cyan        |
+//! | Arithmetic exp      | Red         |
 //!
 //! Design principles:
 //! - High contrast & readability (視認性優先)
@@ -31,25 +30,10 @@
 
 use colored::Colorize;
 
-// ---------------------------------------------------------------------------
-// Vibrant High-Contrast palette (truecolor)
-// ---------------------------------------------------------------------------
-const CMD: (u8, u8, u8) = (229, 181, 103); // Gold      — commands
-const KEYWORD: (u8, u8, u8) = (156, 108, 211); // Purple    — control keywords
-const STR_DQ: (u8, u8, u8) = (108, 191, 108); // Green     — double-quoted strings
-const STR_SQ: (u8, u8, u8) = (78, 201, 176); // Teal      — single-quoted strings
-const OPERATOR: (u8, u8, u8) = (232, 125, 62); // Orange    — && || | ; &
-const REDIRECT: (u8, u8, u8) = (90, 155, 207); // Steel Blue — > < >> 2>&1
-const VARIABLE: (u8, u8, u8) = (214, 122, 213); // Pink     — $VAR ${} $(())
-const COMMENT: (u8, u8, u8) = (92, 99, 112); // Gray      — # comments
-const BACKTICK: (u8, u8, u8) = (110, 176, 217); // Sky Blue  — `cmd`
-const OPTION: (u8, u8, u8) = (156, 162, 184); // Silver    — -la --help
-const ARITH: (u8, u8, u8) = (212, 120, 108); // Rose      — $(( ... ))
-
-/// Apply a truecolor foreground to a string, then bold it.
+/// Apply a basic ANSI color foreground to a string, then bold it.
 macro_rules! paint {
-    ($s:expr, $r:expr, $g:expr, $b:expr) => {
-        $s.truecolor($r, $g, $b).bold().to_string()
+    ($s:expr, $color:ident) => {
+        $s.$color().bold().to_string()
     };
 }
 
@@ -73,11 +57,7 @@ pub fn highlight_shell_command(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(
-                &segment
-                    .truecolor(COMMENT.0, COMMENT.1, COMMENT.2)
-                    .to_string(),
-            );
+            output.push_str(&segment.bright_black().to_string());
             continue;
         }
 
@@ -95,12 +75,7 @@ pub fn highlight_shell_command(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(
-                &segment
-                    .truecolor(STR_SQ.0, STR_SQ.1, STR_SQ.2)
-                    .bold()
-                    .to_string(),
-            );
+            output.push_str(&segment.green().bold().to_string());
             continue;
         }
 
@@ -118,7 +93,7 @@ pub fn highlight_shell_command(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(&segment.truecolor(STR_DQ.0, STR_DQ.1, STR_DQ.2).to_string());
+            output.push_str(&segment.green().to_string());
             continue;
         }
 
@@ -141,7 +116,7 @@ pub fn highlight_shell_command(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(&paint!(segment, ARITH.0, ARITH.1, ARITH.2));
+            output.push_str(&paint!(segment, red));
             continue;
         }
 
@@ -180,7 +155,7 @@ pub fn highlight_shell_command(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(&paint!(segment, VARIABLE.0, VARIABLE.1, VARIABLE.2));
+            output.push_str(&paint!(segment, magenta));
             continue;
         }
 
@@ -198,12 +173,7 @@ pub fn highlight_shell_command(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(
-                &segment
-                    .truecolor(BACKTICK.0, BACKTICK.1, BACKTICK.2)
-                    .bold()
-                    .to_string(),
-            );
+            output.push_str(&segment.blue().bold().to_string());
             continue;
         }
 
@@ -221,12 +191,7 @@ pub fn highlight_shell_command(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(
-                &segment
-                    .truecolor(VARIABLE.0, VARIABLE.1, VARIABLE.2)
-                    .bold()
-                    .to_string(),
-            );
+            output.push_str(&segment.magenta().bold().to_string());
             continue;
         }
 
@@ -239,12 +204,7 @@ pub fn highlight_shell_command(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(
-                &segment
-                    .truecolor(VARIABLE.0, VARIABLE.1, VARIABLE.2)
-                    .bold()
-                    .to_string(),
-            );
+            output.push_str(&segment.magenta().bold().to_string());
             continue;
         }
 
@@ -253,12 +213,7 @@ pub fn highlight_shell_command(input: &str) -> String {
             let special = chars[i + 1];
             if "?#@*-!".contains(special) || special.is_ascii_digit() {
                 let segment: String = chars[i..=i + 1].iter().collect();
-                output.push_str(
-                    &segment
-                        .truecolor(VARIABLE.0, VARIABLE.1, VARIABLE.2)
-                        .bold()
-                        .to_string(),
-                );
+                output.push_str(&segment.magenta().bold().to_string());
                 i += 2;
                 continue;
             }
@@ -268,7 +223,7 @@ pub fn highlight_shell_command(input: &str) -> String {
         if i + 1 < len {
             let two_char: String = chars[i..=i + 1].iter().collect();
             if matches!(two_char.as_str(), "&&" | "||" | ";;" | "|&" | ";&" | ";;&") {
-                output.push_str(&paint!(two_char, OPERATOR.0, OPERATOR.1, OPERATOR.2));
+                output.push_str(&two_char.red().to_string());
                 i += 2;
                 continue;
             }
@@ -277,7 +232,7 @@ pub fn highlight_shell_command(input: &str) -> String {
             if chars[i].is_ascii_digit() && i + 2 < len {
                 let three_char: String = chars[i..=i + 2].iter().collect();
                 if matches!(three_char.as_str(), "2>&" | "1>&" | "2>|" | "1>|") {
-                    output.push_str(&paint!(three_char, REDIRECT.0, REDIRECT.1, REDIRECT.2));
+                    output.push_str(&paint!(three_char, blue));
                     i += 3;
                     continue;
                 }
@@ -287,7 +242,7 @@ pub fn highlight_shell_command(input: &str) -> String {
             if i + 2 < len {
                 let three_char: String = chars[i..=i + 2].iter().collect();
                 if matches!(three_char.as_str(), "<<<" | "<<-") {
-                    output.push_str(&paint!(three_char, REDIRECT.0, REDIRECT.1, REDIRECT.2));
+                    output.push_str(&paint!(three_char, blue));
                     i += 3;
                     continue;
                 }
@@ -296,12 +251,7 @@ pub fn highlight_shell_command(input: &str) -> String {
 
         // ── Single-char operators ──────────────────────────────────────────
         if matches!(chars[i], '|' | ';' | '&') {
-            output.push_str(&paint!(
-                chars[i].to_string(),
-                OPERATOR.0,
-                OPERATOR.1,
-                OPERATOR.2
-            ));
+            output.push_str(&chars[i].to_string().red().to_string());
             i += 1;
             continue;
         }
@@ -311,17 +261,12 @@ pub fn highlight_shell_command(input: &str) -> String {
             if i + 1 < len {
                 let two: String = chars[i..=i + 1].iter().collect();
                 if matches!(two.as_str(), ">>" | "<<" | "<>" | "<&" | ">&" | ">|") {
-                    output.push_str(&paint!(two, REDIRECT.0, REDIRECT.1, REDIRECT.2));
+                    output.push_str(&paint!(two, blue));
                     i += 2;
                     continue;
                 }
             }
-            output.push_str(&paint!(
-                chars[i].to_string(),
-                REDIRECT.0,
-                REDIRECT.1,
-                REDIRECT.2
-            ));
+            output.push_str(&paint!(chars[i].to_string(), blue));
             i += 1;
             continue;
         }
@@ -342,16 +287,16 @@ pub fn highlight_shell_command(input: &str) -> String {
 
             if is_control_keyword(&word) {
                 // Control keywords → Mauve (bold)
-                output.push_str(&paint!(word, KEYWORD.0, KEYWORD.1, KEYWORD.2));
+                output.push_str(&paint!(word, magenta));
             } else if word.starts_with('-') || word.starts_with("--") {
                 // Options/flags → Subtext1 (bold) — high visibility, distinct
-                output.push_str(&paint!(word, OPTION.0, OPTION.1, OPTION.2));
+                output.push_str(&paint!(word, cyan));
             } else if is_command(&word) {
                 // Commands → Yellow (bold)
-                output.push_str(&paint!(word, CMD.0, CMD.1, CMD.2));
+                output.push_str(&paint!(word, yellow));
             } else if word.starts_with('/') || word.starts_with("./") || word.starts_with("../") {
                 // Paths → Subtext1 (plain, no bold to avoid visual overload)
-                output.push_str(&word.truecolor(OPTION.0, OPTION.1, OPTION.2).to_string());
+                output.push_str(&word.cyan().to_string());
             } else {
                 // Plain word (arguments, filenames, etc.)
                 output.push_str(&word);
@@ -368,9 +313,7 @@ pub fn highlight_shell_command(input: &str) -> String {
     output
 }
 
-// ---------------------------------------------------------------------------
 // Keyword / command classification
-// ---------------------------------------------------------------------------
 
 /// Check if a word is a shell control flow keyword.
 fn is_control_keyword(word: &str) -> bool {
@@ -560,9 +503,7 @@ fn is_common_command(word: &str) -> bool {
     )
 }
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[allow(clippy::expect_used)]

@@ -35,7 +35,7 @@ pub fn print_rule(title: Option<&str>, style: Option<&str>) {
     let term = Term::stdout();
     let (_, width) = term.size();
     let width = (width as usize).min(140);
-    let color = style.unwrap_or("bright_black");
+    let color = style.unwrap_or("cyan");
 
     if let Some(t) = title {
         let title_text = format!(" {t} ");
@@ -71,7 +71,7 @@ pub fn print_panel(
     let (_, term_width) = term.size();
     let width = (term_width as usize).clamp(40, 140);
 
-    let border_color = border_style.unwrap_or("bright_black");
+    let border_color = border_style.unwrap_or("cyan");
 
     // Top border
     if let Some(t) = title {
@@ -183,7 +183,7 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
                     // Display shell command text with syntax highlighting
                     push_line(
                         &mut buf,
-                        &format!("    {} {}:", "\u{2022}".bright_black(), "command".cyan()),
+                        &format!("    {} {}:", "\u{2022}".cyan(), "command".cyan()),
                     );
                     let code_str = v.as_str().unwrap_or("");
                     let highlighted =
@@ -197,12 +197,7 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
                         .map_or_else(|| v.to_string(), std::string::ToString::to_string);
                     push_line(
                         &mut buf,
-                        &format!(
-                            "    {} {}: {}",
-                            "\u{2022}".bright_black(),
-                            k.cyan(),
-                            val_str
-                        ),
+                        &format!("    {} {}: {}", "\u{2022}".cyan(), k.cyan(), val_str),
                     );
                 }
             }
@@ -214,7 +209,7 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
                 &mut buf,
                 &format!(
                     "    {} {}: {}",
-                    "\u{2022}".bright_black(),
+                    "\u{2022}".cyan(),
                     "explanation".cyan(),
                     val_str
                 ),
@@ -247,7 +242,7 @@ pub fn print_tool_call_direct(name: &str, args: &serde_json::Value) {
 }
 
 pub fn print_tool_result(result: &str) {
-    let color = "bright_green";
+    let color = "green";
     let mut out = String::new();
 
     out.push_str(&format!(
@@ -271,27 +266,22 @@ pub fn print_tool_result(result: &str) {
             if !message.is_empty() {
                 push_line(
                     &mut out,
-                    &format!("    {} {}", "\u{2022}".bright_black(), message.cyan()),
+                    &format!("    {} {}", "\u{2022}".cyan(), message.cyan()),
                 );
             }
             push_line(
                 &mut out,
-                &format!(
-                    "    {} {}: {}",
-                    "\u{2022}".bright_black(),
-                    "path".cyan(),
-                    path
-                ),
+                &format!("    {} {}: {}", "\u{2022}".cyan(), "path".cyan(), path),
             );
 
             if !diff.is_empty() {
                 push_line(
                     &mut out,
-                    &format!("    {} {}:", "\u{2022}".bright_black(), "diff".cyan()),
+                    &format!("    {} {}:", "\u{2022}".cyan(), "diff".cyan()),
                 );
                 for line in diff.lines() {
                     if line.starts_with('+') && !line.starts_with("+++") {
-                        push_line(&mut out, &format!("        {}", line.bright_green()));
+                        push_line(&mut out, &format!("        {}", line.green()));
                     } else if line.starts_with('-') && !line.starts_with("---") {
                         push_line(&mut out, &format!("        {}", line.red()));
                     } else if line.starts_with("@@") {
@@ -313,11 +303,7 @@ pub fn print_tool_result(result: &str) {
             v.get("stderr").and_then(|v| v.as_str()),
             v.get("exit_code").and_then(serde_json::Value::as_i64),
         ) {
-            let status_color = if exit_code == 0 {
-                "bright_green"
-            } else {
-                "red"
-            };
+            let status_color = if exit_code == 0 { "green" } else { "red" };
 
             if !stdout.is_empty() {
                 push_line(&mut out, &format!("    {}:", "STDOUT".bold()));
@@ -355,7 +341,7 @@ pub fn print_tool_result(result: &str) {
                         if let Some(s) = item.as_str() {
                             push_line(
                                 &mut out,
-                                &format!("    {} {}", "\u{2022}".bright_black(), s.dimmed()),
+                                &format!("    {} {}", "\u{2022}".cyan(), s.dimmed()),
                             );
                         } else if let Some(obj) = item.as_object() {
                             if let (Some(file), Some(line), Some(text)) = (
@@ -367,7 +353,7 @@ pub fn print_tool_result(result: &str) {
                                     &mut out,
                                     &format!(
                                         "    {} {}:{}: {}",
-                                        "\u{2022}".bright_black(),
+                                        "\u{2022}".cyan(),
                                         file.cyan(),
                                         line.to_string().yellow(),
                                         text.dimmed()
@@ -394,7 +380,7 @@ pub fn print_tool_result(result: &str) {
                                         &mut out,
                                         &format!(
                                             "    {} [{}] {}",
-                                            "\u{2022}".bright_black(),
+                                            "\u{2022}".cyan(),
                                             t.cyan(),
                                             path
                                         ),
@@ -404,7 +390,7 @@ pub fn print_tool_result(result: &str) {
                                         &mut out,
                                         &format!(
                                             "    {} [{}] {:<30}  {}",
-                                            "\u{2022}".bright_black(),
+                                            "\u{2022}".cyan(),
                                             t.cyan(),
                                             path,
                                             details.join(" | ").dimmed()
@@ -416,7 +402,7 @@ pub fn print_tool_result(result: &str) {
                                     &mut out,
                                     &format!(
                                         "    {} {}",
-                                        "\u{2022}".bright_black(),
+                                        "\u{2022}".cyan(),
                                         item.to_string().dimmed()
                                     ),
                                 );
