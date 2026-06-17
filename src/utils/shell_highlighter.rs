@@ -34,17 +34,17 @@ use colored::Colorize;
 // ---------------------------------------------------------------------------
 // Vibrant High-Contrast palette (truecolor)
 // ---------------------------------------------------------------------------
-const CMD: (u8, u8, u8) = (229, 181, 103);   // Gold      — commands
+const CMD: (u8, u8, u8) = (229, 181, 103); // Gold      — commands
 const KEYWORD: (u8, u8, u8) = (156, 108, 211); // Purple    — control keywords
 const STR_DQ: (u8, u8, u8) = (108, 191, 108); // Green     — double-quoted strings
-const STR_SQ: (u8, u8, u8) = (78, 201, 176);  // Teal      — single-quoted strings
+const STR_SQ: (u8, u8, u8) = (78, 201, 176); // Teal      — single-quoted strings
 const OPERATOR: (u8, u8, u8) = (232, 125, 62); // Orange    — && || | ; &
 const REDIRECT: (u8, u8, u8) = (90, 155, 207); // Steel Blue — > < >> 2>&1
 const VARIABLE: (u8, u8, u8) = (214, 122, 213); // Pink     — $VAR ${} $(())
-const COMMENT: (u8, u8, u8) = (92, 99, 112);   // Gray      — # comments
+const COMMENT: (u8, u8, u8) = (92, 99, 112); // Gray      — # comments
 const BACKTICK: (u8, u8, u8) = (110, 176, 217); // Sky Blue  — `cmd`
-const OPTION: (u8, u8, u8) = (156, 162, 184);  // Silver    — -la --help
-const ARITH: (u8, u8, u8) = (212, 120, 108);   // Rose      — $(( ... ))
+const OPTION: (u8, u8, u8) = (156, 162, 184); // Silver    — -la --help
+const ARITH: (u8, u8, u8) = (212, 120, 108); // Rose      — $(( ... ))
 
 /// Apply a truecolor foreground to a string, then bold it.
 macro_rules! paint {
