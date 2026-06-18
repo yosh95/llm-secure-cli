@@ -319,6 +319,8 @@ impl ActiveSession {
                     {
                         crate::cli::interactive::dispatcher::CommandResult::Exit => {
                             save_history_robust(&mut rl, &history_log_path());
+                            // Auto-save the session before exiting.
+                            crate::utils::session_store::auto_save(self);
                             // Drop rustyline editor and return to let
                             // ChatSession Drop run naturally (saves Merkle anchor).
                             drop(rl);
@@ -381,11 +383,15 @@ impl ActiveSession {
                 }
                 Err(ReadlineError::Interrupted) => {
                     println!("CTRL-C");
+                    // Auto-save the session before exiting on Ctrl+C.
+                    crate::utils::session_store::auto_save(self);
                     break;
                 }
                 Err(ReadlineError::Eof) => {
                     println!("CTRL-D");
                     save_history_robust(&mut rl, &history_log_path());
+                    // Auto-save the session before exiting on Ctrl+D.
+                    crate::utils::session_store::auto_save(self);
                     drop(rl);
                     // Return to let ChatSession Drop run naturally
                     // (saves Merkle anchor and cleanup).
@@ -407,6 +413,8 @@ impl ActiveSession {
                 }
             }
         }
+        // Auto-save the session after the main loop ends (e.g. Ctrl+C).
+        crate::utils::session_store::auto_save(self);
         save_history_robust(&mut rl, &history_log_path());
     }
 }

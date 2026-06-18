@@ -22,24 +22,45 @@ pub async fn brave_search(args: HashMap<String, Value>, api_key: &str) -> anyhow
 ///
 /// Returns the raw JSON response from the API without any restructuring.
 /// Only sends the query parameter; all other parameters use API-side defaults.
+/// Supports Ctrl+C cancellation via the global `SessionCancel` token.
 async fn call_brave_llm_context(query: &str, api_key: &str) -> anyhow::Result<Value> {
     let mut body = serde_json::Map::new();
     body.insert("q".to_string(), json!(query));
 
     let url = "https://api.search.brave.com/res/v1/llm/context";
 
-    let res = CLIENT
+    let cancel_token = crate::core::session::SessionCancel::new();
+    let mut cancel_rx = cancel_token.receiver();
+
+    let request = CLIENT
         .post(url)
         .header("Accept", "application/json")
         .header("X-Subscription-Token", api_key)
         .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await?;
+        .json(&body);
 
-    let status = res.status();
+    let send_future = request.send();
+
+    let response = tokio::select! {
+        res = send_future => {
+            match res {
+                Ok(r) => r,
+                Err(e) if e.is_timeout() => {
+                    return Err(anyhow::anyhow!("Brave LLM Context API timed out after 30s"));
+                }
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Brave LLM Context API request failed: {e}"));
+                }
+            }
+        }
+        _ = cancel_rx.changed() => {
+            return Err(anyhow::anyhow!("Interrupted by user (Ctrl+C)"));
+        }
+    };
+
+    let status = response.status();
     if !status.is_success() {
-        let error_body = match res.json::<Value>().await {
+        let error_body = match response.json::<Value>().await {
             Ok(v) => v.to_string(),
             Err(_) => "Unable to read error response body".to_string(),
         };
@@ -49,6 +70,6 @@ async fn call_brave_llm_context(query: &str, api_key: &str) -> anyhow::Result<Va
     }
 
     // Return the raw API response as-is without restructuring
-    let data: Value = res.json().await?;
+    let data: Value = response.json().await?;
     Ok(data)
 }

@@ -230,14 +230,26 @@ impl LlmClient for OpenAiCompatibleClient {
             })
         );
 
-        let res = self
+        // Support Ctrl+C cancellation during the HTTP request.
+        let cancel_token = crate::core::session::SessionCancel::new();
+        let mut cancel_rx = cancel_token.receiver();
+
+        let request = self
             .http_client
             .post(&self.api_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&body)
-            .send()
-            .await
-            .context("Failed to send request to LLM API")?;
+            .json(&body);
+
+        let send_future = request.send();
+
+        let res = tokio::select! {
+            res = send_future => {
+                res.context("Failed to send request to LLM API")?
+            }
+            _ = cancel_rx.changed() => {
+                return Err(anyhow::anyhow!("Interrupted by user (Ctrl+C) during LLM API call"));
+            }
+        };
 
         let resp_json: Value = res
             .json()

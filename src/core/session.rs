@@ -18,15 +18,17 @@ pub mod tool_executor;
 
 // ── Global Ctrl+C handler ────────────────────────────────────────────────
 //
-// `tokio::signal::ctrl_c()` must NOT be called in multiple places. Each call
-// registers a new callback in the global signal_hook_registry, and repeated
-// creation/destruction can cause the internal state to desync — leading to
-// SIGINT being silently swallowed (the reported deadlock).
+// On Unix, a persistent `tokio::signal::unix::signal(SIGINT)` listener is
+// installed ONCE — the signal is captured by the OS-level sigaction and
+// forwarded to an async receiver.  Repeated `ctrl_c().await` patterns
+// create and destroy registrations in the global signal_hook_registry,
+// which can cause signals to be silently dropped.
 //
-// Instead, ONE background task watches SIGINT for the entire process lifetime
-// and broadcasts via a `watch::Sender<bool>`.  All concurrent operations
-// (LLM API call, verifier wait, tool execution) use a `watch::Receiver` from
-// this sender in their `tokio::select!` — no duplicate registrations.
+// On Windows, `tokio::signal::ctrl_c()` is used instead.
+//
+// All concurrent operations (LLM API call, verifier wait, tool execution)
+// use independent `watch::Receiver`s from the same sender — no duplicate
+// OS signal registrations.
 
 static CANCEL_SENDER: OnceLock<watch::Sender<u64>> = OnceLock::new();
 
@@ -36,8 +38,32 @@ fn ensure_global_cancel_handler() {
         let (tx, _rx) = watch::channel(0u64);
         let tx2 = tx.clone();
         tokio::spawn(async move {
+            // On Unix, register a persistent SIGINT listener ONCE
+            // (avoids the re-registration race in `loop { ctrl_c().await }`).
+            #[cfg(unix)]
+            let mut stream: tokio::signal::unix::Signal =
+                match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt()) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to register persistent SIGINT handler: {e}; falling back"
+                        );
+                        // Pseudo-stream that calls ctrl_c() in a loop as fallback.
+                        loop {
+                            tokio::signal::ctrl_c().await.ok();
+                            tracing::debug!("SIGINT received (fallback) — notifying watchers");
+                            tx2.send_modify(|v| *v += 1);
+                        }
+                    }
+                };
+
             loop {
+                // Wait for the next SIGINT signal.
+                #[cfg(unix)]
+                stream.recv().await;
+                #[cfg(not(unix))]
                 tokio::signal::ctrl_c().await.ok();
+
                 tracing::debug!("SIGINT received — notifying session cancellation watchers");
                 tx2.send_modify(|v| *v += 1);
             }
