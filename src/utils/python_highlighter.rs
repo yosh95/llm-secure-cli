@@ -146,7 +146,7 @@ pub fn highlight_python_code(input: &str) -> String {
                 i = len;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(&segment.green().bold().to_string());
+            output.push_str(&segment.green().to_string());
             continue;
         }
 
@@ -176,7 +176,7 @@ pub fn highlight_python_code(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(&segment.green().bold().to_string());
+            output.push_str(&segment.green().to_string());
             continue;
         }
 
