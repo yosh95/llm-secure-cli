@@ -16,7 +16,7 @@
 //! | Operators           | Red         |
 //! | Redirections        | Blue        |
 //! | Variables           | Magenta     |
-//! | Comments            | BrightBlack|
+//! | Comments            | Green      |
 //! | Backtick sub        | Blue        |
 //! | Options/Flags       | Cyan        |
 //! | Arithmetic exp      | Red         |
@@ -57,12 +57,35 @@ pub fn highlight_shell_command(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(&segment.bright_black().to_string());
+            output.push_str(&segment.green().to_string());
             continue;
         }
 
         // ── Single-quoted strings ──────────────────────────────────────────
         if chars[i] == '\'' {
+            // Scan ahead to verify there's a matching closing quote.
+            // This prevents English apostrophes (John's, don't, it's)
+            // and code-comment apostrophes (// John's code) from being
+            // incorrectly highlighted as shell single-quoted strings.
+            let mut j = i + 1;
+            let mut found_close = false;
+            while j < len {
+                if chars[j] == '\'' {
+                    found_close = true;
+                    break;
+                }
+                if chars[j] == '\\' && j + 1 < len {
+                    j += 1; // skip escaped char
+                }
+                j += 1;
+            }
+            if !found_close {
+                // No matching close — treat as plain apostrophe
+                output.push('\'');
+                i += 1;
+                continue;
+            }
+            // Matching close found — process as single-quoted string
             let start = i;
             i += 1;
             while i < len && chars[i] != '\'' {
