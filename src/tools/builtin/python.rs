@@ -118,7 +118,7 @@ pub async fn execute_python(
         .map_err(|e| anyhow::anyhow!("Failed to write code to temporary file: {e}"))?;
 
     let tmp_path = tmp_file.path().to_path_buf();
-    let timeout_secs = config.general.command_timeout;
+    let timeout_secs = config.general.python_timeout;
 
     let mut child = match Command::new(&python_bin)
         .arg(&tmp_path)

@@ -8,8 +8,8 @@ pub struct GeneralConfig {
     pub pdf_as_base64: bool,
     #[serde(default = "default_request_timeout")]
     pub request_timeout: u64,
-    #[serde(default = "default_command_timeout")]
-    pub command_timeout: u64,
+    #[serde(default = "default_python_timeout")]
+    pub python_timeout: u64,
     #[serde(default = "default_max_audit_log")]
     pub max_audit_log_lines: usize,
     #[serde(default = "default_max_chat_log")]
@@ -30,7 +30,7 @@ fn default_true() -> bool {
 fn default_request_timeout() -> u64 {
     1800
 }
-fn default_command_timeout() -> u64 {
+fn default_python_timeout() -> u64 {
     3600
 }
 fn default_max_audit_log() -> usize {
@@ -58,7 +58,7 @@ impl Default for GeneralConfig {
             system_prompt: None,
             pdf_as_base64: default_true(),
             request_timeout: default_request_timeout(),
-            command_timeout: default_command_timeout(),
+            python_timeout: default_python_timeout(),
             max_audit_log_lines: default_max_audit_log(),
             max_chat_log_lines: default_max_chat_log(),
             max_chat_archives: default_max_chat_archives(),

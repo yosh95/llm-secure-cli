@@ -183,7 +183,7 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
                     // Display Python code with syntax highlighting
                     push_line(
                         &mut buf,
-                        &format!("    {} {}:", "\u{2022}".cyan(), "command".cyan()),
+                        &format!("    {} {}:", "\u{2022}".cyan(), "code".cyan()),
                     );
                     let code_str = v.as_str().unwrap_or("");
                     let highlighted =

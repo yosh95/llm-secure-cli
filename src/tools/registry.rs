@@ -168,13 +168,13 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
         maybe_register(
             r,
             "execute_python",
-            "Execute Python code. Runs in a fresh process per call. Provides stdout, stderr, and exit code as output.",
+            "Execute Python code (or shell commands via subprocess). Runs in a fresh process per call. Provides stdout, stderr, and exit code as output.For multi-line string, use a variable instead of embedding raw newlines in arguments.",
             json!({
                 "type": "object",
                 "properties": {
                     "code": {
                         "type": "string",
-                        "description": "Python code to execute. Runs in a fresh Python process per call.",
+                        "description": "Python code to execute. For multi-line string, use a variable instead of embedding raw newlines in arguments.",
                     }
                 },
                 "required": ["code"]
