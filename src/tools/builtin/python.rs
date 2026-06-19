@@ -9,12 +9,12 @@ use tokio::process::Command;
 
 /// RAII guard that ensures the subprocess is killed and the temp file
 /// is cleaned up when dropped (including on Ctrl+C / Future cancellation).
-struct ShellProcessGuard {
+struct PythonProcessGuard {
     child: Option<tokio::process::Child>,
     tmp_path: std::path::PathBuf,
 }
 
-impl ShellProcessGuard {
+impl PythonProcessGuard {
     fn new(child: tokio::process::Child, tmp_path: std::path::PathBuf) -> Self {
         Self {
             child: Some(child),
@@ -27,7 +27,7 @@ impl ShellProcessGuard {
     }
 }
 
-impl Drop for ShellProcessGuard {
+impl Drop for PythonProcessGuard {
     fn drop(&mut self) {
         if let Some(ref mut child) = self.child {
             let _ = child.start_kill();
@@ -37,75 +37,90 @@ impl Drop for ShellProcessGuard {
     }
 }
 
-/// Executes shell commands supplied by the LLM.
+/// Determines which Python interpreter to use.
+/// Checks `python3` first, then falls back to `python`.
+/// Returns `None` if neither is available.
+fn find_python() -> Option<String> {
+    // Try python3 first
+    let python3_check = std::process::Command::new("python3")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+
+    if python3_check.is_ok() {
+        return Some("python3".to_string());
+    }
+
+    // Fall back to python
+    let python_check = std::process::Command::new("python")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+
+    if python_check.is_ok() {
+        return Some("python".to_string());
+    }
+
+    None
+}
+
+/// Executes Python code supplied by the LLM.
 ///
-/// The command is written to a temporary script file and executed via:
-///   - `bash` (heredoc) on Unix — backtick-safe
-///   - `cmd.exe` on Windows
+/// The code is written to a temporary `.py` file and executed via:
+///   - `python3` (preferred) on Unix
+///   - `python` (fallback) if python3 is not available
 ///
 /// Security is provided by:
 ///   1. Docker container isolation (the primary sandbox)
 ///   2. Verifier Committee semantic verification (Phase 2)
 ///   3. Human-in-the-loop approval (Phase 3)
-pub async fn execute_shell(
+///
+/// This tool is only registered if a Python interpreter (`python3` or `python`)
+/// is found in the system PATH.
+pub async fn execute_python(
     args: HashMap<String, Value>,
     config: Arc<AppConfig>,
 ) -> anyhow::Result<Value> {
-    let command = match args.get("command") {
+    let code = match args.get("code") {
         Some(Value::String(s)) => s.clone(),
         Some(other) => {
             return Err(anyhow::anyhow!(
-                "Invalid type for 'command': expected a string, got {other}.",
+                "Invalid type for 'code': expected a string, got {other}.",
             ));
         }
         None => {
             return Err(anyhow::anyhow!(
-                "Missing 'command' argument. Provide the shell command(s) to execute."
+                "Missing 'code' argument. Provide the Python code to execute."
             ));
         }
     };
 
-    if command.trim().is_empty() {
-        return Err(anyhow::anyhow!("'command' must not be empty."));
+    if code.trim().is_empty() {
+        return Err(anyhow::anyhow!("'code' must not be empty."));
     }
 
+    let python_bin = find_python().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Neither 'python3' nor 'python' found in system PATH. Cannot execute Python code."
+        )
+    })?;
+
     let tmp_file = tempfile::Builder::new()
-        .prefix("llsc_sh_")
-        .suffix(if cfg!(windows) { ".bat" } else { ".sh" })
+        .prefix("llsc_py_")
+        .suffix(".py")
         .tempfile()
         .map_err(|e| anyhow::anyhow!("Failed to create temporary file: {e}"))?;
 
-    // Write the script content
-    let script = if cfg!(windows) {
-        // Windows: cmd.exe /c <temp.bat>
-        // @echo off suppresses command echo
-        format!("@echo off\r\n{}\r\n", command)
-    } else {
-        // Unix: bash heredoc — backtick-safe
-        // The 'SCRIPT_END' quoting prevents the outer shell from expanding
-        // anything inside the heredoc, while the inner bash interprets
-        // $(...), `...`, |, >, 2>&1, etc. normally.
-        format!(
-            "bash << 'SCRIPT_END'\nset -euo pipefail\n{}\nSCRIPT_END\n",
-            command
-        )
-    };
-
-    std::fs::write(tmp_file.path(), &script)
-        .map_err(|e| anyhow::anyhow!("Failed to write script to temporary file: {e}"))?;
+    // Write the Python code to the temp file
+    std::fs::write(tmp_file.path(), &code)
+        .map_err(|e| anyhow::anyhow!("Failed to write code to temporary file: {e}"))?;
 
     let tmp_path = tmp_file.path().to_path_buf();
     let timeout_secs = config.general.command_timeout;
 
-    // Platform-specific shell invocation
-    let (shell, arg) = if cfg!(windows) {
-        ("cmd.exe", "/c")
-    } else {
-        ("bash", tmp_path.to_str().unwrap_or(""))
-    };
-
-    let mut child = match Command::new(shell)
-        .arg(arg)
+    let mut child = match Command::new(&python_bin)
         .arg(&tmp_path)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -114,14 +129,11 @@ pub async fn execute_shell(
         Ok(child) => child,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             let _ = std::fs::remove_file(&tmp_path);
-            return Err(anyhow::anyhow!(
-                "{} not found in system PATH.",
-                if cfg!(windows) { "cmd.exe" } else { "bash" }
-            ));
+            return Err(anyhow::anyhow!("{} not found in system PATH.", python_bin));
         }
         Err(e) => {
             let _ = std::fs::remove_file(&tmp_path);
-            return Err(anyhow::anyhow!("Failed to start {}: {e}", shell));
+            return Err(anyhow::anyhow!("Failed to start {python_bin}: {e}"));
         }
     };
 
@@ -136,7 +148,7 @@ pub async fn execute_shell(
     })?)
     .lines();
 
-    let mut guard = ShellProcessGuard::new(child, tmp_path);
+    let mut guard = PythonProcessGuard::new(child, tmp_path);
 
     let mut stdout_res = String::new();
     let mut stderr_res = String::new();

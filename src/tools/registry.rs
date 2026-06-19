@@ -117,6 +117,27 @@ impl ToolRegistry {
     }
 }
 
+/// Checks whether a Python interpreter is available in the system PATH.
+fn check_python_available() -> bool {
+    let python3_check = std::process::Command::new("python3")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+
+    if python3_check.is_ok() {
+        return true;
+    }
+
+    let python_check = std::process::Command::new("python")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+
+    python_check.is_ok()
+}
+
 pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::config::ConfigManager) {
     let maybe_register =
         |r: &mut ToolRegistry, name: &str, description: &str, parameters: Value, func: ToolFunc| {
@@ -142,22 +163,27 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
         );
     }
 
-    maybe_register(
-        r,
-        "execute_shell",
-        "Execute shell commands. Supports pipes, redirects, substitutions, and multiline scripts.",
-        json!({
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "Shell command(s) to execute. Multiline scripts, pipes, loops, heredocs supported. Runs in a fresh process per call.",
-                }
-            },
-            "required": ["command"]
-        }),
-        Arc::new(|args, config| {
-            Box::pin(async move { crate::tools::builtin::shell::execute_shell(args, config).await })
-        }),
-    );
+    // Register execute_python only if python3 or python is available
+    if check_python_available() {
+        maybe_register(
+            r,
+            "execute_python",
+            "Execute Python code. Runs in a fresh process per call. Provides stdout, stderr, and exit code as output.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "Python code to execute. Runs in a fresh Python process per call.",
+                    }
+                },
+                "required": ["code"]
+            }),
+            Arc::new(|args, config| {
+                Box::pin(async move {
+                    crate::tools::builtin::python::execute_python(args, config).await
+                })
+            }),
+        );
+    }
 }

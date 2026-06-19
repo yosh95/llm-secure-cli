@@ -23,7 +23,7 @@
 //! - [`core`] — Session lifecycle, input handling, the four-phase security pipeline
 //! - [`llm`] — LLM client abstraction (OpenAI-compatible, Anthropic/Gemini formatters)
 //! - [`security`] — PQC, identity, audit, Merkle anchoring, path validation
-//! - [`tools`] — Built-in tool registry (file ops, search, shell execution, web, MCP)
+//! - [`tools`] — Built-in tool registry (file ops, search, Python execution, web, MCP)
 //! - [`utils`] — Logging, HTTP, chat logging, media handling
 
 #![deny(clippy::unwrap_used)]

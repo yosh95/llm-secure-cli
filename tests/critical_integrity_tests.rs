@@ -19,17 +19,17 @@ use serde_json::json;
 // that the LLM sees as its "observation."  If this function produces garbled,
 // truncated, or wrong output, the LLM will hallucinate incorrect decisions.
 //
-// Each branch (file_ops, grep, search, shell, etc.) is tested.
+// Each branch (file_ops, grep, search, Python, etc.) is tested.
 
 #[test]
-fn test_humanize_shell_execution_shows_stdout_stderr() {
+fn test_humanize_python_execution_shows_stdout_stderr() {
     let v = json!({
         "stdout": "Hello World
     ",
         "stderr": "",
         "exit_code": 0
     });
-    let output = humanize_tool_result("execute_shell", &v);
+    let output = humanize_tool_result("execute_python", &v);
     assert!(output.contains("Exit Code: 0"));
     assert!(output.contains("STDOUT:"));
     assert!(output.contains("Hello World"));
@@ -37,13 +37,13 @@ fn test_humanize_shell_execution_shows_stdout_stderr() {
 }
 
 #[test]
-fn test_humanize_shell_execution_with_errors() {
+fn test_humanize_python_execution_with_errors() {
     let v = json!({
         "stdout": "",
         "stderr": "Traceback (most recent call last):\n  File \"<stdin>\", line 1, in <module>\nNameError: name 'x' is not defined\n",
         "exit_code": 1
     });
-    let output = humanize_tool_result("execute_shell", &v);
+    let output = humanize_tool_result("execute_python", &v);
     assert!(output.contains("Exit Code: 1"));
     assert!(!output.contains("STDOUT:"));
     assert!(output.contains("STDERR:"));
@@ -501,6 +501,6 @@ fn test_security_context_serializes_to_json() {
 // =============================================================================
 // =============================================================================
 //
-// The execute_shell tool is high-risk (arbitrary code execution).
+// The execute_python tool is high-risk (arbitrary code execution).
 // It must handle multiline content, trailing newlines, and edge cases
 // without corrupting data.

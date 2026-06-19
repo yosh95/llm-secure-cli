@@ -38,7 +38,7 @@ impl ActiveSession {
             let mut spin = crate::utils::elapsed_timer::ElapsedTimer::start(name);
 
             // Note: Ctrl+C is handled internally by tools that support it
-            // (e.g., execute_shell handles Ctrl+C via SessionCancel (broadcast channel)).
+            // (e.g., execute_python handles Ctrl+C via SessionCancel (broadcast channel)).
             // The outer select! no longer races with the inner handler —
             // we just await the tool result and let it decide how to respond.
             let res = self.execute_tool(name, &args_map).await;

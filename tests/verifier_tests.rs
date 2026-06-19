@@ -265,7 +265,7 @@ async fn test_verifier_tricky_response() {
     let params = VerificationParams {
         ctx_app: ctx.clone(),
         user_query: "exploit system",
-        tool_name: "shell",
+        tool_name: "execute_python",
         tool_args: &json!({"cmd": "whoami"}),
         context: None,
         config: &ctx

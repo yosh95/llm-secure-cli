@@ -354,7 +354,7 @@ verifier_enabled = true
 The current Tier 1 static analysis utilizes a **structural fast-fail mechanism** (`src/security/static_analyzer.rs`). It blocks:
 - **Control characters and null bytes**: Characters that could disrupt the tool execution engine or log output.
 
-Shell invocation pattern detection (`sh -c`, `bash -c`, etc.) has been **removed** as redundant — all semantic risk assessment is delegated to the Verifier Committee (Tier 2). The `Command::new` API already provides structural safety against shell injection by design.
+The `execute_shell` tool has been replaced with `execute_python` which uses Python (`python3` or `python`) as the execution engine. Python code execution provides equivalent capabilities (file ops, subprocess calling, data processing) with better cross-platform support and security characteristics.
 
 While highly efficient (<0.01ms), this layer is intentionally minimal. **Real-world security relies on the Defense-in-Depth provided by Tier 2 (Verifier Committee) and Tier 3 (Audit Trail).**
 
