@@ -1,6 +1,5 @@
 use crate::cli::ui;
 use crate::core::session::ActiveSession;
-use colored::Colorize;
 
 pub async fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
     let args_trimmed = args.trim();
@@ -16,7 +15,7 @@ pub async fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
                     let mut aliases: Vec<_> = state.model_aliases.iter().collect();
                     aliases.sort_by_key(|(k, _)| *k);
                     for (name, alias) in aliases {
-                        println!("  {: <15} -> {}", name.bold().cyan(), alias.target);
+                        println!("  {: <15} -> {}", name, alias.target);
                     }
                     ui::print_rule(None, Some("cyan"));
                 }
@@ -49,7 +48,7 @@ pub async fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
         match session.ctx.config_manager.get_state() {
             Ok(state) => {
                 if let Some(alias) = state.model_aliases.get(alias_name) {
-                    println!("  {: <15} -> {}", alias_name.bold().cyan(), alias.target);
+                    println!("  {: <15} -> {}", alias_name, alias.target);
                 } else {
                     ui::report_info(&format!("Alias '{alias_name}' does not exist."));
                 }
@@ -120,7 +119,7 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
         for (p, m, is_current) in &all_entries {
             let display = format!("{p}:{m}");
             if *is_current {
-                println!("  {} {}", "\u{25cf}".cyan(), display.bold().cyan());
+                println!("  \u{25cf} {}", display);
             } else {
                 println!("    {display}");
             }
@@ -140,12 +139,7 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
             let mut aliases: Vec<_> = state.model_aliases.iter().collect();
             aliases.sort_by_key(|(k, _)| *k);
             for (name, alias) in aliases {
-                println!(
-                    "  {}    {} -> {}",
-                    "\u{25cf}".cyan(),
-                    name.bold().cyan(),
-                    alias.target
-                );
+                println!("  \u{25cf}    {} -> {}", name, alias.target);
             }
         }
         return;
@@ -280,11 +274,11 @@ pub async fn handle_verifier_cmd(session: &mut ActiveSession, args: &str) {
 
         if members.is_empty() {
             let status = if enabled {
-                "Enabled (no members)".yellow()
+                "Enabled (no members)"
             } else {
-                "Disabled".yellow()
+                "Disabled"
             };
-            println!("Verifier Status: {}", status.bold());
+            println!("Verifier Status: {}", status);
             println!("  No verifier committee members configured.");
             println!("  Usage: /verifier add <provider:model>");
             println!("         /verifier delete <provider:model>");
@@ -292,29 +286,22 @@ pub async fn handle_verifier_cmd(session: &mut ActiveSession, args: &str) {
             return;
         }
 
-        let status = if enabled {
-            "ENABLED".green()
-        } else {
-            "DISABLED".yellow()
-        };
-        println!("Verifier Status: {}\n", status.bold());
+        let status = if enabled { "ENABLED" } else { "DISABLED" };
+        println!("Verifier Status: {}\n", status);
 
         ui::print_rule(Some("Verifier Committee Members"), Some("cyan"));
         for (i, (p, m)) in members.iter().enumerate() {
             let pm_str = format!("{p}:{m}");
             // Mark if this member was set via state.toml (runtime) or config.toml (fallback)
             let source = if runtime_members.contains(&pm_str) {
-                " (state.toml)".dimmed().to_string()
+                " (state.toml)".to_string()
             } else {
-                " (config.toml)".dimmed().to_string()
+                " (config.toml)".to_string()
             };
-            println!("  {}. {}  {}", i + 1, pm_str.bold().cyan(), source);
+            println!("  {}. {}  {}", i + 1, pm_str, source);
         }
         ui::print_rule(None, Some("cyan"));
-        println!(
-            "{}",
-            "Usage: /verifier add|delete <provider:model>".dimmed()
-        );
+        println!("Usage: /verifier add|delete <provider:model>");
         return;
     }
 
@@ -371,7 +358,7 @@ pub async fn handle_verifier_cmd(session: &mut ActiveSession, args: &str) {
             } else {
                 ui::print_rule(Some("Verifier Committee (state.toml)"), Some("cyan"));
                 for (i, m) in members.iter().enumerate() {
-                    println!("  {}. {}", i + 1, m.bold().cyan());
+                    println!("  {}. {}", i + 1, m);
                 }
                 ui::print_rule(None, Some("cyan"));
             }
@@ -488,9 +475,9 @@ async fn display_model_endpoints(data: &serde_json::Value) {
     // Model info
     ui::print_rule(Some(&format!("📋 {name}")), Some("cyan"));
     if !description.is_empty() {
-        println!("  {} {}", "Description:".cyan(), description);
+        println!("  Description: {}", description);
     }
-    println!("  {} {}", "Model ID:".cyan(), model_id.bold());
+    println!("  Model ID: {}", model_id);
 
     // Architecture info
     if let Some(arch) = data.get("architecture") {
@@ -518,15 +505,11 @@ async fn display_model_endpoints(data: &serde_json::Value) {
             .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
             .unwrap_or_default();
 
-        println!("  {} {}", "Modality:".cyan(), modality);
-        println!("  {} {}", "Tokenizer:".cyan(), tokenizer);
-        println!("  {} {}", "Instruct Type:".cyan(), instruct_type);
-        println!("  {} {}", "Input Modalities:".cyan(), input_mods.join(", "));
-        println!(
-            "  {} {}",
-            "Output Modalities:".cyan(),
-            output_mods.join(", ")
-        );
+        println!("  Modality: {}", modality);
+        println!("  Tokenizer: {}", tokenizer);
+        println!("  Instruct Type: {}", instruct_type);
+        println!("  Input Modalities: {}", input_mods.join(", "));
+        println!("  Output Modalities: {}", output_mods.join(", "));
     }
 
     println!();
@@ -543,9 +526,8 @@ async fn display_model_endpoints(data: &serde_json::Value) {
         }
 
         println!(
-            "  {} {} available endpoint(s)
+            "  🔌 Providers — {} available endpoint(s)
 ",
-            "🔌 Providers —".cyan(),
             endpoints.len()
         );
 
@@ -565,13 +547,7 @@ async fn display_model_endpoints(data: &serde_json::Value) {
                 _ => "⚪ Unknown",
             };
 
-            println!(
-                "  {} {}. {} [{}]",
-                "──".dimmed(),
-                i + 1,
-                ep_name.bold().cyan(),
-                status_str
-            );
+            println!("  ── {}. {} [{}]", i + 1, ep_name, status_str);
 
             // Pricing
             if let Some(pricing) = ep.get("pricing") {
@@ -589,10 +565,10 @@ async fn display_model_endpoints(data: &serde_json::Value) {
                 let completion_per_m = format_usd_per_m(completion_str);
                 let image_per = format_usd(image_str);
 
-                println!("     {} Input:    {}", "💰".dimmed(), prompt_per_m);
-                println!("     {} Output:   {}", "💰".dimmed(), completion_per_m);
+                println!("     💰 Input:    {}", prompt_per_m);
+                println!("     💰 Output:   {}", completion_per_m);
                 if image_str != "0" {
-                    println!("     {} Image:    {}", "🖼️".dimmed(), image_per);
+                    println!("     🖼️ Image:    {}", image_per);
                 }
             }
 
@@ -604,35 +580,23 @@ async fn display_model_endpoints(data: &serde_json::Value) {
             let max_comp = ep.get("max_completion_tokens").and_then(|v| v.as_i64());
             let _max_prompt = ep.get("max_prompt_tokens").and_then(|v| v.as_i64());
 
-            println!(
-                "     {} Context:  {} tokens",
-                "📐".dimmed(),
-                format_number(ctx_len)
-            );
+            println!("     📐 Context:  {} tokens", format_number(ctx_len));
             if let Some(mc) = max_comp {
-                println!(
-                    "     {} Max out:  {} tokens",
-                    "📐".dimmed(),
-                    format_number(mc)
-                );
+                println!("     📐 Max out:  {} tokens", format_number(mc));
             }
 
             // Quantization
             if let Some(quant) = ep.get("quantization").and_then(|v| v.as_str())
                 && !quant.is_empty()
             {
-                println!("     {} Quant:    {}", "🔬".dimmed(), quant);
+                println!("     🔬 Quant:    {}", quant);
             }
 
             // Supported parameters
             if let Some(params) = ep.get("supported_parameters").and_then(|v| v.as_array()) {
                 let param_names: Vec<&str> = params.iter().filter_map(|v| v.as_str()).collect();
                 if !param_names.is_empty() {
-                    println!(
-                        "     {} Params:   {}",
-                        "⚙️".dimmed(),
-                        param_names.join(", ")
-                    );
+                    println!("     ⚙️ Params:   {}", param_names.join(", "));
                 }
             }
 
@@ -642,10 +606,7 @@ async fn display_model_endpoints(data: &serde_json::Value) {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             if supports_caching {
-                println!(
-                    "     {} Caching:  ✅ Implicit caching supported",
-                    "💾".dimmed()
-                );
+                println!("     💾 Caching:  ✅ Implicit caching supported");
             }
 
             // Performance metrics (latency & throughput)
@@ -653,10 +614,8 @@ async fn display_model_endpoints(data: &serde_json::Value) {
                 let p50 = latency.get("p50").and_then(|v| v.as_f64()).unwrap_or(0.0);
                 let p90 = latency.get("p90").and_then(|v| v.as_f64()).unwrap_or(0.0);
                 println!(
-                    "     {} Latency:  p50={:.0}ms  p90={:.0}ms (last 30m)",
-                    "⏱️".dimmed(),
-                    p50,
-                    p90
+                    "     ⏱️ Latency:  p50={:.0}ms  p90={:.0}ms (last 30m)",
+                    p50, p90
                 );
             }
             if let Some(throughput) = ep.get("throughput_last_30m") {
@@ -669,10 +628,8 @@ async fn display_model_endpoints(data: &serde_json::Value) {
                     .and_then(|v| v.as_f64())
                     .unwrap_or(0.0);
                 println!(
-                    "     {} Throughput: p50={:.0} t/s  p90={:.0} t/s (last 30m)",
-                    "🚀".dimmed(),
-                    p50,
-                    p90
+                    "     🚀 Throughput: p50={:.0} t/s  p90={:.0} t/s (last 30m)",
+                    p50, p90
                 );
             }
 
@@ -681,8 +638,7 @@ async fn display_model_endpoints(data: &serde_json::Value) {
             let uptime_5m = ep.get("uptime_last_5m").and_then(|v| v.as_f64());
             if let Some(u) = uptime_5m {
                 println!(
-                    "     {} Uptime:   {:5.1}% (5m)  {}% (1d)",
-                    "📊".dimmed(),
+                    "     📊 Uptime:   {:5.1}% (5m)  {}% (1d)",
                     u,
                     uptime_1d.map_or("N/A".to_string(), |v| format!("{:5.1}", v))
                 );
@@ -707,18 +663,10 @@ async fn display_model_endpoints(data: &serde_json::Value) {
                 .unwrap_or("0");
             let image_str = pricing.get("image").and_then(|v| v.as_str()).unwrap_or("0");
 
-            println!(
-                "     {} Input:    {}",
-                "💰".dimmed(),
-                format_usd_per_m(prompt_str)
-            );
-            println!(
-                "     {} Output:   {}",
-                "💰".dimmed(),
-                format_usd_per_m(completion_str)
-            );
+            println!("     💰 Input:    {}", format_usd_per_m(prompt_str));
+            println!("     💰 Output:   {}", format_usd_per_m(completion_str));
             if image_str != "0" {
-                println!("     {} Image:    {}", "🖼️".dimmed(), format_usd(image_str));
+                println!("     🖼️ Image:    {}", format_usd(image_str));
             }
         }
 
@@ -726,21 +674,13 @@ async fn display_model_endpoints(data: &serde_json::Value) {
             .get("context_length")
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
-        println!(
-            "     {} Context:  {} tokens",
-            "📐".dimmed(),
-            format_number(ctx_len)
-        );
+        println!("     📐 Context:  {} tokens", format_number(ctx_len));
 
         // Supported parameters from model level
         if let Some(params) = data.get("supported_parameters").and_then(|v| v.as_array()) {
             let param_names: Vec<&str> = params.iter().filter_map(|v| v.as_str()).collect();
             if !param_names.is_empty() {
-                println!(
-                    "     {} Params:   {}",
-                    "⚙️".dimmed(),
-                    param_names.join(", ")
-                );
+                println!("     ⚙️ Params:   {}", param_names.join(", "));
             }
         }
     }

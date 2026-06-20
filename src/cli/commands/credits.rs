@@ -2,7 +2,6 @@ use crate::cli::ui;
 use crate::config::ConfigManager;
 use crate::core::session::ActiveSession;
 use crate::utils::http;
-use colored::Colorize;
 use serde_json::Value;
 
 /// Run the `credits` subcommand (CLI subcommand: `llsc credits`).
@@ -89,28 +88,20 @@ async fn fetch_and_display_credits(api_key: &str) {
             };
 
             println!();
-            println!(
-                "  {} {}",
-                "📊 Balance".bold().cyan(),
-                "(Credits API)".dimmed()
-            );
-            println!(
-                "  {:<24} ${:<8.2}",
-                "Total Purchased:".cyan(),
-                total_credits
-            );
-            println!("  {:<24} ${:<8.2}", "Total Used:".cyan(), total_usage);
-            println!("  {:<24} ${:<8.2}", "Remaining:".cyan().bold(), remaining);
+            println!("  📊 Balance (Credits API)");
+            println!("  {:<24} ${:<8.2}", "Total Purchased:", total_credits);
+            println!("  {:<24} ${:<8.2}", "Total Used:", total_usage);
+            println!("  {:<24} ${:<8.2}", "Remaining:", remaining);
             // Progress bar for usage
             let bar_width = 30;
             let filled = ((usage_pct / 100.0) * bar_width as f64).round() as usize;
             let filled = filled.min(bar_width);
             let bar = format!(
                 "{}{}",
-                "█".repeat(filled).yellow(),
-                "░".repeat(bar_width.saturating_sub(filled)).dimmed()
+                "█".repeat(filled),
+                "░".repeat(bar_width.saturating_sub(filled))
             );
-            println!("  {:<24} {} {:5.1}%", "Usage:".cyan(), bar, usage_pct);
+            println!("  {:<24} {} {:5.1}%", "Usage:", bar, usage_pct);
         }
         Err(e) => {
             ui::report_error(&format!("Failed to fetch credits API: {e}"));
@@ -167,16 +158,12 @@ async fn fetch_and_display_credits(api_key: &str) {
                 .unwrap_or("never");
 
             println!();
-            println!("  {} {}", "🔑 Key Info".bold().cyan(), "(Key API)".dimmed());
-            println!("  {:<24} {}", "Label:".cyan(), label);
+            println!("  🔑 Key Info (Key API)");
+            println!("  {:<24} {}", "Label:", label);
             println!(
                 "  {:<24} {}",
-                "Free Tier:".cyan(),
-                if is_free_tier {
-                    "Yes".yellow()
-                } else {
-                    "No".green()
-                }
+                "Free Tier:",
+                if is_free_tier { "Yes" } else { "No" }
             );
 
             // Key limit info
@@ -185,9 +172,7 @@ async fn fetch_and_display_credits(api_key: &str) {
                     limit_remaining.map_or_else(|| "N/A".to_string(), |r| format!("${r:<.2}"));
                 println!(
                     "  {:<24} ${:<8.2}  (remaining: {})",
-                    "Key Limit:".cyan(),
-                    l,
-                    remaining_str
+                    "Key Limit:", l, remaining_str
                 );
                 if let Some(r) = limit_remaining {
                     let used_in_limit = l - r;
@@ -201,37 +186,30 @@ async fn fetch_and_display_credits(api_key: &str) {
                     let filled = filled.min(bar_width);
                     let bar = format!(
                         "{}{}",
-                        "█".repeat(filled).yellow(),
-                        "░".repeat(bar_width.saturating_sub(filled)).dimmed()
+                        "█".repeat(filled),
+                        "░".repeat(bar_width.saturating_sub(filled))
                     );
-                    println!("  {:<24} {} {:5.1}%", "Limit Usage:".cyan(), bar, pct);
+                    println!("  {:<24} {} {:5.1}%", "Limit Usage:", bar, pct);
                 }
-                println!("  {:<24} {}", "Limit Reset:".cyan(), limit_reset);
+                println!("  {:<24} {}", "Limit Reset:", limit_reset);
             } else {
-                println!("  {:<24} {}", "Key Limit:".cyan(), "Unlimited".green());
+                println!("  {:<24} Unlimited", "Key Limit:");
             }
 
             println!();
-            println!(
-                "  {} {}",
-                "📈 Usage Breakdown".bold().cyan(),
-                "(Key API)".dimmed()
-            );
-            println!("  {:<24} ${:<8.2}  (all time)", "Usage:".cyan(), usage);
+            println!("  📈 Usage Breakdown (Key API)");
+            println!("  {:<24} ${:<8.2}  (all time)", "Usage:", usage);
             println!(
                 "  {:<24} ${:<8.2}  (current UTC day)",
-                "Daily:".cyan(),
-                usage_daily
+                "Daily:", usage_daily
             );
             println!(
                 "  {:<24} ${:<8.2}  (current UTC week)",
-                "Weekly:".cyan(),
-                usage_weekly
+                "Weekly:", usage_weekly
             );
             println!(
                 "  {:<24} ${:<8.2}  (current UTC month)",
-                "Monthly:".cyan(),
-                usage_monthly
+                "Monthly:", usage_monthly
             );
 
             // BYOK usage (if any)
@@ -241,30 +219,19 @@ async fn fetch_and_display_credits(api_key: &str) {
                 || byok_usage_monthly > 0.0
             {
                 println!();
-                println!(
-                    "  {} {}",
-                    "🔌 BYOK Usage".bold().cyan(),
-                    "(Bring Your Own Key)".dimmed()
-                );
-                println!(
-                    "  {:<24} ${:<8.2}  (all time)",
-                    "BYOK Total:".cyan(),
-                    byok_usage
-                );
+                println!("  🔌 BYOK Usage (Bring Your Own Key)");
+                println!("  {:<24} ${:<8.2}  (all time)", "BYOK Total:", byok_usage);
                 println!(
                     "  {:<24} ${:<8.2}  (daily)",
-                    "BYOK Daily:".cyan(),
-                    byok_usage_daily
+                    "BYOK Daily:", byok_usage_daily
                 );
                 println!(
                     "  {:<24} ${:<8.2}  (weekly)",
-                    "BYOK Weekly:".cyan(),
-                    byok_usage_weekly
+                    "BYOK Weekly:", byok_usage_weekly
                 );
                 println!(
                     "  {:<24} ${:<8.2}  (monthly)",
-                    "BYOK Monthly:".cyan(),
-                    byok_usage_monthly
+                    "BYOK Monthly:", byok_usage_monthly
                 );
             }
         }

@@ -539,16 +539,16 @@ impl Highlighter for ChatCompleter {
             if self.commands.contains(&cmd.to_string()) {
                 let mut highlighted = line.to_string();
                 // Use ANSI codes directly to avoid conflicts with rustyline's own handling
-                // \x1b[1;36m is bold cyan, \x1b[0m is reset
-                let colored_cmd = format!("\x1b[1;34m{cmd}\x1b[0m");
+                //  is bold cyan,  is reset
+                let colored_cmd = cmd.to_string();
                 highlighted = highlighted.replacen(cmd, &colored_cmd, 1);
                 return std::borrow::Cow::Owned(highlighted);
             }
         }
         // Basic highlighting for markdown-style code blocks in input
         if line.contains("```") {
-            let mut highlighted = line.to_string();
-            highlighted = highlighted.replace("```", "\x1b[1;33m```\x1b[0m");
+            let highlighted = line.to_string();
+            // No-op: kept as is
             return std::borrow::Cow::Owned(highlighted);
         }
         std::borrow::Cow::Borrowed(line)

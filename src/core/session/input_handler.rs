@@ -3,7 +3,6 @@ use crate::cli::ui;
 use crate::consts::history_log_path;
 use crate::core::session::ActiveSession;
 use crate::llm::models::DataSource;
-use colored::Colorize;
 use rustyline::error::ReadlineError;
 use rustyline::history::{FileHistory, History};
 use rustyline::{
@@ -14,6 +13,25 @@ use serde_json;
 use std::io::{BufRead, BufReader, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+
+/// Attempt to restore the terminal to a sane cooked mode.
+/// This is a safety net to recover from a state where rustyline left
+/// the terminal in raw mode (ISIG disabled), which would cause Ctrl+C
+/// to not generate SIGINT.
+fn restore_terminal() {
+    #[cfg(unix)]
+    {
+        // Reset terminal to sane settings via `stty`.
+        // This is the most reliable cross-platform way to restore terminal state
+        // without depending on specific terminal libraries.
+        let _ = std::process::Command::new("stty").args(["sane"]).status();
+
+        // Also try to re-enable ISIG explicitly via `stty icanon isig`.
+        let _ = std::process::Command::new("stty")
+            .args(["icanon", "isig"])
+            .status();
+    }
+}
 
 /// Load history with a fallback for platforms where rustyline's native
 /// `FileHistory::load` (which uses `flock`) may fail (e.g., Termux/Android).
@@ -77,6 +95,7 @@ fn load_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::
 /// Save history with a fallback for platforms where rustyline's native
 /// `FileHistory::save` (which uses `flock` and `umask` via the `nix` crate)
 /// may fail (e.g., Termux/Android, some FUSE filesystems).
+#[allow(dead_code)]
 fn save_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::path::Path) {
     // Try rustyline's native save first
     if rl.save_history(path).is_ok() {
@@ -134,6 +153,53 @@ impl ConditionalEventHandler for EditOnF2 {
     }
 }
 
+/// Async version of save_history_robust that offloads the file I/O
+/// to a blocking thread pool, avoiding stalls on the tokio runtime.
+async fn save_history_async(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::path::Path) {
+    // Collect entries synchronously (fast, memcpy only)
+    let entries: Vec<String> = {
+        let history = rl.history();
+        if history.is_empty() {
+            return;
+        }
+        history.iter().cloned().collect()
+    };
+
+    let path = path.to_path_buf();
+
+    tokio::task::spawn_blocking(move || {
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            tracing::error!("Failed to create directory {:?}: {}", parent, e);
+            return;
+        }
+
+        let mut file = match std::fs::File::create(&path) {
+            Ok(f) => f,
+            Err(e) => {
+                tracing::error!("Failed to create history file {:?}: {}", path, e);
+                return;
+            }
+        };
+
+        if let Err(e) = file.write_all(b"#V2\n") {
+            tracing::error!("Failed to write history V2 header: {}", e);
+            return;
+        }
+
+        for entry in &entries {
+            let escaped = entry.replace('\\', "\\\\").replace('\n', "\\n");
+            if let Err(e) = writeln!(file, "{escaped}") {
+                tracing::warn!("Failed to write history entry: {}", e);
+                return;
+            }
+        }
+    })
+    .await
+    .ok();
+}
 impl ActiveSession {
     pub async fn run(
         &mut self,
@@ -203,7 +269,7 @@ impl ActiveSession {
             return;
         }
 
-        println!("{}", "Use Ctrl+C or /q to exit, /h for help.".dimmed());
+        println!("Use Ctrl+C or /q to exit, /h for help.");
 
         let current_provider = Arc::new(Mutex::new(self.client.get_state().provider.clone()));
         let config = rustyline::Config::builder()
@@ -318,9 +384,9 @@ impl ActiveSession {
                         .await
                     {
                         crate::cli::interactive::dispatcher::CommandResult::Exit => {
-                            save_history_robust(&mut rl, &history_log_path());
+                            save_history_async(&mut rl, &history_log_path()).await;
                             // Auto-save the session before exiting.
-                            crate::utils::session_store::auto_save(self);
+                            crate::utils::session_store::auto_save_async(self).await;
                             // Drop rustyline editor and return to let
                             // ChatSession Drop run naturally (saves Merkle anchor).
                             drop(rl);
@@ -330,7 +396,7 @@ impl ActiveSession {
                             if let Err(e) = rl.add_history_entry(&final_trimmed) {
                                 tracing::warn!("Failed to add history entry: {}", e);
                             }
-                            save_history_robust(&mut rl, &history_log_path());
+                            save_history_async(&mut rl, &history_log_path()).await;
                             continue;
                         }
                         crate::cli::interactive::dispatcher::CommandResult::NotACommand => {}
@@ -356,7 +422,7 @@ impl ActiveSession {
                     // SIGKILL / OOM kills on Android where the process
                     // may be terminated before the deferred save_history
                     // on normal exit can run.
-                    save_history_robust(&mut rl, &history_log_path());
+                    save_history_async(&mut rl, &history_log_path()).await;
 
                     let mut data = std::mem::take(&mut self.pending_data);
                     data.push(DataSource {
@@ -382,16 +448,20 @@ impl ActiveSession {
                     }
                 }
                 Err(ReadlineError::Interrupted) => {
+                    // Restore terminal to cooked mode to ensure future
+                    // Ctrl+C signals work correctly (rustyline may leave
+                    // the terminal in raw mode on interrupt).
+                    restore_terminal();
                     println!("CTRL-C");
                     // Auto-save the session before exiting on Ctrl+C.
-                    crate::utils::session_store::auto_save(self);
+                    crate::utils::session_store::auto_save_async(self).await;
                     break;
                 }
                 Err(ReadlineError::Eof) => {
                     println!("CTRL-D");
-                    save_history_robust(&mut rl, &history_log_path());
+                    save_history_async(&mut rl, &history_log_path()).await;
                     // Auto-save the session before exiting on Ctrl+D.
-                    crate::utils::session_store::auto_save(self);
+                    crate::utils::session_store::auto_save_async(self).await;
                     drop(rl);
                     // Return to let ChatSession Drop run naturally
                     // (saves Merkle anchor and cleanup).
@@ -401,10 +471,7 @@ impl ActiveSession {
                     if matches!(&err, ReadlineError::Io(e) if e.kind() == std::io::ErrorKind::WouldBlock)
                     {
                         // Terminal settings may be corrupted; restore and retry
-                        eprintln!(
-                            "\r{} WouldBlock - terminal busy, resetting...",
-                            "WARNING".yellow().bold()
-                        );
+                        eprintln!("\rWARNING WouldBlock - terminal busy, resetting...");
                         let _ = std::process::Command::new("stty").args(["sane"]).status();
                         continue;
                     }
@@ -414,7 +481,7 @@ impl ActiveSession {
             }
         }
         // Auto-save the session after the main loop ends (e.g. Ctrl+C).
-        crate::utils::session_store::auto_save(self);
-        save_history_robust(&mut rl, &history_log_path());
+        crate::utils::session_store::auto_save_async(self).await;
+        save_history_async(&mut rl, &history_log_path()).await;
     }
 }

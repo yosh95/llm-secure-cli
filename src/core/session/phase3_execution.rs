@@ -31,21 +31,7 @@ impl ActiveSession {
 
         let is_stdout = self.client.get_state().stdout;
 
-        let result = if is_stdout {
-            self.execute_tool(name, &args_map).await
-        } else {
-            // Start an elapsed timer with the tool name to show elapsed time (same style as LLM API calls)
-            let mut spin = crate::utils::elapsed_timer::ElapsedTimer::start(name);
-
-            // Note: Ctrl+C is handled internally by tools that support it
-            // (e.g., execute_python handles Ctrl+C via SessionCancel (broadcast channel)).
-            // The outer select! no longer races with the inner handler —
-            // we just await the tool result and let it decide how to respond.
-            let res = self.execute_tool(name, &args_map).await;
-
-            spin.finish("done");
-            res
-        };
+        let result = self.execute_tool(name, &args_map).await;
 
         let audit_ctx = serde_json::json!({
             "trace_id": self.trace_id,
@@ -133,7 +119,6 @@ impl ActiveSession {
                 self.ctx.ui.print_tool_result(&display_str);
             } else {
                 // Show a brief summary instead of the full output
-                use colored::Colorize;
                 let item_count = stats.item_count;
                 let lines = stats.line_count;
                 let summary = if let Some(count) = item_count {
@@ -147,9 +132,8 @@ impl ActiveSession {
                     format!(" — {} lines", crate::utils::format_number(lines))
                 };
                 eprintln!(
-                    "  {}{}",
-                    "Tool result hidden (use /tool_output on to show)".dimmed(),
-                    summary.dimmed()
+                    "  Tool result hidden (use /tool_output on to show){}",
+                    summary
                 );
             }
         }

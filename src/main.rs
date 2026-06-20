@@ -76,9 +76,6 @@ enum Commands {
 async fn main() {
     let args = Args::parse();
 
-    // Force colored output: override terminal detection for Docker/pipe environments
-    colored::control::set_override(true);
-
     // Initialize the base directory for config and logs.
     llm_secure_cli::consts::init_base_dir(args.base_dir.as_ref().map(std::path::PathBuf::from));
 

@@ -1,4 +1,3 @@
-use colored::Colorize;
 use comfy_table::Table;
 use pulldown_cmark::{Alignment, Event, Options as CmarkOptions, Parser, Tag, TagEnd};
 use textwrap::{Options as WrapOptions, WordSplitter, fill};
@@ -130,7 +129,7 @@ impl MarkdownRenderer {
                             dest_url.chars().filter(|c| !c.is_whitespace()).collect();
                         link_stack.push(clean_url.clone());
                         if !in_table {
-                            let link_start = format!("\x1b]8;;{clean_url}\x1b\\");
+                            let link_start = clean_url.to_string();
                             current_paragraph.push_str(&link_start);
                         }
                     }
@@ -242,7 +241,7 @@ impl MarkdownRenderer {
                                         current_cell.push_str(&url);
                                     }
                                 } else {
-                                    current_paragraph.push_str("\x1b]8;;\x1b\\");
+                                    current_paragraph.push_str("");
                                 }
                             }
                         }
@@ -254,7 +253,7 @@ impl MarkdownRenderer {
                         output.push_str(&text);
                     } else {
                         let formatted = if !link_stack.is_empty() && !in_table {
-                            text.replace(' ', "\u{00A0}").blue().to_string()
+                            text.replace(' ', "\u{00A0}").to_string()
                         } else {
                             text.to_string()
                         };
@@ -268,9 +267,7 @@ impl MarkdownRenderer {
                 }
                 Event::Code(text) => {
                     let formatted = if !link_stack.is_empty() && !in_table {
-                        format!("`{}`", text.replace(' ', "\u{00A0}"))
-                            .blue()
-                            .to_string()
+                        format!("`{}`", text.replace(' ', "\u{00A0}")).to_string()
                     } else {
                         format!("`{text}`")
                     };
@@ -353,12 +350,12 @@ impl MarkdownRenderer {
 
             if let Some(level) = heading_level {
                 let colored_line = match level {
-                    1 => line.cyan().bold(),
-                    2 => line.yellow().bold(),
-                    3 => line.green().bold(),
-                    _ => line.cyan().bold(),
+                    1 => line,
+                    2 => line,
+                    3 => line,
+                    _ => line,
                 };
-                output.push_str(&colored_line.to_string());
+                output.push_str(colored_line);
             } else {
                 output.push_str(line);
             }
@@ -434,9 +431,5 @@ mod tests {
         assert!(rendered.contains("A very long link title"));
         assert!(rendered.contains("https://example.com/very/long/path"));
         assert!(rendered.contains("next cell"));
-        assert!(
-            !rendered.contains("\x1b]8;;"),
-            "table links must not use OSC 8 hyperlinks"
-        );
     }
 }

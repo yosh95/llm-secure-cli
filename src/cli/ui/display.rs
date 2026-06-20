@@ -1,5 +1,4 @@
 use crate::cli::markdown::render_markdown;
-use colored::Colorize;
 use console::Term;
 
 /// Print a block of content with optional title and style.
@@ -11,10 +10,10 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
     let mut output = String::new();
 
     if let Some(t) = title {
-        let rule_color = style.unwrap_or("cyan");
+        let _rule_color = style.unwrap_or("cyan");
         let rule = "\u{2500}".repeat(width);
-        output.push_str(&format!("{}\n", rule.color(rule_color)));
-        output.push_str(&format!("{}\n", t.bold().color(rule_color)));
+        output.push_str(&format!("{}\n", rule));
+        output.push_str(&format!("{}\n", t));
     }
 
     // Use our custom markdown renderer
@@ -23,9 +22,9 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
     output.push('\n');
 
     if title.is_some() {
-        let rule_color = style.unwrap_or("cyan");
+        let _rule_color = style.unwrap_or("cyan");
         let rule = "\u{2500}".repeat(width);
-        output.push_str(&format!("{}\n", rule.color(rule_color)));
+        output.push_str(&format!("{}\n", rule));
     }
     print!("{output}");
 }
@@ -35,29 +34,29 @@ pub fn print_rule(title: Option<&str>, style: Option<&str>) {
     let term = Term::stdout();
     let (_, width) = term.size();
     let width = (width as usize).min(140);
-    let color = style.unwrap_or("cyan");
+    let _color = style.unwrap_or("cyan");
 
     if let Some(t) = title {
         let title_text = format!(" {t} ");
-        let title_display = format!(" {} ", t.bold());
+        let title_display = format!(" {} ", t);
         let text_width = console::measure_text_width(&title_text);
         let rule_len = width.saturating_sub(text_width);
         let left = 2;
         let right = rule_len.saturating_sub(left);
         println!(
             "{}{}{}",
-            "\u{2500}".repeat(left).color(color),
-            title_display.color(color),
-            "\u{2500}".repeat(right).color(color)
+            "\u{2500}".repeat(left),
+            title_display,
+            "\u{2500}".repeat(right)
         );
     } else {
-        println!("{}", "\u{2500}".repeat(width).color(color));
+        println!("{}", "\u{2500}".repeat(width));
     }
 }
 
 /// Print a key-value pair with formatting.
 pub fn print_key_value(key: &str, value: &str) {
-    println!("  {:15} {}", key.bold().cyan(), value);
+    println!("  {:15} {}", key, value);
 }
 
 /// Print a panel with content, title, and border style.
@@ -71,23 +70,18 @@ pub fn print_panel(
     let (_, term_width) = term.size();
     let width = (term_width as usize).clamp(40, 140);
 
-    let border_color = border_style.unwrap_or("cyan");
+    let _border_color = border_style.unwrap_or("cyan");
 
     // Top border
     if let Some(t) = title {
-        let title_str = format!(" {} ", t.bold());
+        let title_str = format!(" {} ", t);
         let remaining = width.saturating_sub(title_str.len() + 2);
         println!(
-            "{}",
-            format!(
-                "\u{2500}{}\u{2500}{}",
-                title_str,
-                "\u{2500}".repeat(remaining)
-            )
-            .color(border_color)
+            "\u{2500}{title_str}\u{2500}{}",
+            "\u{2500}".repeat(remaining)
         );
     } else {
-        println!("{}", "\u{2500}".repeat(width).color(border_color));
+        println!("{}", "\u{2500}".repeat(width));
     }
 
     // Content with wrapping
@@ -104,23 +98,18 @@ pub fn print_panel(
     }
 
     // Bottom border
-    println!("{}", "\u{2500}".repeat(width).color(border_color));
+    println!("{}", "\u{2500}".repeat(width));
 }
 
 /// Format a tool call display string (header + args + footer).
 /// Returns the formatted string without printing.
 pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> String {
-    let color = "yellow";
+    let _color = "yellow";
 
     let mut buf = String::new();
 
-    buf.push_str(&format!("{}\n", "\u{2500}".repeat(width).color(color)));
-    buf.push_str(&format!(
-        "{} {}{}\n",
-        "->".yellow().bold(),
-        name.bold().yellow(),
-        ":".yellow()
-    ));
+    buf.push_str(&format!("{}\n", "\u{2500}".repeat(width)));
+    buf.push_str(&format!("{} {}{}\n", "->", name, ":"));
 
     if let Some(obj) = args.as_object() {
         let explanation = obj.get("explanation").and_then(|v| v.as_str());
@@ -181,10 +170,7 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
             if let Some(v) = obj.get(k) {
                 if name == "execute_python" && k == "code" {
                     // Display Python code with syntax highlighting
-                    push_line(
-                        &mut buf,
-                        &format!("    {} {}:", "\u{2022}".cyan(), "code".cyan()),
-                    );
+                    push_line(&mut buf, &format!("    {} {}:", "\u{2022}", "code"));
                     let code_str = v.as_str().unwrap_or("");
                     let highlighted =
                         crate::utils::python_highlighter::highlight_python_code(code_str);
@@ -195,10 +181,7 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
                     let val_str = v
                         .as_str()
                         .map_or_else(|| v.to_string(), std::string::ToString::to_string);
-                    push_line(
-                        &mut buf,
-                        &format!("    {} {}: {}", "\u{2022}".cyan(), k.cyan(), val_str),
-                    );
+                    push_line(&mut buf, &format!("    {} {}: {}", "\u{2022}", k, val_str));
                 }
             }
         }
@@ -207,19 +190,14 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
             let val_str = exp.to_string();
             push_line(
                 &mut buf,
-                &format!(
-                    "    {} {}: {}",
-                    "\u{2022}".cyan(),
-                    "explanation".cyan(),
-                    val_str
-                ),
+                &format!("    {} {}: {}", "\u{2022}", "explanation", val_str),
             );
         }
     } else {
         push_line(&mut buf, &format!("    {args}"));
     }
 
-    buf.push_str(&format!("{}\n", "\u{2500}".repeat(width).color(color)));
+    buf.push_str(&format!("{}\n", "\u{2500}".repeat(width)));
     buf
 }
 
@@ -242,14 +220,12 @@ pub fn print_tool_call_direct(name: &str, args: &serde_json::Value) {
 }
 
 pub fn print_tool_result(result: &str) {
-    let color = "green";
+    let _color = "green";
     let mut out = String::new();
 
     out.push_str(&format!(
         "  {}\n",
         "\u{2500}\u{2500} Result \u{2500}\u{2500}"
-            .color(color)
-            .bold()
     ));
 
     // Try to parse as JSON for pretty printing
@@ -264,33 +240,17 @@ pub fn print_tool_result(result: &str) {
                 .and_then(|v| v.as_str())
                 .unwrap_or_default();
             if !message.is_empty() {
-                push_line(
-                    &mut out,
-                    &format!("    {} {}", "\u{2022}".cyan(), message.cyan()),
-                );
+                push_line(&mut out, &format!("    {} {}", "\u{2022}", message));
             }
             push_line(
                 &mut out,
-                &format!("    {} {}: {}", "\u{2022}".cyan(), "path".cyan(), path),
+                &format!("    {} {}: {}", "\u{2022}", "path", path),
             );
 
             if !diff.is_empty() {
-                push_line(
-                    &mut out,
-                    &format!("    {} {}:", "\u{2022}".cyan(), "diff".cyan()),
-                );
+                push_line(&mut out, &format!("    {} {}:", "\u{2022}", "diff"));
                 for line in diff.lines() {
-                    if line.starts_with('+') && !line.starts_with("+++") {
-                        push_line(&mut out, &format!("        {}", line.green()));
-                    } else if line.starts_with('-') && !line.starts_with("---") {
-                        push_line(&mut out, &format!("        {}", line.red()));
-                    } else if line.starts_with("@@") {
-                        push_line(&mut out, &format!("        {}", line.cyan().dimmed()));
-                    } else if line.starts_with("---") || line.starts_with("+++") {
-                        push_line(&mut out, &format!("        {}", line.bold().dimmed()));
-                    } else {
-                        push_line(&mut out, &format!("        {}", line.dimmed()));
-                    }
+                    push_line(&mut out, &format!("        {}", line));
                 }
             }
             finish_tool_result(out);
@@ -303,30 +263,23 @@ pub fn print_tool_result(result: &str) {
             v.get("stderr").and_then(|v| v.as_str()),
             v.get("exit_code").and_then(serde_json::Value::as_i64),
         ) {
-            let status_color = if exit_code == 0 { "green" } else { "red" };
+            let _status_color = if exit_code == 0 { "green" } else { "red" };
 
             if !stdout.is_empty() {
-                push_line(&mut out, &format!("    {}:", "STDOUT".bold()));
+                push_line(&mut out, &format!("    {}:", "STDOUT"));
                 for line in stdout.lines() {
-                    push_line(&mut out, &format!("      {}", line.dimmed()));
+                    push_line(&mut out, &format!("      {}", line));
                 }
             }
 
             if !stderr.is_empty() {
-                push_line(&mut out, &format!("    {}:", "STDERR".bold()));
+                push_line(&mut out, &format!("    {}:", "STDERR"));
                 for line in stderr.lines() {
-                    push_line(&mut out, &format!("      {}", line.red().dimmed()));
+                    push_line(&mut out, &format!("      {}", line));
                 }
             }
 
-            push_line(
-                &mut out,
-                &format!(
-                    "    {} {}",
-                    "Exit Code:".bold(),
-                    exit_code.to_string().color(status_color)
-                ),
-            );
+            push_line(&mut out, &format!("    {} {}", "Exit Code:", exit_code));
             finish_tool_result(out);
             return;
         }
@@ -335,14 +288,11 @@ pub fn print_tool_result(result: &str) {
         for key in ["matches", "results", "files"] {
             if let Some(arr) = v.get(key).and_then(|a| a.as_array()) {
                 if arr.is_empty() {
-                    push_line(&mut out, &format!("    {}", "(empty results)".dimmed()));
+                    push_line(&mut out, &format!("    {}", "(empty results)"));
                 } else {
                     for item in arr {
                         if let Some(s) = item.as_str() {
-                            push_line(
-                                &mut out,
-                                &format!("    {} {}", "\u{2022}".cyan(), s.dimmed()),
-                            );
+                            push_line(&mut out, &format!("    {} {}", "\u{2022}", s));
                         } else if let Some(obj) = item.as_object() {
                             if let (Some(file), Some(line), Some(text)) = (
                                 obj.get("file").and_then(|v| v.as_str()),
@@ -351,13 +301,7 @@ pub fn print_tool_result(result: &str) {
                             ) {
                                 push_line(
                                     &mut out,
-                                    &format!(
-                                        "    {} {}:{}: {}",
-                                        "\u{2022}".cyan(),
-                                        file.cyan(),
-                                        line.to_string().yellow(),
-                                        text.dimmed()
-                                    ),
+                                    &format!("    {} {}:{}: {}", "\u{2022}", file, line, text),
                                 );
                             } else if let (Some(t), Some(path)) = (
                                 obj.get("type").and_then(|v| v.as_str()),
@@ -378,34 +322,22 @@ pub fn print_tool_result(result: &str) {
                                 if details.is_empty() {
                                     push_line(
                                         &mut out,
-                                        &format!(
-                                            "    {} [{}] {}",
-                                            "\u{2022}".cyan(),
-                                            t.cyan(),
-                                            path
-                                        ),
+                                        &format!("    {} [{}] {}", "\u{2022}", t, path),
                                     );
                                 } else {
                                     push_line(
                                         &mut out,
                                         &format!(
                                             "    {} [{}] {:<30}  {}",
-                                            "\u{2022}".cyan(),
-                                            t.cyan(),
+                                            "\u{2022}",
+                                            t,
                                             path,
-                                            details.join(" | ").dimmed()
+                                            details.join(" | ")
                                         ),
                                     );
                                 }
                             } else {
-                                push_line(
-                                    &mut out,
-                                    &format!(
-                                        "    {} {}",
-                                        "\u{2022}".cyan(),
-                                        item.to_string().dimmed()
-                                    ),
-                                );
+                                push_line(&mut out, &format!("    {} {}", "\u{2022}", item));
                             }
                         }
                     }
@@ -413,10 +345,7 @@ pub fn print_tool_result(result: &str) {
                 if let Some(truncated) = v.get("truncated").and_then(serde_json::Value::as_bool)
                     && truncated
                 {
-                    push_line(
-                        &mut out,
-                        &format!("    {}", "... (results truncated)".yellow().dimmed()),
-                    );
+                    push_line(&mut out, &format!("    {}", "... (results truncated)"));
                 }
                 finish_tool_result(out);
                 return;
@@ -426,21 +355,21 @@ pub fn print_tool_result(result: &str) {
         if let Ok(pretty) = serde_json::to_string_pretty(&v) {
             if v.is_object() || v.is_array() {
                 for line in pretty.lines() {
-                    push_line(&mut out, &format!("    {}", line.dimmed()));
+                    push_line(&mut out, &format!("    {}", line));
                 }
             } else if let Some(s) = v.as_str() {
                 for line in s.lines() {
-                    push_line(&mut out, &format!("    {}", line.dimmed()));
+                    push_line(&mut out, &format!("    {}", line));
                 }
             } else {
-                push_line(&mut out, &format!("    {}", pretty.dimmed()));
+                push_line(&mut out, &format!("    {}", pretty));
             }
         } else {
-            push_line(&mut out, &format!("    {}", result.dimmed()));
+            push_line(&mut out, &format!("    {}", result));
         }
     } else {
         for line in result.lines() {
-            push_line(&mut out, &format!("    {}", line.dimmed()));
+            push_line(&mut out, &format!("    {}", line));
         }
     }
     out.push('\n');

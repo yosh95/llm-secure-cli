@@ -33,39 +33,60 @@ pub mod tool_executor;
 static CANCEL_SENDER: OnceLock<watch::Sender<u64>> = OnceLock::new();
 
 /// Ensure the global SIGINT listener is running (exactly once per process).
+///
+/// Uses a restart loop: if the signal stream returns `None` (which can happen
+/// if the signal handler is replaced externally), the task automatically
+/// re-registers the handler rather than silently dying.
 fn ensure_global_cancel_handler() {
     CANCEL_SENDER.get_or_init(|| {
         let (tx, _rx) = watch::channel(0u64);
         let tx2 = tx.clone();
         tokio::spawn(async move {
-            // On Unix, register a persistent SIGINT listener ONCE
-            // (avoids the re-registration race in `loop { ctrl_c().await }`).
-            #[cfg(unix)]
-            let mut stream: tokio::signal::unix::Signal =
-                match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt()) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        tracing::error!(
-                            "Failed to register persistent SIGINT handler: {e}; falling back"
-                        );
-                        // Pseudo-stream that calls ctrl_c() in a loop as fallback.
-                        loop {
-                            tokio::signal::ctrl_c().await.ok();
-                            tracing::debug!("SIGINT received (fallback) — notifying watchers");
+            loop {
+                // On Unix, register a persistent SIGINT listener.
+                // If registration fails, fall back to ctrl_c() loop.
+                #[cfg(unix)]
+                let mut stream: tokio::signal::unix::Signal =
+                    match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+                    {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to register persistent SIGINT handler: {e}; falling back"
+                            );
+                            // Fallback: loop calling ctrl_c().
+                            loop {
+                                tokio::signal::ctrl_c().await.ok();
+                                tracing::debug!("SIGINT received (fallback) — notifying watchers");
+                                tx2.send_modify(|v| *v += 1);
+                            }
+                        }
+                    };
+
+                #[cfg(unix)]
+                loop {
+                    match stream.recv().await {
+                        Some(_) => {
+                            tracing::debug!(
+                                "SIGINT received — notifying session cancellation watchers"
+                            );
                             tx2.send_modify(|v| *v += 1);
                         }
+                        None => {
+                            // Signal stream was exhausted (e.g. signal handler reset).
+                            // Break out to the outer loop to re-register.
+                            tracing::warn!("SIGINT signal stream ended — re-registering handler");
+                            break;
+                        }
                     }
-                };
+                }
 
-            loop {
-                // Wait for the next SIGINT signal.
-                #[cfg(unix)]
-                stream.recv().await;
                 #[cfg(not(unix))]
-                tokio::signal::ctrl_c().await.ok();
-
-                tracing::debug!("SIGINT received — notifying session cancellation watchers");
-                tx2.send_modify(|v| *v += 1);
+                {
+                    tokio::signal::ctrl_c().await.ok();
+                    tracing::debug!("SIGINT received — notifying session cancellation watchers");
+                    tx2.send_modify(|v| *v += 1);
+                }
             }
         });
         tx
@@ -77,8 +98,9 @@ fn ensure_global_cancel_handler() {
 /// Each `.receiver()` returns a fresh `watch::Receiver<u64>` that will
 /// complete on the *next* Ctrl+C.  Multiple concurrent receivers (LLM call,
 /// verifier, tool execution) all share the same single OS signal registration.
-/// The handler runs in a loop and increments a counter on each Ctrl+C,
-/// so cancellation works for an arbitrary number of sequential interruptions.
+/// The handler runs in a restart loop and increments a counter on each Ctrl+C,
+/// so cancellation works for an arbitrary number of sequential interruptions
+/// even if the underlying signal stream is reset.
 #[derive(Clone)]
 pub struct SessionCancel;
 

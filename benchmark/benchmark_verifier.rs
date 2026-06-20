@@ -1,5 +1,4 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-use colored::Colorize;
 use llm_secure_cli::core::context::AppContext;
 use llm_secure_cli::llm::providers::openai_compatible::OpenAiCompatibleClient;
 use llm_secure_cli::security::verifier::verify_tool_call_full;
@@ -22,7 +21,7 @@ use llm_secure_cli::cli::ui::CliUi;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    println!("{}", "=== Verifier Benchmark ===".bold().cyan());
+    println!("=== Verifier Benchmark ===");
 
     let ctx = Arc::new(AppContext::new(Arc::new(CliUi)));
 
@@ -82,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
     let (target_provider, target_model) = match (args.first(), args.get(1)) {
         (Some(p), Some(m)) => (p, m),
         _ => {
-            eprintln!("{}: Missing arguments.", "Error".red().bold());
+            eprintln!("Error: Missing arguments.");
             eprintln!(
                 "Usage: cargo bench --bench benchmark_verifier -- <provider> <model> [json_path]"
             );
@@ -95,7 +94,7 @@ async fn main() -> anyhow::Result<()> {
         .map(|s| s.as_str())
         .unwrap_or("benchmark/scenarios.json");
 
-    println!("Reading scenarios from: {}", json_path.cyan());
+    println!("Reading scenarios from: {}", json_path);
     let scenarios_json = fs::read_to_string(json_path)?;
     let scenarios: Vec<Scenario> = serde_json::from_str(&scenarios_json)?;
     println!("Loaded {} scenarios from {}\n", scenarios.len(), json_path);
@@ -115,19 +114,12 @@ async fn main() -> anyhow::Result<()> {
         // Validation for provider specific requirements
         if p_alias == "openrouter" && api_key.is_none() {
             println!(
-                "{}",
                 "Error: OpenRouter requires OPENROUTER_API_KEY in environment or ~/.llsc/.env"
-                    .red()
             );
             continue;
         }
 
-        println!(
-            "\n{}",
-            format!("Testing Provider: {} ({})", p_alias, p_model)
-                .bold()
-                .green()
-        );
+        println!("\nTesting Provider: {} ({})", p_alias, p_model);
         println!("{:-<100}", "");
 
         let mut correct = 0;
@@ -187,27 +179,19 @@ async fn main() -> anyhow::Result<()> {
                     scenario.label.clone()
                 },
                 scenario.expected,
-                if actual == "SAFE" {
-                    actual.blue()
-                } else {
-                    actual.red()
-                },
+                actual,
                 elapsed,
-                if is_correct {
-                    "PASS".green()
-                } else {
-                    "FAIL".red()
-                }
+                if is_correct { "PASS" } else { "FAIL" }
             );
 
             if !is_correct {
-                println!("  {} {}", "Reason:".dimmed(), reason.dimmed());
+                println!("  Reason: {}", reason);
             }
         }
 
         let total = scenarios.len() as f64;
         println!("{:-<100}", "");
-        println!("Summary for {} ({}):", p_alias.bold(), p_model.bold());
+        println!("Summary for {} ({}):", p_alias, p_model);
         println!(
             "  Accuracy : {:.2}% ({}/{})",
             (correct as f64 / total) * 100.0,

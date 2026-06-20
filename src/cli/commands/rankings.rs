@@ -2,7 +2,6 @@ use crate::cli::ui;
 use crate::config::ConfigManager;
 use crate::core::session::ActiveSession;
 use crate::utils::http;
-use colored::Colorize;
 use serde_json::Value;
 
 /// Run the `rankings` subcommand (CLI subcommand: `llsc rankings`).
@@ -160,29 +159,21 @@ fn display_rankings(response: &Value, top_n: usize) {
 
     ui::print_rule(Some("OpenRouter Model Rankings"), Some("cyan"));
     println!();
+    println!("  Period:  {start_date}  \u{2192}  {end_date}");
+    println!("  As of:  {}", as_of);
     println!(
-        "  {}  {}",
-        "Period:".cyan().bold(),
-        format!("{start_date}  \u{2192}  {end_date}").dimmed()
-    );
-    println!("  {}  {}", "As of:".cyan().bold(), as_of.dimmed());
-    println!(
-        "  {}  {} ({})",
-        "Showing:".cyan().bold(),
-        format!("Top {} Models", top_n.min(models.len())).dimmed(),
-        format!("{} total tokens tracked", format_tokens(grand_total)).dimmed()
+        "  Showing:  Top {} Models ({} total tokens tracked)",
+        top_n.min(models.len()),
+        format_tokens(grand_total)
     );
     println!();
 
     // Header row
     println!(
         "  {:>4}  {:<48}  {:>16}  {:>7}",
-        "Rank".bold().cyan(),
-        "Model".bold().cyan(),
-        "Weekly Tokens".bold().cyan(),
-        "Share".bold().cyan()
+        "Rank", "Model", "Weekly Tokens", "Share"
     );
-    println!("  {}", "\u{2500}".repeat(80).dimmed());
+    println!("  {}", "\u{2500}".repeat(80));
 
     let display_count = top_n.min(models.len());
     for (i, entry) in models.iter().enumerate().take(display_count) {
@@ -211,7 +202,7 @@ fn display_rankings(response: &Value, top_n: usize) {
 
         // Color by rank (right-aligned to keep columns aligned)
         let rank_visible = format!("#{rank}");
-        let rank_str = format!("{:>3}", rank_visible).dimmed().to_string();
+        let rank_str = format!("{:>3}", rank_visible).to_string();
 
         println!(
             "  {}  {:<48}  {:>16}  {:>6.1}%",
@@ -235,12 +226,8 @@ fn display_rankings(response: &Value, top_n: usize) {
 
     println!();
     println!(
-        "  {}",
-        format!(
-            "Total: {} tokens across all models",
-            format_tokens(grand_total)
-        )
-        .bold()
+        "Total: {} tokens across all models",
+        format_tokens(grand_total)
     );
 
     // ============ Provider Breakdown ============
@@ -276,7 +263,7 @@ fn display_rankings(response: &Value, top_n: usize) {
         };
         println!(
             "  {:<20} {:>16} {:>6.1}%",
-            provider.cyan().bold(),
+            provider,
             format_tokens(*token_count),
             share,
         );
@@ -286,19 +273,13 @@ fn display_rankings(response: &Value, top_n: usize) {
     println!();
     ui::print_rule(None, Some("cyan"));
     println!(
-        "  {}",
-        "\u{1F4C8} Rankings show real token usage across OpenRouter (top 50 models per day). Updated daily."
-            .dimmed()
+        "  \u{1F4C8} Rankings show real token usage across OpenRouter (top 50 models per day). Updated daily."
     );
     println!(
-        "  {}",
-        format!(
-            "  Data range: {} records from {} to {}",
-            data.len(),
-            start_date,
-            end_date
-        )
-        .dimmed()
+        "  Data range: {} records from {} to {}",
+        data.len(),
+        start_date,
+        end_date
     );
     ui::print_rule(None, Some("cyan"));
 }

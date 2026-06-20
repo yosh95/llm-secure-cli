@@ -84,6 +84,72 @@ pub fn auto_save(session: &ActiveSession) {
     }
 }
 
+/// Async version of `auto_save` that offloads blocking I/O to a blocking thread.
+/// Should be used from async contexts (e.g., the main input loop) to avoid
+/// blocking the tokio runtime's worker threads.
+pub async fn auto_save_async(session: &ActiveSession) {
+    let state = session.get_client().get_state();
+    let trace_id = session.trace_id.clone();
+    let model = state.model.clone();
+    let provider = state.provider.clone();
+    let conversation = state.conversation.clone();
+
+    let result = tokio::task::spawn_blocking(move || {
+        let dir = crate::consts::sessions_dir();
+        if let Err(e) = fs::create_dir_all(&dir) {
+            tracing::warn!("Failed to create sessions directory: {}", e);
+            return;
+        }
+
+        let session_file = SessionFile {
+            trace_id: trace_id.clone(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            model,
+            provider,
+            conversation,
+        };
+
+        let path = dir.join(format!("{trace_id}.json"));
+
+        let file = match std::fs::File::create(&path) {
+            Ok(f) => f,
+            Err(e) => {
+                tracing::warn!(
+                    trace_id = %trace_id,
+                    error = %e,
+                    "Failed to create session file"
+                );
+                return;
+            }
+        };
+        if let Err(e) = serde_json::to_writer_pretty(&file, &session_file) {
+            tracing::warn!(
+                trace_id = %trace_id,
+                error = %e,
+                "Failed to auto-save session"
+            );
+        }
+
+        // Set restrictive permissions on Unix
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Err(e) = fs::set_permissions(&path, fs::Permissions::from_mode(0o600)) {
+                tracing::warn!(
+                    "Failed to set permissions on session file {:?}: {}",
+                    path,
+                    e
+                );
+            }
+        }
+    })
+    .await;
+
+    if let Err(e) = result {
+        tracing::error!("Failed to spawn blocking task for auto_save: {e}");
+    }
+}
+
 /// List all available sessions with metadata for display.
 pub fn list_sessions() -> anyhow::Result<Vec<SessionListing>> {
     let dir = crate::consts::sessions_dir();

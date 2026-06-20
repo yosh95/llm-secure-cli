@@ -1,4 +1,3 @@
-use colored::Colorize;
 use serde_json::Value;
 
 #[derive(Clone)]
@@ -105,12 +104,12 @@ pub fn print_tool_stats(stats: &ToolResultStats) {
         ));
     }
 
-    println!("{}", parts.join(" / ").dimmed());
+    println!("{}", parts.join(" / "));
 
     if let Some(stderr) = &stats.stderr {
-        println!("  {}", "STDERR:".bold().red());
+        println!("  STDERR:");
         for line in stderr.lines() {
-            println!("    {}", line.red());
+            println!("    {}", line);
         }
     }
 }

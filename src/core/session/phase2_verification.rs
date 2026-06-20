@@ -244,9 +244,6 @@ impl ActiveSession {
     ) -> anyhow::Result<VerificationOutcome> {
         const VERIFIER_TIMEOUT_SECS: u64 = 60;
 
-        let mut spin =
-            crate::utils::elapsed_timer::ElapsedTimer::start("Running security verification…");
-
         // Obtain an AbortHandle *before* the select! so we can cancel the task
         // if the timeout or Ctrl-C branch wins.
         let abort_handle = handle.abort_handle();
@@ -254,20 +251,17 @@ impl ActiveSession {
 
         let res = tokio::select! {
             res = handle => {
-                spin.finish("done");
                 res.unwrap_or(VerificationOutcome::FallbackRequired("Task Panicked".into()))
             }
             () = tokio::time::sleep(std::time::Duration::from_secs(VERIFIER_TIMEOUT_SECS)) => {
                 // Abort the background verifier task to prevent resource leaks.
                 abort_handle.abort();
-                spin.stop();
                 eprintln!("Verifier timed out after {VERIFIER_TIMEOUT_SECS}s.");
                 VerificationOutcome::FallbackRequired(format!("Verifier timed out after {VERIFIER_TIMEOUT_SECS}s"))
             }
             _ = cancel_rx.changed() => {
                 // Abort the background verifier task to prevent resource leaks.
                 abort_handle.abort();
-                spin.stop();
                 eprintln!("^C - Interrupted.");
                 self.handle_interruption();
                 return Err(anyhow::anyhow!("Interrupted during verification"));
@@ -345,8 +339,7 @@ impl ActiveSession {
             if let Some(ref content) = f
                 && !content.trim().is_empty()
             {
-                use colored::Colorize;
-                println!("  {}", format!("Feedback: {content}").dimmed());
+                println!("  Feedback: {content}");
             }
             f
         };

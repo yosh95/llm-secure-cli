@@ -1,5 +1,4 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-use colored::Colorize;
 use console::Term;
 use llm_secure_cli::core::context::AppContext;
 use llm_secure_cli::security::verifier::verify_tool_call;
@@ -14,7 +13,7 @@ fn section(title: &str) {
     let (_, width) = Term::stdout().size();
     let w = width as usize;
     println!("\n{}", "─".repeat(w));
-    println!("  {}", title.bold());
+    println!("  {}", title);
     println!("{}", "─".repeat(w));
 }
 
@@ -22,7 +21,7 @@ fn header(title: &str) {
     let (_, width) = Term::stdout().size();
     let w = width as usize;
     println!("\n{}", "═".repeat(w));
-    println!("  {}", title.bold());
+    println!("  {}", title);
     println!("{}", "═".repeat(w));
 }
 

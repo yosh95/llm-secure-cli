@@ -22,15 +22,13 @@
 //! Design principles:
 //! - High contrast & readability (視認性優先)
 //! - Works well on both light and dark backgrounds
-//! - No `.dimmed()` or gray-washed tones (グレー系不使用)
+//! - No gray-washed tones
 //! - Distinct from UI label colors (`cyan` is reserved for UI labels)
 
-use colored::Colorize;
-
-/// Apply a basic ANSI color foreground to a string, then bold it.
+/// Convert a token to a plain string (no ANSI colors).
 macro_rules! paint {
     ($s:expr, $color:ident) => {
-        $s.$color().bold().to_string()
+        $s.to_string()
     };
 }
 
@@ -119,7 +117,7 @@ pub fn highlight_python_code(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(&segment.green().to_string());
+            output.push_str(&segment.to_string());
             continue;
         }
 
@@ -146,7 +144,7 @@ pub fn highlight_python_code(input: &str) -> String {
                 i = len;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(&segment.green().to_string());
+            output.push_str(&segment.to_string());
             continue;
         }
 
@@ -176,7 +174,7 @@ pub fn highlight_python_code(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(&segment.green().to_string());
+            output.push_str(&segment.to_string());
             continue;
         }
 
@@ -195,7 +193,7 @@ pub fn highlight_python_code(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(&segment.green().to_string());
+            output.push_str(&segment.to_string());
             continue;
         }
 
@@ -272,6 +270,7 @@ pub fn highlight_python_code(input: &str) -> String {
             }
             let word: String = chars[start..i].iter().collect();
 
+            #[allow(clippy::if_same_then_else)]
             if is_keyword(&word) {
                 output.push_str(&paint!(word, magenta));
             } else if is_builtin(&word) {
@@ -300,7 +299,7 @@ pub fn highlight_python_code(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            output.push_str(&segment.red().to_string());
+            output.push_str(&segment.to_string());
             continue;
         }
 
@@ -319,18 +318,12 @@ pub fn highlight_python_code(input: &str) -> String {
 mod tests {
     use super::*;
 
-    fn force_color() {
-        colored::control::set_override(true);
-    }
+    fn force_color() {}
 
     #[test]
     fn test_highlight_basic_print() {
         force_color();
         let result = highlight_python_code("print('hello world')");
-        assert!(
-            result.contains("\x1b["),
-            "Output should contain ANSI escape codes"
-        );
         assert!(result.contains("print"), "Should contain print");
         assert!(result.contains("hello"), "Should contain hello");
     }
@@ -339,7 +332,7 @@ mod tests {
     fn test_highlight_keyword() {
         force_color();
         let result = highlight_python_code("if x > 0:");
-        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(!result.is_empty(), "Output should not be empty");
         assert!(result.contains("if"), "Should contain if");
     }
 
@@ -347,7 +340,7 @@ mod tests {
     fn test_highlight_import() {
         force_color();
         let result = highlight_python_code("import os");
-        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(!result.is_empty(), "Output should not be empty");
         assert!(result.contains("import"), "Should contain import");
     }
 
@@ -355,7 +348,7 @@ mod tests {
     fn test_highlight_decorator() {
         force_color();
         let result = highlight_python_code("@staticmethod\ndef foo():");
-        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(!result.is_empty(), "Output should not be empty");
         assert!(result.contains("@staticmethod"), "Should contain decorator");
     }
 
@@ -363,7 +356,7 @@ mod tests {
     fn test_highlight_comment() {
         force_color();
         let result = highlight_python_code("x = 1  # this is a comment");
-        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(!result.is_empty(), "Output should not be empty");
         assert!(result.contains("comment"), "Should contain comment text");
     }
 
@@ -371,7 +364,7 @@ mod tests {
     fn test_highlight_number() {
         force_color();
         let result = highlight_python_code("x = 42");
-        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(!result.is_empty(), "Output should not be empty");
         assert!(result.contains("42"), "Should contain 42");
     }
 
@@ -379,7 +372,7 @@ mod tests {
     fn test_highlight_f_string() {
         force_color();
         let result = highlight_python_code("f\"hello {name}\"");
-        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(!result.is_empty(), "Output should not be empty");
         assert!(result.contains("hello"), "Should contain hello");
     }
 
@@ -387,7 +380,7 @@ mod tests {
     fn test_highlight_class_def() {
         force_color();
         let result = highlight_python_code("class MyClass:");
-        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(!result.is_empty(), "Output should not be empty");
         assert!(result.contains("class"), "Should contain class keyword");
         assert!(result.contains("MyClass"), "Should contain class name");
     }
@@ -396,7 +389,7 @@ mod tests {
     fn test_highlight_function_def() {
         force_color();
         let result = highlight_python_code("def my_function():");
-        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(!result.is_empty(), "Output should not be empty");
         assert!(result.contains("def"), "Should contain def keyword");
         assert!(
             result.contains("my_function"),
@@ -418,7 +411,7 @@ mod tests {
         force_color();
         let code = "for i in range(10):\n    print(i)";
         let result = highlight_python_code(code);
-        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(!result.is_empty(), "Output should not be empty");
         assert!(result.contains("for"), "Should contain for");
         assert!(result.contains("range"), "Should contain range");
         assert!(result.contains("print"), "Should contain print");
@@ -428,7 +421,7 @@ mod tests {
     fn test_triple_quoted_string() {
         force_color();
         let result = highlight_python_code("'''docstring'''");
-        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(!result.is_empty(), "Output should not be empty");
         assert!(result.contains("docstring"), "Should contain docstring");
     }
 
@@ -436,14 +429,14 @@ mod tests {
     fn test_escape_sequences() {
         force_color();
         let result = highlight_python_code("print(\"hello \\\"world\\\"\")");
-        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(!result.is_empty(), "Output should not be empty");
     }
 
     #[test]
     fn test_hex_number() {
         force_color();
         let result = highlight_python_code("x = 0xFF");
-        assert!(result.contains("\x1b["), "Output should contain ANSI codes");
+        assert!(!result.is_empty(), "Output should not be empty");
         assert!(result.contains("0xFF"), "Should contain hex number");
     }
 }

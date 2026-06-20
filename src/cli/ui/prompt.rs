@@ -1,4 +1,3 @@
-use colored::Colorize;
 use std::io::Read;
 
 #[derive(Debug, PartialEq)]
@@ -59,7 +58,7 @@ fn ask_confirm_with_mode(prompt: &str, mode: PromptMode) -> Option<ConfirmResult
             } else {
                 match mode {
                     PromptMode::WithFeedback => {
-                        println!("  {}", format!("Feedback: {trimmed}").dimmed());
+                        println!("  Feedback: {trimmed}");
                         Some(ConfirmResult::Feedback(trimmed.to_string()))
                     }
                     PromptMode::YesNoOnly => {
@@ -123,10 +122,7 @@ pub fn get_user_input(prompt: &str) -> Option<String> {
         Err(err) => {
             if matches!(&err, ReadlineError::Io(e) if e.kind() == std::io::ErrorKind::WouldBlock) {
                 // Terminal settings may be corrupted; restore and retry
-                eprintln!(
-                    "\r{} WouldBlock - terminal busy, resetting...",
-                    "WARNING".yellow().bold()
-                );
+                eprintln!("\rWARNING WouldBlock - terminal busy, resetting...");
                 let _ = std::process::Command::new("stty").args(["sane"]).status();
                 std::thread::sleep(std::time::Duration::from_millis(100));
                 return get_user_input(prompt);

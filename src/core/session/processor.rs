@@ -43,15 +43,6 @@ impl ActiveSession {
         &mut self,
         data: Vec<DataSource>,
     ) -> anyhow::Result<(Option<String>, Option<String>)> {
-        let thinking_label = {
-            let state = self.client.get_state();
-            if state.provider.is_empty() {
-                state.model.clone()
-            } else {
-                format!("{}:{}", state.provider, state.model)
-            }
-        };
-
         let tool_schemas = if self.client.get_state().tools_enabled {
             self.ctx.tool_registry.read().await.get_tool_schemas()
         } else {
@@ -65,20 +56,13 @@ impl ActiveSession {
         } else {
             let send_future = self.client.send(data, tool_schemas);
 
-            // Elapsed timer to indicate progress and keep SSH alive.
-            let mut spin = crate::utils::elapsed_timer::ElapsedTimer::start(&format!(
-                "Thinking ({thinking_label}) …"
-            ));
-
             let mut cancel_rx = self.cancel_token.receiver();
 
             let res = tokio::select! {
                 res = send_future => {
-                    spin.finish("done");
                     res?
                 }
                 _ = cancel_rx.changed() => {
-                    spin.stop();
                     eprintln!("^C - Interrupted.");
                     self.handle_interruption();
                     return Err(anyhow::anyhow!("Interrupted by user"));

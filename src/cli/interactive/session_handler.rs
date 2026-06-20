@@ -2,7 +2,6 @@ use crate::cli::ui;
 use crate::core::session::ActiveSession;
 use crate::llm::models::{Message, MessagePart};
 use chrono;
-use colored::Colorize;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -25,7 +24,7 @@ pub fn handle_session_cmd(session: &mut ActiveSession, args: &str) {
                     ui::print_rule(Some("Saved Sessions"), Some("cyan"));
                     for s in &sessions {
                         let ts = if s.created_at.is_empty() {
-                            "unknown".dimmed().to_string()
+                            "unknown".to_string()
                         } else {
                             chrono::DateTime::parse_from_rfc3339(&s.created_at)
                                 .map_or_else(
@@ -36,21 +35,14 @@ pub fn handle_session_cmd(session: &mut ActiveSession, args: &str) {
                                             .to_string()
                                     },
                                 )
-                                .dimmed()
                                 .to_string()
                         };
                         let first = s.first_user_prompt.as_deref().unwrap_or("(no user prompt)");
-                        println!(
-                            "  {}  {: <36} {}",
-                            ts,
-                            s.filename.bold().cyan(),
-                            first.dimmed()
-                        );
+                        println!("  {}  {: <36} {}", ts, s.filename, first);
                     }
                     ui::print_rule(None, Some("cyan"));
                     println!(
-                        "{}",
-                        "Usage: /session load|delete <id>  or  /session clear  (use \"last\" for most recent)".dimmed()
+                        "Usage: /session load|delete <id>  or  /session clear  (use \"last\" for most recent)"
                     );
                 }
             }
@@ -136,9 +128,7 @@ pub fn handle_info(session: &ActiveSession) {
 
     if members.is_empty() {
         let status = if v_enabled {
-            "NOT SET (Falling back to manual approval)"
-                .red()
-                .to_string()
+            "NOT SET (Falling back to manual approval)".to_string()
         } else {
             "Not Set".to_string()
         };
@@ -159,20 +149,20 @@ pub fn handle_info(session: &ActiveSession) {
         for (i, (p, m)) in members.iter().enumerate() {
             let pm_str = format!("{p}:{m}");
             let source_marker = if runtime_set.contains(pm_str.as_str()) {
-                " (state.toml)".dimmed().to_string()
+                " (state.toml)".to_string()
             } else {
-                " (config.toml)".dimmed().to_string()
+                " (config.toml)".to_string()
             };
             ui::print_key_value(
                 &format!("  Member {}", i + 1),
-                &format!("{}{}", format!("{p}:{m}").bold().cyan(), source_marker),
+                &format!("{p}:{m}{source_marker}"),
             );
         }
     }
     let v_status = if v_enabled {
-        "ENABLED".green().to_string()
+        "ENABLED".to_string()
     } else {
-        "DISABLED".yellow().to_string()
+        "DISABLED".to_string()
     };
     ui::print_key_value("Verifier Status", &v_status);
 

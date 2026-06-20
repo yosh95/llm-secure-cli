@@ -4,7 +4,6 @@ use crate::cli::interactive::session_handler;
 use crate::cli::interactive::tool_handler;
 use crate::cli::ui;
 use crate::core::session::ActiveSession;
-use colored::Colorize;
 
 pub use session_handler::handle_edit_history;
 pub use session_handler::handle_info;
@@ -139,13 +138,10 @@ async fn handle_template_cmd(session: &mut ActiveSession, args: &str) -> Command
                             }
                         },
                     );
-                println!("  {: <25} {}", name.bold().cyan(), preview.dimmed());
+                println!("  {: <25} {}", name, preview);
             }
             ui::print_rule(None, Some("cyan"));
-            println!(
-                "{}",
-                "Usage: /t <name>  — insert template into prompt".dimmed()
-            );
+            println!("Usage: /t <name>  — insert template into prompt");
         }
         CommandResult::Handled
     } else if let Some(content) = templates.get(args) {

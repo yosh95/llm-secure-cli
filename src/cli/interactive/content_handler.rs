@@ -1,7 +1,6 @@
 use crate::cli::ui;
 use crate::core::session::ActiveSession;
 use crate::llm::models::{DataSource, Message, MessagePart, Role};
-use colored::Colorize;
 use console::Term;
 use std::collections::HashMap;
 
@@ -73,9 +72,9 @@ pub async fn handle_summarize(session: &mut ActiveSession) {
             ui::report_success("Conversation summarized and history cleared.");
             let (_, width) = Term::stdout().size();
             let sep = "─".repeat(width as usize);
-            println!("\n{}\n", sep.cyan());
+            println!("\n{}\n", sep);
             println!("{summary_text}");
-            println!("{}\n", sep.cyan());
+            println!("{}\n", sep);
         }
         Err(e) => ui::report_error(&format!("Failed to summarize: {e}")),
     }
