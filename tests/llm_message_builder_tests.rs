@@ -9,7 +9,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use llm_secure_cli::llm::models::{ContentPart, DataSource, Message, MessagePart, Role};
 use llm_secure_cli::llm::providers::message_builder::MessageBuilder;
-use llm_secure_cli::llm::providers::payload_formatter::GenericPayloadFormatter;
 use serde_json::Value;
 
 /// Helper: builds a MessageBuilder with minimal boilerplate.
@@ -18,11 +17,7 @@ fn builder(
     conversation: Vec<Message>,
     pending_data: Vec<DataSource>,
 ) -> MessageBuilder<'static> {
-    // The GenericPayloadFormatter is a singleton with no state; a leak is fine.
-    let formatter: &'static dyn llm_secure_cli::llm::providers::payload_formatter::PayloadFormatter =
-        Box::leak(Box::new(GenericPayloadFormatter));
     MessageBuilder {
-        formatter,
         model: "test-model",
         input_modalities: None,
         system_prompt: system_prompt.map(|s| s.to_string()),
@@ -426,12 +421,9 @@ fn test_image_included_when_modality_supported() {
     };
 
     // Model supports "image" input
-    let formatter: &'static dyn llm_secure_cli::llm::providers::payload_formatter::PayloadFormatter =
-        Box::leak(Box::new(GenericPayloadFormatter));
     let input_mods: &'static [String] =
         Box::leak(Box::new(vec!["text".to_string(), "image".to_string()]));
     let msgs = MessageBuilder {
-        formatter,
         model: "test-model",
         input_modalities: Some(input_mods),
         system_prompt: None,
@@ -467,11 +459,8 @@ fn test_image_skipped_when_modality_not_supported() {
     };
 
     // Model only supports "text" input (no "image")
-    let formatter: &'static dyn llm_secure_cli::llm::providers::payload_formatter::PayloadFormatter =
-        Box::leak(Box::new(GenericPayloadFormatter));
     let input_mods: &'static [String] = Box::leak(Box::new(vec!["text".to_string()]));
     let msgs = MessageBuilder {
-        formatter,
         model: "test-model",
         input_modalities: Some(input_mods),
         system_prompt: None,

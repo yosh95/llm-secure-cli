@@ -204,16 +204,22 @@ pub fn handle_info(session: &ActiveSession) {
     ui::print_rule(None, Some("cyan"));
 }
 
-pub fn handle_raw(session: &ActiveSession) {
+pub fn handle_dump(session: &ActiveSession) {
     let state = session.get_client().get_state();
-    for msg in &state.conversation {
-        let role = match msg.role {
-            crate::llm::models::Role::Assistant | crate::llm::models::Role::Model => &state.model,
-            crate::llm::models::Role::User => "USER",
-            crate::llm::models::Role::System => "SYSTEM",
-            crate::llm::models::Role::Tool => "TOOL",
-        };
-        println!("[{}]\n{}\n", role, msg.get_text(true));
+
+    let mut conversation = state.conversation.clone();
+    let mut blobs = std::collections::HashMap::new();
+    mask_base64_in_conversation(&mut conversation, &mut blobs);
+
+    match toml::to_string(&ConversationDump {
+        messages: conversation,
+    }) {
+        Ok(toml_str) => {
+            println!("{}", toml_str);
+        }
+        Err(e) => {
+            ui::report_error(&format!("Failed to serialize conversation: {e}"));
+        }
     }
 }
 

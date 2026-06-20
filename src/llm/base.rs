@@ -4,7 +4,6 @@ use crate::llm::models::{ClientState, DataSource, Message};
 pub struct ProviderSpec {
     pub api_key_name: String,
     pub config_section: String,
-    pub pdf_as_base64: bool,
 }
 
 pub trait LlmClient: Send + Sync {
@@ -57,8 +56,6 @@ pub trait LlmClient: Send + Sync {
         };
         format!("{} ({})", provider_display, state.model)
     }
-
-    fn should_send_pdf_as_base64(&self) -> bool;
 
     fn update_history(&mut self, data: &[DataSource], model_msg: Message) {
         let mut user_parts = Vec::new();

@@ -2,7 +2,7 @@ use crate::cli::interactive::commands;
 use crate::core::context::AppContext;
 use rustyline::Context;
 use rustyline::Helper;
-use rustyline::completion::{Completer, FilenameCompleter, Pair};
+use rustyline::completion::{Completer, Pair};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::{CmdKind, Highlighter};
 use rustyline::hint::Hinter;
@@ -10,7 +10,6 @@ use rustyline::validate::Validator;
 use std::sync::{Arc, Mutex};
 
 pub struct ChatCompleter {
-    file_completer: FilenameCompleter,
     /// Slash commands for completion — derived from the central command registry.
     commands: Vec<String>,
     pub current_provider: Arc<Mutex<String>>,
@@ -20,7 +19,6 @@ pub struct ChatCompleter {
 impl ChatCompleter {
     pub fn new(current_provider: Arc<Mutex<String>>, ctx: Arc<AppContext>) -> Self {
         Self {
-            file_completer: FilenameCompleter::new(),
             commands: commands::all_slash_commands(),
             current_provider,
             ctx,
@@ -35,7 +33,7 @@ impl Completer for ChatCompleter {
         &self,
         line: &str,
         pos: usize,
-        ctx: &Context<'_>,
+        _ctx: &Context<'_>,
     ) -> Result<(usize, Vec<Pair>), ReadlineError> {
         if line.starts_with('/') {
             let parts: Vec<&str> = line[..pos].splitn(2, ' ').collect();
@@ -179,8 +177,9 @@ impl Completer for ChatCompleter {
                             return Ok((session_start, matches));
                         }
                     }
-                    "/attach" | "/view" => {
-                        return self.file_completer.complete(line, pos, ctx);
+                    // /dump: no completions needed
+                    "/dump" => {
+                        return Ok((0, Vec::new()));
                     }
 
                     "/model" | "/m" => {

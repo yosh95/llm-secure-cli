@@ -267,10 +267,6 @@ impl LlmClient for MockLlmClient {
     fn get_config_section(&self) -> &str {
         &self.state.provider
     }
-    fn should_send_pdf_as_base64(&self) -> bool {
-        false
-    }
-
     fn send(
         &mut self,
         data: Vec<DataSource>,

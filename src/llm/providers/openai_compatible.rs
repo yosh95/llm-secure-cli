@@ -4,14 +4,10 @@ use crate::llm::models::{ClientState, DataSource, Message, Role};
 use serde_json::{Value, json};
 
 use super::message_builder::MessageBuilder;
-use super::{payload_formatter, response_parser};
+use super::response_parser;
 use anyhow::Context;
 
 // Re-export commonly-used items so existing imports stay unchanged.
-pub use payload_formatter::{
-    GenericPayloadFormatter, HighFeaturePayloadFormatter, PayloadFormatter,
-};
-
 // ── Client struct + Builder ────────────────────────────────────────────────
 
 pub struct OpenAiCompatibleClient {
@@ -19,7 +15,6 @@ pub struct OpenAiCompatibleClient {
     pub api_url: String,
     pub api_key: String,
     pub http_client: ureq::Agent,
-    pub formatter: Box<dyn PayloadFormatter>,
     pub supports_tools: bool,
     /// Cached input modalities this model supports (e.g. ["text", "image"]).
     /// `None` means unknown (assume all inputs supported for backward compatibility).
@@ -36,7 +31,6 @@ pub struct OpenAiCompatibleClientBuilder<'a> {
     model: String,
     stdout: bool,
     raw: bool,
-    formatter: Option<Box<dyn PayloadFormatter>>,
     supports_tools: Option<bool>,
 }
 
@@ -50,7 +44,6 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
             model: String::new(),
             stdout: false,
             raw: false,
-            formatter: None,
             supports_tools: None,
         }
     }
@@ -91,12 +84,6 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
         self
     }
 
-    #[must_use]
-    pub fn formatter(mut self, formatter: Box<dyn PayloadFormatter>) -> Self {
-        self.formatter = Some(formatter);
-        self
-    }
-
     /// Override the tool-support detection for this model.
     ///
     /// When set to `Some(false)`, tool definitions will never be sent in requests
@@ -112,7 +99,6 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
         let spec = ProviderSpec {
             api_key_name: "api_key".to_string(),
             config_section: self.provider_name.clone(),
-            pdf_as_base64: true, // We handle the decision in the formatter
         };
         let base = BaseLlmClientData::new(
             self.config_manager,
@@ -138,9 +124,6 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
                 .unwrap_or(true)
         });
         let http_client = create_http_client(self.config_manager)?;
-        let formatter = self
-            .formatter
-            .unwrap_or_else(|| Box::new(GenericPayloadFormatter));
 
         // Look up input modalities for this model from the cache.
         let input_modalities = self
@@ -153,7 +136,6 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
             api_url,
             api_key: self.api_key,
             http_client,
-            formatter,
             supports_tools,
             input_modalities,
         })
@@ -172,7 +154,6 @@ impl OpenAiCompatibleClient {
     #[must_use]
     pub fn build_messages(&self, data: &[DataSource]) -> Vec<Value> {
         MessageBuilder {
-            formatter: self.formatter.as_ref(),
             model: &self.base.state.model,
             input_modalities: self.input_modalities.as_deref(),
             system_prompt: self.base.state.get_effective_system_prompt(),
@@ -235,10 +216,6 @@ impl LlmClient for OpenAiCompatibleClient {
     fn get_config_section(&self) -> &str {
         &self.base.config_section
     }
-    fn should_send_pdf_as_base64(&self) -> bool {
-        true
-    }
-
     fn send(
         &mut self,
         data: Vec<DataSource>,

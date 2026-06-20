@@ -4,8 +4,6 @@ use std::collections::HashMap;
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GeneralConfig {
     pub system_prompt: Option<String>,
-    #[serde(default = "default_true")]
-    pub pdf_as_base64: bool,
     #[serde(default = "default_request_timeout")]
     pub request_timeout: u64,
     #[serde(default = "default_python_timeout")]
@@ -24,9 +22,6 @@ pub struct GeneralConfig {
     pub max_output_chars: usize,
 }
 
-fn default_true() -> bool {
-    true
-}
 fn default_request_timeout() -> u64 {
     1800
 }
@@ -56,7 +51,6 @@ impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
             system_prompt: None,
-            pdf_as_base64: default_true(),
             request_timeout: default_request_timeout(),
             python_timeout: default_python_timeout(),
             max_audit_log_lines: default_max_audit_log(),
@@ -73,14 +67,6 @@ impl Default for GeneralConfig {
 pub struct ProviderConfig {
     pub api_key: Option<String>,
     pub api_url: Option<String>,
-    /// Payload formatter hint for OpenAI-compatible providers.
-    ///
-    /// - `"high_feature"` — Use the Anthropic/Gemini-compatible formatter
-    ///   (native PDF documents, extended vision support).
-    /// - `"generic"`      — Use the standard OpenAI-compatible formatter.
-    /// - `None` (omitted) — Auto-detect from the model name (legacy behaviour,
-    ///   kept as a fallback for backwards compatibility).
-    pub formatter: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]

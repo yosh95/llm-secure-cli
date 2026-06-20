@@ -306,7 +306,6 @@ The primary security configuration is in `src/config/defaults.toml`
 
 ```toml
 [general]
-pdf_as_base64 = true
 request_timeout = 300
 python_timeout = 300
 image_save_path = "~/Pictures/llsc"

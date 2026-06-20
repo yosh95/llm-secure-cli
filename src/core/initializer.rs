@@ -191,9 +191,7 @@ fn check_api_key_env_vars() -> anyhow::Result<()> {
 }
 
 fn register_clients(ctx: &Arc<AppContext>) {
-    use crate::llm::providers::ollama::OllamaClient;
     use crate::llm::providers::openai_compatible::OpenAiCompatibleClient;
-    use crate::llm::providers::openrouter::OpenRouterClient;
 
     let mut registry = ctx
         .client_registry
@@ -211,85 +209,39 @@ fn register_clients(ctx: &Arc<AppContext>) {
                     .get_api_key(&closure_p_name)
                     .unwrap_or_else(String::new);
 
-                // Read api_url and the optional formatter hint from config in one pass.
-                let (api_url, formatter_hint) = if let Ok(config) = config_manager.get_config() {
+                // Read api_url from config.
+                let api_url = if let Ok(config) = config_manager.get_config() {
                     let p_cfg = config.providers.get(&closure_p_name);
-                    let url = p_cfg
-                        .and_then(|p| p.api_url.clone())
-                        .unwrap_or_else(|| match closure_p_name.as_str() {
+                    p_cfg.and_then(|p| p.api_url.clone()).unwrap_or_else(|| {
+                        match closure_p_name.as_str() {
                             "openai" => "https://api.openai.com/v1".to_string(),
                             "ollama" => "http://localhost:11434/v1".to_string(),
                             "openrouter" => "https://openrouter.ai/api/v1".to_string(),
                             "vllm" => "http://localhost:8000/v1".to_string(),
                             _ => String::new(),
-                        });
-                    let hint = p_cfg.and_then(|p| p.formatter.clone());
-                    (url, hint)
+                        }
+                    })
                 } else {
-                    (String::new(), None)
+                    String::new()
                 };
 
-                let client: Box<dyn LlmClient> = match closure_p_name.as_str() {
-                    "openrouter" => Box::new(OpenRouterClient::new(
-                        config_manager,
-                        &closure_p_name,
-                        &api_url,
-                        &api_key,
-                        model,
-                        stdout,
-                        raw,
-                    )?),
-                    "ollama" => Box::new(OllamaClient::new(
-                        config_manager,
-                        &closure_p_name,
-                        &api_url,
-                        &api_key,
-                        model,
-                        stdout,
-                        raw,
-                    )?),
+                // All providers use the OpenAI-compatible API.
+                // The api_url uniquely identifies the service.
+                let model_supports_tools = config_manager
+                    .model_supports_tools(&closure_p_name, model)
+                    .unwrap_or(true);
 
-                    _ => {
-                        // Formatter selection priority:
-                        //   1. Explicit `formatter` field in config.toml  ← new, preferred
-                        //   2. Legacy model-name heuristic                ← backwards compat
-                        let use_high_feature = match formatter_hint.as_deref() {
-                            Some("high_feature") => true,
-                            Some("generic") => false,
-                            // Fallback: infer from well-known model name fragments.
-                            _ => {
-                                let m_lower = model.to_lowercase();
-                                m_lower.contains("claude")
-                                    || m_lower.contains("anthropic")
-                                    || m_lower.contains("gemini")
-                                    || m_lower.contains("google")
-                            }
-                        };
-                        let formatter: Box<dyn crate::llm::providers::openai_compatible::PayloadFormatter> = if use_high_feature {
-                            Box::new(crate::llm::providers::openai_compatible::HighFeaturePayloadFormatter { is_anthropic_gemini: true })
-                        } else {
-                            Box::new(crate::llm::providers::openai_compatible::GenericPayloadFormatter)
-                        };
-
-                        // Look up whether this model supports tool calling from the cache.
-                        // When the cache has not been populated yet (first launch) we default
-                        // to `true` so that tool definitions are still sent.
-                        let model_supports_tools = config_manager
-                            .model_supports_tools(&closure_p_name, model)
-                            .unwrap_or(true);
-
-                        Box::new(OpenAiCompatibleClient::builder(config_manager)
-                            .provider_name(&closure_p_name)
-                            .api_url(&api_url)
-                            .api_key(&api_key)
-                            .model(model)
-                            .stdout(stdout)
-                            .raw(raw)
-                            .formatter(formatter)
-                            .supports_tools(Some(model_supports_tools))
-                            .build()?)
-                    },
-                };
+                let client: Box<dyn LlmClient> = Box::new(
+                    OpenAiCompatibleClient::builder(config_manager)
+                        .provider_name(&closure_p_name)
+                        .api_url(&api_url)
+                        .api_key(&api_key)
+                        .model(model)
+                        .stdout(stdout)
+                        .raw(raw)
+                        .supports_tools(Some(model_supports_tools))
+                        .build()?,
+                );
                 Ok(client)
             }),
         );

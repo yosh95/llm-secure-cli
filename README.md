@@ -128,7 +128,6 @@ flowchart TB
 1. **Automatic Initialization**: On the first run, `~/.llsc/config.toml` is automatically created.
 2. **Model Setup**: By default, no model is selected. Use `/model <model_name>` (e.g., `/model llama3`) to set one before your first request.
 3. **Brave Search**: Built-in support for the Brave Search API is available for comprehensive searching across all providers (requires `BRAVE_API_KEY`).
-4. **File/URL Attachment**: Use `/attach <path|URL>` to quickly add local files or web content to your conversation.
 5. **Configure (Optional)**: Ollama is the default provider. To use OpenRouter or others, edit the configuration file:
 
     ```bash
@@ -247,10 +246,9 @@ Inside the `llsc` interactive session:
 - `/edit_history`, `/eh`: View/edit the conversation history in TOML format.
 - `/raw`: Show conversation as raw text.
 - `/session [load|delete <id>|clear]`: List, load, delete, or clear saved sessions.
-- `/attach <path/URL>`: Add a file or website content to the context.
 - `/tools [on|off]`: Show or toggle autonomous tool use status.
 - `/model`, `/m [-u] [<name>]`: List models or switch to `provider:model`. Use `-u` to refresh the cache.
-- `/view [<path>]`: Open saved image or file with system default app.
+- `/dump`: Dump the conversation history as TOML to stdout.
 - `/credits`: Show detailed OpenRouter credit info.
 - `/rankings`: Show OpenRouter model rankings by token usage.
 
@@ -290,7 +288,6 @@ The primary security configuration is in `src/config/defaults.toml` (overridden 
 # ~/.llsc/config.toml
 
 [general]
-pdf_as_base64 = true
 request_timeout = 300          # seconds (default Rust struct: 1800)
 python_timeout = 300          # seconds (default Rust struct: 3600)
 image_save_path = "~/Pictures/llsc"

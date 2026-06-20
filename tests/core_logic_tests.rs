@@ -13,8 +13,7 @@ fn test_config_merge_nested_objects_preserve_existing_keys() {
     // This tests the merge_json helper.
     let base: serde_json::Value = serde_json::json!({
         "general": {
-            "pdf_as_base64": true,
-            "request_timeout": 1800
+                        "request_timeout": 1800
         },
         "security": {}
     });
@@ -155,11 +154,10 @@ fn test_app_config_round_trip_via_toml() {
 fn test_app_config_deserializes_minimal_toml() {
     let minimal = r#"
 [general]
-pdf_as_base64 = false
+request_timeout = 300
 "#;
     let cfg: AppConfig = toml::from_str(minimal).expect("Minimal TOML should parse");
-    assert!(!cfg.general.pdf_as_base64);
-    // SecurityConfig is now empty (always high); field check removed
+    assert_eq!(cfg.general.request_timeout, 300);
 }
 
 // ---------------------------------------------------------------------------

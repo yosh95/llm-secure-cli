@@ -162,7 +162,6 @@ pub fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow::Resul
             }
         }
 
-        let pdf_as_base64 = client.should_send_pdf_as_base64();
         let mut session = match ActiveSession::new(client, ctx.clone()) {
             Ok(s) => s,
             Err(e) => {
@@ -187,10 +186,7 @@ pub fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow::Resul
         let sources = if all_sources.is_empty() {
             None
         } else {
-            Some(crate::utils::media::process_sources(
-                all_sources,
-                pdf_as_base64,
-            ))
+            Some(crate::utils::media::process_sources(all_sources, false))
         };
         session.run(sources, None);
         Ok(())

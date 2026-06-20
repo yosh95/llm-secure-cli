@@ -123,16 +123,6 @@ fn test_get_config_section_returns_provider() {
 }
 
 // ===========================================================================
-// should_send_pdf_as_base64
-// ===========================================================================
-
-#[test]
-fn test_mock_returns_false_for_pdf() {
-    let client = MockLlmClient::builder().build();
-    assert!(!client.should_send_pdf_as_base64());
-}
-
-// ===========================================================================
 // send() with mock responses
 // ===========================================================================
 

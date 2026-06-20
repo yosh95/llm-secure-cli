@@ -1,13 +1,12 @@
-use crate::cli::interactive::content_handler;
 use crate::cli::interactive::model_handler;
 use crate::cli::interactive::session_handler;
 use crate::cli::interactive::tool_handler;
 use crate::cli::ui;
 use crate::core::session::ActiveSession;
 
+pub use session_handler::handle_dump;
 pub use session_handler::handle_edit_history;
 pub use session_handler::handle_info;
-pub use session_handler::handle_raw;
 pub use session_handler::handle_session_cmd;
 
 pub enum CommandResult {
@@ -46,8 +45,8 @@ pub fn handle_command(session: &mut ActiveSession, input: &str) -> CommandResult
             session_handler::handle_info(session);
             CommandResult::Handled
         }
-        "raw" => {
-            session_handler::handle_raw(session);
+        "dump" => {
+            session_handler::handle_dump(session);
             CommandResult::Handled
         }
         "edit_history" | "eh" => {
@@ -56,10 +55,6 @@ pub fn handle_command(session: &mut ActiveSession, input: &str) -> CommandResult
         }
         "session" => {
             session_handler::handle_session_cmd(session, args);
-            CommandResult::Handled
-        }
-        "attach" => {
-            content_handler::handle_attach(session, args);
             CommandResult::Handled
         }
         "tools" => {
@@ -72,10 +67,6 @@ pub fn handle_command(session: &mut ActiveSession, input: &str) -> CommandResult
         }
         "verifier" | "v" => {
             model_handler::handle_verifier_cmd(session, args);
-            CommandResult::Handled
-        }
-        "view" => {
-            content_handler::handle_view_cmd(session, args);
             CommandResult::Handled
         }
         "credits" => {
@@ -107,10 +98,10 @@ fn print_help() {
     println!(
         "  /eh, /edit_history View/edit the conversation history in TOML format (includes full structure)"
     );
+    println!("  /dump              Dump the conversation history as TOML to stdout");
     println!(
         "  /session [load|delete <id>|clear]  List, load, delete, or clear saved sessions (\"last\" for most recent)"
     );
-    println!("  /attach <path|url> Attach a file or URL to the next request");
     println!(
         "  /tools [on|off]    Toggle or show status of tool execution (tool results always displayed)"
     );
@@ -121,13 +112,9 @@ fn print_help() {
         "  /v, /verifier [add|delete <provider:model>|list]  Add/delete/list verifier committee members"
     );
     println!(
-        "  /view [<path>]     Open saved image or file with system default app (no arg = latest)"
-    );
-    println!(
         "  /credits           Show detailed OpenRouter credit info (uses both /credits and /key APIs)"
     );
     println!("  /rankings          Show OpenRouter model rankings (token usage leaderboard)");
-    println!("  /raw               Show raw conversation history");
     println!("  F2                 Open external editor to edit the current prompt (multi-line)");
     ui::print_rule(None, Some("cyan"));
 }

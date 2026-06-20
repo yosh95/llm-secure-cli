@@ -2,7 +2,6 @@
 # General Settings
 # =============================================================================
 [general]
-pdf_as_base64 = true
 request_timeout = 300
 python_timeout = 300
 image_save_path = "~/Pictures/llsc"
@@ -70,18 +69,6 @@ api_url = "http://localhost:8000/v1"
 # -----------------------------------------------------------------------------
 # Custom OpenAI-compatible provider example
 # -----------------------------------------------------------------------------
-# To add a provider that uses the Anthropic/Gemini-style payload formatter
-# (native PDF support, extended vision), set:
-#   formatter = "high_feature"
-#
-# For a plain OpenAI-compatible endpoint, set (or omit — this is the default):
-#   formatter = "generic"
-#
 # Example:
-# [anthropic]
-# api_url = "https://api.anthropic.com/v1"
-# formatter = "high_feature"
-#
 # [my_local_llm]
 # api_url = "http://192.168.1.10:8080/v1"
-# formatter = "generic"

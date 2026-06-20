@@ -22,7 +22,7 @@ pub struct CommandEntry {
     pub name: &'static str,
     /// Aliases, e.g. `&["h"]`.
     pub aliases: &'static [&'static str],
-    /// One-line description for `--help` / `/help`.
+    /// One-line description for `--help` `/ `.
     pub description: &'static str,
 }
 
@@ -30,11 +30,6 @@ pub struct CommandEntry {
 ///
 /// ⚠️ **Keep this list sorted** by primary `name` for readability.
 pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
-    CommandEntry {
-        name: "attach",
-        aliases: &[],
-        description: "Attach a file or URL to the next request",
-    },
     CommandEntry {
         name: "clear",
         aliases: &["c"],
@@ -44,6 +39,11 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
         name: "credits",
         aliases: &[],
         description: "Show detailed OpenRouter credit info",
+    },
+    CommandEntry {
+        name: "dump",
+        aliases: &[],
+        description: "Dump the conversation history as TOML to stdout",
     },
     CommandEntry {
         name: "edit_history",
@@ -76,11 +76,6 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
         description: "Show OpenRouter model rankings by token usage",
     },
     CommandEntry {
-        name: "raw",
-        aliases: &[],
-        description: "Show raw conversation history",
-    },
-    CommandEntry {
         name: "session",
         aliases: &[],
         description: "List, load, delete, or clear saved sessions",
@@ -94,11 +89,6 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
         name: "verifier",
         aliases: &["v"],
         description: "Add/delete/list verifier committee members",
-    },
-    CommandEntry {
-        name: "view",
-        aliases: &[],
-        description: "Open saved image or file with system default app",
     },
 ];
 
@@ -149,7 +139,7 @@ mod tests {
         assert!(is_valid_command("/help"));
         assert!(is_valid_command("/h"));
         assert!(is_valid_command("/tools"));
-        assert!(!is_valid_command("/tool_output")); // Removed: tool_output no longer a command
+        assert!(!is_valid_command("/tool_output"));
         assert!(!is_valid_command("/vcom"));
         assert!(!is_valid_command("/nonexistent"));
     }

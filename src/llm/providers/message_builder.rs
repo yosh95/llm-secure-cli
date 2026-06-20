@@ -1,13 +1,10 @@
 use crate::llm::models::{DataSource, MessagePart, Role};
 use serde_json::{Value, json};
 
-use super::payload_formatter::PayloadFormatter;
-
 /// Builder for constructing OpenAI-compatible message arrays from the
 /// internal conversation model.  Separated from the client to keep the
 /// message serialisation logic independently testable.
 pub struct MessageBuilder<'a> {
-    pub formatter: &'a dyn PayloadFormatter,
     pub model: &'a str,
     pub input_modalities: Option<&'a [String]>,
     pub system_prompt: Option<String>,
@@ -21,6 +18,27 @@ impl MessageBuilder<'_> {
     fn supports_modality(&self, modality: &str) -> bool {
         self.input_modalities
             .is_none_or(|mods| mods.iter().any(|m| m == modality))
+    }
+
+    fn format_text(text: &str) -> Value {
+        json!({"type": "text", "text": text})
+    }
+
+    fn format_image(mime: &str, data: &str) -> Value {
+        json!({
+            "type": "image_url",
+            "image_url": { "url": format!("data:{};base64,{}", mime, data) }
+        })
+    }
+
+    fn format_audio(mime: &str, data: &str) -> Value {
+        json!({
+            "type": "input_audio",
+            "input_audio": {
+                "data": data,
+                "format": mime.split('/').next_back().unwrap_or("mp3")
+            }
+        })
     }
 
     #[must_use]
@@ -101,10 +119,10 @@ impl MessageBuilder<'_> {
 
                     for part in &m.parts {
                         match part {
-                            MessagePart::Text(t) => parts.push(self.formatter.format_text(t)),
+                            MessagePart::Text(t) => parts.push(Self::format_text(t)),
                             MessagePart::Part(cp) => {
                                 if let Some(t) = &cp.text {
-                                    parts.push(self.formatter.format_text(t));
+                                    parts.push(Self::format_text(t));
                                 }
                                 if let Some(fc) = &cp.function_call {
                                     let id =
@@ -129,23 +147,14 @@ impl MessageBuilder<'_> {
                                         .unwrap_or_default();
                                     let b64 =
                                         id.get("data").and_then(|v| v.as_str()).unwrap_or_default();
-                                    if mime == "application/pdf" {
-                                        if let Some(v) = self.formatter.format_pdf(
-                                            b64,
-                                            id.get("filename").and_then(|v| v.as_str()),
-                                        ) {
-                                            parts.push(v);
-                                        }
-                                    } else if mime.starts_with("image/")
-                                        && self.supports_modality("image")
+                                    if mime.starts_with("image/") && self.supports_modality("image")
                                     {
-                                        parts.push(self.formatter.format_image(mime, b64));
+                                        parts.push(Self::format_image(mime, b64));
                                     } else if mime.starts_with("audio/")
                                         && self.supports_modality("audio")
                                     {
-                                        parts.push(self.formatter.format_audio(mime, b64));
+                                        parts.push(Self::format_audio(mime, b64));
                                     }
-                                    // Note: video is not currently handled, but would follow the same pattern.
                                 }
                             }
                         }
@@ -188,27 +197,17 @@ impl MessageBuilder<'_> {
         let mut current_parts = Vec::new();
         for d in self.pending_data {
             if d.content_type == "text/plain" {
-                current_parts.push(
-                    self.formatter
-                        .format_text(d.content.as_str().unwrap_or_default()),
-                );
-            } else if d.content_type == "application/pdf" {
-                if let Some(v) = self.formatter.format_pdf(
-                    d.content.as_str().unwrap_or_default(),
-                    d.metadata.get("filename").and_then(|v| v.as_str()),
-                ) {
-                    current_parts.push(v);
-                }
+                current_parts.push(Self::format_text(d.content.as_str().unwrap_or_default()));
             } else if d.content_type.starts_with("image/") && self.supports_modality("image") {
-                current_parts.push(
-                    self.formatter
-                        .format_image(&d.content_type, d.content.as_str().unwrap_or_default()),
-                );
+                current_parts.push(Self::format_image(
+                    &d.content_type,
+                    d.content.as_str().unwrap_or_default(),
+                ));
             } else if d.content_type.starts_with("audio/") && self.supports_modality("audio") {
-                current_parts.push(
-                    self.formatter
-                        .format_audio(&d.content_type, d.content.as_str().unwrap_or_default()),
-                );
+                current_parts.push(Self::format_audio(
+                    &d.content_type,
+                    d.content.as_str().unwrap_or_default(),
+                ));
             }
         }
         if !current_parts.is_empty() {
