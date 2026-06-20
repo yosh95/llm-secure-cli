@@ -1,5 +1,5 @@
 use crate::consts::audit_head_cache_path;
-use chrono::Utc;
+use jiff::Timestamp;
 use std::io::Write;
 use uuid::Uuid;
 
@@ -57,7 +57,7 @@ pub fn trim_log_file(path: &std::path::Path, max_lines: usize) {
     let temp_path = path.with_extension("tmp");
     if let Ok(mut temp_file) = std::fs::File::create(&temp_path) {
         let continuity_marker = serde_json::json!({
-            "timestamp": Utc::now().to_rfc3339(),
+            "timestamp": Timestamp::now().to_string(),
             "trace_id": "rotation",
             "subject": "system",
             "audience": "audit",

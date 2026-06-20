@@ -2,7 +2,7 @@ use crate::consts::audit_log_path;
 use crate::security::audit::chain::get_last_log_hash;
 use crate::security::audit::rotation::trim_log_file;
 use crate::security::audit::types::{AuditEntry, AuditParams, AuditStatus};
-use chrono::Utc;
+use jiff::Timestamp;
 use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -60,7 +60,7 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         );
     }
 
-    let timestamp = Utc::now().to_rfc3339();
+    let timestamp = Timestamp::now().to_string();
     let empty_map = serde_json::Map::new();
     let ctx = params
         .context

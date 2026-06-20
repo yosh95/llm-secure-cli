@@ -1,9 +1,10 @@
 use crate::llm::models::DataSource;
 use crate::utils::http::CLIENT;
 use base64::{Engine as _, engine::general_purpose};
-use chrono;
 use dirs;
-use mime_guess;
+use jiff::Zoned;
+use new_mime_guess;
+use pdf_oxide::PdfDocument;
 use std::fs;
 use std::path::Path;
 
@@ -36,7 +37,14 @@ pub fn fetch_url_content(url_str: &str, pdf_as_base64: bool) -> anyhow::Result<(
             let b64 = general_purpose::STANDARD.encode(bytes);
             Ok((b64, content_type))
         } else {
-            let text = pdf_extract::extract_text_from_mem(&bytes)?;
+            let doc = PdfDocument::from_bytes(bytes.clone())
+                .map_err(|e| anyhow::anyhow!("PDF parse error: {e}"))?;
+            let page_count = doc.page_count()?;
+            let mut text = String::new();
+            for i in 0..page_count {
+                text.push_str(&doc.extract_text(i)?);
+                text.push('\n');
+            }
             Ok((text, "text/plain".to_string()))
         }
     } else if content_type.contains("html") {
@@ -55,60 +63,100 @@ pub fn fetch_url_content(url_str: &str, pdf_as_base64: bool) -> anyhow::Result<(
 /// Convert HTML to Markdown using html-to-markdown-rs.
 /// Strips common navigation/header/footer elements to produce cleaner content for LLM consumption.
 pub fn html_to_text(html: &str) -> anyhow::Result<String> {
-    use html_to_markdown_rs::{
-        ConversionOptions, PreprocessingOptions, PreprocessingPreset, convert,
-    };
+    // h2md automatically strips <script>, <style>, <noscript>, <head>, <meta>,
+    // <link>, HTML comments, and doctype declarations.
+    // Additional preprocessing removes navigation/boilerplate elements
+    // for cleaner LLM content extraction.
+    let preprocessed = strip_unwanted_html(html);
+    let mut out = Vec::new();
+    h2md::convert(preprocessed.as_bytes(), &mut out)?;
+    let raw = String::from_utf8(out)?;
 
-    let options = ConversionOptions::builder()
-        // Exclude HTML elements that are typically navigation or boilerplate,
-        // not useful for LLM content extraction:
-        // - <head>: HTML metadata, stylesheets, scripts (should not appear in body anyway)
-        // - <header>: Page header/banner
-        // - <nav>: Navigation menus
-        // - <footer>: Page footer
-        // - [role="banner"]: ARIA banner landmark
-        // - [role="navigation"]: ARIA navigation landmark
-        // - [role="contentinfo"]: ARIA contentinfo landmark (typically footer info)
-        .exclude_selectors(vec![
-            "head".into(),
-            "header".into(),
-            "nav".into(),
-            "footer".into(),
-            "[role='banner']".into(),
-            "[role='navigation']".into(),
-            "[role='contentinfo']".into(),
-            // Exclude inline SVG elements: LLMs cannot interpret SVG markup,
-            // and they waste tokens (can be tens of KB per icon/logo).
-            "svg".into(),
-            // Exclude <img> tags with data URIs (e.g. data:image/svg+xml;base64,...).
-            // These embed the image bytes directly and are useless for LLMs.
-            // Normal image paths (e.g. /img/photo.png) are kept so alt-text and
-            // file context remain available.
-            "img[src^='data:']".into(),
-        ])
-        .default_title(false)
-        .extract_metadata(false)
-        .preprocessing(PreprocessingOptions {
-            enabled: true,
-            preset: PreprocessingPreset::Standard,
-            remove_navigation: true,
-            remove_forms: false,
-        })
-        .build();
-
-    let result = convert(html, Some(options))?;
-    let raw = match result.content {
-        Some(content) => content,
-        None => return Ok(String::new()),
-    };
-
-    // Collapse 3+ consecutive blank lines → 1 blank line,
+    // Collapse 3+ consecutive blank lines -> 1 blank line,
     // and strip leading/trailing blank lines.
     Ok(collapse_blank_lines(&raw))
 }
 
-/// Collapse 3 or more consecutive blank lines into a single blank line,
-/// and trim leading/trailing empty lines.
+/// Strip HTML elements that are typically navigation/boilerplate,
+/// not useful for LLM content extraction.
+fn strip_unwanted_html(html: &str) -> String {
+    let mut result = String::with_capacity(html.len());
+    let mut skip_depth: usize = 0;
+    let mut pos = 0;
+    let bytes = html.as_bytes();
+    let len = bytes.len();
+
+    // Tags whose content should be entirely removed
+    const BLOCK_TAGS: &[&str] = &["header", "nav", "footer", "svg"];
+
+    // Role attributes that indicate boilerplate landmarks
+    const SKIP_ROLES: &[&str] = &["banner", "navigation", "contentinfo"];
+
+    while pos < len {
+        if bytes[pos] == b'<' {
+            let _tag_start = pos;
+
+            // Check for HTML comment
+            if pos + 3 < len
+                && &html[pos..pos + 4] == "<!--"
+                && let Some(end) = html[pos..].find("-->")
+            {
+                pos = pos + end + 3;
+                continue;
+            }
+
+            // Extract tag name for opening tags
+            if pos + 1 < len && bytes[pos + 1] != b'/' {
+                // Find end of opening tag
+                let tag_end = html[pos..].find('>').map(|p| pos + p + 1).unwrap_or(len);
+                let opening_tag = &html[pos..tag_end.min(len)];
+
+                // Get tag name (skip '<')
+                let inner = &opening_tag[1..];
+                let name_end = inner
+                    .find(|c: char| c.is_whitespace() || c == '>' || c == '/')
+                    .unwrap_or(inner.len());
+                let tag_name = inner[..name_end].to_lowercase();
+
+                // Check if this tag should be skipped
+                let should_skip = BLOCK_TAGS.contains(&tag_name.as_str())
+                    || SKIP_ROLES.iter().any(|role| {
+                        opening_tag.contains(&format!("role='{role}'"))
+                            || opening_tag.contains(&format!("role='{role}'"))
+                    });
+
+                if should_skip {
+                    skip_depth += 1;
+                    pos = tag_end;
+                    continue;
+                }
+
+                // Skip img tags with data URIs
+                if tag_name == "img"
+                    && (opening_tag.contains("src=\"data:") || opening_tag.contains("src='data:"))
+                {
+                    pos = tag_end;
+                    continue;
+                }
+            } else if pos + 1 < len && bytes[pos + 1] == b'/' {
+                // Closing tag - if we're inside a skip block, decrement depth
+                if skip_depth > 0 {
+                    let tag_end = html[pos..].find('>').map(|p| pos + p + 1).unwrap_or(len);
+                    skip_depth -= 1;
+                    pos = tag_end;
+                    continue;
+                }
+            }
+        }
+
+        if skip_depth == 0 {
+            result.push(bytes[pos] as char);
+        }
+        pos += 1;
+    }
+    result
+}
+
 fn collapse_blank_lines(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut blank_count = 0u32;
@@ -141,12 +189,19 @@ pub fn process_file(path: &Path, pdf_as_base64: bool) -> anyhow::Result<DataSour
     let bytes = fs::read(path)?;
 
     // Use mime_guess to determine the content type
-    let mime_type = mime_guess::from_path(path)
+    let mime_type = new_mime_guess::from_path(path)
         .first_raw()
         .unwrap_or("application/octet-stream");
 
     if mime_type == "application/pdf" && !pdf_as_base64 {
-        let text = pdf_extract::extract_text_from_mem(&bytes)?;
+        let doc = PdfDocument::from_bytes(bytes.clone())
+            .map_err(|e| anyhow::anyhow!("PDF parse error: {e}"))?;
+        let page_count = doc.page_count()?;
+        let mut text = String::new();
+        for i in 0..page_count {
+            text.push_str(&doc.extract_text(i)?);
+            text.push('\n');
+        }
         return Ok(DataSource {
             content: serde_json::Value::String(text),
             content_type: "text/plain".to_string(),
@@ -251,7 +306,7 @@ pub fn save_media(b64_data: &str, mime_type: &str, save_path: &str) -> anyhow::R
         _ => "bin",
     };
 
-    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let timestamp = Zoned::now().strftime("%Y%m%d_%H%M%S");
     let filename = format!("generated_{timestamp}.{extension}");
 
     let mut path = Path::new(save_path).to_path_buf();

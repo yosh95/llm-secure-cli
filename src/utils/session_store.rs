@@ -40,7 +40,7 @@ pub fn auto_save(session: &ActiveSession) {
 
     let session_file = SessionFile {
         trace_id: trace_id.clone(),
-        created_at: chrono::Utc::now().to_rfc3339(),
+        created_at: jiff::Timestamp::now().to_string(),
         model: state.model.clone(),
         provider: state.provider.clone(),
         conversation: state.conversation.clone(),

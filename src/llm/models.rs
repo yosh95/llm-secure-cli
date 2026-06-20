@@ -1,4 +1,4 @@
-use chrono::Local;
+use jiff::Zoned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -108,7 +108,7 @@ impl ClientState {
             return None;
         }
 
-        let date_str = Local::now().format("%Y-%m-%d").to_string();
+        let date_str = Zoned::now().strftime("%Y-%m-%d").to_string();
         let directive = format!(
             "Today's date is {date_str}. You must treat this as the current date and ignore your training cutoff or any other date information."
         );

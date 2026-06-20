@@ -1,7 +1,7 @@
 use crate::config::ConfigManager;
 use crate::consts::chat_log_path;
 use crate::llm::models::Role;
-use chrono::Utc;
+use jiff::Timestamp;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 
@@ -38,7 +38,7 @@ pub fn log_chat(
         }
     }
 
-    let timestamp = Utc::now().to_rfc3339();
+    let timestamp = Timestamp::now().to_string();
     let role_str = match role {
         Role::User => "USER",
         Role::Assistant | Role::Model => model_name.unwrap_or("ASSISTANT"),

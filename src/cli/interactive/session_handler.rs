@@ -1,7 +1,7 @@
 use crate::cli::ui;
 use crate::core::session::ActiveSession;
 use crate::llm::models::{Message, MessagePart};
-use chrono;
+use jiff::{Timestamp, tz::TimeZone};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -26,12 +26,13 @@ pub fn handle_session_cmd(session: &mut ActiveSession, args: &str) {
                         let ts = if s.created_at.is_empty() {
                             "unknown".to_string()
                         } else {
-                            chrono::DateTime::parse_from_rfc3339(&s.created_at)
+                            s.created_at
+                                .parse::<Timestamp>()
                                 .map_or_else(
                                     |_| s.created_at.clone(),
-                                    |dt| {
-                                        dt.with_timezone(&chrono::Local)
-                                            .format("%Y-%m-%d %H:%M")
+                                    |ts| {
+                                        ts.to_zoned(TimeZone::system())
+                                            .strftime("%Y-%m-%d %H:%M")
                                             .to_string()
                                     },
                                 )

@@ -1,8 +1,8 @@
 use crate::security::pqc::{DEFAULT_KEM_VARIANT, DEFAULT_PQC_VARIANT, PQCVariant, PqcProvider};
 use crate::security::pqc_cose::HybridSigner;
 use anyhow::{Result, anyhow};
-use chrono::Utc;
 use ed25519_dalek::SigningKey;
+use jiff::Timestamp;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -341,7 +341,7 @@ impl IdentityManager {
             hostname::get()?.to_string_lossy()
         );
 
-        let now = Utc::now().timestamp();
+        let now = Timestamp::now().as_second();
         let claims = IdentityClaims {
             iss: "llsc-client".to_string(),
             sub,
