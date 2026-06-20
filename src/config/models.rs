@@ -95,13 +95,6 @@ pub struct AppState {
     #[serde(default)]
     pub verifier_committee: Vec<String>,
     // (Removed: show_tool_result — tool output is now always displayed)
-    #[serde(default)]
-    pub model_aliases: HashMap<String, ModelAlias>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct ModelAlias {
-    pub target: String,
 }
 
 /// The verifier committee.
@@ -212,8 +205,12 @@ impl SecurityConfig {
                 .map(std::string::ToString::to_string)
                 .collect();
             Err(format!(
-                "Security config validation failed:\n  - {}",
-                messages.join("\n  - ")
+                "Security config validation failed:
+  - {}",
+                messages.join(
+                    "
+  - "
+                )
             ))
         }
     }

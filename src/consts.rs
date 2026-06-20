@@ -86,7 +86,3 @@ pub fn chat_log_path() -> PathBuf {
 pub fn sessions_dir() -> PathBuf {
     get_base_dir().join("sessions")
 }
-#[must_use]
-pub fn templates_dir() -> PathBuf {
-    get_base_dir().join("templates")
-}

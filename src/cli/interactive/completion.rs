@@ -203,17 +203,6 @@ impl Completer for ChatCompleter {
                             // After "-i " or "--info " complete with model names
                             if prefix_after_flag.starts_with(' ') && !prefix_after_flag.is_empty() {
                                 let model_prefix = prefix_after_flag.trim_start();
-                                // Add aliases
-                                if let Ok(state) = self.ctx.config_manager.get_state() {
-                                    for alias in state.model_aliases.keys() {
-                                        if alias.starts_with(model_prefix) {
-                                            matches.push(Pair {
-                                                display: format!("{alias} (alias)"),
-                                                replacement: alias.clone(),
-                                            });
-                                        }
-                                    }
-                                }
                                 // Suggest provider:model pairs
                                 let mut providers: Vec<&String> = models_map.keys().collect();
                                 providers.sort();
@@ -268,17 +257,6 @@ impl Completer for ChatCompleter {
                             matches.sort_by(|a, b| a.display.cmp(&b.display));
                             return Ok((start, matches));
                         }
-                        // Add aliases
-                        if let Ok(state) = self.ctx.config_manager.get_state() {
-                            for alias in state.model_aliases.keys() {
-                                if alias.starts_with(arg_prefix) {
-                                    matches.push(Pair {
-                                        display: format!("{alias} (alias)"),
-                                        replacement: alias.clone(),
-                                    });
-                                }
-                            }
-                        }
                         // Suggest ALL provider:model pairs, sorted
                         let mut providers: Vec<&String> = models_map.keys().collect();
                         providers.sort();
@@ -311,20 +289,6 @@ impl Completer for ChatCompleter {
                                 });
                             }
                         }
-                        return Ok((start, matches));
-                    }
-                    "/t" | "/template" => {
-                        let templates = self.ctx.config_manager.load_templates();
-                        let mut matches = Vec::new();
-                        for name in templates.keys() {
-                            if name.starts_with(arg_prefix) {
-                                matches.push(Pair {
-                                    display: name.clone(),
-                                    replacement: name.clone(),
-                                });
-                            }
-                        }
-                        matches.sort_by(|a, b| a.display.cmp(&b.display));
                         return Ok((start, matches));
                     }
                     "/verifier" | "/v" => {
@@ -398,113 +362,6 @@ impl Completer for ChatCompleter {
                             matches.sort_by(|a, b| a.display.cmp(&b.display));
                             matches.dedup_by(|a, b| a.display == b.display);
                             return Ok((start_of_target, matches));
-                        }
-                    }
-                    "/alias" => {
-                        let parts: Vec<&str> = arg_prefix.split_whitespace().collect();
-                        // `/alias -d <name>` or `/alias --delete <name>`: complete alias names
-                        if (parts.len() == 2 && (parts[1] == "-d" || parts[1] == "--delete"))
-                            && arg_prefix.ends_with(' ')
-                        {
-                            let state = self
-                                .ctx
-                                .config_manager
-                                .get_state()
-                                .unwrap_or_else(|_| Default::default());
-                            let mut matches: Vec<Pair> = state
-                                .model_aliases
-                                .keys()
-                                .map(|k| Pair {
-                                    display: k.clone(),
-                                    replacement: k.clone(),
-                                })
-                                .collect();
-                            matches.sort_by(|a, b| a.display.cmp(&b.display));
-                            return Ok((pos, matches));
-                        }
-                        if parts.len() == 3 && (parts[1] == "-d" || parts[1] == "--delete") {
-                            let target_prefix = parts[2];
-                            let start_of_target = pos - target_prefix.len();
-                            let state = self
-                                .ctx
-                                .config_manager
-                                .get_state()
-                                .unwrap_or_else(|_| Default::default());
-                            let mut matches: Vec<Pair> = state
-                                .model_aliases
-                                .keys()
-                                .filter(|k| k.starts_with(target_prefix))
-                                .map(|k| Pair {
-                                    display: k.clone(),
-                                    replacement: k.clone(),
-                                })
-                                .collect();
-                            matches.sort_by(|a, b| a.display.cmp(&b.display));
-                            return Ok((start_of_target, matches));
-                        }
-                        // Suggest -d / --delete flag as first argument
-                        if parts.len() == 1 && arg_prefix.ends_with(' ') {
-                            let mut matches = vec![
-                                Pair {
-                                    display: "-d (delete an alias)".to_string(),
-                                    replacement: "-d ".to_string(),
-                                },
-                                Pair {
-                                    display: "--delete (delete an alias)".to_string(),
-                                    replacement: "--delete ".to_string(),
-                                },
-                            ];
-                            // Also add model targets for normal alias creation
-                            let models_map = self.ctx.config_manager.get_cached_models_sync();
-                            for (p, models) in models_map {
-                                for m in models {
-                                    let full = format!("{p}:{m}");
-                                    matches.push(Pair {
-                                        display: full.clone(),
-                                        replacement: full,
-                                    });
-                                }
-                            }
-                            matches.sort_by(|a, b| a.display.cmp(&b.display));
-                            return Ok((pos, matches));
-                        }
-                        // `/alias <name> <partial>`: complete target
-                        if parts.len() == 2 {
-                            let target_prefix = parts[1];
-                            let start_of_target = pos - target_prefix.len();
-                            // If it starts with '-', suggest flags
-                            if target_prefix.starts_with('-') {
-                                let mut matches = Vec::new();
-                                for flag in &["-d", "--delete"] {
-                                    if flag.starts_with(target_prefix) {
-                                        matches.push(Pair {
-                                            display: flag.to_string(),
-                                            replacement: format!("{flag} "),
-                                        });
-                                    }
-                                }
-                                matches.sort_by(|a, b| a.display.cmp(&b.display));
-                                return Ok((start_of_target, matches));
-                            }
-                            let models_map = self.ctx.config_manager.get_cached_models_sync();
-                            let mut matches = Vec::new();
-                            for (p, models) in models_map {
-                                for m in models {
-                                    let full = format!("{p}:{m}");
-                                    if full.starts_with(target_prefix) {
-                                        matches.push(Pair {
-                                            display: full.clone(),
-                                            replacement: full,
-                                        });
-                                    }
-                                }
-                            }
-                            matches.sort_by(|a, b| a.display.cmp(&b.display));
-                            return Ok((start_of_target, matches));
-                        }
-                        // parts.len() == 1 (just `/alias` without trailing space)
-                        if parts.len() == 1 && !arg_prefix.ends_with(' ') {
-                            // nothing extra needed here, the command is complete
                         }
                     }
                     _ => {}

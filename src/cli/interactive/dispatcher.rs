@@ -70,16 +70,6 @@ pub fn handle_command(session: &mut ActiveSession, input: &str) -> CommandResult
             model_handler::handle_model_cmd(session, args);
             CommandResult::Handled
         }
-        "summarize" | "s" => {
-            content_handler::handle_summarize(session);
-            CommandResult::Handled
-        }
-        "alias" => {
-            model_handler::handle_alias_cmd(session, args);
-            CommandResult::Handled
-        }
-
-        "t" | "template" => handle_template_cmd(session, args),
         "verifier" | "v" => {
             model_handler::handle_verifier_cmd(session, args);
             CommandResult::Handled
@@ -108,47 +98,6 @@ pub fn handle_command(session: &mut ActiveSession, input: &str) -> CommandResult
     }
 }
 
-fn handle_template_cmd(session: &mut ActiveSession, args: &str) -> CommandResult {
-    let templates = session.ctx.config_manager.load_templates();
-    if args.is_empty() {
-        if templates.is_empty() {
-            ui::report_info("No templates found. Place .txt or .md files in ~/.llsc/templates/");
-        } else {
-            ui::print_rule(Some("Available Templates"), Some("cyan"));
-            let mut names: Vec<_> = templates.keys().collect();
-            names.sort();
-            for name in names {
-                let preview: String = templates[name]
-                    .lines()
-                    .find(|l| !l.trim().is_empty())
-                    .map_or_else(
-                        || "(empty)".to_string(),
-                        |l| {
-                            let trimmed = l.trim();
-                            if trimmed.chars().count() > 60 {
-                                format!("{}...", trimmed.chars().take(60).collect::<String>())
-                            } else {
-                                trimmed.to_string()
-                            }
-                        },
-                    );
-                println!("  {: <25} {}", name, preview);
-            }
-            ui::print_rule(None, Some("cyan"));
-            println!("Usage: /t <name>  — insert template into prompt");
-        }
-        CommandResult::Handled
-    } else if let Some(content) = templates.get(args) {
-        ui::report_success(&format!("Template '{args}' inserted into prompt."));
-        CommandResult::Input(content.clone())
-    } else {
-        ui::report_error(&format!(
-            "Template '{args}' not found. Use /t to list available templates."
-        ));
-        CommandResult::Handled
-    }
-}
-
 fn print_help() {
     ui::print_rule(Some("Interactive Commands"), Some("cyan"));
     println!("  /h, /help          Show this help message");
@@ -168,12 +117,9 @@ fn print_help() {
     println!(
         "  /m, /model [-u] [<name>]  List models (/model -u to refresh ALL providers cache) or switch to provider:model"
     );
-    println!("  /alias [-d <name>] [<name> <target>]  List/create/delete model aliases");
     println!(
         "  /v, /verifier [add|delete <provider:model>|list]  Add/delete/list verifier committee members"
     );
-    println!("  /s, /summarize     Summarize history and clear it");
-    println!("  /t, /template [<name>]  List templates or insert one into prompt");
     println!(
         "  /view [<path>]     Open saved image or file with system default app (no arg = latest)"
     );

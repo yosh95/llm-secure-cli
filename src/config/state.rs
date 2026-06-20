@@ -1,4 +1,4 @@
-//! Application state persistence (provider/model memory, aliases, flags).
+//! Application state persistence (provider/model memory, flags).
 
 use crate::config::models::AppState;
 use crate::consts::state_file_path;
@@ -21,7 +21,7 @@ impl ConfigManager {
         // If the state is still the default placeholder and a state file exists
         // on disk, we need to populate it.  We drop the read lock first to avoid
         // deadlocking when acquiring the write lock.
-        if read.last_model.is_none() && read.model_aliases.is_empty() {
+        if read.last_model.is_none() {
             drop(read);
             let mut write = self
                 .app_state
@@ -29,7 +29,7 @@ impl ConfigManager {
                 .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
             // Double-check after acquiring write lock (another thread may have
             // initialized already).
-            if write.last_model.is_none() && write.model_aliases.is_empty() {
+            if write.last_model.is_none() {
                 *write = Self::load_state_from_disk();
             }
             return Ok(write.clone());
@@ -94,33 +94,6 @@ impl ConfigManager {
         write.last_model = Some(model.to_string());
         Self::persist_state(&write);
         Ok(())
-    }
-
-    pub fn set_alias(&self, alias: &str, target: &str) -> anyhow::Result<()> {
-        let mut write = self
-            .app_state
-            .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        write.model_aliases.insert(
-            alias.to_string(),
-            crate::config::models::ModelAlias {
-                target: target.to_string(),
-            },
-        );
-        Self::persist_state(&write);
-        Ok(())
-    }
-
-    pub fn remove_alias(&self, alias: &str) -> anyhow::Result<bool> {
-        let mut write = self
-            .app_state
-            .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        let existed = write.model_aliases.remove(alias).is_some();
-        if existed {
-            Self::persist_state(&write);
-        }
-        Ok(existed)
     }
 
     // ── Verifier enabled flag (config.toml) ────────────────────────────────

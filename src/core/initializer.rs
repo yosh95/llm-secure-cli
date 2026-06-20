@@ -12,24 +12,6 @@ pub fn switch_model(
     stdout: bool,
     render_markdown: bool,
 ) -> anyhow::Result<()> {
-    // 1. Resolve alias if it exists (backward compat - caller may pass alias)
-    let (target_model, target_provider) = {
-        let state = session.ctx.config_manager.get_state()?;
-        if let Some(alias) = state.model_aliases.get(model) {
-            // Alias target is usually "model" or "provider:model"
-            if let Some((p, m)) = alias.target.split_once(':') {
-                (m.to_string(), p.to_string())
-            } else {
-                (
-                    alias.target.clone(),
-                    session.client.get_state().provider.clone(),
-                )
-            }
-        } else {
-            (model.to_string(), provider.to_string())
-        }
-    };
-
     let client = {
         let registry = session
             .ctx
@@ -37,8 +19,8 @@ pub fn switch_model(
             .lock()
             .unwrap_or_else(|p| p.into_inner());
         registry.create_client(
-            &target_provider,
-            &target_model,
+            provider,
+            model,
             stdout,
             !render_markdown,
             &session.ctx.config_manager,
@@ -47,13 +29,13 @@ pub fn switch_model(
 
     if let Some(new_client) = client {
         session.switch_client(new_client);
-        let full_model = format!("{}:{}", target_provider, target_model);
+        let full_model = format!("{provider}:{model}");
         if let Err(e) = session.ctx.config_manager.update_state(&full_model) {
             tracing::warn!("Failed to persist state update: {}", e);
         }
         Ok(())
     } else {
-        anyhow::bail!("Failed to create client for model: {target_model}")
+        anyhow::bail!("Failed to create client for model: {model}")
     }
 }
 

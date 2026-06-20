@@ -1,9 +1,5 @@
 use crate::cli::ui;
 use crate::core::session::ActiveSession;
-use crate::llm::models::{DataSource, Message, MessagePart, Role};
-use console::Term;
-use std::collections::HashMap;
-
 pub fn handle_attach(session: &mut ActiveSession, source: &str) {
     if source.is_empty() {
         ui::report_error("Usage: /attach <path_or_url>");
@@ -20,63 +16,6 @@ pub fn handle_attach(session: &mut ActiveSession, source: &str) {
         );
     } else {
         ui::report_error(&format!("Failed to attach: {source}"));
-    }
-}
-
-pub fn handle_summarize(session: &mut ActiveSession) {
-    let history_len = session.get_client().get_state().conversation.len();
-    if history_len == 0 {
-        ui::report_warning("Conversation is empty, nothing to summarize.");
-        return;
-    }
-
-    ui::report_info("Summarizing conversation and clearing history...");
-
-    let summary_prompt = "Please provide a concise summary of the conversation so far. This summary will be used as context for future interactions. IMPORTANT: The summary must be written in the same language as the conversation (e.g., if the user is speaking Japanese, summarize in Japanese).";
-
-    // Prepare data source for summarization
-    let data = vec![DataSource {
-        content: serde_json::Value::String(summary_prompt.to_string()),
-        content_type: "text/plain".to_string(),
-        is_file_or_url: false,
-        metadata: HashMap::new(),
-    }];
-
-    // We use the empty tool_schemas as we just want a summary
-    match session.get_client_mut().send(data, Vec::new()) {
-        Ok(response) => {
-            let summary_text = response.content.clone().unwrap_or_default();
-
-            // Reconstruct history with summary
-            let mut new_conversation = Vec::new();
-
-            // Add the summary as a historical context rather than a system message
-            // to avoid clashing with the dynamic system prompt (which includes the date).
-            new_conversation.push(Message {
-                role: Role::User,
-                parts: vec![MessagePart::Text(format!(
-                    "Summary of our previous conversation for context:\n{summary_text}"
-                ))],
-            });
-
-            new_conversation.push(Message {
-                role: Role::Assistant,
-                parts: vec![MessagePart::Text(
-                    "I have acknowledged the summary and will use it as context for our continued conversation."
-                        .to_string(),
-                )],
-            });
-
-            session.get_client_mut().get_state_mut().conversation = new_conversation;
-
-            ui::report_success("Conversation summarized and history cleared.");
-            let (_, width) = Term::stdout().size();
-            let sep = "─".repeat(width as usize);
-            println!("\n{}\n", sep);
-            println!("{summary_text}");
-            println!("{}\n", sep);
-        }
-        Err(e) => ui::report_error(&format!("Failed to summarize: {e}")),
     }
 }
 

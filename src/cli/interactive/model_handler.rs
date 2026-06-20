@@ -1,80 +1,6 @@
 use crate::cli::ui;
 use crate::core::session::ActiveSession;
 
-pub fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
-    let args_trimmed = args.trim();
-
-    // `/alias` (no args): list all aliases
-    if args_trimmed.is_empty() {
-        match session.ctx.config_manager.get_state() {
-            Ok(state) => {
-                if state.model_aliases.is_empty() {
-                    ui::report_info("No aliases configured.");
-                } else {
-                    ui::print_rule(Some("Configured Model Aliases"), Some("cyan"));
-                    let mut aliases: Vec<_> = state.model_aliases.iter().collect();
-                    aliases.sort_by_key(|(k, _)| *k);
-                    for (name, alias) in aliases {
-                        println!("  {: <15} -> {}", name, alias.target);
-                    }
-                    ui::print_rule(None, Some("cyan"));
-                }
-            }
-            Err(e) => ui::report_error(&format!("Failed to load aliases: {e}")),
-        }
-        return;
-    }
-
-    let parts: Vec<&str> = args_trimmed.split_whitespace().collect();
-
-    // `/alias -d <name>` or `/alias --delete <name>`: remove an alias
-    if parts[0] == "-d" || parts[0] == "--delete" {
-        if parts.len() != 2 {
-            ui::report_error("Usage: /alias -d <name>");
-            return;
-        }
-        let alias_name = parts[1];
-        match session.ctx.config_manager.remove_alias(alias_name) {
-            Ok(true) => ui::report_success(&format!("Alias '{alias_name}' removed.")),
-            Ok(false) => ui::report_info(&format!("Alias '{alias_name}' does not exist.")),
-            Err(e) => ui::report_error(&format!("Failed to remove alias: {e}")),
-        }
-        return;
-    }
-
-    // `/alias <name>`: show a specific alias
-    if parts.len() == 1 {
-        let alias_name = parts[0];
-        match session.ctx.config_manager.get_state() {
-            Ok(state) => {
-                if let Some(alias) = state.model_aliases.get(alias_name) {
-                    println!("  {: <15} -> {}", alias_name, alias.target);
-                } else {
-                    ui::report_info(&format!("Alias '{alias_name}' does not exist."));
-                }
-            }
-            Err(e) => ui::report_error(&format!("Failed to load aliases: {e}")),
-        }
-        return;
-    }
-
-    // `/alias <name> <target>`: create or update an alias
-    if parts.len() != 2 {
-        ui::report_error(
-            "Usage: /alias <name> <target>   — create/update\n       /alias -d <name>       — delete\n       /alias <name>          — show one\n       /alias                 — list all",
-        );
-        return;
-    }
-
-    let alias_name = parts[0];
-    let target = parts[1];
-
-    match session.ctx.config_manager.set_alias(alias_name, target) {
-        Ok(()) => ui::report_success(&format!("Alias '{alias_name}' set to '{target}'")),
-        Err(e) => ui::report_error(&format!("Failed to set alias: {e}")),
-    }
-}
-
 pub fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
     let (current_provider, current_model, stdout, raw) = {
         let state = session.get_client().get_state();
@@ -128,20 +54,6 @@ pub fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
         if all_entries.is_empty() {
             println!("  No models cached. Use /model -u to fetch models now.");
         }
-
-        // Show aliases
-        let state = match session.ctx.config_manager.get_state() {
-            Ok(s) => s,
-            Err(_) => return,
-        };
-        if !state.model_aliases.is_empty() {
-            println!("\nConfigured Aliases:");
-            let mut aliases: Vec<_> = state.model_aliases.iter().collect();
-            aliases.sort_by_key(|(k, _)| *k);
-            for (name, alias) in aliases {
-                println!("  \u{25cf}    {} -> {}", name, alias.target);
-            }
-        }
         return;
     }
 
@@ -175,27 +87,12 @@ pub fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
     }
 
     // With argument: parse "provider:model" or just "model" (use current provider)
-    // Also check aliases first
-    let state = match session.ctx.config_manager.get_state() {
-        Ok(s) => s,
-        Err(_) => return,
-    };
     let models_map = session.ctx.config_manager.get_cached_models();
 
     let resolved_provider: String;
     let resolved_model: String;
 
-    if state.model_aliases.contains_key(args_trimmed) {
-        // Alias resolution
-        let alias = &state.model_aliases[args_trimmed];
-        if let Some((p, m)) = alias.target.split_once(':') {
-            resolved_provider = p.to_string();
-            resolved_model = m.to_string();
-        } else {
-            resolved_provider = current_provider.clone();
-            resolved_model = alias.target.clone();
-        }
-    } else if let Some((p, m)) = args_trimmed.split_once(':') {
+    if let Some((p, m)) = args_trimmed.split_once(':') {
         // provider:model format
         resolved_provider = p.to_string();
         resolved_model = m.to_string();
@@ -205,29 +102,27 @@ pub fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
         resolved_model = args_trimmed.to_string();
     }
 
-    // Validate: check the resolved provider has this model in cache (unless alias)
-    if !state.model_aliases.contains_key(args_trimmed) {
-        let cached = models_map
-            .get(&resolved_provider)
-            .cloned()
-            .unwrap_or_default();
-        if !cached.contains(&resolved_model) {
-            // Check if the arg is just a provider name (no colon)
-            let active_providers = session
-                .ctx
-                .client_registry
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .list_providers();
-            if !args_trimmed.contains(':') && active_providers.contains(&args_trimmed.to_string()) {
-                return handle_provider_only_switch(session, args_trimmed);
-            }
-            ui::report_error(&format!(
-                "Unknown model: '{}'. Use /model to list available models.",
-                args_trimmed
-            ));
-            return;
+    // Validate: check the resolved provider has this model in cache
+    let cached = models_map
+        .get(&resolved_provider)
+        .cloned()
+        .unwrap_or_default();
+    if !cached.contains(&resolved_model) {
+        // Check if the arg is just a provider name (no colon)
+        let active_providers = session
+            .ctx
+            .client_registry
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .list_providers();
+        if !args_trimmed.contains(':') && active_providers.contains(&args_trimmed.to_string()) {
+            return handle_provider_only_switch(session, args_trimmed);
         }
+        ui::report_error(&format!(
+            "Unknown model: '{}'. Use /model to list available models.",
+            args_trimmed
+        ));
+        return;
     }
 
     match crate::core::initializer::switch_model(
@@ -355,26 +250,23 @@ pub fn handle_verifier_cmd(session: &mut ActiveSession, args: &str) {
             }
         }
         "list" | "ls" => {
-            let members = config_manager.list_verifier_committee_members();
+            let (members, _enabled) = config_manager.get_verifier_committee();
             if members.is_empty() {
-                ui::report_info("No verifier committee members in state.toml.");
+                ui::report_info("No verifier committee members configured.");
             } else {
-                ui::print_rule(Some("Verifier Committee (state.toml)"), Some("cyan"));
-                for (i, m) in members.iter().enumerate() {
-                    println!("  {}. {}", i + 1, m);
+                ui::print_rule(Some("Verifier Committee Members"), Some("cyan"));
+                for (i, (p, m)) in members.iter().enumerate() {
+                    println!("  {}. {}:{}", i + 1, p, m);
                 }
                 ui::print_rule(None, Some("cyan"));
             }
         }
         _ => {
-            ui::report_error(&format!(
-                "Unknown subcommand: '{subcmd}'. Use: add, delete, list"
-            ));
+            ui::report_error("Usage: /verifier [add|delete <provider:model>|list]");
         }
     }
 }
 
-/// Fetch and display OpenRouter model endpoints (provider-specific pricing & details).
 fn handle_endpoints_cmd(
     config_manager: &crate::config::ConfigManager,
     provider: &str,

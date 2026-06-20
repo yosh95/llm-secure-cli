@@ -31,11 +31,6 @@ pub struct CommandEntry {
 /// ⚠️ **Keep this list sorted** by primary `name` for readability.
 pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
     CommandEntry {
-        name: "alias",
-        aliases: &[],
-        description: "List/create/delete model aliases",
-    },
-    CommandEntry {
         name: "attach",
         aliases: &[],
         description: "Attach a file or URL to the next request",
@@ -49,11 +44,6 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
         name: "credits",
         aliases: &[],
         description: "Show detailed OpenRouter credit info",
-    },
-    CommandEntry {
-        name: "rankings",
-        aliases: &[],
-        description: "Show OpenRouter model rankings by token usage",
     },
     CommandEntry {
         name: "edit_history",
@@ -81,6 +71,11 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
         description: "Exit the session",
     },
     CommandEntry {
+        name: "rankings",
+        aliases: &[],
+        description: "Show OpenRouter model rankings by token usage",
+    },
+    CommandEntry {
         name: "raw",
         aliases: &[],
         description: "Show raw conversation history",
@@ -89,16 +84,6 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
         name: "session",
         aliases: &[],
         description: "List, load, delete, or clear saved sessions",
-    },
-    CommandEntry {
-        name: "summarize",
-        aliases: &["s"],
-        description: "Summarize history and clear it",
-    },
-    CommandEntry {
-        name: "template",
-        aliases: &["t"],
-        description: "List templates or insert one into prompt",
     },
     CommandEntry {
         name: "tools",
@@ -163,7 +148,6 @@ mod tests {
     fn test_is_valid_command() {
         assert!(is_valid_command("/help"));
         assert!(is_valid_command("/h"));
-        assert!(is_valid_command("/alias"));
         assert!(is_valid_command("/tools"));
         assert!(!is_valid_command("/tool_output")); // Removed: tool_output no longer a command
         assert!(!is_valid_command("/vcom"));

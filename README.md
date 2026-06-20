@@ -218,7 +218,7 @@ As a tool designed with **CISSP/CISA/CCSP** principles in mind, `llm-secure-cli`
 ```bash
 llsc [SOURCES...]                    # Start interactive chat (optional initial text/files)
 llsc -p <provider>                   # Start with specific provider
-llsc -m <model>                      # Start with specific model alias
+llsc -m <model>                      # Start with specific model
 llsc --stdout                        # Non-interactive mode, output to stdout
 llsc --raw                           # Disable Markdown rendering (use with --stdout)
 llsc --session <path>                # Load a saved session on startup
@@ -250,9 +250,6 @@ Inside the `llsc` interactive session:
 - `/attach <path/URL>`: Add a file or website content to the context.
 - `/tools [on|off]`: Show or toggle autonomous tool use status.
 - `/model`, `/m [-u] [<name>]`: List models or switch to `provider:model`. Use `-u` to refresh the cache.
-- `/alias` — list all; `/alias <name>` — show one; `/alias <name> <target>` — create/update; `/alias -d <name>` — delete.
-- `/summarize`, `/s`: Summarize history and clear it (context preservation).
-- `/template`, `/t [<name>]`: List templates or insert one into the prompt.
 - `/view [<path>]`: Open saved image or file with system default app.
 - `/credits`: Show detailed OpenRouter credit info.
 - `/rankings`: Show OpenRouter model rankings by token usage.
@@ -287,7 +284,7 @@ Provider API keys are read from environment variables (e.g., `OPENROUTER_API_KEY
 
 ## Configuration Reference
 
-The primary security configuration is in `src/config/defaults.toml` (overridden by `~/.llsc/config.toml`). Runtime-persisted data (verifier committee members, model aliases) is stored in `~/.llsc/state.toml`.
+The primary security configuration is in `src/config/defaults.toml` (overridden by `~/.llsc/config.toml`). Runtime-persisted data (verifier committee members) is stored in `~/.llsc/state.toml`.
 
 ```toml
 # ~/.llsc/config.toml

@@ -23,7 +23,7 @@ use std::sync::{Arc, OnceLock, RwLock};
 /// initialization path atomic.
 ///
 /// **`AppState`** is stored in a `RwLock` because it is mutable (*`update_state`*,
-/// *`set_alias`*, …).  The lock is held only for the brief clone-or-swap, so
+/// …).  The lock is held only for the brief clone-or-swap, so
 /// contention in the async runtime is negligible.
 ///
 /// State management methods live in [`state`]; model-cache methods in [`cache`].
@@ -152,8 +152,7 @@ impl ConfigManager {
         // 3. Final deserialization into AppConfig
         let final_config_struct: AppConfig = serde_json::from_value(config_value).map_err(|e| {
             anyhow::anyhow!(
-                "Failed to deserialize merged configuration: {}\n\
-                     Please check your {}/config.toml for schema errors.",
+                "Failed to deserialize merged configuration: {}\n                     Please check your {}/config.toml for schema errors.",
                 e,
                 get_base_dir().to_string_lossy()
             )
@@ -304,74 +303,5 @@ fn merge_json(base: &mut serde_json::Value, over: serde_json::Value) {
         (base, over) => {
             *base = over;
         }
-    }
-}
-
-impl ConfigManager {
-    /// Load user-defined prompt templates from `~/.llsc/templates/`.
-    ///
-    /// Only `.txt` and `.md` files are read.  The file stem (name without
-    /// extension) becomes the template name.  Directory entries are created
-    /// automatically if they don't exist yet.
-    pub fn load_templates(&self) -> HashMap<String, String> {
-        let dir = crate::consts::templates_dir();
-        let mut templates = HashMap::new();
-
-        let dir = if let Ok(rd) = std::fs::read_dir(&dir) {
-            rd
-        } else {
-            // Create the directory if missing
-            if let Err(e) = std::fs::create_dir_all(&dir) {
-                tracing::warn!(
-                    path = %dir.display(),
-                    error = %e,
-                    "Failed to create templates directory"
-                );
-            }
-            return templates;
-        };
-
-        for entry in dir.filter_map(std::result::Result::ok) {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or_default();
-            if ext != "txt" && ext != "md" {
-                continue;
-            }
-
-            let name = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or_default()
-                .to_string();
-            if name.is_empty() {
-                continue;
-            }
-
-            match std::fs::read_to_string(&path) {
-                Ok(content) => {
-                    // Strip trailing newlines — text editors often add a final \n
-                    // (POSIX convention), which would cause the cursor to move to
-                    // the next line when the template is inserted via /template.
-                    let content = content.trim_end_matches(&['\n', '\r'] as &[_]);
-                    templates.insert(name, content.to_string());
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        path = %path.display(),
-                        error = %e,
-                        "Failed to read template file"
-                    );
-                }
-            }
-        }
-
-        templates
     }
 }
