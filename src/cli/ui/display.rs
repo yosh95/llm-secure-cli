@@ -172,9 +172,7 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
                     // Display Python code with syntax highlighting
                     push_line(&mut buf, &format!("    {} {}:", "\u{2022}", "code"));
                     let code_str = v.as_str().unwrap_or("");
-                    let highlighted =
-                        crate::utils::python_highlighter::highlight_python_code(code_str);
-                    for line in highlighted.lines() {
+                    for line in code_str.lines() {
                         push_line(&mut buf, &format!("        {line}"));
                     }
                 } else {

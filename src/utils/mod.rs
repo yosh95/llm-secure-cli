@@ -2,7 +2,6 @@ pub mod chat_logger;
 pub mod http;
 pub mod logging;
 pub mod media;
-pub mod python_highlighter;
 pub mod session_store;
 
 const HEX_CHARS: [char; 16] = [
