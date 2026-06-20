@@ -21,7 +21,7 @@ pub fn brave_search(args: HashMap<String, Value>, api_key: &str) -> anyhow::Resu
 ///
 /// Returns the raw JSON response from the API without any restructuring.
 /// Only sends the query parameter; all other parameters use API-side defaults.
-/// Supports Ctrl+C cancellation via [`run_cancellable`].
+/// Supports Ctrl+C cancellation via [`crate::core::session::run_cancellable`].
 fn call_brave_llm_context(query: &str, api_key: &str) -> anyhow::Result<Value> {
     let mut body = serde_json::Map::new();
     body.insert("q".to_string(), json!(query));
