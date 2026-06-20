@@ -6,8 +6,8 @@ authors:
     alias: yosh95
 title: "llm-secure-cli: Unified OpenAI-Compatible CLI for AI Agents"
 abstract: "A high-assurance, secure CLI for interacting with LLMs (OpenAI, OpenRouter, Ollama, LiteLLM) featuring Verifier Committee multi-LLM validation, tamper-evident audit logging with PQC signatures (ML-DSA-87 / FIPS-204), PQC encryption (ML-KEM-1024 / FIPS-203), and Zero Trust architecture for autonomous AI agent control."
-version: 0.4.0
-date-released: 2026-05-28
+version: 0.5.0
+date-released: 2026-06-20
 repository-code: "https://github.com/yosh95/llm-secure-cli"
 doi: 10.5281/zenodo.20428939
 license: Apache-2.0
