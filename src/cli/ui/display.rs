@@ -381,6 +381,8 @@ fn push_line(buf: &mut String, line: &str) {
 
 fn finish_tool_result(out: String) {
     print!("{out}");
+    // Add separator line after tool result
+    print_rule(None, None);
 }
 
 fn format_size_brief(bytes: u64) -> String {
