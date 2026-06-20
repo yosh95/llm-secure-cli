@@ -14,25 +14,6 @@ use std::io::{BufRead, BufReader, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// Attempt to restore the terminal to a sane cooked mode.
-/// This is a safety net to recover from a state where rustyline left
-/// the terminal in raw mode (ISIG disabled), which would cause Ctrl+C
-/// to not generate SIGINT.
-fn restore_terminal() {
-    #[cfg(unix)]
-    {
-        // Reset terminal to sane settings via `stty`.
-        // This is the most reliable cross-platform way to restore terminal state
-        // without depending on specific terminal libraries.
-        let _ = std::process::Command::new("stty").args(["sane"]).status();
-
-        // Also try to re-enable ISIG explicitly via `stty icanon isig`.
-        let _ = std::process::Command::new("stty")
-            .args(["icanon", "isig"])
-            .status();
-    }
-}
-
 /// Load history with a fallback for platforms where rustyline's native
 /// `FileHistory::load` (which uses `flock`) may fail (e.g., Termux/Android).
 fn load_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::path::Path) {
@@ -398,7 +379,7 @@ impl ActiveSession {
                     // Restore terminal to cooked mode to ensure future
                     // Ctrl+C signals work correctly (rustyline may leave
                     // the terminal in raw mode on interrupt).
-                    restore_terminal();
+                    crate::utils::restore_terminal();
                     println!("CTRL-C");
                     // Auto-save the session before exiting on Ctrl+C.
                     crate::utils::session_store::auto_save(self);

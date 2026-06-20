@@ -69,6 +69,11 @@ where
     F: FnOnce() -> anyhow::Result<T> + Send + 'static,
     T: Send + 'static,
 {
+    // Ensure the terminal ISIG flag is enabled so Ctrl+C generates SIGINT
+    // during blocking operations (HTTP requests).  rustyline may have left
+    // the terminal in raw mode with ISIG disabled.
+    crate::utils::ensure_isig_enabled();
+
     let start = cancel_generation();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {

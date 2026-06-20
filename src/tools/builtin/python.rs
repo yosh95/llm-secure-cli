@@ -186,6 +186,9 @@ pub fn execute_python(
         }
     });
 
+    // Ensure terminal ISIG is enabled so Ctrl+C generates SIGINT.
+    crate::utils::ensure_isig_enabled();
+
     let mut guard = PythonProcessGuard::new(child, tmp_path);
 
     let max_lines = config.general.max_output_lines;
@@ -208,6 +211,19 @@ pub fn execute_python(
         }
 
         if crate::core::session::cancelled_since(cancel_gen) {
+            // Kill the child process immediately (don't wait for Drop).
+            if let Some(ref mut c) = guard.child {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+            // Let the guard know the child is already dead so Drop won't
+            // try to kill it again (which would be a no-op but harmless).
+            guard.child = None;
+
+            // Wait for reader threads to drain the pipes with a short timeout.
+            let _ = h_out.join();
+            let _ = h_err.join();
+
             return Ok(json!({
                 "stdout": truncate(&snapshot(&stdout_buf)),
                 "stderr": truncate(&snapshot(&stderr_buf)),
@@ -217,6 +233,17 @@ pub fn execute_python(
         }
 
         if start.elapsed() >= timeout {
+            // Kill the child process immediately on timeout.
+            if let Some(ref mut c) = guard.child {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+            guard.child = None;
+
+            // Wait for reader threads to drain the pipes.
+            let _ = h_out.join();
+            let _ = h_err.join();
+
             return Ok(json!({
                 "stdout": truncate(&snapshot(&stdout_buf)),
                 "stderr": truncate(&snapshot(&stderr_buf)),

@@ -31,3 +31,31 @@ pub fn format_number<T: std::fmt::Display>(n: T) -> String {
     }
     result.chars().rev().collect()
 }
+
+/// Restore the terminal to cooked mode so that Ctrl+C (SIGINT) works correctly.
+///
+/// rustyline leaves the terminal in raw mode on some code paths (e.g. on
+/// interrupt or error), which disables ISIG and makes Ctrl+C unable to
+/// generate SIGINT.  This function resets the terminal to sane settings
+/// using `stty sane` and explicitly re-enables `icanon` and `isig`.
+pub fn restore_terminal() {
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("stty").args(["sane"]).status();
+        let _ = std::process::Command::new("stty")
+            .args(["icanon", "isig"])
+            .status();
+    }
+}
+
+/// Ensure the ISIG flag is enabled so that Ctrl+C generates SIGINT.
+///
+/// Call this before any blocking operation (tool execution, HTTP request)
+/// that should be responsive to Ctrl+C.  This is a safety net in case
+/// rustyline or another component left the terminal in raw mode.
+pub fn ensure_isig_enabled() {
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("stty").args(["isig"]).status();
+    }
+}

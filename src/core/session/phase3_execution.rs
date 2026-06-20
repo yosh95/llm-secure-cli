@@ -31,6 +31,8 @@ impl ActiveSession {
 
         let is_stdout = self.client.get_state().stdout;
 
+        // Ensure terminal ISIG flag is enabled so Ctrl+C works during tool execution.
+        crate::utils::ensure_isig_enabled();
         let result = self.execute_tool(name, &args_map);
 
         let audit_ctx = serde_json::json!({

@@ -101,6 +101,7 @@ pub fn get_user_input(prompt: &str) -> Option<String> {
     match rl.readline(prompt) {
         Ok(line) => Some(line.trim().to_string()),
         Err(ReadlineError::Interrupted) => {
+            crate::utils::restore_terminal();
             println!("^C");
             None
         }
