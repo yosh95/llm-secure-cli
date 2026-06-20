@@ -90,10 +90,6 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             content_handler::handle_view_cmd(session, args).await;
             CommandResult::Handled
         }
-        "tool_output" | "to" => {
-            tool_handler::handle_tool_output_cmd(session, args);
-            CommandResult::Handled
-        }
         "credits" => {
             crate::cli::commands::credits::run_credits_interactive(session).await;
             CommandResult::Handled
@@ -169,14 +165,14 @@ fn print_help() {
     );
     println!("  /attach <path|url> Attach a file or URL to the next request");
     println!(
-        "  /tools [on|off]    Toggle or show status of tool execution /to, /tool_output [on|off] Toggle display of tool execution results (default: hidden)"
+        "  /tools [on|off]    Toggle or show status of tool execution (tool results always displayed)"
     );
     println!(
         "  /m, /model [-u] [<name>]  List models (/model -u to refresh ALL providers cache) or switch to provider:model"
     );
     println!("  /alias [-d <name>] [<name> <target>]  List/create/delete model aliases");
     println!(
-        "  /v, /verifier [add|delete <provider:model>|list]  Add/delete/list verifier committee members (persisted to state.toml)"
+        "  /v, /verifier [add|delete <provider:model>|list]  Add/delete/list verifier committee members"
     );
     println!("  /s, /summarize     Summarize history and clear it");
     println!("  /t, /template [<name>]  List templates or insert one into prompt");

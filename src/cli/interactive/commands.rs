@@ -101,11 +101,6 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
         description: "List templates or insert one into prompt",
     },
     CommandEntry {
-        name: "tool_output",
-        aliases: &["to"],
-        description: "Toggle display of tool execution results",
-    },
-    CommandEntry {
         name: "tools",
         aliases: &[],
         description: "Toggle or show status of tool execution",
@@ -170,7 +165,7 @@ mod tests {
         assert!(is_valid_command("/h"));
         assert!(is_valid_command("/alias"));
         assert!(is_valid_command("/tools"));
-        assert!(is_valid_command("/tool_output"));
+        assert!(!is_valid_command("/tool_output")); // Removed: tool_output no longer a command
         assert!(!is_valid_command("/vcom"));
         assert!(!is_valid_command("/nonexistent"));
     }

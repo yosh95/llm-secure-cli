@@ -103,43 +103,15 @@ impl ActiveSession {
             config.general.max_output_chars,
         );
 
-        // Calculate and display stats
-        let stats = crate::cli::stats::get_tool_result_stats(name, &final_v);
-
-        // Display the tool result to the user conditionally (based on state.toml setting).
-        // Default is hidden — useful when tool output is very large.
+        // Display the tool result to the user.
         // The result is always sent to the LLM and logged to the audit trail.
         if !is_stdout {
-            let show_result = self.ctx.config_manager.get_show_tool_result();
-            if show_result {
-                let display_str = final_v
-                    .as_str()
-                    .map_or_else(|| final_v.to_string(), std::borrow::ToOwned::to_owned);
+            let display_str = final_v
+                .as_str()
+                .map_or_else(|| final_v.to_string(), std::borrow::ToOwned::to_owned);
 
-                self.ctx.ui.print_tool_result(&display_str);
-            } else {
-                // Show a brief summary instead of the full output
-                let item_count = stats.item_count;
-                let lines = stats.line_count;
-                let summary = if let Some(count) = item_count {
-                    format!(
-                        " — {} {}, {} lines",
-                        crate::utils::format_number(count),
-                        stats.item_label,
-                        crate::utils::format_number(lines)
-                    )
-                } else {
-                    format!(" — {} lines", crate::utils::format_number(lines))
-                };
-                eprintln!(
-                    "  Tool result hidden (use /tool_output on to show){}",
-                    summary
-                );
-            }
+            self.ctx.ui.print_tool_result(&display_str);
         }
-
-        // Show stats (stderr info included)
-        // crate::cli::stats::print_tool_stats(&stats);
 
         // Convert to human-readable string for the LLM
         let human_result = crate::tools::executor_utils::humanize_tool_result(name, &final_v);

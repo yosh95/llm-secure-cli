@@ -150,26 +150,6 @@ impl ConfigManager {
         Ok(())
     }
 
-    // ── Show tool result flag (state.toml) ─────────────────────────────────
-
-    /// Whether tool execution results should be displayed to the user.
-    /// Default (None/false) = hidden — useful when output is very large.
-    pub fn get_show_tool_result(&self) -> bool {
-        let state = self.get_state().unwrap_or_else(|_| Default::default());
-        state.show_tool_result.unwrap_or(false)
-    }
-
-    /// Set the `show_tool_result` flag and persist to state.toml.
-    pub fn set_show_tool_result(&self, show: bool) -> anyhow::Result<()> {
-        let mut write = self
-            .app_state
-            .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        write.show_tool_result = Some(show);
-        Self::persist_state(&write);
-        Ok(())
-    }
-
     // ── Verifier committee (state.toml) ────────────────────────────────────
 
     /// Resolve the verifier committee configuration.

@@ -313,18 +313,6 @@ impl Completer for ChatCompleter {
                         }
                         return Ok((start, matches));
                     }
-                    "/tool_output" | "/to" => {
-                        let mut matches = Vec::new();
-                        for opt in &["on", "off", "show", "hide"] {
-                            if opt.starts_with(arg_prefix) {
-                                matches.push(Pair {
-                                    display: opt.to_string(),
-                                    replacement: opt.to_string(),
-                                });
-                            }
-                        }
-                        return Ok((start, matches));
-                    }
                     "/t" | "/template" => {
                         let templates = self.ctx.config_manager.load_templates();
                         let mut matches = Vec::new();

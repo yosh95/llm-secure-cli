@@ -94,10 +94,7 @@ pub struct AppState {
     /// if this list is empty.
     #[serde(default)]
     pub verifier_committee: Vec<String>,
-    /// Whether to display tool execution results to the user.
-    /// Default (None/false) = hidden (not shown).
-    #[serde(default)]
-    pub show_tool_result: Option<bool>,
+    // (Removed: show_tool_result — tool output is now always displayed)
     #[serde(default)]
     pub model_aliases: HashMap<String, ModelAlias>,
 }

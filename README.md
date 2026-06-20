@@ -249,7 +249,6 @@ Inside the `llsc` interactive session:
 - `/session [load|delete <id>|clear]`: List, load, delete, or clear saved sessions.
 - `/attach <path/URL>`: Add a file or website content to the context.
 - `/tools [on|off]`: Show or toggle autonomous tool use status.
-- `/tool_output`, `/to [on|off]`: Toggle display of tool execution results.
 - `/model`, `/m [-u] [<name>]`: List models or switch to `provider:model`. Use `-u` to refresh the cache.
 - `/alias` — list all; `/alias <name>` — show one; `/alias <name> <target>` — create/update; `/alias -d <name>` — delete.
 - `/summarize`, `/s`: Summarize history and clear it (context preservation).
@@ -288,7 +287,7 @@ Provider API keys are read from environment variables (e.g., `OPENROUTER_API_KEY
 
 ## Configuration Reference
 
-The primary security configuration is in `src/config/defaults.toml` (overridden by `~/.llsc/config.toml`). Security-related runtime state (verifier committee members, aliases) is persisted in `~/.llsc/state.toml`.
+The primary security configuration is in `src/config/defaults.toml` (overridden by `~/.llsc/config.toml`). Runtime-persisted data (verifier committee members, model aliases) is stored in `~/.llsc/state.toml`.
 
 ```toml
 # ~/.llsc/config.toml

@@ -166,12 +166,8 @@ pub fn handle_info(session: &ActiveSession) {
     };
     ui::print_key_value("Verifier Status", &v_status);
 
-    // Tool Output display status
-    let show_output = session.ctx.config_manager.get_show_tool_result();
-    ui::print_key_value(
-        "Tool Output",
-        if show_output { "Visible" } else { "Hidden" },
-    );
+    // Tool Output is always displayed
+    ui::print_key_value("Tool Output", "Always Visible");
 
     // Security
     ui::print_key_value("Security Level", "high");
