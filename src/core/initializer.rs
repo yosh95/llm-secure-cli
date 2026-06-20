@@ -86,6 +86,9 @@ pub async fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<Ap
     let ctx = Arc::new(AppContext::new(ui));
     let is_atty = stdin().is_terminal();
 
+    // 0. Check API key environment variables
+    check_api_key_env_vars()?;
+
     // 1. Setup permissions and directories
     crate::security::permissions::setup_permissions();
 
@@ -101,6 +104,20 @@ pub async fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<Ap
     {
         let mut registry = ctx.tool_registry.write().await;
         crate::tools::registry::register_builtin_tools(&mut registry, &ctx.config_manager);
+    }
+    // 4b. Warn about unavailable tools
+    {
+        let registry = ctx.tool_registry.read().await;
+        if !registry.has_tool("brave_search") {
+            ctx.ui.report_warning(
+                "brave_search is not available. Set BRAVE_API_KEY in environment or .env file to enable web search."
+            );
+        }
+        if !registry.has_tool("execute_python") {
+            ctx.ui.report_warning(
+                "execute_python is not available. Install python3 or python in PATH to enable code execution."
+            );
+        }
     }
 
     // 5. Register LLM Clients
@@ -126,6 +143,58 @@ async fn ensure_identity(ctx: &Arc<AppContext>, is_atty: bool) -> anyhow::Result
                 .report_error(&format!("Failed to generate keys: {e}"));
         } else {
             ctx.ui.report_success("Identity keys generated.");
+        }
+    }
+
+    Ok(())
+}
+
+/// Check that at least one of the required API key environment variables is set.
+///
+/// Required variables: `OLLAMA_API_KEY`, `OPENROUTER_API_KEY`, `VLLM_API_KEY`.
+/// Even for local Ollama (which technically does not need an API key), the user
+/// must explicitly set one of these environment variables.
+fn check_api_key_env_vars() -> anyhow::Result<()> {
+    let required_vars = ["OLLAMA_API_KEY", "OPENROUTER_API_KEY", "VLLM_API_KEY"];
+    let any_set = required_vars.iter().any(|var| std::env::var(var).is_ok());
+
+    if !any_set {
+        // Also check .env files as a fallback
+        let env_files = [
+            std::path::Path::new(".env").to_path_buf(),
+            crate::consts::get_base_dir().join(".env"),
+        ];
+        let any_in_env_file = env_files.iter().any(|path| {
+            if path.exists()
+                && let Ok(content) = std::fs::read_to_string(path)
+            {
+                return content.lines().any(|line| {
+                    let line = line.trim();
+                    line.starts_with("OLLAMA_API_KEY=")
+                        || line.starts_with("OPENROUTER_API_KEY=")
+                        || line.starts_with("VLLM_API_KEY=")
+                });
+            }
+            false
+        });
+
+        if !any_in_env_file {
+            anyhow::bail!(
+                "No API key environment variable set.
+                 At least one of the following must be defined:
+                 - OLLAMA_API_KEY (local Ollama)
+                 - OPENROUTER_API_KEY (OpenRouter)
+                 - VLLM_API_KEY (vLLM)
+
+                 Even if you are using a local Ollama server that does not require
+                 an API key, you must set a dummy API key (e.g. OLLAMA_API_KEY=dummy)
+                 to proceed. This is required for security validation.
+
+                 You can set it via:
+                   export OLLAMA_API_KEY=dummy
+                 Or create a .env file with:
+                   OLLAMA_API_KEY=dummy"
+            );
         }
     }
 
@@ -159,6 +228,7 @@ async fn register_clients(ctx: &Arc<AppContext>) {
                             "openai" => "https://api.openai.com/v1".to_string(),
                             "ollama" => "http://localhost:11434/v1".to_string(),
                             "openrouter" => "https://openrouter.ai/api/v1".to_string(),
+                            "vllm" => "http://localhost:8000/v1".to_string(),
                             _ => String::new(),
                         });
                     let hint = p_cfg.and_then(|p| p.formatter.clone());

@@ -186,15 +186,6 @@ impl ConfigManager {
             }
         }
 
-        // Special case for Ollama:
-        // Return "local_bypass" ONLY when the configured endpoint is actually local.
-        if provider == "ollama"
-            && let Ok(config) = self.get_config()
-            && Self::is_local_ollama(&config)
-        {
-            return Some("local_bypass".to_string());
-        }
-
         // 2. Fallback to config
         if let Ok(config) = self.get_config() {
             config
@@ -203,19 +194,6 @@ impl ConfigManager {
                 .and_then(|p| p.api_key.clone())
         } else {
             None
-        }
-    }
-
-    /// Check whether an Ollama endpoint is local (no API key required).
-    fn is_local_ollama(config: &AppConfig) -> bool {
-        match config.providers.get("ollama") {
-            Some(p_cfg) => {
-                let base_url = p_cfg.api_url.as_deref().unwrap_or_default();
-                base_url.is_empty()
-                    || base_url.contains("localhost")
-                    || base_url.contains("127.0.0.1")
-            }
-            None => true, // No config → assume local
         }
     }
 

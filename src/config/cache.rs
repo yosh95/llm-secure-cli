@@ -316,9 +316,7 @@ impl ConfigManager {
         };
 
         let mut req = crate::utils::http::CLIENT.get(&models_url);
-        if let Some(key) = api_key
-            && key != "local_bypass"
-        {
+        if let Some(key) = api_key {
             req = req.header("Authorization", format!("Bearer {key}"));
         }
 

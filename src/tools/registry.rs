@@ -103,6 +103,11 @@ impl ToolRegistry {
     }
 
     #[must_use]
+    pub fn has_tool(&self, name: &str) -> bool {
+        self.tools.contains_key(name)
+    }
+
+    #[must_use]
     pub fn get_tool_schemas_anthropic(&self) -> Vec<Value> {
         self.tools
             .values()
