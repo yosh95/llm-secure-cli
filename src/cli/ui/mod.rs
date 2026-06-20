@@ -13,15 +13,12 @@ pub use display::{
     print_tool_call_direct, print_tool_result,
 };
 pub use prompt::{
-    ConfirmResult, PromptMode, ask_confirm, ask_confirm_async, ask_confirm_simple,
-    ask_confirm_simple_async, get_user_input, open_external_editor,
+    ConfirmResult, PromptMode, ask_confirm, ask_confirm_simple, get_user_input,
+    open_external_editor,
 };
 pub use report::{report_error, report_info, report_success, report_warning};
 
-use async_trait::async_trait;
-
 /// Abstract user interface trait — enables testing with mock implementations.
-#[async_trait]
 pub trait UserInterface: Send + Sync {
     fn print_block(&self, content: &str, title: Option<&str>, style: Option<&str>);
     fn print_rule(&self, title: Option<&str>, style: Option<&str>);
@@ -32,14 +29,13 @@ pub trait UserInterface: Send + Sync {
     fn report_info(&self, message: &str);
     fn report_warning(&self, message: &str);
     fn report_success(&self, message: &str);
-    async fn ask_confirm(&self, prompt: &str) -> Option<ConfirmResult>;
-    async fn ask_confirm_simple(&self, prompt: &str) -> Option<ConfirmResult>;
+    fn ask_confirm(&self, prompt: &str) -> Option<ConfirmResult>;
+    fn ask_confirm_simple(&self, prompt: &str) -> Option<ConfirmResult>;
 }
 
 /// Concrete UI implementation using terminal output.
 pub struct CliUi;
 
-#[async_trait]
 impl UserInterface for CliUi {
     fn print_block(&self, content: &str, title: Option<&str>, style: Option<&str>) {
         display::print_block(content, title, style);
@@ -68,10 +64,10 @@ impl UserInterface for CliUi {
     fn report_success(&self, message: &str) {
         report::report_success(message);
     }
-    async fn ask_confirm(&self, prompt: &str) -> Option<ConfirmResult> {
-        prompt::ask_confirm_async(prompt).await
+    fn ask_confirm(&self, prompt: &str) -> Option<ConfirmResult> {
+        prompt::ask_confirm(prompt)
     }
-    async fn ask_confirm_simple(&self, prompt: &str) -> Option<ConfirmResult> {
-        prompt::ask_confirm_simple_async(prompt).await
+    fn ask_confirm_simple(&self, prompt: &str) -> Option<ConfirmResult> {
+        prompt::ask_confirm_simple(prompt)
     }
 }

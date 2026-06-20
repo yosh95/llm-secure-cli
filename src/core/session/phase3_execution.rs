@@ -4,17 +4,17 @@ use std::collections::HashMap;
 
 impl ActiveSession {
     /// Phase 3: Tool execution with audit logging and result display.
-    pub(crate) async fn phase3_execute_and_audit(
+    pub(crate) fn phase3_execute_and_audit(
         &mut self,
         name: &str,
         args: &serde_json::Map<String, Value>,
         approved: bool,
     ) -> Value {
-        self.execute_and_audit_tool(name, args, approved).await
+        self.execute_and_audit_tool(name, args, approved)
     }
 
     /// Internal execution and audit logging logic.
-    async fn execute_and_audit_tool(
+    fn execute_and_audit_tool(
         &mut self,
         name: &str,
         args: &serde_json::Map<String, Value>,
@@ -31,7 +31,7 @@ impl ActiveSession {
 
         let is_stdout = self.client.get_state().stdout;
 
-        let result = self.execute_tool(name, &args_map).await;
+        let result = self.execute_tool(name, &args_map);
 
         let audit_ctx = serde_json::json!({
             "trace_id": self.trace_id,
@@ -40,57 +40,43 @@ impl ActiveSession {
             "user_id": user_id
         });
 
-        let name_owned = name.to_string();
         let mut final_v = match result {
             Ok(v) => {
-                let c = config.clone();
-                let a = args.clone();
-                let ac = audit_ctx.clone();
                 let out_str = v.as_str().map(std::string::ToString::to_string);
-                let entry = tokio::task::spawn_blocking(move || {
-                    crate::security::audit::log_audit_and_return(
-                        crate::security::audit::AuditParams {
-                            event_type: "tool_call",
-                            tool_name: &name_owned,
-                            args: serde_json::json!(a),
-                            output: out_str.as_deref(),
-                            exit_code: Some(0),
-                            error: None,
-                            context: Some(&ac),
-                            config: &c,
-                        },
-                        None,
-                    )
-                })
-                .await;
-                if let Ok(Some(entry)) = entry {
+                let entry = crate::security::audit::log_audit_and_return(
+                    crate::security::audit::AuditParams {
+                        event_type: "tool_call",
+                        tool_name: name,
+                        args: serde_json::json!(args),
+                        output: out_str.as_deref(),
+                        exit_code: Some(0),
+                        error: None,
+                        context: Some(&audit_ctx),
+                        config: &config,
+                    },
+                    None,
+                );
+                if let Some(entry) = entry {
                     self.audit_entries.push(entry);
                 }
                 v
             }
             Err(e) => {
                 let err_msg = e.to_string();
-                let err_msg_for_closure = err_msg.clone();
-                let c = config.clone();
-                let a = args.clone();
-                let ac = audit_ctx.clone();
-                let entry = tokio::task::spawn_blocking(move || {
-                    crate::security::audit::log_audit_and_return(
-                        crate::security::audit::AuditParams {
-                            event_type: "tool_call",
-                            tool_name: &name_owned,
-                            args: serde_json::json!(a),
-                            output: None,
-                            exit_code: Some(1),
-                            error: Some(&err_msg_for_closure),
-                            context: Some(&ac),
-                            config: &c,
-                        },
-                        None,
-                    )
-                })
-                .await;
-                if let Ok(Some(entry)) = entry {
+                let entry = crate::security::audit::log_audit_and_return(
+                    crate::security::audit::AuditParams {
+                        event_type: "tool_call",
+                        tool_name: name,
+                        args: serde_json::json!(args),
+                        output: None,
+                        exit_code: Some(1),
+                        error: Some(&err_msg),
+                        context: Some(&audit_ctx),
+                        config: &config,
+                    },
+                    None,
+                );
+                if let Some(entry) = entry {
                     self.audit_entries.push(entry);
                 }
                 Value::String(format!("Error: {err_msg}"))

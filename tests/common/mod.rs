@@ -30,7 +30,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use async_trait::async_trait;
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
@@ -258,7 +257,6 @@ impl MockLlmClient {
     }
 }
 
-#[async_trait]
 impl LlmClient for MockLlmClient {
     fn get_state(&self) -> &ClientState {
         &self.state
@@ -273,7 +271,7 @@ impl LlmClient for MockLlmClient {
         false
     }
 
-    async fn send(
+    fn send(
         &mut self,
         data: Vec<DataSource>,
         _tool_schemas: Vec<Value>,
@@ -289,7 +287,7 @@ impl LlmClient for MockLlmClient {
         }
     }
 
-    async fn send_as_verifier(
+    fn send_as_verifier(
         &mut self,
         _data: Vec<DataSource>,
         _tool_schema: Value,
@@ -357,7 +355,6 @@ impl MockUi {
     }
 }
 
-#[async_trait]
 impl UserInterface for MockUi {
     fn print_block(&self, _c: &str, _t: Option<&str>, _s: Option<&str>) {}
     fn print_rule(&self, _t: Option<&str>, _s: Option<&str>) {}
@@ -377,7 +374,7 @@ impl UserInterface for MockUi {
         self.record(format!("SUCCESS: {}", m));
     }
 
-    async fn ask_confirm(&self, _p: &str) -> Option<ConfirmResult> {
+    fn ask_confirm(&self, _p: &str) -> Option<ConfirmResult> {
         self.confirmed.map(|y| {
             if y {
                 ConfirmResult::Yes
@@ -388,7 +385,7 @@ impl UserInterface for MockUi {
             }
         })
     }
-    async fn ask_confirm_simple(&self, _p: &str) -> Option<ConfirmResult> {
+    fn ask_confirm_simple(&self, _p: &str) -> Option<ConfirmResult> {
         self.confirmed.map(|y| {
             if y {
                 ConfirmResult::Yes
@@ -432,12 +429,15 @@ pub fn create_test_context(ui: MockUi) -> Arc<AppContext> {
 ///
 /// The factory creates clients that return `response_text` for every
 /// `send()` call.
-pub async fn register_mock_client(
+pub fn register_mock_client(
     ctx: &Arc<AppContext>,
     provider_name: &str,
     response: Result<String, String>,
 ) {
-    let mut registry = ctx.client_registry.lock().await;
+    let mut registry = ctx
+        .client_registry
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
     let provider = provider_name.to_string();
     let provider_clone = provider.clone();
     registry.register(
@@ -465,8 +465,11 @@ pub async fn register_mock_client(
 
 /// Registers a flexible mock client that returns a pre-built `MockLlmClient`.
 #[expect(dead_code)]
-pub async fn register_mock_full(ctx: &Arc<AppContext>, provider_name: &str, mock: MockLlmClient) {
-    let mut registry = ctx.client_registry.lock().await;
+pub fn register_mock_full(ctx: &Arc<AppContext>, provider_name: &str, mock: MockLlmClient) {
+    let mut registry = ctx
+        .client_registry
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
     let provider = provider_name.to_string();
     let provider_clone = provider.clone();
     registry.register(

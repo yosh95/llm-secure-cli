@@ -1,7 +1,7 @@
 use crate::cli::ui;
 use crate::core::session::ActiveSession;
 
-pub async fn handle_tools(session: &mut ActiveSession, args: &str) {
+pub fn handle_tools(session: &mut ActiveSession, args: &str) {
     let state = session.get_client_mut().get_state_mut();
     match args.to_lowercase().as_str() {
         "on" => {
@@ -19,7 +19,11 @@ pub async fn handle_tools(session: &mut ActiveSession, args: &str) {
                 "DISABLED"
             };
             println!("Tools Status: {status}");
-            let registry = session.ctx.tool_registry.read().await;
+            let registry = session
+                .ctx
+                .tool_registry
+                .read()
+                .unwrap_or_else(|p| p.into_inner());
             println!("Available Tools:");
             for name in registry.tools.keys() {
                 println!(" - {name}");

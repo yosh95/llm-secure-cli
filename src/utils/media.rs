@@ -7,24 +7,31 @@ use mime_guess;
 use std::fs;
 use std::path::Path;
 
-pub async fn fetch_url_content(
-    url_str: &str,
-    pdf_as_base64: bool,
-) -> anyhow::Result<(String, String)> {
-    let res = CLIENT.get(url_str).send().await?;
+pub fn fetch_url_content(url_str: &str, pdf_as_base64: bool) -> anyhow::Result<(String, String)> {
+    let url_str = url_str.to_string();
 
-    let content_type = res
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("text/plain")
-        .split(';')
-        .next()
-        .unwrap_or("text/plain")
-        .to_string();
+    let (content_type, bytes) = crate::core::session::run_cancellable(move || {
+        let response = CLIENT
+            .get(&url_str)
+            .call()
+            .map_err(|e| anyhow::anyhow!("Failed to fetch URL: {e}"))?;
+
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .map(|ct| ct.split(';').next().unwrap_or("text/plain").to_string())
+            .unwrap_or_else(|| "text/plain".to_string());
+
+        let bytes = response
+            .into_body()
+            .read_to_vec()
+            .map_err(|e| anyhow::anyhow!("Failed to read response body: {e}"))?;
+
+        Ok::<_, anyhow::Error>((content_type, bytes))
+    })?;
 
     if content_type == "application/pdf" {
-        let bytes = res.bytes().await?;
         if pdf_as_base64 {
             let b64 = general_purpose::STANDARD.encode(bytes);
             Ok((b64, content_type))
@@ -33,14 +40,13 @@ pub async fn fetch_url_content(
             Ok((text, "text/plain".to_string()))
         }
     } else if content_type.contains("html") {
-        let html = res.text().await?;
+        let html = String::from_utf8_lossy(&bytes);
         let text = html_to_text(&html)?;
         Ok((text, "text/plain".to_string()))
     } else if content_type.starts_with("text/") || content_type.contains("json") {
-        let text = res.text().await?;
+        let text = String::from_utf8_lossy(&bytes).to_string();
         Ok((text, "text/plain".to_string()))
     } else {
-        let bytes = res.bytes().await?;
         let b64 = general_purpose::STANDARD.encode(bytes);
         Ok((b64, content_type))
     }
@@ -175,9 +181,9 @@ pub fn process_file(path: &Path, pdf_as_base64: bool) -> anyhow::Result<DataSour
     }
 }
 
-pub async fn process_single_source(source: &str, pdf_as_base64: bool) -> Option<DataSource> {
+pub fn process_single_source(source: &str, pdf_as_base64: bool) -> Option<DataSource> {
     if source.starts_with("http://") || source.starts_with("https://") {
-        if let Ok((content, content_type)) = fetch_url_content(source, pdf_as_base64).await {
+        if let Ok((content, content_type)) = fetch_url_content(source, pdf_as_base64) {
             return Some(DataSource {
                 content: serde_json::Value::String(content),
                 content_type,
@@ -196,11 +202,11 @@ pub async fn process_single_source(source: &str, pdf_as_base64: bool) -> Option<
     None
 }
 
-pub async fn process_sources(sources: Vec<String>, pdf_as_base64: bool) -> Vec<DataSource> {
+pub fn process_sources(sources: Vec<String>, pdf_as_base64: bool) -> Vec<DataSource> {
     let mut results = Vec::new();
     for s in sources {
         if s.starts_with("http://") || s.starts_with("https://") {
-            if let Ok((content, content_type)) = fetch_url_content(&s, pdf_as_base64).await {
+            if let Ok((content, content_type)) = fetch_url_content(&s, pdf_as_base64) {
                 results.push(DataSource {
                     content: serde_json::Value::String(content),
                     content_type,

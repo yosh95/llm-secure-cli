@@ -2,8 +2,7 @@ use crate::cli::ui::UserInterface;
 use crate::config::ConfigManager;
 use crate::llm::registry::ClientRegistry;
 use crate::tools::registry::ToolRegistry;
-use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 pub struct AppContext {
     pub config_manager: ConfigManager,

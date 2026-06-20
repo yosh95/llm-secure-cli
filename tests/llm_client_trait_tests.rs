@@ -136,28 +136,22 @@ fn test_mock_returns_false_for_pdf() {
 // send() with mock responses
 // ===========================================================================
 
-#[tokio::test]
-async fn test_send_text_response() {
+#[test]
+fn test_send_text_response() {
     let mut client = MockLlmClient::builder()
         .text_response("Hello, this is a test!")
         .build();
-    let response = client
-        .send(vec![], vec![])
-        .await
-        .expect("send should succeed");
+    let response = client.send(vec![], vec![]).expect("send should succeed");
     assert_eq!(response.content.as_deref(), Some("Hello, this is a test!"));
     assert!(response.tool_name.is_none());
 }
 
-#[tokio::test]
-async fn test_send_tool_call_response() {
+#[test]
+fn test_send_tool_call_response() {
     let mut client = MockLlmClient::builder()
         .tool_call_response("list_files", json!({"path": "."}))
         .build();
-    let response = client
-        .send(vec![], vec![])
-        .await
-        .expect("send should succeed");
+    let response = client.send(vec![], vec![]).expect("send should succeed");
     assert!(
         response.content.is_none(),
         "Tool call responses have no content"
@@ -165,37 +159,37 @@ async fn test_send_tool_call_response() {
     assert_eq!(response.tool_name.as_deref(), Some("list_files"));
 }
 
-#[tokio::test]
-async fn test_send_error_response() {
+#[test]
+fn test_send_error_response() {
     let mut client = MockLlmClient {
         responses: vec![MockResponse::error("API timeout")],
         ..MockLlmClient::builder().build()
     };
-    let result = client.send(vec![], vec![]).await;
+    let result = client.send(vec![], vec![]);
     assert!(result.is_err(), "Error responses should return Err");
     assert!(result.unwrap_err().to_string().contains("API timeout"));
 }
 
-#[tokio::test]
-async fn test_send_multiple_responses_fifo() {
+#[test]
+fn test_send_multiple_responses_fifo() {
     let mut client = MockLlmClient::builder()
         .text_response("First")
         .text_response("Second")
         .text_response("Third")
         .build();
-    let r1 = client.send(vec![], vec![]).await.unwrap();
+    let r1 = client.send(vec![], vec![]).unwrap();
     assert_eq!(r1.content.as_deref(), Some("First"));
-    let r2 = client.send(vec![], vec![]).await.unwrap();
+    let r2 = client.send(vec![], vec![]).unwrap();
     assert_eq!(r2.content.as_deref(), Some("Second"));
-    let r3 = client.send(vec![], vec![]).await.unwrap();
+    let r3 = client.send(vec![], vec![]).unwrap();
     assert_eq!(r3.content.as_deref(), Some("Third"));
 }
 
-#[tokio::test]
-async fn test_send_exhausted_repeats_last_response() {
+#[test]
+fn test_send_exhausted_repeats_last_response() {
     let mut client = MockLlmClient::builder().text_response("Only one").build();
-    let _ = client.send(vec![], vec![]).await.unwrap();
-    let r2 = client.send(vec![], vec![]).await.unwrap();
+    let _ = client.send(vec![], vec![]).unwrap();
+    let r2 = client.send(vec![], vec![]).unwrap();
     assert_eq!(
         r2.content.as_deref(),
         Some("Only one"),
@@ -207,8 +201,8 @@ async fn test_send_exhausted_repeats_last_response() {
 // update_history — conversation management
 // ===========================================================================
 
-#[tokio::test]
-async fn test_update_history_adds_user_and_assistant_messages() {
+#[test]
+fn test_update_history_adds_user_and_assistant_messages() {
     let mut client = MockLlmClient::builder()
         .text_response("Sure, I can help!")
         .build();
@@ -221,7 +215,7 @@ async fn test_update_history_adds_user_and_assistant_messages() {
     }];
 
     // send() internally calls update_history
-    let _ = client.send(data.clone(), vec![]).await.unwrap();
+    let _ = client.send(data.clone(), vec![]).unwrap();
 
     assert_eq!(client.state.conversation.len(), 2);
     assert_eq!(client.state.conversation[0].role, Role::User);
@@ -232,8 +226,8 @@ async fn test_update_history_adds_user_and_assistant_messages() {
     assert_eq!(user_text, "What is Rust?");
 }
 
-#[tokio::test]
-async fn test_update_history_consecutive_calls_accumulate() {
+#[test]
+fn test_update_history_consecutive_calls_accumulate() {
     let mut client = MockLlmClient::builder()
         .text_response("First response")
         .text_response("Second response")
@@ -252,8 +246,8 @@ async fn test_update_history_consecutive_calls_accumulate() {
         metadata: Default::default(),
     }];
 
-    let _ = client.send(data1, vec![]).await.unwrap();
-    let _ = client.send(data2, vec![]).await.unwrap();
+    let _ = client.send(data1, vec![]).unwrap();
+    let _ = client.send(data2, vec![]).unwrap();
 
     assert_eq!(client.state.conversation.len(), 4);
     assert_eq!(client.state.conversation[0].role, Role::User);
@@ -266,24 +260,24 @@ async fn test_update_history_consecutive_calls_accumulate() {
 // send_as_verifier
 // ===========================================================================
 
-#[tokio::test]
-async fn test_send_as_verifier_returns_configured_response() {
+#[test]
+fn test_send_as_verifier_returns_configured_response() {
     let mut client = MockLlmClient::builder()
         .verifier(Ok("Safe request"))
         .build();
-    let result = client.send_as_verifier(vec![], json!({})).await;
+    let result = client.send_as_verifier(vec![], json!({}));
     assert!(result.is_ok());
     let val = result.unwrap();
     assert_eq!(val["decision"], "ALLOW");
     assert_eq!(val["reason"], "Safe request");
 }
 
-#[tokio::test]
-async fn test_send_as_verifier_returns_error() {
+#[test]
+fn test_send_as_verifier_returns_error() {
     let mut client = MockLlmClient::builder()
         .verifier(Err("API unavailable"))
         .build();
-    let result = client.send_as_verifier(vec![], json!({})).await;
+    let result = client.send_as_verifier(vec![], json!({}));
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("API unavailable"));
 }
@@ -416,15 +410,15 @@ fn test_mock_ui_rejecting() {
     assert_eq!(ui.confirmed, Some(false));
 }
 
-#[tokio::test]
-async fn test_mock_ui_ask_confirm() {
+#[test]
+fn test_mock_ui_ask_confirm() {
     let ui = MockUi::confirming();
-    let result = ui.ask_confirm("Proceed?").await;
+    let result = ui.ask_confirm("Proceed?");
     assert_eq!(result, Some(llm_secure_cli::cli::ui::ConfirmResult::Yes));
 }
 
-#[tokio::test]
-async fn test_mock_ui_records_messages() {
+#[test]
+fn test_mock_ui_records_messages() {
     let ui = MockUi::default();
     ui.report_info("Info message");
     ui.report_warning("Warning message");
@@ -453,33 +447,30 @@ fn test_create_test_context_uses_temp_dir() {
     );
 }
 
-#[tokio::test]
-async fn test_register_mock_client_and_use_it() {
+#[test]
+fn test_register_mock_client_and_use_it() {
     let ctx = create_test_context(MockUi::confirming());
-    register_mock_client(&ctx, "test_provider", Ok("Mock response".to_string())).await;
+    register_mock_client(&ctx, "test_provider", Ok("Mock response".to_string()));
 
-    let registry = ctx.client_registry.lock().await;
+    let registry = ctx.client_registry.lock().unwrap();
     let mut client = registry
         .create_client("test_provider", "model", false, true, &ctx.config_manager)
         .expect("Should create client");
 
-    let response = client
-        .send(vec![], vec![])
-        .await
-        .expect("send should succeed");
+    let response = client.send(vec![], vec![]).expect("send should succeed");
     assert_eq!(response.content.as_deref(), Some("Mock response"));
 }
 
-#[tokio::test]
-async fn test_register_mock_client_error() {
+#[test]
+fn test_register_mock_client_error() {
     let ctx = create_test_context(MockUi::confirming());
-    register_mock_client(&ctx, "bad_provider", Err("Network error".to_string())).await;
+    register_mock_client(&ctx, "bad_provider", Err("Network error".to_string()));
 
-    let registry = ctx.client_registry.lock().await;
+    let registry = ctx.client_registry.lock().unwrap();
     let mut client = registry
         .create_client("bad_provider", "model", false, true, &ctx.config_manager)
         .expect("Should create client");
 
-    let result = client.send(vec![], vec![]).await;
+    let result = client.send(vec![], vec![]);
     assert!(result.is_err(), "Error mock should return error");
 }

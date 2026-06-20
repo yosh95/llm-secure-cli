@@ -1,7 +1,7 @@
 use crate::cli::ui;
 use crate::core::session::ActiveSession;
 
-pub async fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
+pub fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
     let args_trimmed = args.trim();
 
     // `/alias` (no args): list all aliases
@@ -75,7 +75,7 @@ pub async fn handle_alias_cmd(session: &mut ActiveSession, args: &str) {
     }
 }
 
-pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
+pub fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
     let (current_provider, current_model, stdout, raw) = {
         let state = session.get_client().get_state();
         (
@@ -91,7 +91,7 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
     // `/model -u` or `/model --update`: refresh the models cache for ALL providers
     if args_trimmed == "-u" || args_trimmed == "--update" {
         ui::report_info("Updating models cache for all providers...");
-        session.ctx.config_manager.update_models_cache().await;
+        session.ctx.config_manager.update_models_cache();
         ui::report_success("Models cache updated for all providers.");
         // fall through to list
     }
@@ -99,7 +99,7 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
     // No args or -u: show all models grouped by provider, sorted
     if args_trimmed.is_empty() || args_trimmed == "-u" || args_trimmed == "--update" {
         ui::print_rule(Some("Available Models (provider:model)"), Some("cyan"));
-        let models_map = session.ctx.config_manager.get_cached_models().await;
+        let models_map = session.ctx.config_manager.get_cached_models();
 
         // Collect all provider:model pairs and sort them
         let mut all_entries: Vec<(String, String, bool)> = Vec::new();
@@ -170,7 +170,7 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
             (current_provider.clone(), model_spec)
         };
 
-        handle_endpoints_cmd(&session.ctx.config_manager, &ep_provider, &ep_model).await;
+        handle_endpoints_cmd(&session.ctx.config_manager, &ep_provider, &ep_model);
         return;
     }
 
@@ -180,7 +180,7 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
         Ok(s) => s,
         Err(_) => return,
     };
-    let models_map = session.ctx.config_manager.get_cached_models().await;
+    let models_map = session.ctx.config_manager.get_cached_models();
 
     let resolved_provider: String;
     let resolved_model: String;
@@ -213,9 +213,14 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
             .unwrap_or_default();
         if !cached.contains(&resolved_model) {
             // Check if the arg is just a provider name (no colon)
-            let active_providers = session.ctx.client_registry.lock().await.list_providers();
+            let active_providers = session
+                .ctx
+                .client_registry
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .list_providers();
             if !args_trimmed.contains(':') && active_providers.contains(&args_trimmed.to_string()) {
-                return handle_provider_only_switch(session, args_trimmed).await;
+                return handle_provider_only_switch(session, args_trimmed);
             }
             ui::report_error(&format!(
                 "Unknown model: '{}'. Use /model to list available models.",
@@ -231,9 +236,7 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
         &resolved_provider,
         stdout,
         !raw,
-    )
-    .await
-    {
+    ) {
         Ok(()) => {
             let state = session.get_client().get_state();
             ui::report_success(&format!("Switched to {}:{}", state.provider, state.model));
@@ -243,8 +246,8 @@ pub async fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
 }
 
 /// Handle switching to a provider with its default model (no model specified).
-async fn handle_provider_only_switch(session: &mut ActiveSession, provider: &str) {
-    match crate::core::initializer::switch_provider(session, provider).await {
+fn handle_provider_only_switch(session: &mut ActiveSession, provider: &str) {
+    match crate::core::initializer::switch_provider(session, provider) {
         Ok(()) => {
             let state = session.get_client().get_state();
             ui::report_success(&format!(
@@ -256,7 +259,7 @@ async fn handle_provider_only_switch(session: &mut ActiveSession, provider: &str
     }
 }
 
-pub async fn handle_verifier_cmd(session: &mut ActiveSession, args: &str) {
+pub fn handle_verifier_cmd(session: &mut ActiveSession, args: &str) {
     let args_trimmed = args.trim();
     let config_manager = &session.ctx.config_manager;
 
@@ -372,7 +375,7 @@ pub async fn handle_verifier_cmd(session: &mut ActiveSession, args: &str) {
 }
 
 /// Fetch and display OpenRouter model endpoints (provider-specific pricing & details).
-async fn handle_endpoints_cmd(
+fn handle_endpoints_cmd(
     config_manager: &crate::config::ConfigManager,
     provider: &str,
     model: &str,
@@ -415,10 +418,10 @@ async fn handle_endpoints_cmd(
     let mut headers = std::collections::HashMap::new();
     headers.insert("Authorization".to_string(), format!("Bearer {api_key}"));
 
-    match crate::utils::http::get_json::<serde_json::Value>(url, headers).await {
+    match crate::utils::http::get_json::<serde_json::Value>(url, headers) {
         Ok(json) => {
             let data = json.get("data").cloned().unwrap_or(json);
-            display_model_endpoints(&data).await;
+            display_model_endpoints(&data);
         }
         Err(e) => {
             // Fallback: try without /endpoints suffix
@@ -430,12 +433,10 @@ async fn handle_endpoints_cmd(
             match crate::utils::http::get_json::<serde_json::Value>(
                 alt_url,
                 std::collections::HashMap::new(),
-            )
-            .await
-            {
+            ) {
                 Ok(json) => {
                     let data = json.get("data").cloned().unwrap_or(json);
-                    display_model_endpoints(&data).await;
+                    display_model_endpoints(&data);
                 }
                 Err(e2) => {
                     ui::report_error(&format!("Failed to fetch endpoints: {e} (alt: {e2})"));
@@ -461,7 +462,7 @@ fn urlencoding(s: &str) -> String {
 }
 
 /// Display the model endpoints data in a formatted way.
-async fn display_model_endpoints(data: &serde_json::Value) {
+fn display_model_endpoints(data: &serde_json::Value) {
     let model_id = data.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
     let name = data
         .get("name")

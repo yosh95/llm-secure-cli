@@ -9,7 +9,7 @@ use serde_json::Value;
 /// Fetches and displays the OpenRouter model rankings via the
 /// `/api/v1/datasets/rankings-daily` endpoint.
 /// Only works when the provider is `"openrouter"`.
-pub async fn run_rankings(config_manager: &ConfigManager, provider: &str) {
+pub fn run_rankings(config_manager: &ConfigManager, provider: &str) {
     if provider != "openrouter" {
         ui::report_error(&format!(
             "Rankings are only supported for the 'openrouter' provider, got '{provider}'."
@@ -26,11 +26,11 @@ pub async fn run_rankings(config_manager: &ConfigManager, provider: &str) {
         return;
     };
 
-    fetch_and_display_rankings(&api_key, None).await;
+    fetch_and_display_rankings(&api_key, None);
 }
 
 /// Run the `/rankings` command from the interactive session.
-pub async fn run_rankings_interactive(session: &ActiveSession) {
+pub fn run_rankings_interactive(session: &ActiveSession) {
     let provider = session.get_client().get_state().provider.clone();
 
     if provider != "openrouter" {
@@ -49,19 +49,19 @@ pub async fn run_rankings_interactive(session: &ActiveSession) {
         return;
     };
 
-    fetch_and_display_rankings(&api_key, None).await;
+    fetch_and_display_rankings(&api_key, None);
 }
 
 /// Common implementation: fetch from the rankings-daily API and display.
 ///
 /// `top_n` controls how many models to show (default: 15, capped at 50).
-async fn fetch_and_display_rankings(api_key: &str, top_n: Option<usize>) {
+fn fetch_and_display_rankings(api_key: &str, top_n: Option<usize>) {
     let mut headers = std::collections::HashMap::new();
     headers.insert("Authorization".to_string(), format!("Bearer {api_key}"));
 
     ui::report_info("Fetching OpenRouter model rankings...");
 
-    match fetch_rankings(&headers).await {
+    match fetch_rankings(&headers) {
         Ok(response) => {
             display_rankings(&response, top_n.unwrap_or(15));
         }
@@ -72,11 +72,9 @@ async fn fetch_and_display_rankings(api_key: &str, top_n: Option<usize>) {
 }
 
 /// Fetch the /api/v1/datasets/rankings-daily endpoint.
-async fn fetch_rankings(
-    headers: &std::collections::HashMap<String, String>,
-) -> Result<Value, String> {
+fn fetch_rankings(headers: &std::collections::HashMap<String, String>) -> Result<Value, String> {
     let url = "https://openrouter.ai/api/v1/datasets/rankings-daily".to_string();
-    match http::get_json::<Value>(url, headers.clone()).await {
+    match http::get_json::<Value>(url, headers.clone()) {
         Ok(response) => {
             if response.get("data").is_some() {
                 Ok(response)

@@ -19,8 +19,8 @@ mod tests {
         });
     }
 
-    #[tokio::test]
-    async fn test_identity_token_generation() {
+    #[test]
+    fn test_identity_token_generation() {
         // Use a temporary directory so tests don't touch ~/.llsc
         setup_temp_basedir();
 

@@ -2,7 +2,6 @@ use crate::config::ConfigManager;
 use crate::llm::base::LlmClient;
 use crate::llm::models::{ClientState, DataSource};
 use crate::llm::providers::openai_compatible::{OpenAiCompatibleClient, PayloadFormatter};
-use async_trait::async_trait;
 use serde_json::{Value, json};
 
 pub struct OpenRouterFormatter;
@@ -46,7 +45,6 @@ impl OpenRouterClient {
     }
 }
 
-#[async_trait]
 impl LlmClient for OpenRouterClient {
     fn get_state(&self) -> &ClientState {
         self.inner.get_state()
@@ -61,20 +59,20 @@ impl LlmClient for OpenRouterClient {
         true
     }
 
-    async fn send(
+    fn send(
         &mut self,
         data: Vec<DataSource>,
         tool_schemas: Vec<Value>,
     ) -> anyhow::Result<crate::llm::models::LlmResponse> {
         // Delegate to inner; special logic for videos/audio can be added to formatter if needed
-        self.inner.send(data, tool_schemas).await
+        self.inner.send(data, tool_schemas)
     }
 
-    async fn send_as_verifier(
+    fn send_as_verifier(
         &mut self,
         data: Vec<DataSource>,
         tool_schema: Value,
     ) -> anyhow::Result<Value> {
-        self.inner.send_as_verifier(data, tool_schema).await
+        self.inner.send_as_verifier(data, tool_schema)
     }
 }

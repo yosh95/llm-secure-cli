@@ -1,5 +1,4 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-use async_trait::async_trait;
 use llm_secure_cli::cli::ui::{ConfirmResult, UserInterface};
 use llm_secure_cli::core::context::AppContext;
 use llm_secure_cli::llm::base::LlmClient;
@@ -14,7 +13,6 @@ use tempfile::tempdir;
 /// Mock UI for testing purposes
 struct MockUi;
 
-#[async_trait]
 impl UserInterface for MockUi {
     fn print_block(&self, _content: &str, _title: Option<&str>, _style: Option<&str>) {}
     fn print_rule(&self, _title: Option<&str>, _style: Option<&str>) {}
@@ -25,10 +23,10 @@ impl UserInterface for MockUi {
     fn report_info(&self, _message: &str) {}
     fn report_warning(&self, _message: &str) {}
     fn report_success(&self, _message: &str) {}
-    async fn ask_confirm(&self, _prompt: &str) -> Option<ConfirmResult> {
+    fn ask_confirm(&self, _prompt: &str) -> Option<ConfirmResult> {
         Some(ConfirmResult::Yes)
     }
-    async fn ask_confirm_simple(&self, _prompt: &str) -> Option<ConfirmResult> {
+    fn ask_confirm_simple(&self, _prompt: &str) -> Option<ConfirmResult> {
         Some(ConfirmResult::Yes)
     }
 }
@@ -39,7 +37,6 @@ struct MockLlmClient {
     response: Result<String, String>,
 }
 
-#[async_trait]
 impl LlmClient for MockLlmClient {
     fn get_state(&self) -> &ClientState {
         &self.state
@@ -53,7 +50,7 @@ impl LlmClient for MockLlmClient {
     fn should_send_pdf_as_base64(&self) -> bool {
         false
     }
-    async fn send(
+    fn send(
         &mut self,
         _data: Vec<DataSource>,
         _tool_schemas: Vec<serde_json::Value>,
@@ -67,7 +64,7 @@ impl LlmClient for MockLlmClient {
         }
     }
 
-    async fn send_as_verifier(
+    fn send_as_verifier(
         &mut self,
         _data: Vec<DataSource>,
         _tool_schema: serde_json::Value,
@@ -93,12 +90,8 @@ fn create_test_context() -> Arc<AppContext> {
     Arc::new(AppContext::new(Arc::new(MockUi)))
 }
 
-async fn register_mock(
-    ctx: &Arc<AppContext>,
-    provider_name: &str,
-    response: Result<String, String>,
-) {
-    let mut registry = ctx.client_registry.lock().await;
+fn register_mock(ctx: &Arc<AppContext>, provider_name: &str, response: Result<String, String>) {
+    let mut registry = ctx.client_registry.lock().unwrap();
     let response_cloned = response.clone();
     let p_name = provider_name.to_string();
     registry.register(
@@ -121,15 +114,14 @@ async fn register_mock(
     );
 }
 
-#[tokio::test]
-async fn test_verifier_allow_scenario() {
+#[test]
+fn test_verifier_allow_scenario() {
     let ctx = create_test_context();
     register_mock(
         &ctx,
         "mock_ok",
         Ok("DECISION: ALLOW\nREASON: Safe request".to_string()),
-    )
-    .await;
+    );
 
     let params = VerificationParams {
         ctx_app: ctx.clone(),
@@ -146,19 +138,18 @@ async fn test_verifier_allow_scenario() {
         model: Some("mock-model".to_string()),
     };
 
-    let outcome = verify_tool_call_full(params).await;
+    let outcome = verify_tool_call_full(params);
     assert!(matches!(outcome, VerificationOutcome::Allowed(_)));
 }
 
-#[tokio::test]
-async fn test_verifier_block_scenario() {
+#[test]
+fn test_verifier_block_scenario() {
     let ctx = create_test_context();
     register_mock(
         &ctx,
         "mock_danger",
         Ok("DECISION: BLOCK\nREASON: Malicious delete".to_string()),
-    )
-    .await;
+    );
 
     let params = VerificationParams {
         ctx_app: ctx.clone(),
@@ -175,7 +166,7 @@ async fn test_verifier_block_scenario() {
         model: Some("mock-model".to_string()),
     };
 
-    let outcome = verify_tool_call_full(params).await;
+    let outcome = verify_tool_call_full(params);
     if let VerificationOutcome::NeedsApproval(reason) = outcome {
         assert!(reason.contains("Malicious delete"));
     } else {
@@ -183,16 +174,15 @@ async fn test_verifier_block_scenario() {
     }
 }
 
-#[tokio::test]
-async fn test_verifier_malformed_response() {
+#[test]
+fn test_verifier_malformed_response() {
     let ctx = create_test_context();
     // LLM returns gibberish that doesn't follow "DECISION: ALLOW/BLOCK"
     register_mock(
         &ctx,
         "mock_weird",
         Ok("I think this is okay but I won't say the keyword".to_string()),
-    )
-    .await;
+    );
 
     let params = VerificationParams {
         ctx_app: ctx.clone(),
@@ -209,7 +199,7 @@ async fn test_verifier_malformed_response() {
         model: Some("mock-model".to_string()),
     };
 
-    let outcome = verify_tool_call_full(params).await;
+    let outcome = verify_tool_call_full(params);
     // Safety-first: if the format is invalid, it should be REJECTED (not allowed)
     if let VerificationOutcome::NeedsApproval(reason) = outcome {
         assert!(reason.contains("Invalid verifier response format"));
@@ -221,11 +211,11 @@ async fn test_verifier_malformed_response() {
     }
 }
 
-#[tokio::test]
-async fn test_verifier_api_error_fallback() {
+#[test]
+fn test_verifier_api_error_fallback() {
     let ctx = create_test_context();
     // Simulate a network/API error
-    register_mock(&ctx, "mock_error", Err("Connection Timeout".to_string())).await;
+    register_mock(&ctx, "mock_error", Err("Connection Timeout".to_string()));
 
     let params = VerificationParams {
         ctx_app: ctx.clone(),
@@ -242,7 +232,7 @@ async fn test_verifier_api_error_fallback() {
         model: Some("mock-model".to_string()),
     };
 
-    let outcome = verify_tool_call_full(params).await;
+    let outcome = verify_tool_call_full(params);
     // API failure should result in FallbackRequired (Human-in-the-loop)
     if let VerificationOutcome::FallbackRequired(reason) = outcome {
         assert!(reason.contains("Verifier unavailable"));
@@ -251,16 +241,15 @@ async fn test_verifier_api_error_fallback() {
     }
 }
 
-#[tokio::test]
-async fn test_verifier_tricky_response() {
+#[test]
+fn test_verifier_tricky_response() {
     let ctx = create_test_context();
     // The word "ALLOW" is present but it's preceded by "NOT".
     register_mock(
         &ctx,
         "mock_tricky",
         Ok("DECISION: NOT ALLOWED\nREASON: Security hole".to_string()),
-    )
-    .await;
+    );
 
     let params = VerificationParams {
         ctx_app: ctx.clone(),
@@ -277,7 +266,7 @@ async fn test_verifier_tricky_response() {
         model: Some("mock-model".to_string()),
     };
 
-    let outcome = verify_tool_call_full(params).await;
+    let outcome = verify_tool_call_full(params);
     if let VerificationOutcome::NeedsApproval(reason) = outcome {
         assert!(
             reason.contains("Invalid verifier response format") || reason.contains("Security hole")
@@ -287,8 +276,8 @@ async fn test_verifier_tricky_response() {
     }
 }
 
-#[tokio::test]
-async fn test_verifier_modify_scenario() {
+#[test]
+fn test_verifier_modify_scenario() {
     let ctx = create_test_context();
     // Verifier returns MODIFY with corrected JSON arguments
     register_mock(
@@ -299,7 +288,7 @@ async fn test_verifier_modify_scenario() {
                 .to_string(),
         ),
     )
-    .await;
+    ;
 
     let params = VerificationParams {
         ctx_app: ctx.clone(),
@@ -316,7 +305,7 @@ async fn test_verifier_modify_scenario() {
         model: Some("mock-model".to_string()),
     };
 
-    let outcome = verify_tool_call_full(params).await;
+    let outcome = verify_tool_call_full(params);
     match outcome {
         VerificationOutcome::Modified(fixed_args, reason) => {
             assert!(reason.contains("Fixed malformed"));
@@ -326,8 +315,8 @@ async fn test_verifier_modify_scenario() {
     }
 }
 
-#[tokio::test]
-async fn test_verifier_modify_with_markdown_code_block() {
+#[test]
+fn test_verifier_modify_with_markdown_code_block() {
     let ctx = create_test_context();
     // Verifier returns MODIFY with JSON wrapped in a markdown code block
     register_mock(
@@ -338,7 +327,7 @@ async fn test_verifier_modify_with_markdown_code_block() {
                 .to_string(),
         ),
     )
-    .await;
+    ;
 
     let params = VerificationParams {
         ctx_app: ctx.clone(),
@@ -355,7 +344,7 @@ async fn test_verifier_modify_with_markdown_code_block() {
         model: Some("mock-model".to_string()),
     };
 
-    let outcome = verify_tool_call_full(params).await;
+    let outcome = verify_tool_call_full(params);
     match outcome {
         VerificationOutcome::Modified(fixed_args, reason) => {
             assert!(reason.contains("Normalised arguments"));
@@ -365,16 +354,15 @@ async fn test_verifier_modify_with_markdown_code_block() {
     }
 }
 
-#[tokio::test]
-async fn test_verifier_modify_invalid_json_falls_back_to_rejected() {
+#[test]
+fn test_verifier_modify_invalid_json_falls_back_to_rejected() {
     let ctx = create_test_context();
     // Verifier tries MODIFY but provides invalid JSON — should be rejected
     register_mock(
         &ctx,
         "mock_modify_badjson",
         Ok("DECISION: MODIFY\nREASON: Fix args\nFIXED_ARGS: not valid json {{{".to_string()),
-    )
-    .await;
+    );
 
     let params = VerificationParams {
         ctx_app: ctx.clone(),
@@ -391,7 +379,7 @@ async fn test_verifier_modify_invalid_json_falls_back_to_rejected() {
         model: Some("mock-model".to_string()),
     };
 
-    let outcome = verify_tool_call_full(params).await;
+    let outcome = verify_tool_call_full(params);
     match outcome {
         VerificationOutcome::NeedsApproval(reason) => {
             assert!(

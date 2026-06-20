@@ -86,20 +86,6 @@ pub fn ask_confirm_simple(prompt: &str) -> Option<ConfirmResult> {
     ask_confirm_with_mode(prompt, PromptMode::YesNoOnly)
 }
 
-pub async fn ask_confirm_async(prompt: &str) -> Option<ConfirmResult> {
-    let p = prompt.to_string();
-    tokio::task::spawn_blocking(move || ask_confirm(&p))
-        .await
-        .unwrap_or(None)
-}
-
-pub async fn ask_confirm_simple_async(prompt: &str) -> Option<ConfirmResult> {
-    let p = prompt.to_string();
-    tokio::task::spawn_blocking(move || ask_confirm_simple(&p))
-        .await
-        .unwrap_or(None)
-}
-
 #[must_use]
 pub fn get_user_input(prompt: &str) -> Option<String> {
     use rustyline::DefaultEditor;

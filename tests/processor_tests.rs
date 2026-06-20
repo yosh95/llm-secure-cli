@@ -1,5 +1,4 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-use async_trait::async_trait;
 use llm_secure_cli::core::context::AppContext;
 use llm_secure_cli::core::session::ActiveSession;
 use llm_secure_cli::llm::base::LlmClient;
@@ -19,7 +18,6 @@ struct MockUi {
     pub confirmed: bool,
 }
 
-#[async_trait]
 impl UserInterface for MockUi {
     fn print_block(&self, _content: &str, _title: Option<&str>, _style: Option<&str>) {}
     fn print_rule(&self, _title: Option<&str>, _style: Option<&str>) {}
@@ -30,14 +28,14 @@ impl UserInterface for MockUi {
     fn report_info(&self, _message: &str) {}
     fn report_warning(&self, _message: &str) {}
     fn report_success(&self, _message: &str) {}
-    async fn ask_confirm(&self, _prompt: &str) -> Option<ConfirmResult> {
+    fn ask_confirm(&self, _prompt: &str) -> Option<ConfirmResult> {
         if self.confirmed {
             Some(ConfirmResult::Yes)
         } else {
             Some(ConfirmResult::No)
         }
     }
-    async fn ask_confirm_simple(&self, _prompt: &str) -> Option<ConfirmResult> {
+    fn ask_confirm_simple(&self, _prompt: &str) -> Option<ConfirmResult> {
         if self.confirmed {
             Some(ConfirmResult::Yes)
         } else {
@@ -63,7 +61,6 @@ struct MockProcessorClient {
     call_count: usize,
 }
 
-#[async_trait]
 impl LlmClient for MockProcessorClient {
     fn get_state(&self) -> &ClientState {
         &self.state
@@ -77,7 +74,7 @@ impl LlmClient for MockProcessorClient {
     fn should_send_pdf_as_base64(&self) -> bool {
         false
     }
-    async fn send(
+    fn send(
         &mut self,
         _data: Vec<DataSource>,
         _tool_schemas: Vec<serde_json::Value>,
@@ -127,7 +124,7 @@ impl LlmClient for MockProcessorClient {
         })
     }
 
-    async fn send_as_verifier(
+    fn send_as_verifier(
         &mut self,
         _data: Vec<DataSource>,
         _tool_schema: serde_json::Value,
@@ -139,8 +136,8 @@ impl LlmClient for MockProcessorClient {
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_processor_tool_execution_flow() {
+#[test]
+fn test_processor_tool_execution_flow() {
     setup_test_env();
     // 1. Setup Config for Auto-approval
     let ui = Arc::new(MockUi { confirmed: true });
@@ -174,7 +171,7 @@ async fn test_processor_tool_execution_flow() {
 
     // 2. Register Mock Client in Registry for Verifier
     {
-        let mut registry = ctx.client_registry.lock().await;
+        let mut registry = ctx.client_registry.lock().unwrap();
         registry.register(
             "mock",
             Arc::new(|_model, stdout, raw, _config_manager| {
@@ -232,7 +229,7 @@ async fn test_processor_tool_execution_flow() {
     session.trace_id = "test-trace".to_string();
 
     // 4. Execute
-    let result = session.process_and_print(vec![]).await;
+    let result = session.process_and_print(vec![]);
     assert!(result.is_ok());
 
     // 5. Verify
@@ -245,8 +242,8 @@ async fn test_processor_tool_execution_flow() {
     assert!(session.audit_entries.iter().any(|e| e.tool == "list_files"));
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_processor_pqc_blocking_in_high_security() {
+#[test]
+fn test_processor_pqc_blocking_in_high_security() {
     setup_test_env();
     // 1. Setup Config with High Security Level
     let ui = Arc::new(MockUi { confirmed: true });
@@ -295,7 +292,7 @@ async fn test_processor_pqc_blocking_in_high_security() {
     session.intent = "test-high-security".to_string();
 
     // 3. Execute - This should trigger the PQC Error
-    let _ = session.process_and_print(vec![]).await;
+    let _ = session.process_and_print(vec![]);
 
     // 4. Verify - In High Security mode without a key, the audit entry is still
     // persisted (with INTEGRITY_FAILURE status) for forensic traceability.

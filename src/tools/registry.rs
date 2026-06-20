@@ -1,12 +1,10 @@
 use crate::config::models::AppConfig;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 
-pub type ToolFuture = Pin<Box<dyn Future<Output = anyhow::Result<Value>> + Send>>;
-pub type ToolFunc = Arc<dyn Fn(HashMap<String, Value>, Arc<AppConfig>) -> ToolFuture + Send + Sync>;
+pub type ToolFunc =
+    Arc<dyn Fn(HashMap<String, Value>, Arc<AppConfig>) -> anyhow::Result<Value> + Send + Sync>;
 
 pub struct Tool {
     pub name: String,
@@ -163,7 +161,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
             }),
             Arc::new(move |args, _config| {
                 let key = brave_key.clone();
-                Box::pin(async move { crate::tools::builtin::web::brave_search(args, &key).await })
+                crate::tools::builtin::web::brave_search(args, &key)
             }),
         );
     }
@@ -184,11 +182,7 @@ pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::conf
                 },
                 "required": ["code"]
             }),
-            Arc::new(|args, config| {
-                Box::pin(async move {
-                    crate::tools::builtin::python::execute_python(args, config).await
-                })
-            }),
+            Arc::new(crate::tools::builtin::python::execute_python),
         );
     }
 }

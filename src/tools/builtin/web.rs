@@ -1,4 +1,3 @@
-use crate::utils::http::CLIENT;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
@@ -9,67 +8,63 @@ use std::collections::HashMap;
 ///
 /// The raw API response is returned as-is without any restructuring.
 /// All optional parameters (count, `max_tokens`, `max_urls`, freshness, etc.) use API-side defaults.
-pub async fn brave_search(args: HashMap<String, Value>, api_key: &str) -> anyhow::Result<Value> {
+pub fn brave_search(args: HashMap<String, Value>, api_key: &str) -> anyhow::Result<Value> {
     let query = args
         .get("query")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("'query' is required"))?;
 
-    call_brave_llm_context(query, api_key).await
+    call_brave_llm_context(query, api_key)
 }
 
 /// Call the Brave LLM Context API (`/res/v1/llm/context`).
 ///
 /// Returns the raw JSON response from the API without any restructuring.
 /// Only sends the query parameter; all other parameters use API-side defaults.
-/// Supports Ctrl+C cancellation via the global `SessionCancel` token.
-async fn call_brave_llm_context(query: &str, api_key: &str) -> anyhow::Result<Value> {
+/// Supports Ctrl+C cancellation via [`run_cancellable`].
+fn call_brave_llm_context(query: &str, api_key: &str) -> anyhow::Result<Value> {
     let mut body = serde_json::Map::new();
     body.insert("q".to_string(), json!(query));
 
     let url = "https://api.search.brave.com/res/v1/llm/context";
+    let api_key = api_key.to_string();
 
-    let cancel_token = crate::core::session::SessionCancel::new();
-    let mut cancel_rx = cancel_token.receiver();
+    crate::core::session::run_cancellable(move || {
+        let body_json = serde_json::Value::Object(body);
+        let body_string = serde_json::to_string(&body_json)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize request body: {e}"))?;
 
-    let request = CLIENT
-        .post(url)
-        .header("Accept", "application/json")
-        .header("X-Subscription-Token", api_key)
-        .header("Content-Type", "application/json")
-        .json(&body);
-
-    let send_future = request.send();
-
-    let response = tokio::select! {
-        res = send_future => {
-            match res {
-                Ok(r) => r,
-                Err(e) if e.is_timeout() => {
-                    return Err(anyhow::anyhow!("Brave LLM Context API timed out after 30s"));
+        let response = crate::utils::http::CLIENT
+            .post(url)
+            .header("Accept", "application/json")
+            .header("X-Subscription-Token", &api_key)
+            .header("Content-Type", "application/json")
+            .send(body_string)
+            .map_err(|e| {
+                if matches!(e, ureq::Error::Timeout(_)) {
+                    anyhow::anyhow!("Brave LLM Context API timed out after 30s")
+                } else {
+                    anyhow::anyhow!("Brave LLM Context API request failed: {e}")
                 }
-                Err(e) => {
-                    return Err(anyhow::anyhow!("Brave LLM Context API request failed: {e}"));
-                }
-            }
-        }
-        _ = cancel_rx.changed() => {
-            return Err(anyhow::anyhow!("Interrupted by user (Ctrl+C)"));
-        }
-    };
+            })?;
 
-    let status = response.status();
-    if !status.is_success() {
-        let error_body = match response.json::<Value>().await {
-            Ok(v) => v.to_string(),
-            Err(_) => "Unable to read error response body".to_string(),
-        };
-        return Err(anyhow::anyhow!(
-            "Brave LLM Context API error ({status}): {error_body}"
-        ));
-    }
+        let status = response.status().as_u16();
+        let text = response
+            .into_body()
+            .read_to_string()
+            .map_err(|e| anyhow::anyhow!("Failed to read response body: {e}"))?;
 
-    // Return the raw API response as-is without restructuring
-    let data: Value = response.json().await?;
-    Ok(data)
+        if !(200..300).contains(&status) {
+            let error_body = serde_json::from_str::<Value>(&text)
+                .map(|v| v.to_string())
+                .unwrap_or_else(|_| "Unable to read error response body".to_string());
+            return Err(anyhow::anyhow!(
+                "Brave LLM Context API error ({status}): {error_body}"
+            ));
+        }
+
+        let data: Value = serde_json::from_str(&text)
+            .map_err(|e| anyhow::anyhow!("Failed to parse response JSON: {e}"))?;
+        Ok(data)
+    })
 }

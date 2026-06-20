@@ -72,8 +72,7 @@ enum Commands {
     },
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     let args = Args::parse();
 
     // Initialize the base directory for config and logs.
@@ -88,7 +87,7 @@ async fn main() {
     let is_atty = stdin().is_terminal();
     let ui = std::sync::Arc::new(llm_secure_cli::cli::ui::CliUi);
 
-    let ctx = match llm_secure_cli::core::initializer::initialize_app(ui.clone()).await {
+    let ctx = match llm_secure_cli::core::initializer::initialize_app(ui.clone()) {
         Ok(c) => c,
         Err(e) => {
             llm_secure_cli::cli::ui::report_error(&format!("Critical Initialization Error: {e}"));
@@ -99,7 +98,7 @@ async fn main() {
     };
 
     if let Some(command) = args.command {
-        handle_subcommand(command, &ctx).await;
+        handle_subcommand(command, &ctx);
         return;
     }
 
@@ -117,9 +116,7 @@ async fn main() {
             is_atty,
         },
         ctx,
-    )
-    .await
-    {
+    ) {
         // No ActiveSession is in scope here — it was either never created
         // or has already been dropped (running finalize_audit via Drop).
         // process::exit is safe here because there are no destructors to skip.
@@ -127,7 +124,7 @@ async fn main() {
     }
 }
 
-async fn handle_subcommand(
+fn handle_subcommand(
     command: Commands,
     ctx: &std::sync::Arc<llm_secure_cli::core::context::AppContext>,
 ) {
@@ -146,12 +143,10 @@ async fn handle_subcommand(
             );
         }
         Commands::Credits { provider } => {
-            llm_secure_cli::cli::commands::credits::run_credits(&ctx.config_manager, &provider)
-                .await;
+            llm_secure_cli::cli::commands::credits::run_credits(&ctx.config_manager, &provider);
         }
         Commands::Rankings { provider } => {
-            llm_secure_cli::cli::commands::rankings::run_rankings(&ctx.config_manager, &provider)
-                .await;
+            llm_secure_cli::cli::commands::rankings::run_rankings(&ctx.config_manager, &provider);
         }
     }
 }

@@ -104,12 +104,14 @@ pub struct ModelAlias {
     pub target: String,
 }
 
-/// A single member of the verifier committee.
+/// The verifier committee.
 ///
 /// Each committee member is an independent LLM that evaluates tool call safety.
-/// The committee uses an "any-flag" model: if **any** member returns `NeedsApproval`,
-/// the call requires human approval. Only if **all** members return Allowed is the
-/// call auto-approved.
+/// The committee uses a strict **any-flag** model: members are checked **one at
+/// a time, in order**, and the **first** member that flags the tool call
+/// (`NeedsApproval` or `FallbackRequired`) immediately hands off to
+/// human-in-the-loop approval. Only if **all** members approve is the call
+/// auto-approved.
 ///
 /// Committee members can be managed at runtime via:
 ///   `/verifier add <provider:model>`   — adds a member (persisted to state.toml)
@@ -123,7 +125,6 @@ pub struct ModelAlias {
 ///
 /// When neither runtime members nor config.toml `verifier_committee` are set,
 /// the verifier falls back to manual human approval for all tool calls.
-
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SecurityConfig {
     /// When true, all Y/n and feedback prompts are automatically answered Yes.
@@ -142,15 +143,11 @@ pub struct SecurityConfig {
     /// Used as a FALLBACK when state.toml has no runtime-configured members
     /// (managed via `/verifier add|delete`).
     /// When empty, the verifier falls back to manual human approval.
+    ///
+    /// Members are evaluated sequentially under a strict any-flag policy: the
+    /// first member to flag the call hands off to human approval immediately.
     #[serde(default)]
     pub verifier_committee: Vec<String>,
-
-    /// Committee voting policy.
-    ///
-    /// - `"any-flag"` (conservative): ANY member flags → human approval required.
-    /// - `"majority"` (balanced, **default**): majority vote decides.
-    #[serde(default)]
-    pub committee_policy: CommitteePolicy,
 }
 
 fn default_verifier_enabled() -> bool {
@@ -163,32 +160,8 @@ impl Default for SecurityConfig {
             auto_approve: false,
             verifier_enabled: true,
             verifier_committee: Vec::new(),
-            committee_policy: CommitteePolicy::default(),
         }
     }
-}
-
-/// Committee voting policy for the Verifier Committee.
-///
-/// Determines how individual LLM verdicts are aggregated into a single decision.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
-#[serde(rename_all = "kebab-case")]
-pub enum CommitteePolicy {
-    /// Any-flag policy (conservative):
-    /// If ANY member returns NeedsApproval → human approval is required.
-    /// Only if ALL members return Allowed → the call is auto-approved.
-    /// This minimizes false negatives (missed attacks) at the cost of
-    /// more false positives (unnecessary human review).
-    AnyFlag,
-    /// Majority-vote policy (balanced, DEFAULT):
-    /// Decisions are aggregated by simple majority.
-    /// - Allowed votes >= (total / 2 + 1) → Allowed
-    /// - NeedsApproval votes >= (total / 2 + 1) → NeedsApproval
-    /// - Otherwise → NeedsApproval (ties/default to human review)
-    ///   This reduces false positives compared to any-flag while maintaining
-    ///   strong security through diverse LLM perspectives.
-    #[default]
-    Majority,
 }
 
 /// Describes a single validation failure in a [`SecurityConfig`].

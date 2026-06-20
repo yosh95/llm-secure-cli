@@ -1,7 +1,6 @@
 use crate::config::ConfigManager;
 use crate::llm::base::{BaseLlmClientData, LlmClient, ProviderSpec, create_http_client};
 use crate::llm::models::{ClientState, DataSource, Message, Role};
-use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::message_builder::MessageBuilder;
@@ -19,7 +18,7 @@ pub struct OpenAiCompatibleClient {
     pub base: BaseLlmClientData,
     pub api_url: String,
     pub api_key: String,
-    pub http_client: reqwest::Client,
+    pub http_client: ureq::Agent,
     pub formatter: Box<dyn PayloadFormatter>,
     pub supports_tools: bool,
     /// Cached input modalities this model supports (e.g. ["text", "image"]).
@@ -184,9 +183,48 @@ impl OpenAiCompatibleClient {
     }
 }
 
+// ── Helper: perform a synchronous ureq call, cancellable via Ctrl+C ───────
+//
+// Runs the blocking `ureq` HTTP request on a helper thread through
+// [`run_cancellable`] so the user can interrupt a long-running LLM request
+// with Ctrl+C even though the call site is synchronous.
+fn send_blocking_request(
+    http_client: &ureq::Agent,
+    url: &str,
+    api_key: &str,
+    body: Value,
+) -> anyhow::Result<String> {
+    let url = url.to_string();
+    let api_key = api_key.to_string();
+    let client_clone = http_client.clone();
+
+    crate::core::session::run_cancellable(move || {
+        let body_string = serde_json::to_string(&body)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize request body: {e}"))?;
+
+        let response = client_clone
+            .post(&url)
+            .header("Authorization", &format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .send(body_string)
+            .map_err(|e| anyhow::anyhow!("HTTP request to LLM API failed: {e}"))?;
+
+        let status = response.status().as_u16();
+        let text = response
+            .into_body()
+            .read_to_string()
+            .map_err(|e| anyhow::anyhow!("Failed to read response body (status {status}): {e}"))?;
+
+        if status >= 400 {
+            return Err(anyhow::anyhow!("API returned HTTP {status}: {text}"));
+        }
+
+        Ok(text)
+    })
+}
+
 // ── LlmClient impl ─────────────────────────────────────────────────────────
 
-#[async_trait]
 impl LlmClient for OpenAiCompatibleClient {
     fn get_state(&self) -> &ClientState {
         &self.base.state
@@ -201,7 +239,7 @@ impl LlmClient for OpenAiCompatibleClient {
         true
     }
 
-    async fn send(
+    fn send(
         &mut self,
         data: Vec<DataSource>,
         tool_schemas: Vec<Value>,
@@ -230,31 +268,10 @@ impl LlmClient for OpenAiCompatibleClient {
             })
         );
 
-        // Support Ctrl+C cancellation during the HTTP request.
-        let cancel_token = crate::core::session::SessionCancel::new();
-        let mut cancel_rx = cancel_token.receiver();
+        let text = send_blocking_request(&self.http_client, &self.api_url, &self.api_key, body)?;
 
-        let request = self
-            .http_client
-            .post(&self.api_url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&body);
-
-        let send_future = request.send();
-
-        let res = tokio::select! {
-            res = send_future => {
-                res.context("Failed to send request to LLM API")?
-            }
-            _ = cancel_rx.changed() => {
-                return Err(anyhow::anyhow!("Interrupted by user (Ctrl+C) during LLM API call"));
-            }
-        };
-
-        let resp_json: Value = res
-            .json()
-            .await
-            .context("Failed to parse LLM API response as JSON")?;
+        let resp_json: Value =
+            serde_json::from_str(&text).context("Failed to parse LLM API response as JSON")?;
 
         tracing::debug!(
             "LLM Response: {}",
@@ -291,7 +308,7 @@ impl LlmClient for OpenAiCompatibleClient {
         })
     }
 
-    async fn send_as_verifier(
+    fn send_as_verifier(
         &mut self,
         data: Vec<DataSource>,
         tool_schema: Value,
@@ -317,19 +334,10 @@ impl LlmClient for OpenAiCompatibleClient {
             })
         );
 
-        let res = self
-            .http_client
-            .post(&self.api_url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&body)
-            .send()
-            .await
-            .context("Failed to send request to LLM API")?;
+        let text = send_blocking_request(&self.http_client, &self.api_url, &self.api_key, body)?;
 
-        let resp_json: Value = res
-            .json()
-            .await
-            .context("Failed to parse LLM API response as JSON")?;
+        let resp_json: Value =
+            serde_json::from_str(&text).context("Failed to parse LLM API response as JSON")?;
 
         tracing::debug!(
             "LLM Verifier Response: {}",
@@ -372,9 +380,10 @@ impl LlmClient for OpenAiCompatibleClient {
 
         // 5. Fallback: If no tool call, check if it returned text (e.g. refused or explained)
         if let Some(content) = msg.get("content").and_then(|v| v.as_str()) {
-            return Err(anyhow::anyhow!(
-                "Verifier returned text instead of tool call: \"{content}\". This usually means the model refused the request or is not capable of tool calling."
-            ));
+            let err_msg = format!(
+                r#"Verifier returned text instead of tool call: "{content}". This usually means the model refused the request or is not capable of tool calling."#
+            );
+            return Err(anyhow::anyhow!(err_msg));
         }
 
         Err(anyhow::anyhow!(

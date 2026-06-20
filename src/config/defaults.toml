@@ -37,14 +37,10 @@ verifier_enabled = true
 #
 # The list below is used as a FALLBACK when state.toml has no members configured.
 # verifier_committee = ["ollama:gemma4:e2b", "openai:gpt-4o-mini"]
-
-# Committee voting policy: "majority" (default) or "any-flag".
-# - "majority" (balanced): majority vote decides. Reduces false positives
-#   compared to any-flag while maintaining strong security.
-# - "any-flag" (conservative): if ANY member flags the call as NeedsApproval,
-#   human approval is required. Minimizes missed attacks but causes more
-#   unnecessary human review.
-# committee_policy = "majority"
+#
+# Members are evaluated sequentially under a strict any-flag policy: the first
+# member to flag the call hands off to human approval immediately; the call is
+# auto-approved only if every member approves.
 
 
 

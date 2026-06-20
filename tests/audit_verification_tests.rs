@@ -17,7 +17,6 @@
 //!
 //! Each test creates its own temporary directory to avoid interference.
 
-use async_trait::async_trait;
 use llm_secure_cli::cli::ui::{ConfirmResult, UserInterface};
 use llm_secure_cli::core::context::AppContext;
 use llm_secure_cli::core::session::ActiveSession;
@@ -28,7 +27,7 @@ use llm_secure_cli::llm::models::{
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::Mutex;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -37,7 +36,7 @@ use tokio::sync::Mutex;
 /// Global mutex to serialize audit log access across parallel tests.
 /// The audit log is file-based and shared (OnceLock), so parallel writes
 /// lead to racy assertions.  This mutex ensures one test at a time.
-static AUDIT_LOG_MUTEX: Mutex<()> = Mutex::const_new(());
+static AUDIT_LOG_MUTEX: Mutex<()> = Mutex::new(());
 
 /// Initialize the test environment (called once, subsequent calls are no-ops).
 fn create_test_env() {
@@ -90,7 +89,6 @@ impl TestUi {
     }
 }
 
-#[async_trait]
 impl UserInterface for TestUi {
     fn print_block(&self, _c: &str, _t: Option<&str>, _s: Option<&str>) {}
     fn print_rule(&self, _t: Option<&str>, _s: Option<&str>) {}
@@ -101,7 +99,7 @@ impl UserInterface for TestUi {
     fn report_info(&self, _m: &str) {}
     fn report_warning(&self, _m: &str) {}
     fn report_success(&self, _m: &str) {}
-    async fn ask_confirm(&self, _p: &str) -> Option<ConfirmResult> {
+    fn ask_confirm(&self, _p: &str) -> Option<ConfirmResult> {
         self.confirmed.map(|y| {
             if y {
                 ConfirmResult::Yes
@@ -112,8 +110,8 @@ impl UserInterface for TestUi {
             }
         })
     }
-    async fn ask_confirm_simple(&self, _p: &str) -> Option<ConfirmResult> {
-        self.ask_confirm(_p).await
+    fn ask_confirm_simple(&self, _p: &str) -> Option<ConfirmResult> {
+        self.ask_confirm(_p)
     }
 }
 
@@ -123,7 +121,6 @@ struct SessionMockClient {
     call_count: usize,
 }
 
-#[async_trait]
 impl LlmClient for SessionMockClient {
     fn get_state(&self) -> &ClientState {
         &self.state
@@ -138,7 +135,7 @@ impl LlmClient for SessionMockClient {
         false
     }
 
-    async fn send(
+    fn send(
         &mut self,
         _data: Vec<DataSource>,
         _tool_schemas: Vec<serde_json::Value>,
@@ -185,7 +182,7 @@ impl LlmClient for SessionMockClient {
         }
     }
 
-    async fn send_as_verifier(
+    fn send_as_verifier(
         &mut self,
         _data: Vec<DataSource>,
         _tool_schema: serde_json::Value,
@@ -210,7 +207,6 @@ struct VerifierMockClient {
     response_text: String,
 }
 
-#[async_trait]
 impl LlmClient for VerifierMockClient {
     fn get_state(&self) -> &ClientState {
         &self.state
@@ -225,7 +221,7 @@ impl LlmClient for VerifierMockClient {
         false
     }
 
-    async fn send(
+    fn send(
         &mut self,
         _data: Vec<DataSource>,
         _tool_schemas: Vec<serde_json::Value>,
@@ -236,7 +232,7 @@ impl LlmClient for VerifierMockClient {
         })
     }
 
-    async fn send_as_verifier(
+    fn send_as_verifier(
         &mut self,
         _data: Vec<DataSource>,
         _tool_schema: serde_json::Value,
@@ -249,8 +245,8 @@ impl LlmClient for VerifierMockClient {
 }
 
 /// Register a verifier mock client in the registry.
-async fn register_verifier_mock(ctx: &Arc<AppContext>, provider_name: &str, response_text: &str) {
-    let mut registry = ctx.client_registry.lock().await;
+fn register_verifier_mock(ctx: &Arc<AppContext>, provider_name: &str, response_text: &str) {
+    let mut registry = ctx.client_registry.lock().unwrap();
     let p_name = provider_name.to_string();
     let resp = response_text.to_string();
     registry.register(
@@ -279,7 +275,7 @@ async fn register_verifier_mock(ctx: &Arc<AppContext>, provider_name: &str, resp
 /// When `verifier_response` is `Some(...)`, the verifier is configured via
 /// state.toml with `mock_verifier:verifier-model` and enabled.
 /// When `None`, the verifier is disabled (no provider:model set, or disabled).
-async fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSession {
+fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSession {
     create_test_env();
     // Clear audit log to avoid cross-test contamination
     let log_path = llm_secure_cli::consts::audit_log_path();
@@ -325,7 +321,7 @@ async fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSessi
         let ctx = Arc::new(ctx);
 
         // Register the verifier mock
-        register_verifier_mock(&ctx, "mock_verifier", v_resp).await;
+        register_verifier_mock(&ctx, "mock_verifier", v_resp);
 
         // Create session client
         let mock_client = SessionMockClient {
@@ -346,7 +342,7 @@ async fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSessi
             ActiveSession::new(Box::new(mock_client), ctx).expect("Failed to create session");
         session.intent = "test audit verification".to_string();
 
-        let result = session.process_and_print(vec![]).await;
+        let result = session.process_and_print(vec![]);
         result.expect("process_and_print should succeed");
         session
     } else {
@@ -385,7 +381,7 @@ async fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSessi
             ActiveSession::new(Box::new(mock_client), ctx).expect("Failed to create session");
         session.intent = "test audit verification".to_string();
 
-        let result = session.process_and_print(vec![]).await;
+        let result = session.process_and_print(vec![]);
         result.expect("process_and_print should succeed");
         session
     }
@@ -415,10 +411,10 @@ fn read_audit_log() -> Vec<serde_json::Value> {
 // Tests: Verifier not configured (NoVerifier path)
 // ---------------------------------------------------------------------------
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_audit_no_verifier_human_approves() {
-    let _lock = AUDIT_LOG_MUTEX.lock().await;
-    let _session = run_session(TestUi::always_yes(), None).await;
+#[test]
+fn test_audit_no_verifier_human_approves() {
+    let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _session = run_session(TestUi::always_yes(), None);
 
     let log_entries = read_audit_log();
 
@@ -470,10 +466,10 @@ async fn test_audit_no_verifier_human_approves() {
     assert!(approval.is_some(), "Expected approved human_approval entry");
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_audit_no_verifier_human_rejects() {
-    let _lock = AUDIT_LOG_MUTEX.lock().await;
-    let _session = run_session(TestUi::always_no(), None).await;
+#[test]
+fn test_audit_no_verifier_human_rejects() {
+    let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _session = run_session(TestUi::always_no(), None);
 
     let log_entries = read_audit_log();
 
@@ -507,14 +503,13 @@ async fn test_audit_no_verifier_human_rejects() {
     );
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_audit_no_verifier_human_rejects_with_feedback() {
-    let _lock = AUDIT_LOG_MUTEX.lock().await;
+#[test]
+fn test_audit_no_verifier_human_rejects_with_feedback() {
+    let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let _session = run_session(
         TestUi::reject_with_feedback("This is unsafe, do not run"),
         None,
-    )
-    .await;
+    );
 
     let log_entries = read_audit_log();
 
@@ -566,14 +561,13 @@ async fn test_audit_no_verifier_human_rejects_with_feedback() {
 // Tests: Verifier configured
 // ---------------------------------------------------------------------------
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_audit_verifier_allows() {
-    let _lock = AUDIT_LOG_MUTEX.lock().await;
+#[test]
+fn test_audit_verifier_allows() {
+    let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let _session = run_session(
         TestUi::always_yes(),
         Some("DECISION: ALLOW\nREASON: Safe Python command"),
-    )
-    .await;
+    );
 
     let log_entries = read_audit_log();
 
@@ -605,14 +599,13 @@ async fn test_audit_verifier_allows() {
     );
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_audit_verifier_allows_reason_in_args() {
-    let _lock = AUDIT_LOG_MUTEX.lock().await;
+#[test]
+fn test_audit_verifier_allows_reason_in_args() {
+    let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let _session = run_session(
         TestUi::always_yes(),
         Some("DECISION: ALLOW\nREASON: Intent matches tool call, no security risk"),
-    )
-    .await;
+    );
 
     let log_entries = read_audit_log();
 
@@ -653,14 +646,13 @@ async fn test_audit_verifier_allows_reason_in_args() {
     );
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_audit_verifier_needs_approval_human_approves() {
-    let _lock = AUDIT_LOG_MUTEX.lock().await;
+#[test]
+fn test_audit_verifier_needs_approval_human_approves() {
+    let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let _session = run_session(
         TestUi::always_yes(),
         Some("DECISION: REVIEW\nREASON: File modification detected, requires human review"),
-    )
-    .await;
+    );
 
     let log_entries = read_audit_log();
 
@@ -705,14 +697,13 @@ async fn test_audit_verifier_needs_approval_human_approves() {
     assert_eq!(ctx, "verifier_needs_approval");
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_audit_verifier_needs_approval_human_rejects_with_feedback() {
-    let _lock = AUDIT_LOG_MUTEX.lock().await;
+#[test]
+fn test_audit_verifier_needs_approval_human_rejects_with_feedback() {
+    let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let _session = run_session(
         TestUi::reject_with_feedback("I do not want to modify files"),
         Some("DECISION: REVIEW\nREASON: File modification detected"),
-    )
-    .await;
+    );
 
     let log_entries = read_audit_log();
 
@@ -761,14 +752,13 @@ async fn test_audit_verifier_needs_approval_human_rejects_with_feedback() {
     assert_eq!(feedback, "I do not want to modify files");
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_audit_verifier_fallback_human_approves() {
-    let _lock = AUDIT_LOG_MUTEX.lock().await;
+#[test]
+fn test_audit_verifier_fallback_human_approves() {
+    let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let _session = run_session(
         TestUi::always_yes(),
         Some("DECISION: BLOCK\nREASON: Verifier API unavailable"),
-    )
-    .await;
+    );
 
     let log_entries = read_audit_log();
 
@@ -800,14 +790,13 @@ async fn test_audit_verifier_fallback_human_approves() {
 // Tests: Audit log file integrity
 // ---------------------------------------------------------------------------
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_audit_log_file_contains_all_events() {
-    let _lock = AUDIT_LOG_MUTEX.lock().await;
+#[test]
+fn test_audit_log_file_contains_all_events() {
+    let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let _session = run_session(
         TestUi::reject_with_feedback("Not safe"),
         Some("DECISION: REVIEW\nREASON: Suspicious operation"),
-    )
-    .await;
+    );
 
     // Read the on-disk audit log
     let log_entries = read_audit_log();
@@ -857,10 +846,10 @@ async fn test_audit_log_file_contains_all_events() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_audit_log_multiple_verifier_entries_have_unique_hashes() {
-    let _lock = AUDIT_LOG_MUTEX.lock().await;
-    let _session = run_session(TestUi::always_yes(), Some("DECISION: ALLOW\nREASON: Safe")).await;
+#[test]
+fn test_audit_log_multiple_verifier_entries_have_unique_hashes() {
+    let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _session = run_session(TestUi::always_yes(), Some("DECISION: ALLOW\nREASON: Safe"));
 
     let log_entries = read_audit_log();
     let verifier_entries: Vec<_> = log_entries

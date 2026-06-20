@@ -157,13 +157,13 @@ fn write_cache(cache: &HashMap<String, Vec<CachedModelEntry>>) {
 impl ConfigManager {
     /// Return the cached model IDs for each provider.
     /// If the cache does not exist it is fetched from providers first.
-    pub async fn get_cached_models(&self) -> HashMap<String, Vec<String>> {
+    pub fn get_cached_models(&self) -> HashMap<String, Vec<String>> {
         let map = match read_cache() {
             Ok(Some(m)) => m,
-            Ok(None) => return self.update_models_cache().await,
+            Ok(None) => return self.update_models_cache(),
             Err(e) => {
                 tracing::warn!(error = %e, "Falling back to fetching models");
-                return self.update_models_cache().await;
+                return self.update_models_cache();
             }
         };
         map.into_iter()
@@ -258,12 +258,12 @@ impl ConfigManager {
 
     /// Fetch model lists from all active providers and persist the combined
     /// cache.  Returns the model IDs (string form) for convenience.
-    pub async fn update_models_cache(&self) -> HashMap<String, Vec<String>> {
+    pub fn update_models_cache(&self) -> HashMap<String, Vec<String>> {
         let providers = self.get_active_providers();
         let mut cache: HashMap<String, Vec<CachedModelEntry>> = HashMap::new();
 
         for p in providers {
-            if let Ok(models) = self.fetch_models_from_provider(&p).await {
+            if let Ok(models) = self.fetch_models_from_provider(&p) {
                 cache.insert(p, models);
             }
         }
@@ -282,26 +282,23 @@ impl ConfigManager {
     /// For providers whose API exposes per-model capabilities (e.g. `OpenRouter`
     /// with its `supported_parameters` array), the returned entries carry
     /// metadata that can be used to decide whether to send tool definitions.
-    async fn fetch_models_from_provider(
-        &self,
-        provider: &str,
-    ) -> anyhow::Result<Vec<CachedModelEntry>> {
-        let api_key = self.get_api_key(provider);
+    fn fetch_models_from_provider(&self, provider: &str) -> anyhow::Result<Vec<CachedModelEntry>> {
+        let provider = provider.to_string();
+        let api_key = self.get_api_key(&provider);
         let config = self.get_config()?;
 
         let mut url = String::new();
-        if let Some(p_cfg) = config.providers.get(provider)
+        if let Some(p_cfg) = config.providers.get(&provider)
             && let Some(api_url) = &p_cfg.api_url
         {
             url = api_url.clone();
         }
 
         if url.is_empty() {
-            match provider {
+            match provider.as_str() {
                 "openai" => url = "https://api.openai.com/v1".to_string(),
                 "openrouter" => url = "https://openrouter.ai/api/v1".to_string(),
                 "ollama" => url = "http://localhost:11434/v1".to_string(),
-
                 _ => return Err(anyhow::anyhow!("No API URL for provider")),
             }
         }
@@ -309,101 +306,109 @@ impl ConfigManager {
         let models_url = if provider == "ollama" && !url.contains("/v1") {
             format!("{}/api/tags", url.trim_end_matches('/'))
         } else if provider == "openrouter" && url == "https://openrouter.ai/api/v1" {
-            // openrouter requires query param to include all modalities like video/image generation
             "https://openrouter.ai/api/v1/models?output_modalities=all".to_string()
         } else {
             format!("{}/models", url.trim_end_matches('/'))
         };
 
-        let mut req = crate::utils::http::CLIENT.get(&models_url);
-        if let Some(key) = api_key {
-            req = req.header("Authorization", format!("Bearer {key}"));
-        }
+        let models_url2 = models_url.clone();
+        let api_key2 = api_key.clone();
 
-        let res = req.send().await?;
-        let json: serde_json::Value = res.json().await?;
+        crate::core::session::run_cancellable(move || {
+            let mut req = crate::utils::http::CLIENT.get(&models_url2);
+            if let Some(key) = &api_key2 {
+                req = req.header("Authorization", &format!("Bearer {key}"));
+            }
 
-        let mut models = Vec::new();
-        if provider == "ollama" && !url.contains("/v1") {
-            // Ollama's /api/tags returns {"models": [{"name": "...", ...}]}
-            if let Some(list) = json.get("models").and_then(|v| v.as_array()) {
-                for m in list {
-                    if let Some(name) = m.get("name").and_then(|v| v.as_str()) {
-                        // Ollama models generally support tools
-                        models.push(CachedModelEntry::Detailed {
-                            id: name.to_string(),
-                            supports_tools: true,
-                            model_type: None,
-                            input_modalities: None,
-                        });
+            let response = req
+                .call()
+                .map_err(|e| anyhow::anyhow!("Failed to fetch models from {provider}: {e}"))?;
+
+            let text = response
+                .into_body()
+                .read_to_string()
+                .map_err(|e| anyhow::anyhow!("Failed to read response body: {e}"))?;
+
+            let json: serde_json::Value = serde_json::from_str(&text)
+                .map_err(|e| anyhow::anyhow!("Failed to parse JSON response: {e}"))?;
+
+            let mut models = Vec::new();
+            if provider == "ollama" && !url.contains("/v1") {
+                // Ollama's /api/tags returns {"models": [{"name": "...", ...}]}
+                if let Some(list) = json.get("models").and_then(|v| v.as_array()) {
+                    for m in list {
+                        if let Some(name) = m.get("name").and_then(|v| v.as_str()) {
+                            models.push(CachedModelEntry::Detailed {
+                                id: name.to_string(),
+                                supports_tools: true,
+                                model_type: None,
+                                input_modalities: None,
+                            });
+                        }
                     }
                 }
-            }
-            if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
+                if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
+                    for m in data {
+                        if let Some(id) = m.get("id").and_then(|v| v.as_str()) {
+                            let tags: Vec<&str> = m
+                                .get("metadata")
+                                .and_then(|v| v.get("tags"))
+                                .and_then(|v| v.as_array())
+                                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+                                .unwrap_or_default();
+
+                            if tags.contains(&"embed") {
+                                continue;
+                            }
+
+                            let supports_tools = tags.contains(&"chat");
+                            let model_type = if tags.contains(&"image-gen") {
+                                Some("image".to_string())
+                            } else if tags.contains(&"stt") || tags.contains(&"tts") {
+                                Some("audio".to_string())
+                            } else {
+                                Some("chat".to_string())
+                            };
+
+                            models.push(CachedModelEntry::Detailed {
+                                id: id.to_string(),
+                                supports_tools,
+                                model_type,
+                                input_modalities: None,
+                            });
+                        }
+                    }
+                }
+            } else if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
                 for m in data {
                     if let Some(id) = m.get("id").and_then(|v| v.as_str()) {
-                        let tags: Vec<&str> = m
-                            .get("metadata")
-                            .and_then(|v| v.get("tags"))
+                        let supports_tools = m
+                            .get("supported_parameters")
                             .and_then(|v| v.as_array())
-                            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
-                            .unwrap_or_default();
-
-                        // Skip embedding models — irrelevant for chat/image/audio inference
-                        if tags.contains(&"embed") {
-                            continue;
-                        }
-
-                        let supports_tools = tags.contains(&"chat");
-
-                        // Determine model type from metadata tags
-                        let model_type = if tags.contains(&"image-gen") {
-                            Some("image".to_string())
-                        } else if tags.contains(&"stt") || tags.contains(&"tts") {
-                            Some("audio".to_string())
-                        } else {
-                            Some("chat".to_string())
-                        };
+                            .is_none_or(|params| {
+                                params.iter().any(|p| p.as_str() == Some("tools"))
+                            });
+                        let input_modalities = m
+                            .get("architecture")
+                            .and_then(|a| a.get("input_modalities"))
+                            .and_then(|v| v.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|v| v.as_str().map(String::from))
+                                    .collect::<Vec<String>>()
+                            });
 
                         models.push(CachedModelEntry::Detailed {
                             id: id.to_string(),
                             supports_tools,
-                            model_type,
-                            input_modalities: None,
+                            model_type: None,
+                            input_modalities,
                         });
                     }
                 }
             }
-        } else if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
-            // OpenAI-compatible /models endpoint — includes OpenRouter.
-            for m in data {
-                if let Some(id) = m.get("id").and_then(|v| v.as_str()) {
-                    // Check for tool-support metadata (OpenRouter /models API).
-                    let supports_tools = m
-                        .get("supported_parameters")
-                        .and_then(|v| v.as_array())
-                        .is_none_or(|params| params.iter().any(|p| p.as_str() == Some("tools")));
-                    // Parse input_modalities from architecture field (OpenRouter API).
-                    let input_modalities = m
-                        .get("architecture")
-                        .and_then(|a| a.get("input_modalities"))
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|v| v.as_str().map(String::from))
-                                .collect::<Vec<String>>()
-                        });
 
-                    models.push(CachedModelEntry::Detailed {
-                        id: id.to_string(),
-                        supports_tools,
-                        model_type: None,
-                        input_modalities,
-                    });
-                }
-            }
-        }
-
-        Ok(models)
+            Ok(models)
+        })
     }
 }

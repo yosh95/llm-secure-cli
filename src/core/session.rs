@@ -3,8 +3,9 @@ use crate::llm::models::{DataSource, MessagePart, Role};
 use crate::security::audit::AuditEntry;
 use crate::security::merkle_anchor::SessionAnchorManager;
 use serde_json;
-use std::sync::{Arc, OnceLock};
-use tokio::sync::watch;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Once};
+use std::time::Duration;
 use uuid;
 
 use crate::core::context::AppContext;
@@ -18,111 +19,96 @@ pub mod tool_executor;
 
 // ── Global Ctrl+C handler ────────────────────────────────────────────────
 //
-// On Unix, a persistent `tokio::signal::unix::signal(SIGINT)` listener is
-// installed ONCE — the signal is captured by the OS-level sigaction and
-// forwarded to an async receiver.  Repeated `ctrl_c().await` patterns
-// create and destroy registrations in the global signal_hook_registry,
-// which can cause signals to be silently dropped.
+// A single process-wide SIGINT (Ctrl+C) handler is installed once via the
+// `ctrlc` crate.  Each interruption bumps a monotonically increasing
+// "generation" counter.  Code that wants to be interruptible snapshots the
+// current generation and periodically checks whether it has advanced.
 //
-// On Windows, `tokio::signal::ctrl_c()` is used instead.
-//
-// All concurrent operations (LLM API call, verifier wait, tool execution)
-// use independent `watch::Receiver`s from the same sender — no duplicate
-// OS signal registrations.
+// This replaces the previous tokio-based design (persistent signal stream +
+// `watch` channel).  Blocking work (HTTP requests, subprocesses) is run on a
+// helper thread and polled via [`run_cancellable`], so Ctrl+C remains
+// responsive even though the codebase is fully synchronous.
 
-static CANCEL_SENDER: OnceLock<watch::Sender<u64>> = OnceLock::new();
+static CANCEL_GENERATION: AtomicU64 = AtomicU64::new(0);
+static CANCEL_HANDLER_INIT: Once = Once::new();
 
-/// Ensure the global SIGINT listener is running (exactly once per process).
-///
-/// Uses a restart loop: if the signal stream returns `None` (which can happen
-/// if the signal handler is replaced externally), the task automatically
-/// re-registers the handler rather than silently dying.
+/// Ensure the global SIGINT handler is installed (exactly once per process).
 fn ensure_global_cancel_handler() {
-    CANCEL_SENDER.get_or_init(|| {
-        let (tx, _rx) = watch::channel(0u64);
-        let tx2 = tx.clone();
-        tokio::spawn(async move {
-            loop {
-                // On Unix, register a persistent SIGINT listener.
-                // If registration fails, fall back to ctrl_c() loop.
-                #[cfg(unix)]
-                let mut stream: tokio::signal::unix::Signal =
-                    match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
-                    {
-                        Ok(s) => s,
-                        Err(e) => {
-                            tracing::error!(
-                                "Failed to register persistent SIGINT handler: {e}; falling back"
-                            );
-                            // Fallback: loop calling ctrl_c().
-                            loop {
-                                tokio::signal::ctrl_c().await.ok();
-                                tracing::debug!("SIGINT received (fallback) — notifying watchers");
-                                tx2.send_modify(|v| *v += 1);
-                            }
-                        }
-                    };
+    CANCEL_HANDLER_INIT.call_once(|| {
+        let result = ctrlc::set_handler(|| {
+            CANCEL_GENERATION.fetch_add(1, Ordering::SeqCst);
+        });
+        if let Err(e) = result {
+            tracing::error!("Failed to install Ctrl+C handler: {e}");
+        }
+    });
+}
 
-                #[cfg(unix)]
-                loop {
-                    match stream.recv().await {
-                        Some(_) => {
-                            tracing::debug!(
-                                "SIGINT received — notifying session cancellation watchers"
-                            );
-                            tx2.send_modify(|v| *v += 1);
-                        }
-                        None => {
-                            // Signal stream was exhausted (e.g. signal handler reset).
-                            // Break out to the outer loop to re-register.
-                            tracing::warn!("SIGINT signal stream ended — re-registering handler");
-                            break;
-                        }
-                    }
-                }
+/// Return the current cancellation generation counter.
+#[must_use]
+pub fn cancel_generation() -> u64 {
+    ensure_global_cancel_handler();
+    CANCEL_GENERATION.load(Ordering::SeqCst)
+}
 
-                #[cfg(not(unix))]
-                {
-                    tokio::signal::ctrl_c().await.ok();
-                    tracing::debug!("SIGINT received — notifying session cancellation watchers");
-                    tx2.send_modify(|v| *v += 1);
+/// Returns `true` if a Ctrl+C has occurred since `generation` was captured.
+#[must_use]
+pub fn cancelled_since(generation: u64) -> bool {
+    CANCEL_GENERATION.load(Ordering::SeqCst) != generation
+}
+
+/// Run a blocking closure on a helper thread while remaining responsive to
+/// Ctrl+C.  Returns the closure's result, or an "Interrupted" error if the
+/// user pressed Ctrl+C before it finished.
+///
+/// On cancellation the helper thread is detached (not joined): the underlying
+/// work — a `ureq` HTTP request or a subprocess — is bounded by its own
+/// timeouts, so the abandoned thread terminates on its own shortly after.
+pub fn run_cancellable<F, T>(f: F) -> anyhow::Result<T>
+where
+    F: FnOnce() -> anyhow::Result<T> + Send + 'static,
+    T: Send + 'static,
+{
+    let start = cancel_generation();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(f());
+    });
+
+    loop {
+        match rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(result) => return result,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                if cancelled_since(start) {
+                    return Err(anyhow::anyhow!("Interrupted by user (Ctrl+C)"));
                 }
             }
-        });
-        tx
-    });
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(anyhow::anyhow!("Worker thread terminated unexpectedly"));
+            }
+        }
+    }
 }
 
 /// A lightweight cancellation token backed by the global SIGINT handler.
 ///
-/// Each `.receiver()` returns a fresh `watch::Receiver<u64>` that will
-/// complete on the *next* Ctrl+C.  Multiple concurrent receivers (LLM call,
-/// verifier, tool execution) all share the same single OS signal registration.
-/// The handler runs in a restart loop and increments a counter on each Ctrl+C,
-/// so cancellation works for an arbitrary number of sequential interruptions
-/// even if the underlying signal stream is reset.
+/// `generation()` snapshots the Ctrl+C counter; compare it later (or use
+/// [`cancelled_since`]) to detect whether the user interrupted in between.
 #[derive(Clone)]
 pub struct SessionCancel;
 
 impl SessionCancel {
     /// Create a new token — idempotent w.r.t. the global handler.
-    /// Safe to call multiple times; the background task starts at most once.
     #[must_use]
     pub fn new() -> Self {
         ensure_global_cancel_handler();
         Self
     }
 
-    /// Return a receiver that completes on the NEXT Ctrl+C.
-    /// Each call is independent; the returned receiver starts fresh so its
-    /// first `.changed()` always waits for a future signal.
+    /// Snapshot the current cancellation generation for later comparison.
     #[must_use]
-    #[allow(clippy::expect_used)]
-    pub fn receiver(&self) -> watch::Receiver<u64> {
-        CANCEL_SENDER
-            .get()
-            .expect("SessionCancel::new() must have been called")
-            .subscribe()
+    pub fn generation(&self) -> u64 {
+        cancel_generation()
     }
 }
 

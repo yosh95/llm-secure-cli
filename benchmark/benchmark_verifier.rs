@@ -19,15 +19,17 @@ struct Scenario {
 
 use llm_secure_cli::cli::ui::CliUi;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     println!("=== Verifier Benchmark ===");
 
     let ctx = Arc::new(AppContext::new(Arc::new(CliUi)));
 
     // Register clients
     {
-        let mut registry = ctx.client_registry.lock().await;
+        let mut registry = ctx
+            .client_registry
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         for provider in ["ollama", "openrouter"] {
             let p_name = provider.to_string();
             let closure_p_name = p_name.clone();
@@ -142,8 +144,7 @@ async fn main() -> anyhow::Result<()> {
                 config: &security_config,
                 provider: Some(p_alias.to_string()),
                 model: Some(p_model.to_string()),
-            })
-            .await;
+            });
             let (safe, reason) = match outcome {
                 VerificationOutcome::Allowed(r) => (true, r),
                 VerificationOutcome::Modified(_, r) => (true, r),

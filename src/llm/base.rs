@@ -1,6 +1,5 @@
 use crate::config::ConfigManager;
 use crate::llm::models::{ClientState, DataSource, Message};
-use async_trait::async_trait;
 
 pub struct ProviderSpec {
     pub api_key_name: String,
@@ -8,20 +7,19 @@ pub struct ProviderSpec {
     pub pdf_as_base64: bool,
 }
 
-#[async_trait]
 pub trait LlmClient: Send + Sync {
     fn get_state(&self) -> &ClientState;
     fn get_state_mut(&mut self) -> &mut ClientState;
     fn get_config_section(&self) -> &str;
 
-    async fn send(
+    fn send(
         &mut self,
         data: Vec<DataSource>,
         tool_schemas: Vec<serde_json::Value>,
     ) -> anyhow::Result<crate::llm::models::LlmResponse>;
 
     /// Send a request specifically for verification purposes, forcing a structured tool call response.
-    async fn send_as_verifier(
+    fn send_as_verifier(
         &mut self,
         data: Vec<DataSource>,
         tool_schema: serde_json::Value,
@@ -151,16 +149,18 @@ impl BaseLlmClientData {
     }
 }
 
-/// Creates a reqwest client with timeout settings from the global config.
-pub fn create_http_client(config_manager: &ConfigManager) -> anyhow::Result<reqwest::Client> {
+/// Creates a ureq agent with timeout settings from the global config.
+pub fn create_http_client(config_manager: &ConfigManager) -> anyhow::Result<ureq::Agent> {
     let config = config_manager.get_config()?;
     let timeout_secs = config.general.request_timeout;
     let version = env!("CARGO_PKG_VERSION");
     let ua = format!("llm-secure-cli/{version} (https://github.com/yosh95/llm-secure-cli)");
 
-    reqwest::Client::builder()
+    let agent_config = ureq::config::Config::builder()
         .user_agent(ua)
-        .timeout(std::time::Duration::from_secs(timeout_secs))
-        .build()
-        .map_err(|e| anyhow::anyhow!("Failed to create reqwest client: {e}"))
+        .timeout_connect(Some(std::time::Duration::from_secs(10)))
+        .timeout_recv_body(Some(std::time::Duration::from_secs(timeout_secs)))
+        .timeout_send_body(Some(std::time::Duration::from_secs(timeout_secs)))
+        .build();
+    Ok(ureq::Agent::new_with_config(agent_config))
 }

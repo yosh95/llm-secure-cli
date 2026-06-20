@@ -1,6 +1,5 @@
-use crate::config::models::CommitteePolicy;
 use crate::core::session::ActiveSession;
-use crate::security::verifier::{CommitteeVerdict, VerificationOutcome, VerificationParams};
+use crate::security::verifier::{VerificationOutcome, VerificationParams};
 use serde_json::Value;
 
 impl ActiveSession {
@@ -17,16 +16,19 @@ impl ActiveSession {
 
     /// Phase 2: Verification & Approval
     ///
-    /// Combines Zero Trust enforcement, verifier committee resolution & spawning,
-    /// and verifier outcome resolution into a single phase.  The Verifier LLM
-    /// handles all risk judgements — the old CASS-based approach has been removed.
+    /// The verifier committee is evaluated **sequentially under a strict
+    /// any-flag policy**: members are queried one at a time, in order, and the
+    /// **first** member that flags the call (`NeedsApproval` or
+    /// `FallbackRequired`) immediately hands off to human-in-the-loop approval —
+    /// no remaining members are queried.  Only if **every** member approves is
+    /// the call auto-approved (applying the first member's correction, if any).
     ///
     /// Returns:
     ///   - `(effective_args, auto_approved, cancel_msg)` where:
     ///     - `effective_args` are the (possibly corrected) tool arguments
     ///     - `auto_approved` is `true` if the verifier greenlit the call
     ///     - `cancel_msg` is `Some(...)` with user feedback if rejected, or `None`
-    pub(crate) async fn phase2_verification(
+    pub(crate) fn phase2_verification(
         &mut self,
         name: &str,
         args: &serde_json::Map<String, Value>,
@@ -41,37 +43,11 @@ impl ActiveSession {
         let (committee_members, verifier_available) =
             self.ctx.config_manager.get_verifier_committee();
 
-        if verifier_available && !committee_members.is_empty() {
-            // Spawn verifier task(s) and resolve outcome
-            let verifier_handle = if committee_members.len() == 1 {
-                // Single verifier (legacy mode)
-                let (v_provider, v_model) = &committee_members[0];
-                self.ctx.ui.report_info(&format!(
-                    "Verifier: {}:{} (single-member committee)",
-                    committee_members[0].0, committee_members[0].1,
-                ));
-                Some(self.spawn_verifier_task(name, args, v_provider.clone(), v_model.clone()))
-            } else {
-                // Multi-member committee
-                let policy = &config.security.committee_policy;
-                let policy_name = match policy {
-                    CommitteePolicy::AnyFlag => "any-flag",
-                    CommitteePolicy::Majority => "majority-vote",
-                };
-                let member_count = committee_members.len();
-                self.ctx.ui.report_info(&format!(
-                    "Verifier Committee: {member_count} members ({policy_name} policy)",
-                ));
-                Some(self.spawn_committee_task(name, args, committee_members, policy.clone()))
-            };
-
-            self.resolve_verifier_outcome(name, args, config, verifier_handle)
-                .await
-        } else {
+        if !verifier_available || committee_members.is_empty() {
             // Verifier is off or not configured: fall back to human approval.
             if self.ctx.config_manager.get_verifier_enabled() {
                 self.ctx.ui.report_warning(
-                    "Verifier is enabled, but no verifier committee members are configured.                      Falling back to manual approval.",
+                    "Verifier is enabled, but no verifier committee members are configured. Falling back to manual approval.",
                 );
                 self.ctx
                     .ui
@@ -91,186 +67,187 @@ impl ActiveSession {
                 .context(&audit_ctx)
                 .log();
 
-            // No verifier task — ask human directly
-            let cancel_msg = self
-                .request_human_approval(name, config, "no_verifier")
-                .await?;
-            if let Some(msg) = cancel_msg {
+            let cancel_msg = self.request_human_approval(name, config, "no_verifier")?;
+            return if let Some(msg) = cancel_msg {
                 Ok((args.clone(), false, Some(msg)))
             } else {
                 Ok((args.clone(), false, None))
-            }
+            };
         }
-    }
 
-    /// Resolve the verifier outcome: wait for the spawned task, interpret the result,
-    /// log the decision to the audit trail, and either auto-approve or ask the human for approval.
-    async fn resolve_verifier_outcome(
-        &mut self,
-        name: &str,
-        args: &serde_json::Map<String, Value>,
-        config: &crate::config::models::AppConfig,
-        verifier_handle: Option<tokio::task::JoinHandle<VerificationOutcome>>,
-    ) -> anyhow::Result<(serde_json::Map<String, Value>, bool, Option<Value>)> {
-        let handle = match verifier_handle {
-            Some(h) => h,
-            None => {
-                // Shouldn't happen, but handle gracefully
-                return Ok((args.clone(), false, None));
-            }
+        // 2b. Sequential any-flag evaluation.
+        let security_config = match self.ctx.config_manager.get_config() {
+            Ok(c) => c.security.clone(),
+            Err(_) => crate::config::models::SecurityConfig::default(),
         };
+        let intent = self.get_intent_context();
+        let args_value = serde_json::json!(args);
+        let member_count = committee_members.len();
+        // Snapshot the cancellation counter so a Ctrl+C during any verifier
+        // request aborts the whole turn (rather than being treated as a flag).
+        let cancel_gen = self.cancel_token.generation();
 
-        let outcome = self.wait_for_verifier(handle).await?;
+        // The first member that returns Modified (with no prior flag) provides
+        // the corrected arguments used on auto-approval.
+        let mut first_modified: Option<(Value, String)> = None;
+        // Reason from an approving member, recorded in the audit trail.
+        let mut approved_reason: Option<String> = None;
 
-        // Construct the audit context once for all branches below
-        let audit_ctx = self.build_audit_context();
+        for (idx, (provider, model)) in committee_members.iter().enumerate() {
+            self.ctx.ui.report_info(&format!(
+                "Verifier {}/{}: {provider}:{model} (querying)...",
+                idx + 1,
+                member_count
+            ));
 
-        match outcome {
-            VerificationOutcome::Allowed(reason) => {
-                // Audit log: verifier explicitly allowed the tool call
-                crate::security::audit::AuditParams::builder("verifier_decision", name, config)
-                    .args(serde_json::json!({
-                        "verdict": "Allowed",
-                        "reason": reason,
-                        "auto_approved": true,
-                    }))
-                    .context(&audit_ctx)
-                    .log();
+            let outcome = crate::security::verifier::verify_tool_call_full(VerificationParams {
+                ctx_app: self.ctx.clone(),
+                user_query: &intent,
+                tool_name: name,
+                tool_args: &args_value,
+                context: None,
+                config: &security_config,
+                provider: Some(provider.clone()),
+                model: Some(model.clone()),
+            });
 
-                // Verifier says it's safe → auto-approve.
-                self.ctx
-                    .ui
-                    .print_tool_call_direct(name, &serde_json::json!(args));
-                self.ctx
-                    .ui
-                    .report_success(&format!("✓ Tool Call Approved (Auto-Approved): {reason}"));
-                Ok((args.clone(), true, None))
-            }
-            VerificationOutcome::Modified(fixed_args, reason) => {
-                // Audit log: verifier approved with corrections
-                crate::security::audit::AuditParams::builder("verifier_decision", name, config)
-                    .args(serde_json::json!({
-                        "verdict": "Modified",
-                        "reason": reason,
-                        "auto_approved": true,
-                        "original_args": args,
-                        "corrected_args": fixed_args,
-                    }))
-                    .context(&audit_ctx)
-                    .log();
-
-                // Verifier says it's safe with corrections → auto-approve with corrected args.
-                self.ctx
-                    .ui
-                    .print_tool_call_direct(name, &serde_json::json!(args));
-                self.ctx.ui.report_success(&format!(
-                    "✓ Tool Call Corrected & Approved (Auto-Approved): {reason}"
-                ));
-                let effective_args = if let Some(obj) = fixed_args.as_object() {
-                    obj.clone()
-                } else {
-                    args.clone()
-                };
-                Ok((effective_args, true, None))
-            }
-            VerificationOutcome::NeedsApproval(reason) => {
-                // Audit log: verifier flagged as potentially unsafe, requires human review
-                crate::security::audit::AuditParams::builder("verifier_decision", name, config)
-                    .args(serde_json::json!({
-                        "verdict": "NeedsApproval",
-                        "reason": reason,
-                        "auto_approved": false,
-                    }))
-                    .context(&audit_ctx)
-                    .log();
-
-                // Verifier flagged as potentially unsafe.
-                // Ask human for approval with feedback support.
-                // The verifier task has already completed, so no abort is needed.
-                self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
-                self.ctx
-                    .ui
-                    .report_warning("Verifier flagged this tool call as requiring review.");
-                self.ctx.ui.report_info(&format!("Reason: {reason}"));
-                let cancel_msg = self
-                    .request_human_approval(name, config, "verifier_needs_approval")
-                    .await?;
-                if let Some(msg) = cancel_msg {
-                    // User rejected with feedback — return it as cancel message
-                    Ok((args.clone(), false, Some(msg)))
-                } else {
-                    // User approved
-                    Ok((args.clone(), false, None))
-                }
-            }
-            VerificationOutcome::FallbackRequired(reason) => {
-                // Audit log: verifier was unavailable, human must decide
-                crate::security::audit::AuditParams::builder("verifier_decision", name, config)
-                    .args(serde_json::json!({
-                        "verdict": "FallbackRequired",
-                        "reason": reason,
-                        "auto_approved": false,
-                    }))
-                    .context(&audit_ctx)
-                    .log();
-
-                // Verifier unavailable — ask for human approval with feedback support.
-                // The verifier task has already completed (or timed out), so no abort is needed.
-                self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
-                self.ctx
-                    .ui
-                    .report_warning(&format!("Verifier unavailable: {reason}"));
-                let cancel_msg = self
-                    .request_human_approval(name, config, "verifier_fallback")
-                    .await?;
-                if let Some(msg) = cancel_msg {
-                    Ok((args.clone(), false, Some(msg)))
-                } else {
-                    Ok((args.clone(), false, None))
-                }
-            }
-        }
-    }
-
-    /// Wait for the verifier task to complete, with timeout and interrupt support.
-    ///
-    /// **IMPORTANT**: On timeout or Ctrl-C, the spawned verifier task is explicitly
-    /// aborted to prevent resource leaks (background tasks consuming HTTP connections,
-    /// memory, and tokio task slots). Without this abort, leaked tasks accumulate
-    /// during long ReAct loops and eventually cause the system to hang.
-    async fn wait_for_verifier(
-        &mut self,
-        handle: tokio::task::JoinHandle<VerificationOutcome>,
-    ) -> anyhow::Result<VerificationOutcome> {
-        const VERIFIER_TIMEOUT_SECS: u64 = 60;
-
-        // Obtain an AbortHandle *before* the select! so we can cancel the task
-        // if the timeout or Ctrl-C branch wins.
-        let abort_handle = handle.abort_handle();
-        let mut cancel_rx = self.cancel_token.receiver();
-
-        let res = tokio::select! {
-            res = handle => {
-                res.unwrap_or(VerificationOutcome::FallbackRequired("Task Panicked".into()))
-            }
-            () = tokio::time::sleep(std::time::Duration::from_secs(VERIFIER_TIMEOUT_SECS)) => {
-                // Abort the background verifier task to prevent resource leaks.
-                abort_handle.abort();
-                eprintln!("Verifier timed out after {VERIFIER_TIMEOUT_SECS}s.");
-                VerificationOutcome::FallbackRequired(format!("Verifier timed out after {VERIFIER_TIMEOUT_SECS}s"))
-            }
-            _ = cancel_rx.changed() => {
-                // Abort the background verifier task to prevent resource leaks.
-                abort_handle.abort();
+            // Ctrl+C during verification aborts the whole turn.
+            if crate::core::session::cancelled_since(cancel_gen) {
                 eprintln!("^C - Interrupted.");
                 self.handle_interruption();
                 return Err(anyhow::anyhow!("Interrupted during verification"));
             }
-        };
-        Ok(res)
+
+            match outcome {
+                VerificationOutcome::Allowed(reason) => {
+                    // This member approved — keep checking the rest.
+                    approved_reason = Some(reason);
+                }
+                VerificationOutcome::Modified(fixed_args, reason) => {
+                    // Approved with a correction; remember the first one and
+                    // keep checking the rest for flags.
+                    if first_modified.is_none() {
+                        first_modified = Some((fixed_args, reason));
+                    }
+                }
+                VerificationOutcome::NeedsApproval(reason) => {
+                    let label = format!("{provider}:{model}");
+                    return self.flag_to_human(
+                        name,
+                        args,
+                        config,
+                        &label,
+                        &reason,
+                        "verifier_needs_approval",
+                        "NeedsApproval",
+                    );
+                }
+                VerificationOutcome::FallbackRequired(reason) => {
+                    let label = format!("{provider}:{model}");
+                    return self.flag_to_human(
+                        name,
+                        args,
+                        config,
+                        &label,
+                        &reason,
+                        "verifier_fallback",
+                        "FallbackRequired",
+                    );
+                }
+            }
+        }
+
+        // 2c. Every member approved → auto-approve.
+        let audit_ctx = self.build_audit_context();
+        if let Some((fixed_args, reason)) = first_modified {
+            crate::security::audit::AuditParams::builder("verifier_decision", name, config)
+                .args(serde_json::json!({
+                    "verdict": "Modified",
+                    "reason": reason,
+                    "auto_approved": true,
+                    "original_args": args,
+                    "corrected_args": fixed_args,
+                }))
+                .context(&audit_ctx)
+                .log();
+
+            self.ctx
+                .ui
+                .print_tool_call_direct(name, &serde_json::json!(args));
+            self.ctx.ui.report_success(&format!(
+                "✓ Tool Call Corrected & Approved (Auto-Approved): {reason}"
+            ));
+            let effective_args = fixed_args
+                .as_object()
+                .cloned()
+                .unwrap_or_else(|| args.clone());
+            Ok((effective_args, true, None))
+        } else {
+            let reason = approved_reason
+                .unwrap_or_else(|| format!("All {member_count} committee member(s) approved."));
+            crate::security::audit::AuditParams::builder("verifier_decision", name, config)
+                .args(serde_json::json!({
+                    "verdict": "Allowed",
+                    "reason": reason,
+                    "auto_approved": true,
+                }))
+                .context(&audit_ctx)
+                .log();
+
+            self.ctx
+                .ui
+                .print_tool_call_direct(name, &serde_json::json!(args));
+            self.ctx.ui.report_success(&format!(
+                "✓ Tool Call Approved (Auto-Approved): all {member_count} verifier(s) agreed."
+            ));
+            Ok((args.clone(), true, None))
+        }
     }
 
-    /// Check whether a Zero Trust MCP policy applies for this tool.
+    /// A verifier flagged the tool call — audit the decision and ask the human
+    /// to approve or reject (with optional feedback).
+    #[allow(clippy::too_many_arguments)]
+    fn flag_to_human(
+        &mut self,
+        name: &str,
+        args: &serde_json::Map<String, Value>,
+        config: &crate::config::models::AppConfig,
+        member_label: &str,
+        reason: &str,
+        verifier_context: &str,
+        verdict: &str,
+    ) -> anyhow::Result<(serde_json::Map<String, Value>, bool, Option<Value>)> {
+        let audit_ctx = self.build_audit_context();
+        crate::security::audit::AuditParams::builder("verifier_decision", name, config)
+            .args(serde_json::json!({
+                "verdict": verdict,
+                "reason": reason,
+                "flagged_by": member_label,
+                "auto_approved": false,
+            }))
+            .context(&audit_ctx)
+            .log();
+
+        self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
+        if verdict == "FallbackRequired" {
+            self.ctx
+                .ui
+                .report_warning(&format!("Verifier unavailable ({member_label}): {reason}"));
+        } else {
+            self.ctx.ui.report_warning(&format!(
+                "Verifier {member_label} flagged this tool call as requiring review."
+            ));
+            self.ctx.ui.report_info(&format!("Reason: {reason}"));
+        }
+
+        let cancel_msg = self.request_human_approval(name, config, verifier_context)?;
+        if let Some(msg) = cancel_msg {
+            Ok((args.clone(), false, Some(msg)))
+        } else {
+            Ok((args.clone(), false, None))
+        }
+    }
+
     /// Request human approval for a tool call.
     ///
     /// Returns `Ok(None)` if approved, `Ok(Some(cancel_message))` if rejected
@@ -278,7 +255,7 @@ impl ActiveSession {
     ///
     /// Logs the human approval/rejection decision to the audit trail
     /// with the given `verifier_context` explaining why HITL was triggered.
-    async fn request_human_approval(
+    fn request_human_approval(
         &mut self,
         name: &str,
         config: &crate::config::models::AppConfig,
@@ -286,7 +263,7 @@ impl ActiveSession {
     ) -> anyhow::Result<Option<Value>> {
         let audit_ctx = self.build_audit_context();
 
-        match self.ctx.ui.ask_confirm(&format!("Execute {name}")).await {
+        match self.ctx.ui.ask_confirm(&format!("Execute {name}")) {
             Some(crate::cli::ui::ConfirmResult::Yes) => {
                 // Audit log: human approved the tool call
                 crate::security::audit::AuditParams::builder("human_approval", name, config)
@@ -354,109 +331,6 @@ impl ActiveSession {
                 Err(anyhow::anyhow!("Interrupted"))
             }
         }
-    }
-
-    /// Spawns the Verifier Committee task.
-    fn spawn_verifier_task(
-        &self,
-        name: &str,
-        args: &serde_json::Map<String, Value>,
-        provider: String,
-        model: String,
-    ) -> tokio::task::JoinHandle<VerificationOutcome> {
-        let ctx_clone = self.ctx.clone();
-        let config_clone = match self.ctx.config_manager.get_config() {
-            Ok(c) => c.security.clone(),
-            Err(_) => crate::config::models::SecurityConfig::default(),
-        };
-        let intent_context = self.get_intent_context();
-        let name_clone = name.to_string();
-        let args_clone = serde_json::json!(args);
-
-        tokio::spawn(async move {
-            crate::security::verifier::verify_tool_call_full(VerificationParams {
-                ctx_app: ctx_clone,
-                user_query: &intent_context,
-                tool_name: &name_clone,
-                tool_args: &args_clone,
-                context: None,
-                config: &config_clone,
-                provider: Some(provider),
-                model: Some(model),
-            })
-            .await
-        })
-    }
-
-    /// Spawns the aggregated committee verification task.
-    ///
-    /// Runs ALL committee members concurrently and aggregates their verdicts
-    /// using the configured `policy` (default: majority-vote).
-    fn spawn_committee_task(
-        &self,
-        name: &str,
-        args: &serde_json::Map<String, Value>,
-        committee_members: Vec<(String, String)>,
-        policy: CommitteePolicy,
-    ) -> tokio::task::JoinHandle<VerificationOutcome> {
-        let ctx_clone = self.ctx.clone();
-        let config_clone = match self.ctx.config_manager.get_config() {
-            Ok(c) => c.security.clone(),
-            Err(_) => crate::config::models::SecurityConfig::default(),
-        };
-        let intent_context = self.get_intent_context();
-        let name_clone = name.to_string();
-        let args_clone = serde_json::json!(args);
-
-        tokio::spawn(async move {
-            let committee_verdict = crate::security::verifier::verify_committee(
-                VerificationParams {
-                    ctx_app: ctx_clone,
-                    user_query: &intent_context,
-                    tool_name: &name_clone,
-                    tool_args: &args_clone,
-                    context: None,
-                    config: &config_clone,
-                    provider: None,
-                    model: None,
-                },
-                &committee_members,
-                &policy,
-            )
-            .await;
-
-            // Convert CommitteeVerdict → VerificationOutcome for backward compatibility
-            match committee_verdict {
-                CommitteeVerdict::Allowed => {
-                    VerificationOutcome::Allowed("All committee members approved.".to_string())
-                }
-                CommitteeVerdict::Modified(fixed_args, reason) => {
-                    VerificationOutcome::Modified(fixed_args, reason)
-                }
-                CommitteeVerdict::NeedsApproval(details) => {
-                    let summary: Vec<String> = details
-                        .iter()
-                        .map(|(provider, model, reason)| format!("[{provider}@{model}] {reason}"))
-                        .collect();
-                    VerificationOutcome::NeedsApproval(format!(
-                        "Committee flagged by {} member(s): {}",
-                        details.len(),
-                        summary.join(" | ")
-                    ))
-                }
-                CommitteeVerdict::FallbackRequired(details) => {
-                    let summary: Vec<String> = details
-                        .iter()
-                        .map(|(provider, model, reason)| format!("[{provider}@{model}] {reason}"))
-                        .collect();
-                    VerificationOutcome::FallbackRequired(format!(
-                        "Committee fallback for {} member(s): {}",
-                        details.len(),
-                        summary.join(" | ")
-                    ))
-                }
-            }
-        })
     }
 
     /// Extract the user's intent context from recent conversation history.

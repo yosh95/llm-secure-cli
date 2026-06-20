@@ -95,7 +95,6 @@ fn load_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::
 /// Save history with a fallback for platforms where rustyline's native
 /// `FileHistory::save` (which uses `flock` and `umask` via the `nix` crate)
 /// may fail (e.g., Termux/Android, some FUSE filesystems).
-#[allow(dead_code)]
 fn save_history_robust(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::path::Path) {
     // Try rustyline's native save first
     if rl.save_history(path).is_ok() {
@@ -153,59 +152,8 @@ impl ConditionalEventHandler for EditOnF2 {
     }
 }
 
-/// Async version of save_history_robust that offloads the file I/O
-/// to a blocking thread pool, avoiding stalls on the tokio runtime.
-async fn save_history_async(rl: &mut Editor<ChatCompleter, FileHistory>, path: &std::path::Path) {
-    // Collect entries synchronously (fast, memcpy only)
-    let entries: Vec<String> = {
-        let history = rl.history();
-        if history.is_empty() {
-            return;
-        }
-        history.iter().cloned().collect()
-    };
-
-    let path = path.to_path_buf();
-
-    tokio::task::spawn_blocking(move || {
-        // Ensure parent directory exists
-        if let Some(parent) = path.parent()
-            && let Err(e) = std::fs::create_dir_all(parent)
-        {
-            tracing::error!("Failed to create directory {:?}: {}", parent, e);
-            return;
-        }
-
-        let mut file = match std::fs::File::create(&path) {
-            Ok(f) => f,
-            Err(e) => {
-                tracing::error!("Failed to create history file {:?}: {}", path, e);
-                return;
-            }
-        };
-
-        if let Err(e) = file.write_all(b"#V2\n") {
-            tracing::error!("Failed to write history V2 header: {}", e);
-            return;
-        }
-
-        for entry in &entries {
-            let escaped = entry.replace('\\', "\\\\").replace('\n', "\\n");
-            if let Err(e) = writeln!(file, "{escaped}") {
-                tracing::warn!("Failed to write history entry: {}", e);
-                return;
-            }
-        }
-    })
-    .await
-    .ok();
-}
 impl ActiveSession {
-    pub async fn run(
-        &mut self,
-        initial_data: Option<Vec<DataSource>>,
-        _sources: Option<Vec<String>>,
-    ) {
+    pub fn run(&mut self, initial_data: Option<Vec<DataSource>>, _sources: Option<Vec<String>>) {
         let is_stdout = self.client.get_state().stdout;
 
         if let Some(mut data) = initial_data
@@ -249,7 +197,7 @@ impl ActiveSession {
                     return;
                 }
             } else {
-                match self.process_and_print(data).await {
+                match self.process_and_print(data) {
                     Ok(()) => {
                         if is_stdout {
                             return;
@@ -381,12 +329,11 @@ impl ActiveSession {
                     }
 
                     match crate::cli::interactive::dispatcher::handle_command(self, &final_trimmed)
-                        .await
                     {
                         crate::cli::interactive::dispatcher::CommandResult::Exit => {
-                            save_history_async(&mut rl, &history_log_path()).await;
+                            save_history_robust(&mut rl, &history_log_path());
                             // Auto-save the session before exiting.
-                            crate::utils::session_store::auto_save_async(self).await;
+                            crate::utils::session_store::auto_save(self);
                             // Drop rustyline editor and return to let
                             // ChatSession Drop run naturally (saves Merkle anchor).
                             drop(rl);
@@ -396,7 +343,7 @@ impl ActiveSession {
                             if let Err(e) = rl.add_history_entry(&final_trimmed) {
                                 tracing::warn!("Failed to add history entry: {}", e);
                             }
-                            save_history_async(&mut rl, &history_log_path()).await;
+                            save_history_robust(&mut rl, &history_log_path());
                             continue;
                         }
                         crate::cli::interactive::dispatcher::CommandResult::NotACommand => {}
@@ -422,7 +369,7 @@ impl ActiveSession {
                     // SIGKILL / OOM kills on Android where the process
                     // may be terminated before the deferred save_history
                     // on normal exit can run.
-                    save_history_async(&mut rl, &history_log_path()).await;
+                    save_history_robust(&mut rl, &history_log_path());
 
                     let mut data = std::mem::take(&mut self.pending_data);
                     data.push(DataSource {
@@ -443,7 +390,7 @@ impl ActiveSession {
                         continue;
                     }
 
-                    if let Err(e) = self.process_and_print(data).await {
+                    if let Err(e) = self.process_and_print(data) {
                         ui::report_error(&format!("Error: {e}"));
                     }
                 }
@@ -454,14 +401,14 @@ impl ActiveSession {
                     restore_terminal();
                     println!("CTRL-C");
                     // Auto-save the session before exiting on Ctrl+C.
-                    crate::utils::session_store::auto_save_async(self).await;
+                    crate::utils::session_store::auto_save(self);
                     break;
                 }
                 Err(ReadlineError::Eof) => {
                     println!("CTRL-D");
-                    save_history_async(&mut rl, &history_log_path()).await;
+                    save_history_robust(&mut rl, &history_log_path());
                     // Auto-save the session before exiting on Ctrl+D.
-                    crate::utils::session_store::auto_save_async(self).await;
+                    crate::utils::session_store::auto_save(self);
                     drop(rl);
                     // Return to let ChatSession Drop run naturally
                     // (saves Merkle anchor and cleanup).
@@ -481,7 +428,7 @@ impl ActiveSession {
             }
         }
         // Auto-save the session after the main loop ends (e.g. Ctrl+C).
-        crate::utils::session_store::auto_save_async(self).await;
-        save_history_async(&mut rl, &history_log_path()).await;
+        crate::utils::session_store::auto_save(self);
+        save_history_robust(&mut rl, &history_log_path());
     }
 }

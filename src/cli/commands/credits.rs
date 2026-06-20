@@ -9,7 +9,7 @@ use serde_json::Value;
 /// Fetches and displays the `OpenRouter` credit balance via the
 /// `/api/v1/credits` and `/api/v1/key` endpoints.
 /// Only works when the provider is `"openrouter"`.
-pub async fn run_credits(config_manager: &ConfigManager, provider: &str) {
+pub fn run_credits(config_manager: &ConfigManager, provider: &str) {
     // Validate that the provider is "openrouter"
     if provider != "openrouter" {
         ui::report_error(&format!(
@@ -28,13 +28,13 @@ pub async fn run_credits(config_manager: &ConfigManager, provider: &str) {
         return;
     };
 
-    fetch_and_display_credits(&api_key).await;
+    fetch_and_display_credits(&api_key);
 }
 
 /// Run the `/credits` command from the interactive session.
 ///
 /// Uses the session's current provider and config.
-pub async fn run_credits_interactive(session: &ActiveSession) {
+pub fn run_credits_interactive(session: &ActiveSession) {
     let provider = session.get_client().get_state().provider.clone();
 
     if provider != "openrouter" {
@@ -53,19 +53,18 @@ pub async fn run_credits_interactive(session: &ActiveSession) {
         return;
     };
 
-    fetch_and_display_credits(&api_key).await;
+    fetch_and_display_credits(&api_key);
 }
 
 /// Common implementation: fetch from both /credits and /key APIs and display.
-async fn fetch_and_display_credits(api_key: &str) {
+fn fetch_and_display_credits(api_key: &str) {
     let mut headers = std::collections::HashMap::new();
     headers.insert("Authorization".to_string(), format!("Bearer {api_key}"));
 
     ui::report_info("Fetching OpenRouter credits...");
 
-    // Fetch from both APIs concurrently
-    let (credits_result, key_result) =
-        tokio::join!(fetch_credits(&headers), fetch_key_info(&headers),);
+    let credits_result = fetch_credits(&headers);
+    let key_result = fetch_key_info(&headers);
 
     ui::print_rule(Some("OpenRouter Credits"), Some("cyan"));
 
@@ -244,11 +243,9 @@ async fn fetch_and_display_credits(api_key: &str) {
 }
 
 /// Fetch the /api/v1/credits endpoint.
-async fn fetch_credits(
-    headers: &std::collections::HashMap<String, String>,
-) -> Result<Value, String> {
+fn fetch_credits(headers: &std::collections::HashMap<String, String>) -> Result<Value, String> {
     let url = "https://openrouter.ai/api/v1/credits".to_string();
-    match http::get_json::<Value>(url, headers.clone()).await {
+    match http::get_json::<Value>(url, headers.clone()) {
         Ok(response) => match response.get("data") {
             Some(data) => Ok(data.clone()),
             None => Err(response
@@ -262,11 +259,9 @@ async fn fetch_credits(
 }
 
 /// Fetch the /api/v1/key endpoint.
-async fn fetch_key_info(
-    headers: &std::collections::HashMap<String, String>,
-) -> Result<Value, String> {
+fn fetch_key_info(headers: &std::collections::HashMap<String, String>) -> Result<Value, String> {
     let url = "https://openrouter.ai/api/v1/key".to_string();
-    match http::get_json::<Value>(url, headers.clone()).await {
+    match http::get_json::<Value>(url, headers.clone()) {
         Ok(response) => match response.get("data") {
             Some(data) => Ok(data.clone()),
             None => Err(response

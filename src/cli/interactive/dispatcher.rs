@@ -17,7 +17,7 @@ pub enum CommandResult {
     Input(String),
 }
 
-pub async fn handle_command(session: &mut ActiveSession, input: &str) -> CommandResult {
+pub fn handle_command(session: &mut ActiveSession, input: &str) -> CommandResult {
     if !input.starts_with('/') {
         return CommandResult::NotACommand;
     }
@@ -59,43 +59,41 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
             CommandResult::Handled
         }
         "attach" => {
-            content_handler::handle_attach(session, args).await;
+            content_handler::handle_attach(session, args);
             CommandResult::Handled
         }
         "tools" => {
-            tool_handler::handle_tools(session, args).await;
+            tool_handler::handle_tools(session, args);
             CommandResult::Handled
         }
         "model" | "m" => {
-            model_handler::handle_model_cmd(session, args).await;
+            model_handler::handle_model_cmd(session, args);
             CommandResult::Handled
         }
         "summarize" | "s" => {
-            content_handler::handle_summarize(session).await;
+            content_handler::handle_summarize(session);
             CommandResult::Handled
         }
         "alias" => {
-            model_handler::handle_alias_cmd(session, args).await;
+            model_handler::handle_alias_cmd(session, args);
             CommandResult::Handled
         }
 
-        "t" | "template" => {
-            return handle_template_cmd(session, args).await;
-        }
+        "t" | "template" => handle_template_cmd(session, args),
         "verifier" | "v" => {
-            model_handler::handle_verifier_cmd(session, args).await;
+            model_handler::handle_verifier_cmd(session, args);
             CommandResult::Handled
         }
         "view" => {
-            content_handler::handle_view_cmd(session, args).await;
+            content_handler::handle_view_cmd(session, args);
             CommandResult::Handled
         }
         "credits" => {
-            crate::cli::commands::credits::run_credits_interactive(session).await;
+            crate::cli::commands::credits::run_credits_interactive(session);
             CommandResult::Handled
         }
         "rankings" => {
-            crate::cli::commands::rankings::run_rankings_interactive(session).await;
+            crate::cli::commands::rankings::run_rankings_interactive(session);
             CommandResult::Handled
         }
         _ => {
@@ -110,7 +108,7 @@ pub async fn handle_command(session: &mut ActiveSession, input: &str) -> Command
     }
 }
 
-async fn handle_template_cmd(session: &mut ActiveSession, args: &str) -> CommandResult {
+fn handle_template_cmd(session: &mut ActiveSession, args: &str) -> CommandResult {
     let templates = session.ctx.config_manager.load_templates();
     if args.is_empty() {
         if templates.is_empty() {

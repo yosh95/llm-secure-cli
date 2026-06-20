@@ -4,14 +4,14 @@ use crate::llm::models::{DataSource, Message, MessagePart, Role};
 use console::Term;
 use std::collections::HashMap;
 
-pub async fn handle_attach(session: &mut ActiveSession, source: &str) {
+pub fn handle_attach(session: &mut ActiveSession, source: &str) {
     if source.is_empty() {
         ui::report_error("Usage: /attach <path_or_url>");
         return;
     }
 
     let pdf_as_base64 = session.get_client().should_send_pdf_as_base64();
-    let data = crate::utils::media::process_single_source(source, pdf_as_base64).await;
+    let data = crate::utils::media::process_single_source(source, pdf_as_base64);
     if let Some(d) = data {
         ui::report_success(&format!("Attached {}: {}", d.content_type, source));
         session.pending_data.push(d);
@@ -23,7 +23,7 @@ pub async fn handle_attach(session: &mut ActiveSession, source: &str) {
     }
 }
 
-pub async fn handle_summarize(session: &mut ActiveSession) {
+pub fn handle_summarize(session: &mut ActiveSession) {
     let history_len = session.get_client().get_state().conversation.len();
     if history_len == 0 {
         ui::report_warning("Conversation is empty, nothing to summarize.");
@@ -43,7 +43,7 @@ pub async fn handle_summarize(session: &mut ActiveSession) {
     }];
 
     // We use the empty tool_schemas as we just want a summary
-    match session.get_client_mut().send(data, Vec::new()).await {
+    match session.get_client_mut().send(data, Vec::new()) {
         Ok(response) => {
             let summary_text = response.content.clone().unwrap_or_default();
 
@@ -80,7 +80,7 @@ pub async fn handle_summarize(session: &mut ActiveSession) {
     }
 }
 
-pub async fn handle_view_cmd(session: &mut ActiveSession, args: &str) {
+pub fn handle_view_cmd(session: &mut ActiveSession, args: &str) {
     let config = match session.ctx.config_manager.get_config() {
         Ok(c) => c,
         Err(e) => {

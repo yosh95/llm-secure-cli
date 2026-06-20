@@ -27,7 +27,7 @@ pub struct ChatArgs {
 /// (typically `main`) can decide how to handle the failure and ensure that
 /// any `Drop` destructors (e.g. `ActiveSession::finalize_audit`) run to
 /// completion.
-pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow::Result<()> {
+pub fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow::Result<()> {
     let ChatArgs {
         provider_arg,
         model_arg,
@@ -97,11 +97,11 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow:
 
     let stdout = stdout || !is_atty;
 
-    // Spawn a background task to refresh the models cache if it doesn't exist
+    // Spawn a background thread to refresh the models cache if it doesn't exist
     // or is older than 24 hours
     {
         let ctx_bg = ctx.clone();
-        tokio::spawn(async move {
+        std::thread::spawn(move || {
             let c_path = crate::consts::models_cache_path();
             let should_refresh = if c_path.exists() {
                 match std::fs::metadata(&c_path) {
@@ -121,13 +121,16 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow:
             };
             if should_refresh {
                 tracing::info!("Background refresh of models cache...");
-                ctx_bg.config_manager.update_models_cache().await;
+                ctx_bg.config_manager.update_models_cache();
             }
         });
     }
 
     let client = {
-        let registry = ctx.client_registry.lock().await;
+        let registry = ctx
+            .client_registry
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         registry.create_client(&provider, &model, stdout, raw, &ctx.config_manager)
     };
 
@@ -184,9 +187,12 @@ pub async fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow:
         let sources = if all_sources.is_empty() {
             None
         } else {
-            Some(crate::utils::media::process_sources(all_sources, pdf_as_base64).await)
+            Some(crate::utils::media::process_sources(
+                all_sources,
+                pdf_as_base64,
+            ))
         };
-        session.run(sources, None).await;
+        session.run(sources, None);
         Ok(())
     } else {
         let msg = format!("Provider '{provider}' not found or not configured.");

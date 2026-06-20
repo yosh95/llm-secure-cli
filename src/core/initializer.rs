@@ -5,7 +5,7 @@ use crate::llm::base::LlmClient;
 use std::io::{IsTerminal, stdin};
 use std::sync::Arc;
 
-pub async fn switch_model(
+pub fn switch_model(
     session: &mut ActiveSession,
     model: &str,
     provider: &str,
@@ -31,7 +31,11 @@ pub async fn switch_model(
     };
 
     let client = {
-        let registry = session.ctx.client_registry.lock().await;
+        let registry = session
+            .ctx
+            .client_registry
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         registry.create_client(
             &target_provider,
             &target_model,
@@ -53,14 +57,18 @@ pub async fn switch_model(
     }
 }
 
-pub async fn switch_provider(session: &mut ActiveSession, provider: &str) -> anyhow::Result<()> {
+pub fn switch_provider(session: &mut ActiveSession, provider: &str) -> anyhow::Result<()> {
     let (stdout, render_markdown) = {
         let state = session.client.get_state();
         (state.stdout, state.render_markdown)
     };
 
     let client = {
-        let registry = session.ctx.client_registry.lock().await;
+        let registry = session
+            .ctx
+            .client_registry
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         registry.create_client(
             provider,
             "default",
@@ -82,7 +90,7 @@ pub async fn switch_provider(session: &mut ActiveSession, provider: &str) -> any
     }
 }
 
-pub async fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<AppContext>> {
+pub fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<AppContext>> {
     let ctx = Arc::new(AppContext::new(ui));
     let is_atty = stdin().is_terminal();
 
@@ -98,16 +106,16 @@ pub async fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<Ap
     }
 
     // 3. Identity Key Setup
-    ensure_identity(&ctx, is_atty).await?;
+    ensure_identity(&ctx, is_atty)?;
 
     // 4. Register Tools
     {
-        let mut registry = ctx.tool_registry.write().await;
+        let mut registry = ctx.tool_registry.write().unwrap_or_else(|p| p.into_inner());
         crate::tools::registry::register_builtin_tools(&mut registry, &ctx.config_manager);
     }
     // 4b. Warn about unavailable tools
     {
-        let registry = ctx.tool_registry.read().await;
+        let registry = ctx.tool_registry.read().unwrap_or_else(|p| p.into_inner());
         if !registry.has_tool("brave_search") {
             ctx.ui.report_warning(
                 "brave_search is not available. Set BRAVE_API_KEY in environment or .env file to enable web search."
@@ -121,12 +129,12 @@ pub async fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<Ap
     }
 
     // 5. Register LLM Clients
-    register_clients(&ctx).await;
+    register_clients(&ctx);
 
     Ok(ctx)
 }
 
-async fn ensure_identity(ctx: &Arc<AppContext>, is_atty: bool) -> anyhow::Result<()> {
+fn ensure_identity(ctx: &Arc<AppContext>, is_atty: bool) -> anyhow::Result<()> {
     use crate::security::identity::IdentityManager;
 
     // Ensure Identity Keys
@@ -135,7 +143,6 @@ async fn ensure_identity(ctx: &Arc<AppContext>, is_atty: bool) -> anyhow::Result
         && ctx
             .ui
             .ask_confirm_simple("Identity keys not found. Generate new PQC keypair for this agent?")
-            .await
             == Some(ui::ConfirmResult::Yes)
     {
         if let Err(e) = IdentityManager::ensure_keys() {
@@ -201,12 +208,15 @@ fn check_api_key_env_vars() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn register_clients(ctx: &Arc<AppContext>) {
+fn register_clients(ctx: &Arc<AppContext>) {
     use crate::llm::providers::ollama::OllamaClient;
     use crate::llm::providers::openai_compatible::OpenAiCompatibleClient;
     use crate::llm::providers::openrouter::OpenRouterClient;
 
-    let mut registry = ctx.client_registry.lock().await;
+    let mut registry = ctx
+        .client_registry
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
     let active_providers = ctx.config_manager.get_active_providers();
 
     for provider in active_providers {

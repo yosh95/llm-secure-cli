@@ -1,40 +1,42 @@
 use crate::config::models::AppConfig;
-use crate::core::session::SessionCancel;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
+use std::io::{BufRead, BufReader};
+use std::process::Command;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 /// RAII guard that ensures the subprocess is killed and the temp file
-/// is cleaned up when dropped (including on Ctrl+C / Future cancellation).
+/// is cleaned up when dropped (including on Ctrl+C / early return).
 struct PythonProcessGuard {
-    child: Option<tokio::process::Child>,
+    child: Option<std::process::Child>,
     tmp_path: std::path::PathBuf,
 }
 
 impl PythonProcessGuard {
-    fn new(child: tokio::process::Child, tmp_path: std::path::PathBuf) -> Self {
+    fn new(child: std::process::Child, tmp_path: std::path::PathBuf) -> Self {
         Self {
             child: Some(child),
             tmp_path,
         }
-    }
-
-    fn take_child(&mut self) -> Option<tokio::process::Child> {
-        self.child.take()
     }
 }
 
 impl Drop for PythonProcessGuard {
     fn drop(&mut self) {
         if let Some(ref mut child) = self.child {
-            let _ = child.start_kill();
-            let _ = child.try_wait();
+            let _ = child.kill();
+            let _ = child.wait();
         }
         let _ = std::fs::remove_file(&self.tmp_path);
     }
+}
+
+/// Take a snapshot of a shared output buffer, recovering from lock poisoning.
+fn snapshot(buf: &Arc<Mutex<String>>) -> String {
+    buf.lock()
+        .map(|g| g.clone())
+        .unwrap_or_else(|p| p.into_inner().clone())
 }
 
 /// Determines which Python interpreter to use.
@@ -79,7 +81,7 @@ fn find_python() -> Option<String> {
 ///
 /// This tool is only registered if a Python interpreter (`python3` or `python`)
 /// is found in the system PATH.
-pub async fn execute_python(
+pub fn execute_python(
     args: HashMap<String, Value>,
     config: Arc<AppConfig>,
 ) -> anyhow::Result<Value> {
@@ -137,122 +139,102 @@ pub async fn execute_python(
         }
     };
 
-    let mut stdout_reader = BufReader::new(child.stdout.take().ok_or_else(|| {
+    let stdout = child.stdout.take().ok_or_else(|| {
         let _ = std::fs::remove_file(&tmp_path);
         anyhow::anyhow!("Failed to open stdout")
-    })?)
-    .lines();
-    let mut stderr_reader = BufReader::new(child.stderr.take().ok_or_else(|| {
+    })?;
+    let stderr = child.stderr.take().ok_or_else(|| {
         let _ = std::fs::remove_file(&tmp_path);
         anyhow::anyhow!("Failed to open stderr")
-    })?)
-    .lines();
+    })?;
+
+    // Shared, incrementally-filled output buffers.  Reader threads append to
+    // them so we can return whatever was captured so far even on timeout/Ctrl+C.
+    let stdout_buf = Arc::new(Mutex::new(String::new()));
+    let stderr_buf = Arc::new(Mutex::new(String::new()));
+
+    let so = stdout_buf.clone();
+    let h_out = std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    if let Ok(mut g) = so.lock() {
+                        g.push_str(&line);
+                    }
+                }
+            }
+        }
+    });
+    let se = stderr_buf.clone();
+    let h_err = std::thread::spawn(move || {
+        let mut reader = BufReader::new(stderr);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    if let Ok(mut g) = se.lock() {
+                        g.push_str(&line);
+                    }
+                }
+            }
+        }
+    });
 
     let mut guard = PythonProcessGuard::new(child, tmp_path);
 
-    let mut stdout_res = String::new();
-    let mut stderr_res = String::new();
+    let max_lines = config.general.max_output_lines;
+    let max_chars = config.general.max_output_chars;
+    let truncate = |s: &str| crate::tools::executor_utils::truncate_output(s, max_lines, max_chars);
 
-    let timeout_duration = Duration::from_secs(timeout_secs);
-    let sleep = tokio::time::sleep(timeout_duration);
-    tokio::pin!(sleep);
+    let timeout = Duration::from_secs(timeout_secs);
+    let start = Instant::now();
+    let cancel_gen = crate::core::session::cancel_generation();
 
-    let mut stdout_done = false;
-    let mut stderr_done = false;
+    // Poll the child for completion while staying responsive to Ctrl+C and
+    // enforcing the timeout.  The guard kills the child on early return.
+    let status = loop {
+        if let Some(c) = guard.child.as_mut() {
+            match c.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => {}
+                Err(e) => return Err(anyhow::anyhow!("Execution error: {e}")),
+            }
+        }
 
-    let cancel_token = SessionCancel::new();
-    let mut cancel_rx = cancel_token.receiver();
-    let cancel_base = *cancel_rx.borrow();
-
-    while !stdout_done || !stderr_done {
-        if *cancel_rx.borrow() != cancel_base {
+        if crate::core::session::cancelled_since(cancel_gen) {
             return Ok(json!({
-                "stdout": crate::tools::executor_utils::truncate_output(
-                    &stdout_res,
-                    config.general.max_output_lines,
-                    config.general.max_output_chars
-                ),
-                "stderr": crate::tools::executor_utils::truncate_output(
-                    &stderr_res,
-                    config.general.max_output_lines,
-                    config.general.max_output_chars
-                ),
+                "stdout": truncate(&snapshot(&stdout_buf)),
+                "stderr": truncate(&snapshot(&stderr_buf)),
                 "exit_code": serde_json::Value::Null,
                 "note": "Execution was interrupted by user (Ctrl+C)."
             }));
         }
 
-        tokio::select! {
-            line = stdout_reader.next_line(), if !stdout_done => {
-                match line {
-                    Ok(Some(l)) => { stdout_res.push_str(&l); stdout_res.push('\n'); }
-                    Ok(None) => stdout_done = true,
-                    Err(_) => stdout_done = true,
-                }
-            }
-            line = stderr_reader.next_line(), if !stderr_done => {
-                match line {
-                    Ok(Some(l)) => { stderr_res.push_str(&l); stderr_res.push('\n'); }
-                    Ok(None) => stderr_done = true,
-                    Err(_) => stderr_done = true,
-                }
-            }
-            _ = cancel_rx.changed() => {
-                return Ok(json!({
-                    "stdout": crate::tools::executor_utils::truncate_output(
-                        &stdout_res,
-                        config.general.max_output_lines,
-                        config.general.max_output_chars
-                    ),
-                    "stderr": crate::tools::executor_utils::truncate_output(
-                        &stderr_res,
-                        config.general.max_output_lines,
-                        config.general.max_output_chars
-                    ),
-                    "exit_code": serde_json::Value::Null,
-                    "note": "Execution was interrupted by user (Ctrl+C)."
-                }));
-            }
-            () = &mut sleep => {
-                return Ok(json!({
-                    "stdout": crate::tools::executor_utils::truncate_output(
-                        &stdout_res,
-                        config.general.max_output_lines,
-                        config.general.max_output_chars
-                    ),
-                    "stderr": crate::tools::executor_utils::truncate_output(
-                        &stderr_res,
-                        config.general.max_output_lines,
-                        config.general.max_output_chars
-                    ),
-                    "exit_code": serde_json::Value::Null,
-                    "note": format!(
-                        "Execution timed out after {} seconds.",
-                        timeout_secs
-                    )
-                }));
-            }
+        if start.elapsed() >= timeout {
+            return Ok(json!({
+                "stdout": truncate(&snapshot(&stdout_buf)),
+                "stderr": truncate(&snapshot(&stderr_buf)),
+                "exit_code": serde_json::Value::Null,
+                "note": format!("Execution timed out after {} seconds.", timeout_secs)
+            }));
         }
-    }
 
-    let mut child = guard
-        .take_child()
-        .ok_or_else(|| anyhow::anyhow!("Child process state inconsistent"))?;
+        std::thread::sleep(Duration::from_millis(50));
+    };
 
-    match child.wait().await {
-        Ok(status) => Ok(json!({
-            "stdout": crate::tools::executor_utils::truncate_output(
-                &stdout_res,
-                config.general.max_output_lines,
-                config.general.max_output_chars
-            ),
-            "stderr": crate::tools::executor_utils::truncate_output(
-                &stderr_res,
-                config.general.max_output_lines,
-                config.general.max_output_chars
-            ),
-            "exit_code": status.code().unwrap_or(-1)
-        })),
-        Err(e) => Err(anyhow::anyhow!("Execution error: {e}")),
-    }
+    // Child exited: wait for the reader threads to drain the pipes.
+    let _ = h_out.join();
+    let _ = h_err.join();
+
+    Ok(json!({
+        "stdout": truncate(&snapshot(&stdout_buf)),
+        "stderr": truncate(&snapshot(&stderr_buf)),
+        "exit_code": status.code().unwrap_or(-1)
+    }))
 }
