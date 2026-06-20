@@ -29,21 +29,6 @@ auto_approve = false
 # When false, all tool calls fall through to manual human approval.
 verifier_enabled = true
 
-# Verifier Committee members (provider:model strings, e.g. "ollama:gemma4:e2b").
-# You can manage committee members at runtime using:
-#   /verifier add <provider:model>     — persists to state.toml
-#   /verifier delete <provider:model>  — removes from state.toml
-#   /verifier list                     — shows current members
-#
-# The list below is used as a FALLBACK when state.toml has no members configured.
-# verifier_committee = ["ollama:gemma4:e2b", "openai:gpt-4o-mini"]
-#
-# Members are evaluated sequentially under a strict any-flag policy: the first
-# member to flag the call hands off to human approval immediately; the call is
-# auto-approved only if every member approves.
-
-
-
 # =============================================================================
 # PQC (Post-Quantum Cryptography) Settings
 # =============================================================================
