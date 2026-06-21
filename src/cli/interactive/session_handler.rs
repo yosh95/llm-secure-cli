@@ -168,7 +168,6 @@ pub fn handle_info(session: &ActiveSession) {
     ui::print_key_value("Verifier Status", &v_status);
 
     // Security
-    ui::print_key_value("Security Level", "high");
 
     ui::print_rule(Some("Statistics"), Some("cyan"));
     ui::print_key_value(

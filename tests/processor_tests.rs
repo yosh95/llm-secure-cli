@@ -177,7 +177,6 @@ fn test_processor_tool_execution_flow() {
                         model: "mock-model".to_string(),
                         provider: "mock".to_string(),
                         conversation: Vec::new(),
-                        system_prompt_enabled: true,
                         system_prompt: None,
                         stdout,
                         render_markdown: !raw,
@@ -206,7 +205,6 @@ fn test_processor_tool_execution_flow() {
             model: "mock-model".to_string(),
             provider: "mock".to_string(),
             conversation: Vec::new(),
-            system_prompt_enabled: false,
             system_prompt: None,
             stdout: false,
             render_markdown: false,
@@ -269,7 +267,6 @@ fn test_processor_pqc_blocking_in_high_security() {
             model: "mock-model".to_string(),
             provider: "mock".to_string(),
             conversation: Vec::new(),
-            system_prompt_enabled: false,
             system_prompt: None,
             stdout: false, // Suppress output to keep test logs clean
             render_markdown: false,

@@ -126,7 +126,6 @@ impl BaseLlmClientData {
             model: model_name,
             provider: config_section.clone(),
             conversation: Vec::new(),
-            system_prompt_enabled: true,
             system_prompt,
             stdout,
             render_markdown: !raw,

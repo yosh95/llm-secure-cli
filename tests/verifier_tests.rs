@@ -100,7 +100,6 @@ fn register_mock(ctx: &Arc<AppContext>, provider_name: &str, response: Result<St
                     model: "mock-model".to_string(),
                     provider: "mock".to_string(), // Fixed provider name in state
                     conversation: Vec::new(),
-                    system_prompt_enabled: true,
                     system_prompt: None,
                     stdout,
                     render_markdown: !raw,

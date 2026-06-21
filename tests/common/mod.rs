@@ -125,7 +125,6 @@ impl MockLlmClientBuilder {
                 model: self.model,
                 provider: self.provider,
                 conversation: self.conversation,
-                system_prompt_enabled: self.system_prompt.is_some(),
                 system_prompt: self.system_prompt,
                 stdout: self.stdout,
                 render_markdown: !self.raw,

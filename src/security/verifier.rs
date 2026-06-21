@@ -303,7 +303,6 @@ impl Verifier {
         // Configure client for a one-off verification
         self.verifier_llm.get_state_mut().conversation.clear();
         self.verifier_llm.get_state_mut().system_prompt = Some(system_prompt);
-        self.verifier_llm.get_state_mut().system_prompt_enabled = true;
 
         let data = vec![DataSource {
             content: json!(user_prompt),

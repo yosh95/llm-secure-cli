@@ -252,7 +252,6 @@ impl ActiveSession {
         let old_state = self.client.get_state();
         let new_state = new_client.get_state_mut();
         new_state.conversation = old_state.conversation.clone();
-        new_state.system_prompt_enabled = old_state.system_prompt_enabled;
         self.client = new_client;
     }
 

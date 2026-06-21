@@ -94,7 +94,6 @@ pub struct ClientState {
     pub model: String,
     pub provider: String,
     pub conversation: Vec<Message>,
-    pub system_prompt_enabled: bool,
     pub system_prompt: Option<String>,
     pub stdout: bool,
     pub render_markdown: bool,
@@ -103,10 +102,6 @@ pub struct ClientState {
 impl ClientState {
     #[must_use]
     pub fn get_effective_system_prompt(&self) -> Option<String> {
-        if !self.system_prompt_enabled {
-            return None;
-        }
-
         let date_str = Zoned::now().strftime("%Y-%m-%d").to_string();
         let directive = format!(
             "Today's date is {date_str}. You must treat this as the current date and ignore your training cutoff or any other date information."

@@ -326,17 +326,6 @@ fn test_save_session_empty_conversation() {
     assert_eq!(content, "[]");
 }
 
-// ===========================================================================
-// get_effective_system_prompt
-// ===========================================================================
-
-#[test]
-fn test_system_prompt_disabled_returns_none() {
-    let mut client = MockLlmClient::builder().build();
-    client.state.system_prompt_enabled = false;
-    assert!(client.state.get_effective_system_prompt().is_none());
-}
-
 #[test]
 fn test_system_prompt_enabled_without_custom_prompt() {
     let client = MockLlmClient::builder().system_prompt("").build();
