@@ -263,21 +263,37 @@ pub fn print_tool_result(result: &str) {
         ) {
             let _status_color = if exit_code == 0 { "green" } else { "red" };
 
-            if !stdout.is_empty() {
-                push_line(&mut out, &format!("    {}:", "STDOUT"));
-                for line in stdout.lines() {
-                    push_line(&mut out, &format!("      {}", line));
-                }
-            }
+            // Do not re-display stdout/stderr if already displayed in real-time by the tool side
+            let is_real_time_displayed = v
+                .get("_real_time_displayed")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
 
-            if !stderr.is_empty() {
-                push_line(&mut out, &format!("    {}:", "STDERR"));
-                for line in stderr.lines() {
-                    push_line(&mut out, &format!("      {}", line));
+            if !is_real_time_displayed {
+                if !stdout.is_empty() {
+                    push_line(&mut out, &format!("    {}:", "STDOUT"));
+                    for line in stdout.lines() {
+                        push_line(&mut out, &format!("      {}", line));
+                    }
+                }
+
+                if !stderr.is_empty() {
+                    push_line(&mut out, &format!("    {}:", "STDERR"));
+                    for line in stderr.lines() {
+                        push_line(&mut out, &format!("      {}", line));
+                    }
                 }
             }
 
             push_line(&mut out, &format!("    {} {}", "Exit Code:", exit_code));
+
+            // Display the note field if present (e.g., timeout or Ctrl+C message)
+            if let Some(note) = v.get("note").and_then(|v| v.as_str())
+                && !note.is_empty()
+            {
+                push_line(&mut out, &format!("    {} {}", "Note:", note));
+            }
+
             finish_tool_result(out);
             return;
         }

@@ -1,7 +1,7 @@
 use crate::config::models::AppConfig;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -157,11 +157,16 @@ pub fn execute_python(
     let h_out = std::thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
         let mut line = String::new();
+        let mut term_stdout = std::io::stdout().lock();
         loop {
             line.clear();
             match reader.read_line(&mut line) {
                 Ok(0) | Err(_) => break,
                 Ok(_) => {
+                    // Display output to the terminal in real-time
+                    let _ = term_stdout.write_all(line.as_bytes());
+                    let _ = term_stdout.flush();
+                    // Also accumulate in the LLM buffer (as before)
                     if let Ok(mut g) = so.lock() {
                         g.push_str(&line);
                     }
@@ -173,11 +178,16 @@ pub fn execute_python(
     let h_err = std::thread::spawn(move || {
         let mut reader = BufReader::new(stderr);
         let mut line = String::new();
+        let mut term_stderr = std::io::stderr().lock();
         loop {
             line.clear();
             match reader.read_line(&mut line) {
                 Ok(0) | Err(_) => break,
                 Ok(_) => {
+                    // Display output to the terminal in real-time
+                    let _ = term_stderr.write_all(line.as_bytes());
+                    let _ = term_stderr.flush();
+                    // Also accumulate in the LLM buffer (as before)
                     if let Ok(mut g) = se.lock() {
                         g.push_str(&line);
                     }
@@ -228,7 +238,8 @@ pub fn execute_python(
                 "stdout": truncate(&snapshot(&stdout_buf)),
                 "stderr": truncate(&snapshot(&stderr_buf)),
                 "exit_code": serde_json::Value::Null,
-                "note": "Execution was interrupted by user (Ctrl+C)."
+                "note": "Execution was interrupted by user (Ctrl+C).",
+                "_real_time_displayed": true
             }));
         }
 
@@ -248,7 +259,8 @@ pub fn execute_python(
                 "stdout": truncate(&snapshot(&stdout_buf)),
                 "stderr": truncate(&snapshot(&stderr_buf)),
                 "exit_code": serde_json::Value::Null,
-                "note": format!("Execution timed out after {} seconds.", timeout_secs)
+                "note": format!("Execution timed out after {} seconds.", timeout_secs),
+                "_real_time_displayed": true
             }));
         }
 
@@ -262,6 +274,7 @@ pub fn execute_python(
     Ok(json!({
         "stdout": truncate(&snapshot(&stdout_buf)),
         "stderr": truncate(&snapshot(&stderr_buf)),
-        "exit_code": status.code().unwrap_or(-1)
+        "exit_code": status.code().unwrap_or(-1),
+        "_real_time_displayed": true
     }))
 }
