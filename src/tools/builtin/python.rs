@@ -123,6 +123,7 @@ pub fn execute_python(
     let timeout_secs = config.general.python_timeout;
 
     let mut child = match Command::new(&python_bin)
+        .arg("-u")
         .arg(&tmp_path)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
