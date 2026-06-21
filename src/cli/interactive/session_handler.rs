@@ -167,9 +167,6 @@ pub fn handle_info(session: &ActiveSession) {
     };
     ui::print_key_value("Verifier Status", &v_status);
 
-    // Tool Output is always displayed
-    ui::print_key_value("Tool Output", "Always Visible");
-
     // Security
     ui::print_key_value("Security Level", "high");
 
@@ -191,14 +188,6 @@ pub fn handle_info(session: &ActiveSession) {
             "{} messages",
             crate::utils::format_number(state.conversation.len())
         ),
-    );
-    ui::print_key_value(
-        "Tools",
-        if state.tools_enabled {
-            "Enabled"
-        } else {
-            "Disabled"
-        },
     );
 
     ui::print_rule(None, Some("cyan"));

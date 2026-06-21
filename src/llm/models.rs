@@ -94,7 +94,6 @@ pub struct ClientState {
     pub model: String,
     pub provider: String,
     pub conversation: Vec<Message>,
-    pub tools_enabled: bool,
     pub system_prompt_enabled: bool,
     pub system_prompt: Option<String>,
     pub stdout: bool,

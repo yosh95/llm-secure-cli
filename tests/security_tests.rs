@@ -184,8 +184,8 @@ fn test_validate_multiple_args_first_malicious_blocks() {
 #[test]
 fn test_validate_unicode_text_passes() {
     let config = SecurityConfig::default();
-    let args = make_args(&[("query", json!("日本語テスト 🦀"))]);
-    let result = validate_tool_call("brave_search", &args, &config);
+    let args = make_args(&[("code", json!("print('日本語テスト 🦀')"))]);
+    let result = validate_tool_call("execute_python", &args, &config);
     assert!(result.is_ok());
 }
 

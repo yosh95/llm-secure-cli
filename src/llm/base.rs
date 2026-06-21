@@ -122,16 +122,10 @@ impl BaseLlmClientData {
             .and_then(|v| v.as_str())
             .map(std::string::ToString::to_string);
 
-        let tools_enabled = model_config
-            .get("tools")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(true);
-
         let state = ClientState {
             model: model_name,
             provider: config_section.clone(),
             conversation: Vec::new(),
-            tools_enabled,
             system_prompt_enabled: true,
             system_prompt,
             stdout,

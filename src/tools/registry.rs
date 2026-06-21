@@ -141,30 +141,14 @@ fn check_python_available() -> bool {
     python_check.is_ok()
 }
 
-pub fn register_builtin_tools(r: &mut ToolRegistry, config_manager: &crate::config::ConfigManager) {
+pub fn register_builtin_tools(
+    r: &mut ToolRegistry,
+    _config_manager: &crate::config::ConfigManager,
+) {
     let maybe_register =
         |r: &mut ToolRegistry, name: &str, description: &str, parameters: Value, func: ToolFunc| {
             r.register(name, description, parameters, func);
         };
-
-    if let Some(brave_key) = config_manager.get_api_key("brave") {
-        maybe_register(
-            r,
-            "brave_search",
-            "Search the web using Brave Search API.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "The search query (1-400 chars, max 50 words)."}
-                },
-                "required": ["query"]
-            }),
-            Arc::new(move |args, _config| {
-                let key = brave_key.clone();
-                crate::tools::builtin::web::brave_search(args, &key)
-            }),
-        );
-    }
 
     // Register execute_python only if python3 or python is available
     if check_python_available() {

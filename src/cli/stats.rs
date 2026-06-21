@@ -13,11 +13,11 @@ pub struct ToolResultStats {
 }
 
 #[must_use]
-pub fn get_tool_result_stats(name: &str, result: &Value) -> ToolResultStats {
+pub fn get_tool_result_stats(result: &Value) -> ToolResultStats {
     let mut byte_count = 0;
     let mut line_count = 0;
-    let mut item_count = None;
-    let mut item_label = "items";
+    let item_count = None;
+    let item_label = "items";
     let mut stderr = None;
     let mut stderr_byte_count = 0;
     let mut stderr_line_count = 0;
@@ -27,7 +27,7 @@ pub fn get_tool_result_stats(name: &str, result: &Value) -> ToolResultStats {
         line_count = s.lines().count();
         // Check if it's JSON inside a string
         if let Ok(v) = serde_json::from_str::<Value>(s) {
-            return get_tool_result_stats(name, &v);
+            return get_tool_result_stats(&v);
         }
     } else if let Some(obj) = result.as_object() {
         // For structured data, we might want to sum up certain fields or just the whole JSON
@@ -46,14 +46,6 @@ pub fn get_tool_result_stats(name: &str, result: &Value) -> ToolResultStats {
             stderr = Some(se.to_string());
             stderr_byte_count = se.len();
             stderr_line_count = se.lines().count();
-        }
-
-        // Special handling for item lists — choose a label appropriate to the tool
-        if name == "brave_search"
-            && let Some(arr) = obj.get("results").and_then(|a| a.as_array())
-        {
-            item_count = Some(arr.len());
-            item_label = "items";
         }
         // tool_outputs often use "content"
         if let Some(content) = obj.get("content").and_then(|v| v.as_str()) {

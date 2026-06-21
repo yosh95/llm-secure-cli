@@ -75,7 +75,6 @@ flowchart TB
 
     subgraph Tools["External Tools"]
         H1["execute_python<br/>(Universal Executor)"]
-        H2["brave_search<br/>(Web Search)"]
     end
 
     A --> B
@@ -127,7 +126,6 @@ flowchart TB
 
 1. **Automatic Initialization**: On the first run, `~/.llsc/config.toml` is automatically created.
 2. **Model Setup**: By default, no model is selected. Use `/model <model_name>` (e.g., `/model llama3`) to set one before your first request.
-3. **Brave Search**: Built-in support for the Brave Search API is available for comprehensive searching across all providers (requires `BRAVE_API_KEY`).
 5. **Configure (Optional)**: Ollama is the default provider. To use OpenRouter or others, edit the configuration file:
 
     ```bash
@@ -173,8 +171,7 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 - **Unified Provider Access**: Seamlessly switch between any OpenAI-compatible APIs (**OpenRouter, OpenAI, Ollama, LiteLLM**, and any custom OpenAI-compatible endpoint). Custom providers (e.g., Anthropic Claude, Google Gemini) can be added via config with the appropriate `formatter` setting (`"generic"` for standard OpenAI-compatible, `"high_feature"` for Anthropic/Gemini-style payload formatting with native PDF support).
 - **Autonomous Agent**: A streamlined set of built-in tools for complex automation:
     - **Universal Executor**: `execute_python` — run arbitrary Python code for any file operation, data processing, or computation task.
-    - **Web Search**: `brave_search` — Brave LLM Context API for grounded, pre-extracted web content (LLM-optimized).
-- **High-Assurance via Verifier Committee**: Every tool call is verified by the **Verifier Committee** — N independent LLMs operating under a configurable voting policy (majority or any-flag) — as a Semantic Firewall against unsafe or misaligned tool calls.
+    - **High-Assurance via Verifier Committee**: Every tool call is verified by the **Verifier Committee** — N independent LLMs operating under a configurable voting policy (majority or any-flag) — as a Semantic Firewall against unsafe or misaligned tool calls.
 - **Operational Stability**: A clean, flicker-free UI designed for long-term "Deep Work" sessions.
 - **Human-in-the-Loop**: The Verifier Committee auto-approves safe tool calls; potentially unsafe calls always require human confirmation.
 
@@ -246,7 +243,6 @@ Inside the `llsc` interactive session:
 - `/edit_history`, `/eh`: View/edit the conversation history in TOML format.
 - `/raw`: Show conversation as raw text.
 - `/session [load|delete <id>|clear]`: List, load, delete, or clear saved sessions.
-- `/tools [on|off]`: Show or toggle autonomous tool use status.
 - `/model`, `/m [-u] [<name>]`: List models or switch to `provider:model`. Use `-u` to refresh the cache.
 - `/dump`: Dump the conversation history as TOML to stdout.
 - `/credits`: Show detailed OpenRouter credit info.
@@ -263,7 +259,7 @@ Inside the `llsc` interactive session:
 - **Backgrounding (`Ctrl+Z`)**: Suspend the session to perform shell operations, then use `fg` to return.
 - **Prompt Continuation**: Use `\` at the end of a line or open a code block with ``` to enter multi-line mode automatically.
 - **External Editor**: Press `F2` to open your default editor (`vim`, `nano`, etc.) for composing multi-line prompts.
-- **Disabling Tools Manually**: Use `/tools off` to prevent errors when using a model that doesn't support function calling.
+
 
 ---
 
@@ -272,7 +268,6 @@ Inside the `llsc` interactive session:
 | Variable | Description | Default |
 |---|---|---|
 | `LLM_SECURE_AUTO_APPROVE` | Automatically answer "Yes" to all confirmation prompts (for testing). | unset (off) |
-| `BRAVE_API_KEY` | API key for the built-in Brave Search tool. | — |
 | `LLM_CLI_KEY_PASSPHRASE` | Passphrase for encrypted key storage. | — |
 | `LLM_CLI_KEY_PASSPHRASE_FILE` | Path to a file containing the passphrase. | — |
 
@@ -321,7 +316,6 @@ The Verifier Committee uses N independent LLM verifiers. Configure verifier memb
 ```toml
 # ~/.llsc/state.toml
 verifier_committee = ["ollama:gemma4:e2b", "openai:gpt-4o-mini", "openrouter:anthropic/claude-3-haiku"]
-show_tool_result = false
 last_model = "openai:gpt-4o"
 ```
 

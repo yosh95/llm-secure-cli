@@ -278,18 +278,6 @@ impl Completer for ChatCompleter {
                         matches.dedup_by(|a, b| a.display == b.display);
                         return Ok((start, matches));
                     }
-                    "/tools" => {
-                        let mut matches = Vec::new();
-                        for opt in &["on", "off"] {
-                            if opt.starts_with(arg_prefix) {
-                                matches.push(Pair {
-                                    display: opt.to_string(),
-                                    replacement: opt.to_string(),
-                                });
-                            }
-                        }
-                        return Ok((start, matches));
-                    }
                     "/verifier" | "/v" => {
                         let parts: Vec<&str> = arg_prefix.split_whitespace().collect();
                         if parts.is_empty() || (parts.len() == 1 && !arg_prefix.ends_with(' ')) {

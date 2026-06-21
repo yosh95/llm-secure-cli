@@ -98,11 +98,6 @@ pub fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<AppConte
     // 4b. Warn about unavailable tools
     {
         let registry = ctx.tool_registry.read().unwrap_or_else(|p| p.into_inner());
-        if !registry.has_tool("brave_search") {
-            ctx.ui.report_warning(
-                "brave_search is not available. Set BRAVE_API_KEY in environment or .env file to enable web search."
-            );
-        }
         if !registry.has_tool("execute_python") {
             ctx.ui.report_warning(
                 "execute_python is not available. Install python3 or python in PATH to enable code execution."

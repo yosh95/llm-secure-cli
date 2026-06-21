@@ -49,7 +49,6 @@ use llm_secure_cli::llm::models::{
 pub struct MockLlmClientBuilder {
     model: String,
     provider: String,
-    tools_enabled: bool,
     responses: Vec<MockResponse>,
     verifier_response: Option<Result<Value, String>>,
     conversation: Vec<Message>,
@@ -71,11 +70,6 @@ impl MockLlmClientBuilder {
         self.provider = v.to_string();
         self
     }
-    pub fn tools_enabled(mut self, v: bool) -> Self {
-        self.tools_enabled = v;
-        self
-    }
-
     /// Add a sequential response for `send()`.  The client serves these in
     /// FIFO order; the last response is repeated once exhausted.
     #[expect(dead_code)]
@@ -131,7 +125,6 @@ impl MockLlmClientBuilder {
                 model: self.model,
                 provider: self.provider,
                 conversation: self.conversation,
-                tools_enabled: self.tools_enabled,
                 system_prompt_enabled: self.system_prompt.is_some(),
                 system_prompt: self.system_prompt,
                 stdout: self.stdout,
@@ -473,8 +466,7 @@ pub fn register_mock_full(ctx: &Arc<AppContext>, provider_name: &str, mock: Mock
         Arc::new(move |_model, _stdout, _raw, _cfg| {
             let mut new_mock = MockLlmClient::builder()
                 .provider(&provider_clone)
-                .model(&mock.state.model)
-                .tools_enabled(mock.state.tools_enabled);
+                .model(&mock.state.model);
             for r in &mock.responses {
                 new_mock = match r {
                     MockResponse::Text(t) => new_mock.text_response(t),

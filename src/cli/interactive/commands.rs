@@ -81,11 +81,6 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
         description: "List, load, delete, or clear saved sessions",
     },
     CommandEntry {
-        name: "tools",
-        aliases: &[],
-        description: "Toggle or show status of tool execution",
-    },
-    CommandEntry {
         name: "verifier",
         aliases: &["v"],
         description: "Add/delete/list verifier committee members",
@@ -138,7 +133,6 @@ mod tests {
     fn test_is_valid_command() {
         assert!(is_valid_command("/help"));
         assert!(is_valid_command("/h"));
-        assert!(is_valid_command("/tools"));
         assert!(!is_valid_command("/tool_output"));
         assert!(!is_valid_command("/vcom"));
         assert!(!is_valid_command("/nonexistent"));

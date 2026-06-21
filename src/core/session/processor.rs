@@ -42,15 +42,12 @@ impl ActiveSession {
         &mut self,
         data: Vec<DataSource>,
     ) -> anyhow::Result<(Option<String>, Option<String>)> {
-        let tool_schemas = if self.client.get_state().tools_enabled {
-            self.ctx
-                .tool_registry
-                .read()
-                .unwrap_or_else(|p| p.into_inner())
-                .get_tool_schemas()
-        } else {
-            Vec::new()
-        };
+        let tool_schemas = self
+            .ctx
+            .tool_registry
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .get_tool_schemas();
 
         let is_stdout = self.client.get_state().stdout;
 

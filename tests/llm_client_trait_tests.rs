@@ -24,7 +24,6 @@ fn test_mock_client_builder_defaults() {
     let client = MockLlmClient::builder().build();
     assert_eq!(client.state.model, "");
     assert_eq!(client.state.provider, "");
-    assert!(!client.state.tools_enabled);
     assert!(client.state.system_prompt.is_none());
     assert!(!client.state.stdout);
     assert!(client.state.render_markdown);
@@ -35,13 +34,11 @@ fn test_mock_client_builder_full_config() {
     let client = MockLlmClient::builder()
         .model("gpt-4")
         .provider("openai")
-        .tools_enabled(true)
         .system_prompt("You are helpful.")
         .text_response("Hello!")
         .build();
     assert_eq!(client.state.model, "gpt-4");
     assert_eq!(client.state.provider, "openai");
-    assert!(client.state.tools_enabled);
     assert_eq!(
         client.state.system_prompt.as_deref(),
         Some("You are helpful.")

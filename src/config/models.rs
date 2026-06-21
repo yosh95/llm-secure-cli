@@ -80,7 +80,6 @@ pub struct AppState {
     /// if this list is empty.
     #[serde(default)]
     pub verifier_committee: Vec<String>,
-    // (Removed: show_tool_result — tool output is now always displayed)
 }
 
 /// The verifier committee.
