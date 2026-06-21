@@ -70,7 +70,7 @@ impl ActiveSession {
                 Ok(r) => r,
                 Err(e) => {
                     if crate::core::session::cancelled_since(cancel_gen) {
-                        eprintln!("^C - Interrupted.");
+                        eprintln!("(Interrupted by Ctrl+C)");
                         self.handle_interruption();
                         return Err(anyhow::anyhow!("Interrupted by user"));
                     }

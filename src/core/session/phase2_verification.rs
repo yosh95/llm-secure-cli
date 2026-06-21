@@ -113,7 +113,7 @@ impl ActiveSession {
 
             // Ctrl+C during verification aborts the whole turn.
             if crate::core::session::cancelled_since(cancel_gen) {
-                eprintln!("^C - Interrupted.");
+                eprintln!("(Interrupted by Ctrl+C)");
                 self.handle_interruption();
                 return Err(anyhow::anyhow!("Interrupted during verification"));
             }
