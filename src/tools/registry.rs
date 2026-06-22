@@ -141,6 +141,14 @@ fn check_python_available() -> bool {
     python_check.is_ok()
 }
 
+/// Checks whether the BRAVE_API_KEY environment variable is set (non-empty).
+fn check_brave_api_key_available() -> bool {
+    match std::env::var("BRAVE_API_KEY") {
+        Ok(val) => !val.trim().is_empty(),
+        Err(_) => false,
+    }
+}
+
 pub fn register_builtin_tools(
     r: &mut ToolRegistry,
     _config_manager: &crate::config::ConfigManager,
@@ -167,6 +175,26 @@ pub fn register_builtin_tools(
                 "required": ["code"]
             }),
             Arc::new(crate::tools::builtin::python::execute_python),
+        );
+    }
+
+    // Register brave_search only if BRAVE_API_KEY environment variable is set
+    if check_brave_api_key_available() {
+        maybe_register(
+            r,
+            "brave_search",
+            "Search the web using the Brave Search API. Accepts a search query string and returns results with title, URL, hostname, and snippets.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query to submit to Brave Search.",
+                    }
+                },
+                "required": ["query"]
+            }),
+            Arc::new(crate::tools::builtin::brave_search::brave_search),
         );
     }
 }

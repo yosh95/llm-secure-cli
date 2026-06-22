@@ -113,6 +113,9 @@ flowchart TB
     # Example for OpenRouter
     export OPENROUTER_API_KEY="your-api-key"
     
+    # Brave Search (enables web search via brave_search tool)
+    export BRAVE_API_KEY="your-brave-api-key"
+
     # Generic provider name support
     # ANYNAME_API_KEY can be used if you define [ANYNAME] in config.toml
     ```
@@ -144,6 +147,7 @@ Run the agent in a completely isolated container to protect your host system.
      # ~/.llsc/.env
      OPENROUTER_API_KEY=sk-...
      OPENAI_API_KEY=sk-...
+     BRAVE_API_KEY=your-brave-api-key
      ```
    - **Option B: Environment Variables**: Pass them via the `-e` flag during `docker run`.
 3. **Run**:
@@ -170,7 +174,8 @@ llsc -m llama3 --stdout --raw "Write a python script to sort files" > sort.py
 
 - **Unified Provider Access**: Seamlessly switch between any OpenAI-compatible APIs (**OpenRouter, OpenAI, Ollama, LiteLLM**, and any custom OpenAI-compatible endpoint). Custom providers (e.g., Anthropic Claude, Google Gemini) can be added via config with the appropriate `formatter` setting (`"generic"` for standard OpenAI-compatible, `"high_feature"` for Anthropic/Gemini-style payload formatting with native PDF support).
 - **Autonomous Agent**: A streamlined set of built-in tools for complex automation:
-    - **Universal Executor**: `execute_python` — run arbitrary Python code for any file operation, data processing, or computation task.
+    - **Web Search**: `brave_search` — search the web via the Brave Search API (requires `BRAVE_API_KEY` env var; tool is automatically hidden when unset).
+- **Universal Executor**: `execute_python` — run arbitrary Python code for any file operation, data processing, or computation task.
     - **High-Assurance via Verifier Committee**: Every tool call is verified by the **Verifier Committee** — N independent LLMs operating under a configurable voting policy (majority or any-flag) — as a Semantic Firewall against unsafe or misaligned tool calls.
 - **Operational Stability**: A clean, flicker-free UI designed for long-term "Deep Work" sessions.
 - **Human-in-the-Loop**: The Verifier Committee auto-approves safe tool calls; potentially unsafe calls always require human confirmation.
@@ -269,9 +274,13 @@ Inside the `llsc` interactive session:
 |---|---|---|
 | `LLM_SECURE_AUTO_APPROVE` | Automatically answer "Yes" to all confirmation prompts (for testing). | unset (off) |
 | `LLM_CLI_KEY_PASSPHRASE` | Passphrase for encrypted key storage. | — |
+| `BRAVE_API_KEY` | API key for the Brave Search API (enables the `brave_search` tool for web search). | unset (tool hidden) |
+| `LLM_CLI_KEY_PASSPHRASE` | Passphrase for encrypted key storage. | — |
 | `LLM_CLI_KEY_PASSPHRASE_FILE` | Path to a file containing the passphrase. | — |
 
 Provider API keys are read from environment variables (e.g., `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_API_KEY`) or from `~/.llsc/.env`.
+
+Brave Search API key can be obtained from [https://api.search.brave.com/](https://api.search.brave.com/) (free tier available).
 
 ---
 
