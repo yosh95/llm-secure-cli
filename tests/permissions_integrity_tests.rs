@@ -11,7 +11,10 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use llm_secure_cli::security::permissions::{fix_all_permissions, setup_permissions};
+use llm_secure_cli::security::permissions::fix_all_permissions;
+#[cfg(unix)]
+use llm_secure_cli::security::permissions::setup_permissions;
+#[cfg(unix)]
 use std::fs;
 use std::sync::Mutex;
 use std::sync::Once;
