@@ -88,7 +88,7 @@ fn print_help() {
     ui::print_rule(Some("Interactive Commands"), Some("cyan"));
     println!("  /h, /help          Show this help message");
     println!("  /q, /quit          Exit the session");
-    println!("  /i, /info          Show session and security status");
+    println!("  /i, /info          Show session, security status, and available tools");
     println!("  /c, /clear         Clear conversation history");
     println!(
         "  /eh, /edit_history View/edit the conversation history in TOML format (includes full structure)"

@@ -58,7 +58,7 @@ pub const INTERACTIVE_COMMANDS: &[CommandEntry] = &[
     CommandEntry {
         name: "info",
         aliases: &["i"],
-        description: "Show session and security status",
+        description: "Show session, security status, and available tools",
     },
     CommandEntry {
         name: "model",

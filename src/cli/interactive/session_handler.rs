@@ -167,6 +167,28 @@ pub fn handle_info(session: &ActiveSession) {
     };
     ui::print_key_value("Verifier Status", &v_status);
 
+    // Tools
+    ui::print_rule(Some("Tools"), Some("cyan"));
+    {
+        let registry = session
+            .ctx
+            .tool_registry
+            .read()
+            .unwrap_or_else(|p| p.into_inner());
+        let schemas = registry.get_tool_schemas();
+        if schemas.is_empty() {
+            ui::print_key_value("Available", "None");
+        } else {
+            ui::print_key_value("Count", &format!("{} tool(s)", schemas.len()));
+            for tool in &schemas {
+                let name = tool["name"].as_str().unwrap_or("?");
+                let desc = tool["description"].as_str().unwrap_or("");
+                // Print each tool with its description
+                ui::print_key_value(&format!("  {name}"), desc);
+            }
+        }
+    }
+
     // Security
 
     ui::print_rule(Some("Statistics"), Some("cyan"));
