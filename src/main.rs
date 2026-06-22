@@ -14,7 +14,7 @@ struct Args {
     /// Sources (text, files, URLs)
     sources: Vec<String>,
 
-    /// Model alias
+    /// Model to use
     #[clap(short, long)]
     model: Option<String>,
 

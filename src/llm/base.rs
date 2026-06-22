@@ -101,19 +101,19 @@ pub struct BaseLlmClientData {
 impl BaseLlmClientData {
     pub fn new(
         config_manager: &ConfigManager,
-        initial_model_alias: &str,
+        initial_model: &str,
         spec: ProviderSpec,
         stdout: bool,
         raw: bool,
     ) -> Self {
         let config_section = spec.config_section.clone();
         let api_key = config_manager.get_api_key(&config_section);
-        let model_config = config_manager.get_model_config(&config_section, initial_model_alias);
+        let model_config = config_manager.get_model_config(&config_section, initial_model);
 
         let model_name = model_config
             .get("model")
             .and_then(|v| v.as_str())
-            .unwrap_or(initial_model_alias)
+            .unwrap_or(initial_model)
             .to_string();
 
         // Load system prompt from config if available (look in model-specific config)
