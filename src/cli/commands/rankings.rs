@@ -270,9 +270,7 @@ fn display_rankings(response: &Value, top_n: usize) {
     // ============ Trend note ============
     println!();
     ui::print_rule(None, Some("cyan"));
-    println!(
-        "  \u{1F4C8} Rankings show real token usage across OpenRouter (top 50 models per day). Updated daily."
-    );
+    println!("  Rankings show real token usage across OpenRouter (top 50 models per day).");
     println!(
         "  Data range: {} records from {} to {}",
         data.len(),
