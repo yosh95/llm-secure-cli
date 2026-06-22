@@ -49,9 +49,6 @@ impl ActiveSession {
                 self.ctx.ui.report_warning(
                     "Verifier is enabled, but no verifier committee members are configured. Falling back to manual approval.",
                 );
-                self.ctx
-                    .ui
-                    .report_info("Hint: Use /verifier add <provider:model> to add committee members at runtime (persisted to state.toml).\n You can also set verifier_committee in the [security] section of config.toml as a fallback.");
             }
             // Show the tool call — human needs to review
             self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
