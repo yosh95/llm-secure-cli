@@ -80,14 +80,14 @@ pub fn humanize_tool_result(_name: &str, v: &serde_json::Value) -> String {
             };
             if !stdout.is_empty() {
                 output.push_str("STDOUT:\n");
-                output.push_str(stdout);
+                output.push_str(&crate::utils::sanitize_for_display(stdout));
                 if !stdout.ends_with('\n') {
                     output.push('\n');
                 }
             }
             if !stderr.is_empty() {
                 output.push_str("STDERR:\n");
-                output.push_str(stderr);
+                output.push_str(&crate::utils::sanitize_for_display(stderr));
                 if !stderr.ends_with('\n') {
                     output.push('\n');
                 }
@@ -105,8 +105,8 @@ pub fn humanize_tool_result(_name: &str, v: &serde_json::Value) -> String {
     if v.is_object() || v.is_array() {
         serde_json::to_string_pretty(v).unwrap_or_else(|_| v.to_string())
     } else if let Some(s) = v.as_str() {
-        s.to_string()
+        crate::utils::sanitize_for_display(s)
     } else {
-        v.to_string()
+        crate::utils::sanitize_for_display(&v.to_string())
     }
 }

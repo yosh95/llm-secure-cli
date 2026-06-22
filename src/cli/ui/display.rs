@@ -226,8 +226,12 @@ pub fn print_tool_result(result: &str) {
         "\u{2500}\u{2500} Result \u{2500}\u{2500}"
     ));
 
+    // Sanitize the result string before displaying to prevent control characters
+    // from corrupting the terminal display.
+    let sanitized = crate::utils::sanitize_for_display(result);
+
     // Try to parse as JSON for pretty printing
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(result) {
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&sanitized) {
         // Special handling for file modification results
         if let (Some(path), Some(diff)) = (
             v.get("path").and_then(|v| v.as_str()),
@@ -379,10 +383,10 @@ pub fn print_tool_result(result: &str) {
                 push_line(&mut out, &format!("    {}", pretty));
             }
         } else {
-            push_line(&mut out, &format!("    {}", result));
+            push_line(&mut out, &format!("    {}", sanitized));
         }
     } else {
-        for line in result.lines() {
+        for line in sanitized.lines() {
             push_line(&mut out, &format!("    {}", line));
         }
     }
