@@ -144,3 +144,33 @@ default: list
 # List all available recipes
 @list:
     @just --list
+
+
+# ──── Coverage ────────────────────────────────────────────────────────────
+
+# Run tests with LLVM source-based code coverage
+# Requires: cargo install cargo-llvm-cov
+@coverage:
+    cargo llvm-cov --all-features --html --output-dir coverage_report
+
+# Run coverage and open HTML report in browser
+@coverage-open:
+    cargo llvm-cov --all-features --open --output-dir coverage_report
+
+# Run coverage and generate LCOV report (useful for CI / IDE integration)
+@coverage-lcov:
+    cargo llvm-cov --all-features --lcov --output-path coverage_report/lcov.info
+
+# Run coverage with clean build (full re-instrumentation)
+@coverage-clean:
+    cargo llvm-cov clean --workspace
+    cargo llvm-cov --all-features --html --output-dir coverage_report
+
+# Generate a summary-only JSON report
+@coverage-summary:
+    cargo llvm-cov --all-features --json --summary-only --output-path coverage_report/coverage_summary.json
+
+# Open the existing coverage report in browser (without re-running tests)
+@coverage-report:
+    @echo "Opening coverage_report/html/index.html in browser..."
+    @xdg-open coverage_report/html/index.html 2>/dev/null || open coverage_report/html/index.html 2>/dev/null || echo "Please open coverage_report/html/index.html manually"

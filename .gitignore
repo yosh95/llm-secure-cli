@@ -46,3 +46,4 @@ benchmark_result.json
 # Local env
 .env
 .env.local
+coverage_report/
