@@ -50,9 +50,6 @@ rustyline = { version = "18.0", default-features = false, features = ["custom-bi
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
 fips203 = { version = "0.4", default-features = false, features = ["ml-kem-512", "ml-kem-768", "ml-kem-1024", "default-rng"] }
 fips204 = { version = "0.4", default-features = false, features = ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87", "default-rng"] }
-ciborium = { version = "0.2", default-features = false }
-ed25519-dalek = { version = "2.2", default-features = false, features = ["pem", "rand_core"] }
-pkcs8 = { version = "0.10", default-features = false, features = ["pem", "std"] }
 uuid = { version = "1.10", default-features = false, features = ["v4"] }
 hostname = { version = "0.4", default-features = false }
 jiff = { version = "0.2", default-features = false, features = ["std"] }

@@ -93,6 +93,11 @@ fn test_get_last_log_hash_file_with_only_blank_lines_returns_genesis() {
     let _lock = CHAIN_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     setup_test_env();
 
+    // Clear the global head cache to prevent cross-test interference from
+    // parallel integration tests that share the same cache file.
+    let cache_path = llm_secure_cli::consts::audit_head_cache_path();
+    let _ = fs::remove_file(&cache_path);
+
     let dir = tempdir().expect("Failed to create temp dir");
     let path = dir.path().join("blank.jsonl");
     fs::write(&path, "\n\n\n").expect("Failed to write blank lines");

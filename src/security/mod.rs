@@ -6,7 +6,6 @@ pub mod merkle_anchor;
 pub mod permissions;
 pub mod policy;
 pub mod pqc;
-pub mod pqc_cose;
 
 pub mod static_analyzer;
 pub mod verifier;

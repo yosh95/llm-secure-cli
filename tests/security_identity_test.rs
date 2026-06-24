@@ -1,7 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use ciborium::Value;
     use llm_secure_cli::security::identity::IdentityManager;
     use llm_secure_cli::security::pqc::{PQCVariant, PqcProvider};
     use std::sync::OnceLock;
@@ -17,60 +16,6 @@ mod tests {
             std::mem::forget(dir);
             llm_secure_cli::consts::init_base_dir(Some(path));
         });
-    }
-
-    #[test]
-    fn test_identity_token_generation() {
-        // Use a temporary directory so tests don't touch ~/.llsc
-        setup_temp_basedir();
-
-        // Use ensure_keys_with_passphrase(None) to generate unencrypted keys
-        // without any interactive prompt or environment variable.
-        IdentityManager::ensure_keys_with_passphrase(None).expect("Failed to ensure keys");
-
-        // 2. Generate a token for a specific tool
-        let tool_name = "test_server__list_files";
-        let token_b64 =
-            IdentityManager::generate_token(Some(tool_name)).expect("Failed to generate token");
-
-        assert!(!token_b64.is_empty(), "Token should not be empty");
-
-        // 3. Decode Base64
-        let token_bytes =
-            base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, token_b64)
-                .expect("Failed to decode base64 token");
-
-        // 4. Parse manually using ciborium
-        let value: Value =
-            ciborium::from_reader(token_bytes.as_slice()).expect("Failed to parse CBOR from bytes");
-
-        // Expect Tag 98
-        if let Value::Tag(98, inner) = value {
-            if let Value::Array(cose_sign) = *inner {
-                assert_eq!(cose_sign.len(), 4, "COSE_Sign should have 4 elements");
-
-                // Index 2 is payload
-                if let Value::Bytes(payload_bytes) = &cose_sign[2] {
-                    let claims: serde_json::Value = ciborium::from_reader(payload_bytes.as_slice())
-                        .expect("Failed to parse claims from payload");
-                    assert_eq!(claims["iss"], "llsc-client");
-                    assert_eq!(claims["tool"], tool_name);
-                } else {
-                    panic!("Payload is not bytes");
-                }
-
-                // Index 3 is signatures array
-                if let Value::Array(sigs) = &cose_sign[3] {
-                    assert_eq!(sigs.len(), 2, "Should have 2 signatures");
-                } else {
-                    panic!("Signatures is not an array");
-                }
-            } else {
-                panic!("Inner value is not an array");
-            }
-        } else {
-            panic!("Value is not Tag 98");
-        }
     }
 
     #[test]
@@ -94,5 +39,25 @@ mod tests {
             tampered_message[0] ^= 0xFF;
             assert!(PqcProvider::verify(variant, &pk, &tampered_message, &sig).is_err());
         }
+    }
+
+    #[test]
+    fn test_identity_key_generation() {
+        // Use a temporary directory so tests don't touch ~/.llsc
+        setup_temp_basedir();
+
+        // Generate unencrypted PQC + KEM keys
+        IdentityManager::ensure_keys_with_passphrase(None).expect("Failed to ensure keys");
+
+        // Verify keys exist
+        assert!(IdentityManager::has_keys(), "Identity keys should exist");
+
+        // Verify we can read the public keys
+        let pqc_pub = IdentityManager::get_pqc_public_key(PQCVariant::MLDSA44)
+            .expect("Failed to read PQC public key");
+        assert!(!pqc_pub.is_empty(), "PQC public key should not be empty");
+
+        let kem_pub = IdentityManager::get_kem_public_key().expect("Failed to read KEM public key");
+        assert!(!kem_pub.is_empty(), "KEM public key should not be empty");
     }
 }

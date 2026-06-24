@@ -39,13 +39,13 @@ fn main() -> anyhow::Result<()> {
     }
 
     // 3. ML-KEM
-    let (_pk, _sk) = (vec![0u8; 1184], vec![0u8; 2400]); // Dummy for now since provider doesn't expose mlkem keygen
+    let (_pk, _sk) = (vec![0u8; 1568], vec![0u8; 3168]); // Dummy for now since provider doesn't expose mlkem keygen
     // Actually, PqcProvider doesn't have mlkem keygen yet, let's use the one that works or skip for now
     // But we saw Saorsa has it. PqcProvider only has encaps/decaps 768.
 
     // Let's use dummy values for benchmarking the core logic
-    let pk_dummy = vec![0u8; 1184];
-    let sk_dummy = vec![0u8; 2400];
+    let pk_dummy = vec![0u8; 1568];
+    let sk_dummy = vec![0u8; 3168];
 
     // Encaps
     let start = Instant::now();

@@ -77,7 +77,8 @@ fn main() -> anyhow::Result<()> {
         eprintln!(
             "Example: cargo bench --bench benchmark_verifier -- openrouter anthropic/claude-3-haiku"
         );
-        std::process::exit(1);
+        println!("Skipping benchmark_verifier (requires provider and model arguments).");
+        return Ok(());
     }
 
     let (target_provider, target_model) = match (args.first(), args.get(1)) {
@@ -87,7 +88,8 @@ fn main() -> anyhow::Result<()> {
             eprintln!(
                 "Usage: cargo bench --bench benchmark_verifier -- <provider> <model> [json_path]"
             );
-            std::process::exit(1);
+            eprintln!("Skipping benchmark_verifier (requires provider and model arguments).");
+            return Ok(());
         }
     };
 

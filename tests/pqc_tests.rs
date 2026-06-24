@@ -197,38 +197,3 @@ fn test_pqc_agility_manager() {
     let level = get_signature_variant(&config);
     assert_eq!(level, PQCVariant::MLDSA44);
 }
-
-#[test]
-fn test_hybrid_cose_signer() {
-    use ed25519_dalek::SigningKey;
-    use llm_secure_cli::security::pqc_cose::HybridSigner;
-    use rand::rngs::OsRng;
-
-    let variant = MldsaVariant::MLDSA87;
-
-    // Generate keys in memory for the test to avoid filesystem side effects
-    let mut rng = OsRng;
-    let classical_signing_key = SigningKey::generate(&mut rng);
-    let classical_priv = classical_signing_key.to_bytes().to_vec();
-    let classical_pub = classical_signing_key.verifying_key().to_bytes().to_vec();
-
-    let (pqc_pub, pqc_priv) =
-        PqcProvider::generate_keypair(variant).expect("PQC keypair generation should succeed");
-
-    let payload_val = serde_json::json!({"msg": "Hybrid security token", "exp": 1776824283});
-    let mut payload = Vec::new();
-    ciborium::into_writer(&payload_val, &mut payload).expect("CBOR encoding should succeed");
-
-    let token = HybridSigner::create_hybrid_token(&payload, &classical_priv, &pqc_priv, variant)
-        .expect("Failed to create token");
-    assert!(!token.is_empty());
-
-    let verified_payload =
-        HybridSigner::verify_hybrid_token(&token, &classical_pub, |_| pqc_pub.clone());
-
-    assert!(verified_payload.is_some());
-    assert_eq!(
-        verified_payload.expect("verified_payload should be Some")["msg"],
-        "Hybrid security token"
-    );
-}
