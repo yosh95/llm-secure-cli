@@ -236,6 +236,11 @@ impl LlmClient for OpenAiCompatibleClient {
             );
         }
 
+        // Pass session_id if set (used by OpenRouter for sticky routing)
+        if let Some(session_id) = &self.base.state.session_id {
+            body["session_id"] = json!(session_id);
+        }
+
         tracing::debug!(
             "LLM Request (to {}): {}",
             self.api_url,
