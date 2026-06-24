@@ -180,6 +180,7 @@ fn test_processor_tool_execution_flow() {
                         system_prompt: None,
                         stdout,
                         render_markdown: !raw,
+                        session_id: None,
                     },
                     responses: vec![],
                     call_count: 0,
@@ -208,6 +209,7 @@ fn test_processor_tool_execution_flow() {
             system_prompt: None,
             stdout: false,
             render_markdown: false,
+            session_id: None,
         },
         responses: vec![
             (None, None, Some(vec![tool_call_part])),
@@ -270,6 +272,7 @@ fn test_processor_pqc_blocking_in_high_security() {
             system_prompt: None,
             stdout: false, // Suppress output to keep test logs clean
             render_markdown: false,
+            session_id: None,
         },
         responses: vec![
             (None, None, Some(vec![tool_call_part])),

@@ -129,6 +129,7 @@ impl BaseLlmClientData {
             system_prompt,
             stdout,
             render_markdown: !raw,
+            session_id: None,
         };
 
         Self {

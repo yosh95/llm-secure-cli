@@ -2,6 +2,7 @@ use crate::config::models::AppConfig;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 pub type ToolFunc =
     Arc<dyn Fn(HashMap<String, Value>, Arc<AppConfig>) -> anyhow::Result<Value> + Send + Sync>;
@@ -15,6 +16,10 @@ pub struct Tool {
 
 pub struct ToolRegistry {
     pub tools: HashMap<String, Tool>,
+    /// Lazily-initialised cache of tool schemas for the OpenAI-compatible
+    /// format.  Rebuilt automatically when `get_tool_schemas()` is first
+    /// called after registration.
+    cached_schemas: OnceLock<Vec<Value>>,
 }
 
 impl ToolRegistry {
@@ -22,6 +27,7 @@ impl ToolRegistry {
     pub fn new() -> Self {
         Self {
             tools: HashMap::new(),
+            cached_schemas: OnceLock::new(),
         }
     }
 }
@@ -71,19 +77,23 @@ impl ToolRegistry {
 
     #[must_use]
     pub fn get_tool_schemas(&self) -> Vec<Value> {
-        let mut tools: Vec<_> = self.tools.values().collect();
-        tools.sort_by(|a, b| a.name.cmp(&b.name));
+        self.cached_schemas
+            .get_or_init(|| {
+                let mut tools: Vec<_> = self.tools.values().collect();
+                tools.sort_by(|a, b| a.name.cmp(&b.name));
 
-        tools
-            .into_iter()
-            .map(|t| {
-                json!({
-                    "name": t.name,
-                    "description": t.description,
-                    "parameters": t.parameters,
-                })
+                tools
+                    .into_iter()
+                    .map(|t| {
+                        json!({
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.parameters,
+                        })
+                    })
+                    .collect()
             })
-            .collect()
+            .clone()
     }
 
     #[must_use]

@@ -295,12 +295,17 @@ impl LlmClient for OpenAiCompatibleClient {
             .as_str()
             .unwrap_or("submit_verdict")
             .to_string();
-        let body = json!({
+        let mut body = json!({
             "model": self.base.state.model,
             "messages": messages,
             "tools": [{"type": "function", "function": tool_schema}],
             "tool_choice": {"type": "function", "function": {"name": tool_name}}
         });
+
+        // Pass session_id if set (used by OpenRouter for sticky routing)
+        if let Some(session_id) = &self.base.state.session_id {
+            body["session_id"] = json!(session_id);
+        }
 
         tracing::debug!(
             "LLM Verifier Request (to {}): {}",

@@ -128,6 +128,7 @@ impl MockLlmClientBuilder {
                 system_prompt: self.system_prompt,
                 stdout: self.stdout,
                 render_markdown: !self.raw,
+                session_id: None,
             },
             responses: self.responses,
             verifier_response: self
