@@ -164,8 +164,11 @@ pub fn create_http_client_with_timeout(timeout_secs: u64) -> anyhow::Result<ureq
     let agent_config = ureq::config::Config::builder()
         .user_agent(ua)
         .timeout_connect(Some(std::time::Duration::from_secs(10)))
-        .timeout_recv_body(Some(std::time::Duration::from_secs(timeout_secs)))
+        .timeout_resolve(Some(std::time::Duration::from_secs(10)))
+        .timeout_send_request(Some(std::time::Duration::from_secs(timeout_secs)))
         .timeout_send_body(Some(std::time::Duration::from_secs(timeout_secs)))
+        .timeout_recv_response(Some(std::time::Duration::from_secs(timeout_secs)))
+        .timeout_recv_body(Some(std::time::Duration::from_secs(timeout_secs)))
         .build();
     Ok(ureq::Agent::new_with_config(agent_config))
 }
