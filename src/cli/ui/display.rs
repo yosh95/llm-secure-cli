@@ -17,7 +17,8 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
     }
 
     // Use our custom markdown renderer
-    let rendered = render_markdown(content.trim(), width);
+    let sanitized = crate::utils::sanitize_for_display(content.trim());
+    let rendered = render_markdown(&sanitized, width);
     output.push_str(&rendered);
     output.push('\n');
 

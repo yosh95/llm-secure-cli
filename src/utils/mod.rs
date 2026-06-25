@@ -77,7 +77,7 @@ pub fn sanitize_for_display(s: &str) -> String {
     //    final byte 0x40-0x7E.
     //    We also catch ESC but not followed by [ (e.g. ESC 7, ESC 8, etc.)
     #[expect(clippy::expect_used)]
-    let re_ansi = regex::bytes::Regex::new(r"(?:\[[0-?]*[ -/]*[@-~]|[ -/]?[@-~])")
+    let re_ansi = regex::bytes::Regex::new(r"(?:\[[0-?]*[ -/]*[@-~]|[ -/]?[0-~])")
         .expect("valid ANSI escape regex");
 
     let s = re_ansi.replace_all(s.as_bytes(), b"");
