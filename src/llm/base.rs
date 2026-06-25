@@ -25,7 +25,7 @@ pub trait LlmClient: Send + Sync {
     ) -> anyhow::Result<serde_json::Value>;
 
     /// Send a request for verification using the verifier-specific timeout.
-    /// Falls back to [`send`] by default for clients that don't override it.
+    /// Falls back to [`Self::send`] by default for clients that don't override it.
     fn send_verifier(
         &mut self,
         data: Vec<DataSource>,

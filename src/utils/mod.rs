@@ -71,32 +71,71 @@ pub fn ensure_isig_enabled() {
 /// This is intended for tool output that will be displayed to the user or
 /// sent back to the LLM.  The LLM has no use for control characters either.
 pub fn sanitize_for_display(s: &str) -> String {
-    // 1. Remove ANSI escape sequences: ESC [ ... <final byte>
-    //    CSI sequences: \x1b[ <parameter bytes> <intermediate bytes> <final byte>
-    //    where parameter bytes are 0x30-0x3F, intermediate bytes 0x20-0x2F,
-    //    final byte 0x40-0x7E.
-    //    We also catch ESC but not followed by [ (e.g. ESC 7, ESC 8, etc.)
+    // 1. Remove ANSI escape sequences.
     #[expect(clippy::expect_used)]
-    let re_ansi = regex::bytes::Regex::new(r"(?:\[[0-?]*[ -/]*[@-~]|[ -/]?[0-~])")
+    let re_ansi = regex::bytes::Regex::new(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|[ -/]?[0-~])")
         .expect("valid ANSI escape regex");
-
     let s = re_ansi.replace_all(s.as_bytes(), b"");
-    // Safety: we only remove bytes, the result is still valid UTF-8 because
-    // we never split multi-byte sequences.
     #[expect(clippy::expect_used)]
     let s = String::from_utf8(s.into_owned()).expect("still valid UTF-8 after ANSI removal");
 
-    // 2. Remove C0 control characters except \t (0x09), \n (0x0a), \r (0x0d).
-    //    \r is removed because captured progress-bar output contains many \r
-    //    that cause line-overwrite visual corruption when displayed as-is.
+    // 2. Process carriage returns to emulate terminal line-overwrite.
+    //    - \r\n (CRLF) → \n  (Windows newline normalisation)
+    //    - Standalone \r resets the line buffer; subsequent characters
+    //      overwrite from the beginning, emulating terminal behaviour.
+    //      Progress bars (tqdm, etc.) use \r to update status in-place.
+    let s = merge_carriage_returns(&s);
+
+    // 3. Remove remaining C0 control characters except \t (0x09), \n (0x0a).
+    //    \r (0x0d) is already consumed by step 2.
     #[expect(clippy::expect_used)]
     let re_c0 =
-        regex::Regex::new("[\x00-\x08\x0b\x0c\x0d\x0e-\x1f\x7f]").expect("valid C0 control regex");
+        regex::Regex::new("[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]").expect("valid C0 control regex");
     let s = re_c0.replace_all(&s, "");
 
     s.into_owned()
 }
 
+/// Process carriage returns (`\r`) to emulate terminal line-overwrite.
+///
+/// - `\r\n` (CRLF) → `\n` (Windows newline normalisation)
+/// - Standalone `\r` resets the current line buffer; subsequent characters
+///   overwrite from the beginning of the line.  Progress bars (tqdm, etc.)
+///   repeatedly output `\r` + updated status, which this resolves to just
+///   the final status per line.
+fn merge_carriage_returns(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut line = String::new();
+    let mut chars = s.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\r' => {
+                // Peek: is this \r\n (CRLF)?
+                if chars.peek() == Some(&'\n') {
+                    // CRLF → normal newline
+                    out.push_str(&line);
+                    out.push('\n');
+                    line.clear();
+                    chars.next(); // consume the \n
+                } else {
+                    // Standalone \r: reset current line (overwrite)
+                    line.clear();
+                }
+            }
+            '\n' => {
+                out.push_str(&line);
+                out.push('\n');
+                line.clear();
+            }
+            other => {
+                line.push(other);
+            }
+        }
+    }
+    out.push_str(&line);
+    out
+}
 #[cfg(test)]
 mod tests {
     use super::sanitize_for_display;
@@ -114,9 +153,16 @@ mod tests {
     }
 
     #[test]
-    fn removes_carriage_return() {
+    fn carriage_return_overwrites_line() {
+        // Standalone \r emulates terminal overwrite
         let result = sanitize_for_display("foo\rbar");
-        assert_eq!(result, "foobar");
+        assert_eq!(result, "bar");
+    }
+
+    #[test]
+    fn crlf_is_normalised_to_newline() {
+        let result = sanitize_for_display("foo\r\nbar");
+        assert_eq!(result, "foo\nbar");
     }
 
     #[test]
@@ -138,14 +184,16 @@ mod tests {
     }
 
     #[test]
-    fn handles_complex_progress_bar() {
-        // Typical tqdm output
-        let input = "\rDownloading:  50%|████▌     | 5/10 [00:01<00:01,  4.99it/s]\x1b[K";
-        let result = sanitize_for_display(input);
-        assert_eq!(
-            result,
-            "Downloading:  50%|████▌     | 5/10 [00:01<00:01,  4.99it/s]"
-        );
+    fn handles_progress_bar_overwrites() {
+        // tqdm-like: multiple \r overwrites, only final status survives
+        let result = sanitize_for_display("\rProgress: 50%\rProgress: 100%\nDone");
+        assert_eq!(result, "Progress: 100%\nDone");
+    }
+
+    #[test]
+    fn handles_multi_overwrite() {
+        let result = sanitize_for_display("a\rbb\rccc\ndone");
+        assert_eq!(result, "ccc\ndone");
     }
 
     #[test]
