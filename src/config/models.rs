@@ -6,6 +6,8 @@ pub struct GeneralConfig {
     pub system_prompt: Option<String>,
     #[serde(default = "default_request_timeout")]
     pub request_timeout: u64,
+    #[serde(default = "default_verifier_timeout")]
+    pub verifier_timeout: u64,
     #[serde(default = "default_python_timeout")]
     pub python_timeout: u64,
     #[serde(default = "default_max_audit_log")]
@@ -24,6 +26,9 @@ pub struct GeneralConfig {
 
 fn default_request_timeout() -> u64 {
     1800
+}
+fn default_verifier_timeout() -> u64 {
+    60
 }
 fn default_python_timeout() -> u64 {
     3600
@@ -52,6 +57,7 @@ impl Default for GeneralConfig {
         Self {
             system_prompt: None,
             request_timeout: default_request_timeout(),
+            verifier_timeout: default_verifier_timeout(),
             python_timeout: default_python_timeout(),
             max_audit_log_lines: default_max_audit_log(),
             max_chat_log_lines: default_max_chat_log(),

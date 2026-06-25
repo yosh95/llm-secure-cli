@@ -24,6 +24,15 @@ pub trait LlmClient: Send + Sync {
         tool_schema: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value>;
 
+    /// Send a request for verification using the verifier-specific timeout.
+    /// Falls back to [`send`] by default for clients that don't override it.
+    fn send_verifier(
+        &mut self,
+        data: Vec<DataSource>,
+    ) -> anyhow::Result<crate::llm::models::LlmResponse> {
+        self.send(data, vec![])
+    }
+
     fn load_session(&mut self, path: &str) -> anyhow::Result<()> {
         let file = std::fs::File::open(path)?;
         let conversation: Vec<crate::llm::models::Message> = serde_json::from_reader(file)?;
@@ -143,7 +152,12 @@ impl BaseLlmClientData {
 /// Creates a ureq agent with timeout settings from the global config.
 pub fn create_http_client(config_manager: &ConfigManager) -> anyhow::Result<ureq::Agent> {
     let config = config_manager.get_config()?;
-    let timeout_secs = config.general.request_timeout;
+    create_http_client_with_timeout(config.general.request_timeout)
+}
+
+/// Creates a ureq agent with a specific timeout (in seconds).
+/// Useful for verifier calls that should time out faster than the main LLM.
+pub fn create_http_client_with_timeout(timeout_secs: u64) -> anyhow::Result<ureq::Agent> {
     let version = env!("CARGO_PKG_VERSION");
     let ua = format!("llm-secure-cli/{version} (https://github.com/yosh95/llm-secure-cli)");
 

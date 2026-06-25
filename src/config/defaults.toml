@@ -3,6 +3,7 @@
 # =============================================================================
 [general]
 request_timeout = 300
+verifier_timeout = 60
 python_timeout = 300
 image_save_path = "~/Pictures/llsc"
 max_audit_log_lines = 10000

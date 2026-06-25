@@ -312,7 +312,7 @@ impl Verifier {
         }];
 
         // Use the standard send method instead of send_as_verifier to support models without tool calling.
-        match self.verifier_llm.send(data, vec![]) {
+        match self.verifier_llm.send_verifier(data) {
             Ok(response_struct) => {
                 let response = response_struct.content.unwrap_or_default();
                 parse_verifier_response(&response)

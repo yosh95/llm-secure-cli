@@ -1,5 +1,7 @@
 use crate::config::ConfigManager;
-use crate::llm::base::{BaseLlmClientData, LlmClient, ProviderSpec, create_http_client};
+use crate::llm::base::{
+    BaseLlmClientData, LlmClient, ProviderSpec, create_http_client, create_http_client_with_timeout,
+};
 use crate::llm::models::{ClientState, DataSource, Message, Role};
 use serde_json::{Value, json};
 
@@ -15,6 +17,8 @@ pub struct OpenAiCompatibleClient {
     pub api_url: String,
     pub api_key: String,
     pub http_client: ureq::Agent,
+    /// HTTP client with verifier-specific timeout (usually shorter).
+    pub verifier_http_client: ureq::Agent,
     pub supports_tools: bool,
     /// Cached input modalities this model supports (e.g. ["text", "image"]).
     /// `None` means unknown (assume all inputs supported for backward compatibility).
@@ -124,6 +128,10 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
                 .unwrap_or(true)
         });
         let http_client = create_http_client(self.config_manager)?;
+        let verifier_http_client = {
+            let config = self.config_manager.get_config()?;
+            create_http_client_with_timeout(config.general.verifier_timeout)
+        }?;
 
         // Look up input modalities for this model from the cache.
         let input_modalities = self
@@ -136,6 +144,7 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
             api_url,
             api_key: self.api_key,
             http_client,
+            verifier_http_client,
             supports_tools,
             input_modalities,
         })
@@ -376,5 +385,75 @@ impl LlmClient for OpenAiCompatibleClient {
         Err(anyhow::anyhow!(
             "Verifier did not return a tool call. Raw response: {resp_json}"
         ))
+    }
+
+    fn send_verifier(
+        &mut self,
+        data: Vec<DataSource>,
+    ) -> anyhow::Result<crate::llm::models::LlmResponse> {
+        // Identical to send() but uses verifier_http_client (shorter timeout).
+        let messages = self.build_messages(&data);
+        let mut body = json!({
+            "model": self.base.state.model,
+            "messages": messages,
+        });
+
+        // Pass session_id if set (used by OpenRouter for sticky routing)
+        if let Some(session_id) = &self.base.state.session_id {
+            body["session_id"] = json!(session_id);
+        }
+
+        tracing::debug!(
+            "Verifier Request (to {}): {}",
+            self.api_url,
+            serde_json::to_string_pretty(&body).unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "JSON serialization failed");
+                String::new()
+            })
+        );
+
+        let text = send_blocking_request(
+            &self.verifier_http_client,
+            &self.api_url,
+            &self.api_key,
+            body,
+        )?;
+
+        let resp_json: Value =
+            serde_json::from_str(&text).context("Failed to parse LLM API response as JSON")?;
+
+        tracing::debug!(
+            "Verifier Response: {}",
+            serde_json::to_string_pretty(&resp_json).unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "JSON serialization failed");
+                String::new()
+            })
+        );
+
+        if let Some(err) = resp_json.get("error") {
+            return Err(anyhow::anyhow!("API Error: {err}"));
+        }
+
+        let choice = &resp_json["choices"][0];
+        let msg = &choice["message"];
+
+        let usage = resp_json
+            .get("usage")
+            .and_then(|u| serde_json::from_value::<crate::llm::models::Usage>(u.clone()).ok());
+
+        // Delegate response parsing to the standalone module.
+        let parsed = response_parser::parse_assistant_message(msg);
+
+        let model_msg = Message {
+            role: Role::Assistant,
+            parts: parsed.message_parts,
+        };
+        self.update_history(&data, model_msg);
+
+        Ok(crate::llm::models::LlmResponse {
+            content: parsed.text,
+            tool_name: None,
+            usage,
+        })
     }
 }
