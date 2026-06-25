@@ -97,11 +97,6 @@ pub struct ClientState {
     pub system_prompt: Option<String>,
     pub stdout: bool,
     pub render_markdown: bool,
-    /// Optional session identifier for services that support sticky routing
-    /// (e.g. OpenRouter). When set, subsequent requests in the same session
-    /// are routed to the same provider, maximizing prompt-cache hit rates.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub session_id: Option<String>,
 }
 
 impl ClientState {

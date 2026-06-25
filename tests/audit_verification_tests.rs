@@ -252,7 +252,6 @@ fn register_verifier_mock(ctx: &Arc<AppContext>, provider_name: &str, response_t
                     system_prompt: None,
                     stdout: false,
                     render_markdown: false,
-                    session_id: None,
                 },
                 response_text: resp.clone(),
             }) as Box<dyn LlmClient>)
@@ -323,7 +322,6 @@ fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSession {
                 system_prompt: None,
                 stdout: false,
                 render_markdown: false,
-                session_id: None,
             },
             call_count: 0,
         };
@@ -361,7 +359,6 @@ fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSession {
                 system_prompt: None,
                 stdout: false,
                 render_markdown: false,
-                session_id: None,
             },
             call_count: 0,
         };

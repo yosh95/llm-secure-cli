@@ -103,7 +103,6 @@ fn register_mock(ctx: &Arc<AppContext>, provider_name: &str, response: Result<St
                     system_prompt: None,
                     stdout,
                     render_markdown: !raw,
-                    session_id: None,
                 },
             }))
         }),

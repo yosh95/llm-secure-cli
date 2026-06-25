@@ -156,14 +156,9 @@ impl Drop for ActiveSession {
 }
 
 impl ActiveSession {
-    pub fn new(mut client: Box<dyn LlmClient>, ctx: Arc<AppContext>) -> anyhow::Result<Self> {
+    pub fn new(client: Box<dyn LlmClient>, ctx: Arc<AppContext>) -> anyhow::Result<Self> {
         let trace_id = format!("sess-{}", uuid::Uuid::new_v4().to_string().replace('-', ""));
         let user_id = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
-
-        // Use trace_id as the session identifier for sticky routing
-        // (OpenRouter, etc.). This ensures all turns in this session
-        // route to the same provider, maximizing prompt-cache hit rates.
-        client.get_state_mut().session_id = Some(trace_id.clone());
 
         let config = ctx.config_manager.get_config()?;
         let context_val = serde_json::json!({

@@ -245,11 +245,6 @@ impl LlmClient for OpenAiCompatibleClient {
             );
         }
 
-        // Pass session_id if set (used by OpenRouter for sticky routing)
-        if let Some(session_id) = &self.base.state.session_id {
-            body["session_id"] = json!(session_id);
-        }
-
         tracing::debug!(
             "LLM Request (to {}): {}",
             self.api_url,
@@ -309,17 +304,12 @@ impl LlmClient for OpenAiCompatibleClient {
             .as_str()
             .unwrap_or("submit_verdict")
             .to_string();
-        let mut body = json!({
+        let body = json!({
             "model": self.base.state.model,
             "messages": messages,
             "tools": [{"type": "function", "function": tool_schema}],
             "tool_choice": {"type": "function", "function": {"name": tool_name}}
         });
-
-        // Pass session_id if set (used by OpenRouter for sticky routing)
-        if let Some(session_id) = &self.base.state.session_id {
-            body["session_id"] = json!(session_id);
-        }
 
         tracing::debug!(
             "LLM Verifier Request (to {}): {}",
@@ -393,15 +383,10 @@ impl LlmClient for OpenAiCompatibleClient {
     ) -> anyhow::Result<crate::llm::models::LlmResponse> {
         // Identical to send() but uses verifier_http_client (shorter timeout).
         let messages = self.build_messages(&data);
-        let mut body = json!({
+        let body = json!({
             "model": self.base.state.model,
             "messages": messages,
         });
-
-        // Pass session_id if set (used by OpenRouter for sticky routing)
-        if let Some(session_id) = &self.base.state.session_id {
-            body["session_id"] = json!(session_id);
-        }
 
         tracing::debug!(
             "Verifier Request (to {}): {}",
