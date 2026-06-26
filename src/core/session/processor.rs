@@ -58,6 +58,7 @@ impl ActiveSession {
         if !is_stdout {
             let provider = &self.client.get_state().provider;
             let model = &self.client.get_state().model;
+            self.ctx.ui.print_rule(None, None);
             self.ctx
                 .ui
                 .report_info(&format!("LLM: {}:{} (querying)...", provider, model,));
