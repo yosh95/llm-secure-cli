@@ -397,8 +397,9 @@ fn push_line(buf: &mut String, line: &str) {
 
 fn finish_tool_result(out: String) {
     print!("{out}");
-    // Add separator line after tool result
-    print_rule(None, None);
+    // No trailing separator here — the next tool call header (from format_tool_call)
+    // or the main loop's post-turn separator provides the proper single rule.
+    // Removing this avoids double-line artifacts between consecutive tool calls.
 }
 
 fn format_size_brief(bytes: u64) -> String {
