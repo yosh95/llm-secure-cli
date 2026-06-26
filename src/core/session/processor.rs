@@ -24,6 +24,10 @@ impl ActiveSession {
             let tool_results = self.handle_tool_calls()?;
 
             if tool_results.is_empty() {
+                // Add separator before the next prompt
+                if !self.client.get_state().stdout {
+                    self.ctx.ui.print_rule(None, None);
+                }
                 // Auto-save session after each complete turn
                 crate::utils::session_store::auto_save(self);
                 break; // No more tools to execute
@@ -106,7 +110,10 @@ impl ActiveSession {
         {
             self.ctx.ui.print_rule(Some("Thought"), Some("cyan"));
             self.ctx.ui.print_block(&t, None, Some("cyan"));
-            self.ctx.ui.print_rule(None, Some("cyan"));
+            // No closing rule here — if there's a text response next, it will
+            // provide its own opening separator via print_block's title line.
+            // If there's no text response, the main loop's trailing separator
+            // before the next prompt will close the block.
         }
 
         if let Some(text) = text

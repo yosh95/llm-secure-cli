@@ -260,6 +260,7 @@ impl ActiveSession {
     ) -> anyhow::Result<Option<Value>> {
         let audit_ctx = self.build_audit_context();
 
+        self.ctx.ui.print_rule(None, None);
         match self.ctx.ui.ask_confirm(&format!("Execute {name}")) {
             Some(crate::cli::ui::ConfirmResult::Yes) => {
                 // Audit log: human approved the tool call

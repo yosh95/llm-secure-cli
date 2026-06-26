@@ -22,11 +22,6 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
     output.push_str(&rendered);
     output.push('\n');
 
-    if title.is_some() {
-        let _rule_color = style.unwrap_or("cyan");
-        let rule = "\u{2500}".repeat(width);
-        output.push_str(&format!("{}\n", rule));
-    }
     print!("{output}");
 }
 
