@@ -24,7 +24,7 @@ pub fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
 
     // No args or -u: show all models grouped by provider, sorted
     if args_trimmed.is_empty() || args_trimmed == "-u" || args_trimmed == "--update" {
-        ui::print_rule(Some("Available Models (provider:model)"), Some("cyan"));
+        println!("Available Models (provider:model)");
         let models_map = session.ctx.config_manager.get_cached_models();
 
         // Collect all provider:model pairs and sort them
@@ -187,7 +187,7 @@ pub fn handle_verifier_cmd(session: &mut ActiveSession, args: &str) {
         let status = if enabled { "ENABLED" } else { "DISABLED" };
         println!("Verifier Status: {}\n", status);
 
-        ui::print_rule(Some("Verifier Committee Members"), Some("cyan"));
+        println!("Verifier Committee Members");
         for (i, (p, m)) in members.iter().enumerate() {
             let pm_str = format!("{p}:{m}");
             // Mark if this member was set via state.toml (runtime) or config.toml (fallback)
@@ -198,7 +198,7 @@ pub fn handle_verifier_cmd(session: &mut ActiveSession, args: &str) {
             };
             println!("  {}. {}  {}", i + 1, pm_str, source);
         }
-        ui::print_rule(None, Some("cyan"));
+
         println!("Usage: /verifier add|delete <provider:model>");
         return;
     }
@@ -254,11 +254,10 @@ pub fn handle_verifier_cmd(session: &mut ActiveSession, args: &str) {
             if members.is_empty() {
                 ui::report_info("No verifier committee members configured.");
             } else {
-                ui::print_rule(Some("Verifier Committee Members"), Some("cyan"));
+                println!("Verifier Committee Members");
                 for (i, (p, m)) in members.iter().enumerate() {
                     println!("  {}. {}:{}", i + 1, p, m);
                 }
-                ui::print_rule(None, Some("cyan"));
             }
         }
         _ => {
@@ -366,7 +365,7 @@ fn display_model_endpoints(data: &serde_json::Value) {
         .unwrap_or("");
 
     // Model info
-    ui::print_rule(Some(&format!("📋 {name}")), Some("cyan"));
+    println!("📋 {}", name);
     if !description.is_empty() {
         println!("  Description: {}", description);
     }
@@ -414,7 +413,7 @@ fn display_model_endpoints(data: &serde_json::Value) {
                 "  No endpoint details available.
 "
             );
-            ui::print_rule(None, Some("cyan"));
+
             return;
         }
 
@@ -440,7 +439,7 @@ fn display_model_endpoints(data: &serde_json::Value) {
                 _ => "⚪ Unknown",
             };
 
-            println!("  ── {}. {} [{}]", i + 1, ep_name, status_str);
+            println!("  • {}. {} [{}]", i + 1, ep_name, status_str);
 
             // Pricing
             if let Some(pricing) = ep.get("pricing") {
@@ -577,8 +576,6 @@ fn display_model_endpoints(data: &serde_json::Value) {
             }
         }
     }
-
-    ui::print_rule(None, Some("cyan"));
 }
 
 /// Format a price string (USD per token) to a human-readable "$X.XX/1M tokens" format.

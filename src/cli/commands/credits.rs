@@ -66,7 +66,7 @@ fn fetch_and_display_credits(api_key: &str) {
     let credits_result = fetch_credits(&headers);
     let key_result = fetch_key_info(&headers);
 
-    ui::print_rule(Some("OpenRouter Credits"), Some("cyan"));
+    println!("OpenRouter Credits");
 
     // ---- Section 1: Credits API ----
     match credits_result {
@@ -238,8 +238,6 @@ fn fetch_and_display_credits(api_key: &str) {
             ui::report_error(&format!("Failed to fetch key API: {e}"));
         }
     }
-
-    ui::print_rule(None, Some("cyan"));
 }
 
 /// Fetch the /api/v1/credits endpoint.

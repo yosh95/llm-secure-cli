@@ -85,7 +85,7 @@ pub fn handle_command(session: &mut ActiveSession, input: &str) -> CommandResult
 }
 
 fn print_help() {
-    ui::print_rule(Some("Interactive Commands"), Some("cyan"));
+    println!("Interactive Commands");
     println!("  /h, /help          Show this help message");
     println!("  /q, /quit          Exit the session");
     println!("  /i, /info          Show session, security status, and available tools");
@@ -108,5 +108,4 @@ fn print_help() {
     );
     println!("  /rankings          Show OpenRouter model rankings (token usage leaderboard)");
     println!("  F2                 Open external editor to edit the current prompt (multi-line)");
-    ui::print_rule(None, Some("cyan"));
 }

@@ -101,7 +101,6 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
     let arch = std::env::consts::ARCH.to_string();
     let cli_version = env!("CARGO_PKG_VERSION").to_string();
 
-    // ── Phase 1 (outside lock): PQC encryption of args ─────────────
     // ML-KEM-1024 key encapsulation is CPU-intensive but chain-independent:
     // the encrypted payload is opaque metadata attached to the entry and
     // does not participate in the hash-chain linkage.  Running it here
@@ -148,7 +147,6 @@ pub fn log_audit_and_return(params: AuditParams, log_path: Option<&Path>) -> Opt
         }
     }
 
-    // ── Phase 2 (under lock): chain-critical operations ────────────
     // All of prev_hash read → entry construction → hash calculation →
     // PQC signature → file write → trim → head-cache update must happen
     // atomically.  Otherwise two concurrent verifiers can both read the

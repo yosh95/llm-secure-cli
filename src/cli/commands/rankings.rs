@@ -155,7 +155,7 @@ fn display_rankings(response: &Value, top_n: usize) {
 
     // ============ Display ============
 
-    ui::print_rule(Some("OpenRouter Model Rankings"), Some("cyan"));
+    println!("OpenRouter Model Rankings");
     println!();
     println!("  Period:  {start_date}  \u{2192}  {end_date}");
     println!("  As of:  {}", as_of);
@@ -171,7 +171,6 @@ fn display_rankings(response: &Value, top_n: usize) {
         "  {:>4}  {:<48}  {:>16}  {:>7}",
         "Rank", "Model", "Weekly Tokens", "Share"
     );
-    println!("  {}", "\u{2500}".repeat(80));
 
     let display_count = top_n.min(models.len());
     for (i, entry) in models.iter().enumerate().take(display_count) {
@@ -246,7 +245,7 @@ fn display_rankings(response: &Value, top_n: usize) {
     }
 
     println!();
-    ui::print_rule(Some("Provider Breakdown"), Some("cyan"));
+    println!("Provider Breakdown");
     println!();
 
     // Collect into owned Vec to simplify type handling
@@ -269,7 +268,7 @@ fn display_rankings(response: &Value, top_n: usize) {
 
     // ============ Trend note ============
     println!();
-    ui::print_rule(None, Some("cyan"));
+
     println!("  Rankings show real token usage across OpenRouter (top 50 models per day).");
     println!(
         "  Data range: {} records from {} to {}",
@@ -277,7 +276,6 @@ fn display_rankings(response: &Value, top_n: usize) {
         start_date,
         end_date
     );
-    ui::print_rule(None, Some("cyan"));
 }
 
 /// Format large token counts into human-readable strings.

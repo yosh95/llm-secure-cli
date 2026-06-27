@@ -67,9 +67,7 @@ api_url = "https://openrouter.ai/api/v1"
 [vllm]
 api_url = "http://localhost:8000/v1"
 
-# -----------------------------------------------------------------------------
 # Custom OpenAI-compatible provider example
-# -----------------------------------------------------------------------------
 # Example:
 # [my_local_llm]
 # api_url = "http://192.168.1.10:8080/v1"

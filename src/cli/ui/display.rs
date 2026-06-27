@@ -1,8 +1,8 @@
 use crate::cli::markdown::render_markdown;
 use console::Term;
 
-/// Print a block of content with optional title and style.
-pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
+/// Print a block of content with optional title.
+pub fn print_block(content: &str, title: Option<&str>) {
     let term = Term::stdout();
     let (_, width) = term.size();
     let width = (width as usize).min(140);
@@ -10,9 +10,6 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
     let mut output = String::new();
 
     if let Some(t) = title {
-        let _rule_color = style.unwrap_or("cyan");
-        let rule = "\u{2500}".repeat(width);
-        output.push_str(&format!("{}\n", rule));
         output.push_str(&format!("{}\n", t));
     }
 
@@ -25,59 +22,20 @@ pub fn print_block(content: &str, title: Option<&str>, style: Option<&str>) {
     print!("{output}");
 }
 
-/// Print a horizontal rule with optional title.
-pub fn print_rule(title: Option<&str>, style: Option<&str>) {
-    let term = Term::stdout();
-    let (_, width) = term.size();
-    let width = (width as usize).min(140);
-    let _color = style.unwrap_or("cyan");
-
-    if let Some(t) = title {
-        let title_text = format!(" {t} ");
-        let title_display = format!(" {} ", t);
-        let text_width = console::measure_text_width(&title_text);
-        let rule_len = width.saturating_sub(text_width);
-        let left = 2;
-        let right = rule_len.saturating_sub(left);
-        println!(
-            "{}{}{}",
-            "\u{2500}".repeat(left),
-            title_display,
-            "\u{2500}".repeat(right)
-        );
-    } else {
-        println!("{}", "\u{2500}".repeat(width));
-    }
-}
-
 /// Print a key-value pair with formatting.
 pub fn print_key_value(key: &str, value: &str) {
     println!("  {:15} {}", key, value);
 }
 
-/// Print a panel with content, title, and border style.
-pub fn print_panel(
-    content: &str,
-    title: Option<&str>,
-    _style: Option<&str>,
-    border_style: Option<&str>,
-) {
+/// Print a panel with content and optional title (borders removed).
+pub fn print_panel(content: &str, title: Option<&str>) {
     let term = Term::stdout();
     let (_, term_width) = term.size();
     let width = (term_width as usize).clamp(40, 140);
 
-    let _border_color = border_style.unwrap_or("cyan");
-
-    // Top border
+    // Title (if any)
     if let Some(t) = title {
-        let title_str = format!(" {} ", t);
-        let remaining = width.saturating_sub(title_str.len() + 2);
-        println!(
-            "\u{2500}{title_str}\u{2500}{}",
-            "\u{2500}".repeat(remaining)
-        );
-    } else {
-        println!("{}", "\u{2500}".repeat(width));
+        println!("{t}");
     }
 
     // Content with wrapping
@@ -92,19 +50,13 @@ pub fn print_panel(
             println!("    {w_line}");
         }
     }
-
-    // Bottom border
-    println!("{}", "\u{2500}".repeat(width));
 }
 
-/// Format a tool call display string (header + args + footer).
+/// Format a tool call display string (header + args).
 /// Returns the formatted string without printing.
-pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> String {
-    let _color = "yellow";
-
+pub fn format_tool_call(name: &str, args: &serde_json::Value, _width: usize) -> String {
     let mut buf = String::new();
 
-    buf.push_str(&format!("{}\n", "\u{2500}".repeat(width)));
     buf.push_str(&format!("{} {}{}\n", "->", name, ":"));
 
     if let Some(obj) = args.as_object() {
@@ -191,7 +143,6 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, width: usize) -> S
         push_line(&mut buf, &format!("    {args}"));
     }
 
-    buf.push_str(&format!("{}\n", "\u{2500}".repeat(width)));
     buf
 }
 
@@ -214,13 +165,9 @@ pub fn print_tool_call_direct(name: &str, args: &serde_json::Value) {
 }
 
 pub fn print_tool_result(result: &str) {
-    let _color = "green";
     let mut out = String::new();
 
-    out.push_str(&format!(
-        "  {}\n",
-        "\u{2500}\u{2500} Result \u{2500}\u{2500}"
-    ));
+    out.push_str("  Result:\n");
 
     // Sanitize the result string before displaying to prevent control characters
     // from corrupting the terminal display.
@@ -261,8 +208,6 @@ pub fn print_tool_result(result: &str) {
             v.get("stderr").and_then(|v| v.as_str()),
             v.get("exit_code").and_then(serde_json::Value::as_i64),
         ) {
-            let _status_color = if exit_code == 0 { "green" } else { "red" };
-
             // Do not re-display stdout/stderr if already displayed in real-time by the tool side
             let is_real_time_displayed = v
                 .get("_real_time_displayed")
@@ -397,9 +342,6 @@ fn push_line(buf: &mut String, line: &str) {
 
 fn finish_tool_result(out: String) {
     print!("{out}");
-    // No trailing separator here — the next tool call header (from format_tool_call)
-    // or the main loop's post-turn separator provides the proper single rule.
-    // Removing this avoids double-line artifacts between consecutive tool calls.
 }
 
 fn format_size_brief(bytes: u64) -> String {

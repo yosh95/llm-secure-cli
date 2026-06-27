@@ -10,7 +10,6 @@ use super::response_parser;
 use anyhow::Context;
 
 // Re-export commonly-used items so existing imports stay unchanged.
-// ── Client struct + Builder ────────────────────────────────────────────────
 
 pub struct OpenAiCompatibleClient {
     pub base: BaseLlmClientData,
@@ -151,8 +150,6 @@ impl<'a> OpenAiCompatibleClientBuilder<'a> {
     }
 }
 
-// ── Client impl ────────────────────────────────────────────────────────────
-
 impl OpenAiCompatibleClient {
     pub fn builder(config_manager: &ConfigManager) -> OpenAiCompatibleClientBuilder<'_> {
         OpenAiCompatibleClientBuilder::new(config_manager)
@@ -173,7 +170,6 @@ impl OpenAiCompatibleClient {
     }
 }
 
-// ── Helper: perform a synchronous ureq call, cancellable via Ctrl+C ───────
 //
 // Runs the blocking `ureq` HTTP request on a helper thread through
 // [`run_cancellable`] so the user can interrupt a long-running LLM request
@@ -212,8 +208,6 @@ fn send_blocking_request(
         Ok(text)
     })
 }
-
-// ── LlmClient impl ─────────────────────────────────────────────────────────
 
 impl LlmClient for OpenAiCompatibleClient {
     fn get_state(&self) -> &ClientState {

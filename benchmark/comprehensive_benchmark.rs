@@ -10,19 +10,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 fn section(title: &str) {
-    let (_, width) = Term::stdout().size();
-    let w = width as usize;
-    println!("\n{}", "─".repeat(w));
-    println!("  {}", title);
-    println!("{}", "─".repeat(w));
+    println!("\n  {}", title);
 }
 
 fn header(title: &str) {
-    let (_, width) = Term::stdout().size();
-    let w = width as usize;
-    println!("\n{}", "═".repeat(w));
-    println!("  {}", title);
-    println!("{}", "═".repeat(w));
+    println!("\n  {}", title);
 }
 
 fn timeit<F, T>(f: F, reps: u32) -> (f64, f64)

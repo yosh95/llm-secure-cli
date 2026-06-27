@@ -32,9 +32,7 @@ static PASSPHRASE_CACHE: std::sync::LazyLock<
     Mutex<std::collections::HashMap<std::path::PathBuf, Zeroizing<String>>>,
 > = std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
-// ─────────────────────────────────────────────
 // Public API
-// ─────────────────────────────────────────────
 
 /// Persist private key material to disk, optionally encrypted with a passphrase.
 ///
@@ -209,7 +207,6 @@ pub fn read_optional_passphrase() -> Result<Option<String>> {
         Ok(None) // Default: no passphrase in non-interactive mode
     }
 } // Internal: interactive passphrase prompts
-// ─────────────────────────────────────────────
 
 fn read_optional_passphrase_interactive() -> Result<Option<String>> {
     // rpassword prints prompt to stderr and reads with echo disabled.
@@ -243,13 +240,9 @@ fn read_passphrase_interactive() -> Result<String> {
     Ok(pw)
 }
 
-// ─────────────────────────────────────────────
 // Internal: passphrase resolution with cache
-// ─────────────────────────────────────────────
 
-// ─────────────────────────────────────────────
 // Internal: encryption / decryption
-// ─────────────────────────────────────────────
 
 fn save_encrypted(path: &Path, key_bytes: &[u8], passphrase: &str) -> Result<()> {
     // 1. Derive AES key via Argon2id
@@ -323,9 +316,7 @@ pub(crate) fn load_encrypted_key_data(data: &[u8], passphrase: &str) -> Result<V
     Ok(result)
 }
 
-// ─────────────────────────────────────────────
 // Helpers
-// ─────────────────────────────────────────────
 
 fn set_permissions(_path: &std::path::Path) -> Result<()> {
     #[cfg(unix)]
@@ -336,9 +327,7 @@ fn set_permissions(_path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-// ─────────────────────────────────────────────
 // Tests
-// ─────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {

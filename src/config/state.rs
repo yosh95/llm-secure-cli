@@ -96,8 +96,6 @@ impl ConfigManager {
         Ok(())
     }
 
-    // ── Verifier enabled flag (config.toml) ────────────────────────────────
-
     /// Get the verifier enabled state from SecurityConfig (config.toml).
     pub fn get_verifier_enabled(&self) -> bool {
         self.get_config()
@@ -122,8 +120,6 @@ impl ConfigManager {
         Self::persist_state(&write);
         Ok(())
     }
-
-    // ── Verifier committee (state.toml) ────────────────────────────────────
 
     /// Resolve the verifier committee configuration.
     ///

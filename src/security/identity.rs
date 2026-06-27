@@ -4,9 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
-// ─────────────────────────────────────────────
 // KeyStore trait: abstraction for key management
-// ─────────────────────────────────────────────
 
 /// Trait abstracting key storage operations.
 ///
@@ -46,9 +44,7 @@ pub trait KeyStore: Send + Sync {
     fn drop_cache(&self);
 }
 
-// ─────────────────────────────────────────────
 // FileSystemKeyStore: production implementation
-// ─────────────────────────────────────────────
 
 /// Default key store backed by the local filesystem.
 ///
@@ -84,9 +80,7 @@ impl KeyStore for FileSystemKeyStore {
     }
 }
 
-// ─────────────────────────────────────────────
 // IdentityManager
-// ─────────────────────────────────────────────
 
 pub struct IdentityManager;
 
@@ -99,8 +93,6 @@ impl IdentityManager {
         Self::get_base_dir().join(entity_type).join(name)
     }
 
-    // ── Key existence check ──
-
     /// Check whether both the ML-DSA and ML-KEM identity keys exist.
     #[must_use]
     pub fn has_keys() -> bool {
@@ -108,8 +100,6 @@ impl IdentityManager {
         dir.join(DEFAULT_PQC_VARIANT.key_filename()).exists()
             && dir.join(DEFAULT_KEM_VARIANT.key_filename()).exists()
     }
-
-    // ── Key generation ──
 
     /// Generate all identity keys. Prompts for an optional passphrase
     /// (interactive only) which, if provided, encrypts all private keys
@@ -210,8 +200,6 @@ impl IdentityManager {
         Ok(())
     }
 
-    // ── Public key reads ──
-
     /// Read any public key file from the identity key directory.
     pub fn get_public_key_for(entity_type: &str, name: &str, filename: &str) -> Result<Vec<u8>> {
         let path = Self::get_key_dir(entity_type, name).join(filename);
@@ -232,8 +220,6 @@ impl IdentityManager {
             Self::get_key_dir("self", "me").join(DEFAULT_KEM_VARIANT.pub_key_filename()),
         )?)
     }
-
-    // ── Private key reads ──
 
     /// Load an ML-DSA private key (raw or encrypted).
     ///

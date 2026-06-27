@@ -370,8 +370,6 @@ impl Highlighter for ChatCompleter {
             let cmd = parts[0];
             if self.commands.contains(&cmd.to_string()) {
                 let mut highlighted = line.to_string();
-                // Use ANSI codes directly to avoid conflicts with rustyline's own handling
-                //  is bold cyan,  is reset
                 let colored_cmd = cmd.to_string();
                 highlighted = highlighted.replacen(cmd, &colored_cmd, 1);
                 return std::borrow::Cow::Owned(highlighted);

@@ -7,13 +7,13 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-// ── FIPS 203: ML-KEM-512, ML-KEM-768, ML-KEM-1024 ──
+// FIPS 203: ML-KEM-512, ML-KEM-768, ML-KEM-1024
 use fips203::ml_kem_512;
 use fips203::ml_kem_768;
 use fips203::ml_kem_1024;
 use fips203::traits::{Decaps, Encaps, KeyGen as KemKeyGen, SerDes as KemSerDes};
 
-// ── FIPS 204: ML-DSA-44, ML-DSA-65, ML-DSA-87 ──
+// FIPS 204: ML-DSA-44, ML-DSA-65, ML-DSA-87
 use fips204::ml_dsa_44;
 use fips204::ml_dsa_65;
 use fips204::ml_dsa_87;
@@ -147,8 +147,6 @@ pub const DEFAULT_KEM_VARIANT: KEMVariant = KEMVariant::MLKEM512;
 pub struct PqcProvider;
 
 impl PqcProvider {
-    // ── ML-DSA key generation ──
-
     pub fn generate_keypair(variant: PQCVariant) -> Result<(Vec<u8>, Vec<u8>)> {
         match variant {
             PQCVariant::MLDSA44 => {
@@ -169,8 +167,6 @@ impl PqcProvider {
         }
     }
 
-    // ── ML-KEM key generation ──
-
     pub fn generate_kem_keypair(variant: KEMVariant) -> Result<(Vec<u8>, Vec<u8>)> {
         match variant {
             KEMVariant::MLKEM512 => {
@@ -190,8 +186,6 @@ impl PqcProvider {
             }
         }
     }
-
-    // ── ML-DSA sign ──
 
     pub fn sign(variant: PQCVariant, sk_bytes: &[u8], message: &[u8]) -> Result<Vec<u8>> {
         match variant {
@@ -230,8 +224,6 @@ impl PqcProvider {
             }
         }
     }
-
-    // ── ML-DSA verify ──
 
     pub fn verify(
         variant: PQCVariant,
@@ -288,8 +280,6 @@ impl PqcProvider {
         }
     }
 
-    // ── Legacy ML-DSA wrappers (always use the provided variant) ──
-
     pub fn sign_mldsa(message: &[u8], sk_bytes: &[u8], variant: PQCVariant) -> Result<Vec<u8>> {
         Self::sign(variant, sk_bytes, message)
     }
@@ -303,8 +293,6 @@ impl PqcProvider {
     ) -> bool {
         Self::verify(variant, pk_bytes, message, sig_bytes).is_ok()
     }
-
-    // ── ML-KEM encapsulate ──
 
     pub fn encapsulate(variant: KEMVariant, pk_bytes: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
         match variant {
@@ -343,8 +331,6 @@ impl PqcProvider {
             }
         }
     }
-
-    // ── ML-KEM decapsulate ──
 
     pub fn decapsulate(variant: KEMVariant, ct_bytes: &[u8], sk_bytes: &[u8]) -> Result<Vec<u8>> {
         match variant {

@@ -21,7 +21,7 @@ pub fn handle_session_cmd(session: &mut ActiveSession, args: &str) {
                         "No saved sessions found. Sessions are auto-saved after each turn.",
                     );
                 } else {
-                    ui::print_rule(Some("Saved Sessions"), Some("cyan"));
+                    println!("Saved Sessions");
                     for s in &sessions {
                         let ts = if s.created_at.is_empty() {
                             "unknown".to_string()
@@ -41,7 +41,7 @@ pub fn handle_session_cmd(session: &mut ActiveSession, args: &str) {
                         let first = s.first_user_prompt.as_deref().unwrap_or("(no user prompt)");
                         println!("  {}  {: <36} {}", ts, s.filename, first);
                     }
-                    ui::print_rule(None, Some("cyan"));
+
                     println!(
                         "Usage: /session load|delete <id>  or  /session clear  (use \"last\" for most recent)"
                     );
@@ -114,7 +114,7 @@ pub fn handle_info(session: &ActiveSession) {
         }
     };
 
-    ui::print_rule(Some("Session Info"), Some("cyan"));
+    println!("Session Info");
     ui::print_key_value("Session ID", &session.trace_id);
     ui::print_key_value(
         "Provider:Model",
@@ -168,7 +168,7 @@ pub fn handle_info(session: &ActiveSession) {
     ui::print_key_value("Verifier Status", &v_status);
 
     // Tools
-    ui::print_rule(Some("Tools"), Some("cyan"));
+    println!("Tools");
     {
         let registry = session
             .ctx
@@ -191,7 +191,7 @@ pub fn handle_info(session: &ActiveSession) {
 
     // Security
 
-    ui::print_rule(Some("Statistics"), Some("cyan"));
+    println!("Statistics");
     ui::print_key_value(
         "Usage (Session)",
         &format!(
@@ -202,7 +202,7 @@ pub fn handle_info(session: &ActiveSession) {
         ),
     );
 
-    ui::print_rule(Some("Status"), Some("cyan"));
+    println!("Status");
     ui::print_key_value(
         "History",
         &format!(
@@ -210,8 +210,6 @@ pub fn handle_info(session: &ActiveSession) {
             crate::utils::format_number(state.conversation.len())
         ),
     );
-
-    ui::print_rule(None, Some("cyan"));
 }
 
 pub fn handle_dump(session: &ActiveSession) {

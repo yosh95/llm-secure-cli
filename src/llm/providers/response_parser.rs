@@ -28,13 +28,10 @@ pub fn parse_assistant_message(msg: &Value) -> ParsedResponse {
         message_parts.push(MessagePart::Text(t.clone()));
     }
 
-    // ── inline multimodal content (content array) ─────────────────────────
     parse_multimodal_content_array(msg, &mut message_parts);
 
-    // ── top-level media fields (images / videos / audios) ─────────────────
     parse_top_level_media_fields(msg, &mut message_parts);
 
-    // ── tool calls ────────────────────────────────────────────────────────
     parse_tool_calls(msg, &mut message_parts);
 
     ParsedResponse {
@@ -42,8 +39,6 @@ pub fn parse_assistant_message(msg: &Value) -> ParsedResponse {
         message_parts,
     }
 }
-
-// ── private helpers ────────────────────────────────────────────────────────
 
 fn parse_multimodal_content_array(msg: &Value, parts: &mut Vec<MessagePart>) {
     let array = match msg.get("content").and_then(|v| v.as_array()) {
@@ -141,8 +136,6 @@ fn parse_tool_calls(msg: &Value, parts: &mut Vec<MessagePart>) {
         )));
     }
 }
-
-// ── tiny helpers ───────────────────────────────────────────────────────────
 
 /// If `url` is a `data:` URI, extract the base64 payload after the comma.
 fn extract_data_url_b64(url: Option<&str>) -> Option<&str> {

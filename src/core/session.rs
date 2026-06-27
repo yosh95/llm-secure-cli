@@ -17,7 +17,6 @@ pub mod phase3_execution;
 pub mod processor;
 pub mod tool_executor;
 
-// ── Global Ctrl+C handler ────────────────────────────────────────────────
 //
 // A single process-wide SIGINT (Ctrl+C) handler is installed once via the
 // `ctrlc` crate.  Each interruption bumps a monotonically increasing

@@ -107,9 +107,7 @@ impl From<String> for CachedModelEntry {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Internal helpers for reading / writing the on-disk cache
-// ---------------------------------------------------------------------------
 
 /// Read the cache file and deserialise it.
 ///
@@ -150,9 +148,7 @@ fn write_cache(cache: &HashMap<String, Vec<CachedModelEntry>>) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Public API on ConfigManager
-// ---------------------------------------------------------------------------
 
 impl ConfigManager {
     /// Return the cached model IDs for each provider.
