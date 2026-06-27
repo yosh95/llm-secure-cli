@@ -2,7 +2,7 @@
 
 //! # Audit Verification Tests
 //!
-//! These tests verify that **Verifier判定結果、拒否理由、HITLに回した結果、HITLのフィードバック**
+//! These tests verify that **Verifier decision results, rejection reasons, HITL routing results, HITL feedback**
 //! are correctly recorded in the audit log.
 //!
 //! ## Test strategy

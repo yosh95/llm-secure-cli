@@ -140,29 +140,44 @@ pub fn verify_tool_call_full(params: VerificationParams<'_>) -> VerificationOutc
 /// or
 ///   REVIEW: `<reason>`
 ///
-/// No regex needed — the first line of the response is checked.
-/// If the first word is ALLOW, it's allowed.
-/// If it starts with REVIEW, the rest after "REVIEW:" is the reason.
-/// Anything else is treated as NeedsApproval (human decides).
+/// However, we also accept `REVIEW` without a colon (e.g. "REVIEW dangerous")
+/// for robustness with smaller LLMs that may omit the colon.
+///
+/// Parsing logic:
+///   - First word is "ALLOW" (case-insensitive) → Allowed
+///   - First word is "REVIEW" (case-insensitive) → NeedsApproval
+///     with the rest of the line as the reason
+///   - Anything else → NeedsApproval (safety-first)
 #[must_use]
 pub fn parse_verifier_response(response: &str) -> VerificationResult {
     let first_line = response.lines().next().unwrap_or("").trim();
+    if first_line.is_empty() {
+        return VerificationResult::NeedsApproval(
+            "Invalid verifier response. First line was empty.".to_string(),
+        );
+    }
 
-    if let Some(rest) = first_line.strip_prefix("REVIEW:") {
-        let reason = rest.trim();
+    // Split into first word and the remainder, treating colon as a separator too
+    let mut parts = first_line.splitn(2, |c: char| c.is_whitespace() || c == ':');
+    let first_word = parts.next().unwrap_or("").trim();
+
+    if first_word.eq_ignore_ascii_case("ALLOW") {
+        return VerificationResult::Allowed;
+    }
+
+    if first_word.eq_ignore_ascii_case("REVIEW") {
+        let reason = parts.next().map(|s| s.trim()).unwrap_or("").to_string();
         let reason = if reason.is_empty() {
-            "Needs human review"
+            "Needs human review".to_string()
         } else {
             reason
         };
-        VerificationResult::NeedsApproval(reason.to_string())
-    } else if first_line.eq_ignore_ascii_case("ALLOW") {
-        VerificationResult::Allowed
-    } else {
-        VerificationResult::NeedsApproval(format!(
-            "Invalid verifier response. First line was: {first_line}"
-        ))
+        return VerificationResult::NeedsApproval(reason);
     }
+
+    VerificationResult::NeedsApproval(format!(
+        "Invalid verifier response. First line was: {first_line}"
+    ))
 }
 
 /// Hardcoded system-prompt template for the verifier.
@@ -199,7 +214,17 @@ pub const VERIFIER_USER_PROMPT_TEMPLATE: &str = concat!(
 ",
     "
 ",
-    "Reply with exactly one line: ALLOW or REVIEW: <reason>",
+    "Example valid replies:
+",
+    "  ALLOW
+",
+    "  REVIEW: This modifies system files
+",
+    "  REVIEW This looks suspicious
+",
+    "
+",
+    "Reply with exactly one line: ALLOW or REVIEW <reason>",
 );
 
 impl Verifier {

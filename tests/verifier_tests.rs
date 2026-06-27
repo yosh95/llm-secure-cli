@@ -411,3 +411,84 @@ fn test_parse_review_with_special_chars() {
         other => panic!("Expected NeedsApproval, got {:?}", other),
     }
 }
+
+#[test]
+fn test_parse_review_without_colon() {
+    // Case where LLM returns "REVIEW dangerous" without colon
+    let result = parse_verifier_response("REVIEW dangerous command");
+    match result {
+        VerificationResult::NeedsApproval(reason) => {
+            assert_eq!(reason, "dangerous command");
+        }
+        other => panic!("Expected NeedsApproval, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_review_without_colon_no_reason() {
+    // "REVIEW" alone with newline, no reason
+    let result = parse_verifier_response("REVIEW");
+    match result {
+        VerificationResult::NeedsApproval(reason) => {
+            assert_eq!(reason, "Needs human review");
+        }
+        other => panic!("Expected NeedsApproval, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_review_lowercase_no_colon() {
+    // Lowercase "review" is also accepted
+    let result = parse_verifier_response("review This is a test");
+    match result {
+        VerificationResult::NeedsApproval(reason) => {
+            assert_eq!(reason, "This is a test");
+        }
+        other => panic!("Expected NeedsApproval, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_review_mixed_case_no_colon() {
+    // Mixed case
+    let result = parse_verifier_response("ReViEw modify /etc/shadow");
+    match result {
+        VerificationResult::NeedsApproval(reason) => {
+            assert!(reason.contains("/etc/shadow"));
+        }
+        other => panic!("Expected NeedsApproval, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_review_with_colon_and_space() {
+    // Standard "REVIEW: " (colon + space) format still works
+    let result = parse_verifier_response("REVIEW: writes to /tmp/foo");
+    match result {
+        VerificationResult::NeedsApproval(reason) => {
+            assert_eq!(reason, "writes to /tmp/foo");
+        }
+        other => panic!("Expected NeedsApproval, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_allow_with_extra_whitespace() {
+    // "  ALLOW  " is still accepted as before
+    let result = parse_verifier_response("  ALLOW  ");
+    assert_eq!(result, VerificationResult::Allowed);
+}
+
+#[test]
+fn test_parse_review_prefix_matching_does_not_match_allow() {
+    // Starting with "REVIEW" does not match "ALLOW"
+    let result = parse_verifier_response("REVIEWALLOW");
+    match result {
+        VerificationResult::NeedsApproval(reason) => {
+            // "REVIEWALLOW" first_word is the whole "REVIEWALLOW"
+            // Not "ALLOW", so NeedsApproval
+            assert!(reason.contains("Invalid verifier response"));
+        }
+        other => panic!("Expected NeedsApproval, got {:?}", other),
+    }
+}
