@@ -21,11 +21,11 @@ impl ActiveSession {
     /// **first** member that flags the call (`NeedsApproval` or
     /// `FallbackRequired`) immediately hands off to human-in-the-loop approval —
     /// no remaining members are queried.  Only if **every** member approves is
-    /// the call auto-approved (applying the first member's correction, if any).
+    /// the call auto-approved.
     ///
     /// Returns:
     ///   - `(effective_args, auto_approved, cancel_msg)` where:
-    ///     - `effective_args` are the (possibly corrected) tool arguments
+    ///     - `effective_args` are the tool arguments (unchanged, no MODIFY)
     ///     - `auto_approved` is `true` if the verifier greenlit the call
     ///     - `cancel_msg` is `Some(...)` with user feedback if rejected, or `None`
     pub(crate) fn phase2_verification(
@@ -77,18 +77,11 @@ impl ActiveSession {
             Ok(c) => c.security.clone(),
             Err(_) => crate::config::models::SecurityConfig::default(),
         };
-        let intent = self.get_intent_context();
         let args_value = serde_json::json!(args);
         let member_count = committee_members.len();
         // Snapshot the cancellation counter so a Ctrl+C during any verifier
         // request aborts the whole turn (rather than being treated as a flag).
         let cancel_gen = self.cancel_token.generation();
-
-        // The first member that returns Modified (with no prior flag) provides
-        // the corrected arguments used on auto-approval.
-        let mut first_modified: Option<(Value, String)> = None;
-        // Reason from an approving member, recorded in the audit trail.
-        let mut approved_reason: Option<String> = None;
 
         for (idx, (provider, model)) in committee_members.iter().enumerate() {
             self.ctx.ui.report_info(&format!(
@@ -99,7 +92,7 @@ impl ActiveSession {
 
             let outcome = crate::security::verifier::verify_tool_call_full(VerificationParams {
                 ctx_app: self.ctx.clone(),
-                user_query: &intent,
+                user_query: "",
                 tool_name: name,
                 tool_args: &args_value,
                 context: None,
@@ -116,16 +109,8 @@ impl ActiveSession {
             }
 
             match outcome {
-                VerificationOutcome::Allowed(reason) => {
+                VerificationOutcome::Allowed(_reason) => {
                     // This member approved — keep checking the rest.
-                    approved_reason = Some(reason);
-                }
-                VerificationOutcome::Modified(fixed_args, reason) => {
-                    // Approved with a correction; remember the first one and
-                    // keep checking the rest for flags.
-                    if first_modified.is_none() {
-                        first_modified = Some((fixed_args, reason));
-                    }
                 }
                 VerificationOutcome::NeedsApproval(reason) => {
                     let label = format!("{provider}:{model}");
@@ -156,49 +141,23 @@ impl ActiveSession {
 
         // 2c. Every member approved → auto-approve.
         let audit_ctx = self.build_audit_context();
-        if let Some((fixed_args, reason)) = first_modified {
-            crate::security::audit::AuditParams::builder("verifier_decision", name, config)
-                .args(serde_json::json!({
-                    "verdict": "Modified",
-                    "reason": reason,
-                    "auto_approved": true,
-                    "original_args": args,
-                    "corrected_args": fixed_args,
-                }))
-                .context(&audit_ctx)
-                .log();
+        let reason = format!("All {member_count} committee member(s) approved.");
+        crate::security::audit::AuditParams::builder("verifier_decision", name, config)
+            .args(serde_json::json!({
+                "verdict": "Allowed",
+                "reason": reason,
+                "auto_approved": true,
+            }))
+            .context(&audit_ctx)
+            .log();
 
-            self.ctx
-                .ui
-                .print_tool_call_direct(name, &serde_json::json!(args));
-            self.ctx.ui.report_success(&format!(
-                "✓ Tool Call Corrected & Approved (Auto-Approved): {reason}"
-            ));
-            let effective_args = fixed_args
-                .as_object()
-                .cloned()
-                .unwrap_or_else(|| args.clone());
-            Ok((effective_args, true, None))
-        } else {
-            let reason = approved_reason
-                .unwrap_or_else(|| format!("All {member_count} committee member(s) approved."));
-            crate::security::audit::AuditParams::builder("verifier_decision", name, config)
-                .args(serde_json::json!({
-                    "verdict": "Allowed",
-                    "reason": reason,
-                    "auto_approved": true,
-                }))
-                .context(&audit_ctx)
-                .log();
-
-            self.ctx
-                .ui
-                .print_tool_call_direct(name, &serde_json::json!(args));
-            self.ctx.ui.report_success(&format!(
-                "✓ Tool Call Approved (Auto-Approved): all {member_count} verifier(s) agreed."
-            ));
-            Ok((args.clone(), true, None))
-        }
+        self.ctx
+            .ui
+            .print_tool_call_direct(name, &serde_json::json!(args));
+        self.ctx.ui.report_success(&format!(
+            "✓ Tool Call Approved (Auto-Approved): all {member_count} verifier(s) agreed."
+        ));
+        Ok((args.clone(), true, None))
     }
 
     /// A verifier flagged the tool call — audit the decision and ask the human
@@ -327,57 +286,6 @@ impl ActiveSession {
                 self.handle_interruption();
                 Err(anyhow::anyhow!("Interrupted"))
             }
-        }
-    }
-
-    /// Extract the user's intent context from recent conversation history.
-    pub(crate) fn get_intent_context(&self) -> String {
-        use crate::llm::models::Role;
-
-        const MAX_MSG_CHARS: usize = 1000;
-        const MAX_TOTAL_CHARS: usize = 4000;
-        const HEAD_TAIL_CHARS: usize = 500;
-
-        let history: Vec<String> = self
-            .client
-            .get_state()
-            .conversation
-            .iter()
-            .filter(|m| m.role == Role::User)
-            .rev()
-            .take(5)
-            .map(|m| {
-                let text = m.get_text(true);
-                let len = text.chars().count();
-                if len > MAX_MSG_CHARS {
-                    let chars: Vec<char> = text.chars().collect();
-                    let head: String = chars.iter().take(HEAD_TAIL_CHARS).collect();
-                    let tail: String = chars
-                        .iter()
-                        .rev()
-                        .take(HEAD_TAIL_CHARS)
-                        .collect::<Vec<_>>()
-                        .into_iter()
-                        .rev()
-                        .collect();
-                    format!("{head}...[TRUNCATED]...{tail}")
-                } else {
-                    text
-                }
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>();
-
-        let context = history.join(
-            "
----
-",
-        );
-        match context.char_indices().nth(MAX_TOTAL_CHARS) {
-            Some((cut_at, _)) => context[..cut_at].to_string(),
-            None => context,
         }
     }
 }

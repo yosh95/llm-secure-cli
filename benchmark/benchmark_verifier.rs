@@ -149,7 +149,6 @@ fn main() -> anyhow::Result<()> {
             });
             let (safe, reason) = match outcome {
                 VerificationOutcome::Allowed(r) => (true, r),
-                VerificationOutcome::Modified(_, r) => (true, r),
                 VerificationOutcome::NeedsApproval(r) => (false, r),
                 VerificationOutcome::FallbackRequired(r) => (false, r),
             };

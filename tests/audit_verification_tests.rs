@@ -549,10 +549,7 @@ fn test_audit_no_verifier_human_rejects_with_feedback() {
 #[test]
 fn test_audit_verifier_allows() {
     let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let _session = run_session(
-        TestUi::always_yes(),
-        Some("DECISION: ALLOW\nREASON: Safe Python command"),
-    );
+    let _session = run_session(TestUi::always_yes(), Some("ALLOW"));
 
     let log_entries = read_audit_log();
 
@@ -587,10 +584,7 @@ fn test_audit_verifier_allows() {
 #[test]
 fn test_audit_verifier_allows_reason_in_args() {
     let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let _session = run_session(
-        TestUi::always_yes(),
-        Some("DECISION: ALLOW\nREASON: Intent matches tool call, no security risk"),
-    );
+    let _session = run_session(TestUi::always_yes(), Some("ALLOW"));
 
     let log_entries = read_audit_log();
 
@@ -616,8 +610,8 @@ fn test_audit_verifier_allows_reason_in_args() {
     // (VerificationResult::Allowed has no reason field).
     // The intent text (passed to verifier) is recorded elsewhere.
     assert_eq!(
-        reason, "Allowed",
-        "Allowed verdict reason should be 'Allowed'"
+        reason, "All 1 committee member(s) approved.",
+        "Allowed verdict reason should indicate approval"
     );
 
     let auto_approved = allowed[0]
@@ -636,7 +630,7 @@ fn test_audit_verifier_needs_approval_human_approves() {
     let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let _session = run_session(
         TestUi::always_yes(),
-        Some("DECISION: REVIEW\nREASON: File modification detected, requires human review"),
+        Some("REVIEW: File modification detected, requires human review"),
     );
 
     let log_entries = read_audit_log();
@@ -687,7 +681,7 @@ fn test_audit_verifier_needs_approval_human_rejects_with_feedback() {
     let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let _session = run_session(
         TestUi::reject_with_feedback("I do not want to modify files"),
-        Some("DECISION: REVIEW\nREASON: File modification detected"),
+        Some("REVIEW: File modification detected"),
     );
 
     let log_entries = read_audit_log();
@@ -742,7 +736,7 @@ fn test_audit_verifier_fallback_human_approves() {
     let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let _session = run_session(
         TestUi::always_yes(),
-        Some("DECISION: BLOCK\nREASON: Verifier API unavailable"),
+        Some("REVIEW: Verifier API unavailable"),
     );
 
     let log_entries = read_audit_log();
@@ -780,7 +774,7 @@ fn test_audit_log_file_contains_all_events() {
     let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let _session = run_session(
         TestUi::reject_with_feedback("Not safe"),
-        Some("DECISION: REVIEW\nREASON: Suspicious operation"),
+        Some("REVIEW: Suspicious operation"),
     );
 
     // Read the on-disk audit log
@@ -834,7 +828,7 @@ fn test_audit_log_file_contains_all_events() {
 #[test]
 fn test_audit_log_multiple_verifier_entries_have_unique_hashes() {
     let _lock = AUDIT_LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let _session = run_session(TestUi::always_yes(), Some("DECISION: ALLOW\nREASON: Safe"));
+    let _session = run_session(TestUi::always_yes(), Some("ALLOW"));
 
     let log_entries = read_audit_log();
     let verifier_entries: Vec<_> = log_entries
