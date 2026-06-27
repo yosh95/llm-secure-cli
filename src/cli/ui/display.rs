@@ -142,7 +142,7 @@ pub fn format_tool_call(name: &str, args: &serde_json::Value, _width: usize) -> 
     } else {
         push_line(&mut buf, &format!("    {args}"));
     }
-
+    buf.push('\n');
     buf
 }
 
@@ -341,7 +341,7 @@ fn push_line(buf: &mut String, line: &str) {
 }
 
 fn finish_tool_result(out: String) {
-    print!("{out}");
+    println!("{out}");
 }
 
 fn format_size_brief(bytes: u64) -> String {
