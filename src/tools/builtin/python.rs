@@ -164,11 +164,9 @@ pub fn execute_python(
             match reader.read_line(&mut line) {
                 Ok(0) | Err(_) => break,
                 Ok(_) => {
-                    // Sanitize control characters before displaying to terminal
-                    let sanitized = crate::utils::sanitize_for_display(&line);
-                    let _ = term_stdout.write_all(sanitized.as_bytes());
+                    let _ = term_stdout.write_all(line.as_bytes());
                     let _ = term_stdout.flush();
-                    // Also accumulate in the LLM buffer (unsanitized, will be sanitized later)
+                    // Also accumulate in the LLM buffer
                     if let Ok(mut g) = so.lock() {
                         g.push_str(&line);
                     }
@@ -186,11 +184,9 @@ pub fn execute_python(
             match reader.read_line(&mut line) {
                 Ok(0) | Err(_) => break,
                 Ok(_) => {
-                    // Sanitize control characters before displaying to terminal
-                    let sanitized = crate::utils::sanitize_for_display(&line);
-                    let _ = term_stderr.write_all(sanitized.as_bytes());
+                    let _ = term_stderr.write_all(line.as_bytes());
                     let _ = term_stderr.flush();
-                    // Also accumulate in the LLM buffer (unsanitized, will be sanitized later)
+                    // Also accumulate in the LLM buffer
                     if let Ok(mut g) = se.lock() {
                         g.push_str(&line);
                     }

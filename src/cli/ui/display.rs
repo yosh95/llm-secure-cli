@@ -14,8 +14,7 @@ pub fn print_block(content: &str, title: Option<&str>) {
     }
 
     // Use our custom markdown renderer
-    let sanitized = crate::utils::sanitize_for_display(content.trim());
-    let rendered = render_markdown(&sanitized, width);
+    let rendered = render_markdown(content.trim(), width);
     output.push_str(&rendered);
     output.push('\n');
 
@@ -169,12 +168,10 @@ pub fn print_tool_result(result: &str) {
 
     out.push_str("  Result:\n");
 
-    // Sanitize the result string before displaying to prevent control characters
-    // from corrupting the terminal display.
-    let sanitized = crate::utils::sanitize_for_display(result);
+    let result_str = result.to_string();
 
     // Try to parse as JSON for pretty printing
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&sanitized) {
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&result_str) {
         // Special handling for file modification results
         if let (Some(path), Some(diff)) = (
             v.get("path").and_then(|v| v.as_str()),
@@ -324,10 +321,10 @@ pub fn print_tool_result(result: &str) {
                 push_line(&mut out, &format!("    {}", pretty));
             }
         } else {
-            push_line(&mut out, &format!("    {}", sanitized));
+            push_line(&mut out, &format!("    {}", result_str));
         }
     } else {
-        for line in sanitized.lines() {
+        for line in result_str.lines() {
             push_line(&mut out, &format!("    {}", line));
         }
     }

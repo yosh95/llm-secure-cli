@@ -1,3 +1,4 @@
+use crate::cli::ui::{report_info, report_warning};
 use crate::llm::models::DataSource;
 use base64::{Engine as _, engine::general_purpose};
 use dirs;
@@ -9,10 +10,10 @@ use std::path::Path;
 /// This is called from chat.rs for CLI sources (not from /attach anymore).
 pub fn process_single_source(source: &str, _pdf_as_base64: bool) -> Option<DataSource> {
     if source.starts_with("http://") || source.starts_with("https://") {
-        tracing::info!("Fetching URL: {source}");
+        report_info(&format!("Fetching URL: {source}"));
         if let Ok((content, content_type)) = fetch_url_content(source) {
             let size_kb = content.len() as f64 / 1024.0;
-            tracing::info!("Fetched URL ({size_kb:.1} KiB): {source}");
+            report_info(&format!("Fetched URL ({size_kb:.1} KiB): {source}"));
             return Some(DataSource {
                 content: serde_json::Value::String(content),
                 content_type,
@@ -20,20 +21,20 @@ pub fn process_single_source(source: &str, _pdf_as_base64: bool) -> Option<DataS
                 metadata: std::collections::HashMap::new(),
             });
         }
-        tracing::warn!("Failed to fetch URL: {source}");
+        report_warning(&format!("Failed to fetch URL: {source}"));
     } else {
         let path = Path::new(source);
         if path.exists() {
-            tracing::info!("Reading file: {}", source);
+            report_info(&format!("Reading file: {source}"));
             if let Ok(ds) = process_file(path) {
                 let size_kb = match ds.content.as_str() {
                     Some(s) => s.len() as f64 / 1024.0,
                     None => 0.0,
                 };
-                tracing::info!("Read file ({size_kb:.1} KiB): {}", source);
+                report_info(&format!("Read file ({size_kb:.1} KiB): {source}"));
                 return Some(ds);
             }
-            tracing::warn!("Failed to read file: {}", source);
+            report_warning(&format!("Failed to read file: {source}"));
         }
     }
     None
@@ -43,10 +44,10 @@ pub fn process_sources(sources: Vec<String>, _pdf_as_base64: bool) -> Vec<DataSo
     let mut results = Vec::new();
     for s in sources {
         if s.starts_with("http://") || s.starts_with("https://") {
-            tracing::info!("Fetching URL: {s}");
+            report_info(&format!("Fetching URL: {s}"));
             if let Ok((content, content_type)) = fetch_url_content(&s) {
                 let size_kb = content.len() as f64 / 1024.0;
-                tracing::info!("Fetched URL ({size_kb:.1} KiB): {s}");
+                report_info(&format!("Fetched URL ({size_kb:.1} KiB): {s}"));
                 results.push(DataSource {
                     content: serde_json::Value::String(content),
                     content_type,
@@ -54,35 +55,32 @@ pub fn process_sources(sources: Vec<String>, _pdf_as_base64: bool) -> Vec<DataSo
                     metadata: std::collections::HashMap::new(),
                 });
             } else {
-                tracing::warn!("Failed to fetch URL: {s}");
+                report_warning(&format!("Failed to fetch URL: {s}"));
             }
         } else {
             let path = Path::new(&s);
             if path.exists() {
-                tracing::info!("Reading file: {s}");
+                report_info(&format!("Reading file: {s}"));
                 if let Ok(ds) = process_file(path) {
                     let size_kb = match ds.content.as_str() {
                         Some(c) => c.len() as f64 / 1024.0,
                         None => 0.0,
                     };
-                    tracing::info!("Read file ({size_kb:.1} KiB): {s}");
+                    report_info(&format!("Read file ({size_kb:.1} KiB): {s}"));
                     results.push(ds);
                 } else {
-                    tracing::warn!("Failed to read file: {s}");
+                    report_warning(&format!("Failed to read file: {s}"));
                 }
             } else {
                 // Treat as raw text
-                tracing::info!(
-                    "Using inline text ({len} chars): {truncated}",
-                    len = s.len(),
-                    truncated = if s.len() > 80 {
-                        let mut t = s[..77].to_string();
-                        t.push_str("...");
-                        t
-                    } else {
-                        s.clone()
-                    },
-                );
+                let (len, truncated) = if s.len() > 80 {
+                    let mut t = s[..77].to_string();
+                    t.push_str("...");
+                    (s.len(), t)
+                } else {
+                    (s.len(), s.clone())
+                };
+                report_info(&format!("Using inline text ({len} chars): {truncated}"));
                 results.push(DataSource {
                     content: serde_json::Value::String(s),
                     content_type: "text/plain".to_string(),
