@@ -16,7 +16,7 @@ pub use prompt::{
     ConfirmResult, PromptMode, ask_confirm, ask_confirm_simple, get_user_input,
     open_external_editor,
 };
-pub use report::{report_error, report_info, report_success, report_warning};
+pub use report::{report_error, report_info, report_querying, report_success, report_warning};
 
 /// Abstract user interface trait — enables testing with mock implementations.
 pub trait UserInterface: Send + Sync {
@@ -26,6 +26,7 @@ pub trait UserInterface: Send + Sync {
     fn print_tool_result(&self, result: &str);
     fn report_error(&self, message: &str);
     fn report_info(&self, message: &str);
+    fn report_querying(&self, message: &str);
     fn report_warning(&self, message: &str);
     fn report_success(&self, message: &str);
     fn ask_confirm(&self, prompt: &str) -> Option<ConfirmResult>;
@@ -53,6 +54,9 @@ impl UserInterface for CliUi {
     }
     fn report_info(&self, message: &str) {
         report::report_info(message);
+    }
+    fn report_querying(&self, message: &str) {
+        report::report_querying(message);
     }
     fn report_warning(&self, message: &str) {
         report::report_warning(message);

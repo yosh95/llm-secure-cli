@@ -20,6 +20,7 @@ impl UserInterface for MockUi {
     fn print_tool_result(&self, _result: &str) {}
     fn report_error(&self, _message: &str) {}
     fn report_info(&self, _message: &str) {}
+    fn report_querying(&self, _message: &str) {}
     fn report_warning(&self, _message: &str) {}
     fn report_success(&self, _message: &str) {}
     fn ask_confirm(&self, _prompt: &str) -> Option<ConfirmResult> {

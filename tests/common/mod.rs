@@ -354,6 +354,9 @@ impl UserInterface for MockUi {
     fn report_info(&self, m: &str) {
         self.record(format!("INFO: {}", m));
     }
+    fn report_querying(&self, m: &str) {
+        self.record(format!("QUERYING: {}", m));
+    }
     fn report_warning(&self, m: &str) {
         self.record(format!("WARN: {}", m));
     }

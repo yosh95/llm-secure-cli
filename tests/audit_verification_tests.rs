@@ -96,6 +96,7 @@ impl UserInterface for TestUi {
     fn print_tool_result(&self, _r: &str) {}
     fn report_error(&self, _m: &str) {}
     fn report_info(&self, _m: &str) {}
+    fn report_querying(&self, _m: &str) {}
     fn report_warning(&self, _m: &str) {}
     fn report_success(&self, _m: &str) {}
     fn ask_confirm(&self, _p: &str) -> Option<ConfirmResult> {

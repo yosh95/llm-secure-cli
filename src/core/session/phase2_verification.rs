@@ -84,8 +84,8 @@ impl ActiveSession {
         let cancel_gen = self.cancel_token.generation();
 
         for (idx, (provider, model)) in committee_members.iter().enumerate() {
-            self.ctx.ui.report_info(&format!(
-                "Verifier {}/{}: {provider}:{model} (querying)...",
+            self.ctx.ui.report_querying(&format!(
+                "Verifier {}/{}: {provider}:{model}",
                 idx + 1,
                 member_count
             ));
@@ -155,7 +155,7 @@ impl ActiveSession {
             .ui
             .print_tool_call_direct(name, &serde_json::json!(args));
         self.ctx.ui.report_success(&format!(
-            "✓ Tool Call Approved (Auto-Approved): all {member_count} verifier(s) agreed."
+            "Tool Call Approved (Auto-Approved): all {member_count} verifier(s) agreed."
         ));
         Ok((args.clone(), true, None))
     }
@@ -219,7 +219,12 @@ impl ActiveSession {
     ) -> anyhow::Result<Option<Value>> {
         let audit_ctx = self.build_audit_context();
 
-        match self.ctx.ui.ask_confirm(&format!("Execute {name}")) {
+        let emoji = match name {
+            "execute_python" => "\u{1f40d} ",
+            "brave_search" => "\u{1f310} ",
+            _ => "\u{1f527} ",
+        };
+        match self.ctx.ui.ask_confirm(&format!("{emoji}Execute {name}")) {
             Some(crate::cli::ui::ConfirmResult::Yes) => {
                 // Audit log: human approved the tool call
                 crate::security::audit::AuditParams::builder("human_approval", name, config)

@@ -56,7 +56,7 @@ impl ActiveSession {
             let model = &self.client.get_state().model;
             self.ctx
                 .ui
-                .report_info(&format!("LLM: {}:{} (querying)...", provider, model,));
+                .report_querying(&format!("LLM: {}:{}", provider, model));
         }
 
         // The blocking HTTP request inside `send` runs through `run_cancellable`,
