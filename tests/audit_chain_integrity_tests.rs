@@ -47,6 +47,10 @@ fn setup_test_env() {
         let dir = tempdir().expect("Failed to create temp dir for test keys");
         let base_path = dir.path().to_path_buf();
         llm_secure_cli::consts::init_base_dir(Some(base_path));
+        // Ensure the logs directory exists for audit_head_cache_path() etc.
+        let log_dir = llm_secure_cli::consts::log_dir();
+        std::fs::create_dir_all(&log_dir)
+            .expect("Failed to create logs directory for test");
         llm_secure_cli::security::identity::IdentityManager::ensure_keys_with_passphrase(None)
             .expect("Failed to generate PQC keys for test");
         let _ = _TEST_DIR.set(dir);
