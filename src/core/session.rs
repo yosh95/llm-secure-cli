@@ -138,6 +138,12 @@ pub struct ActiveSession {
     /// Set to true after `finalize_audit` has run once — prevents double-anchoring
     /// whether the session is closed via `close()` or via `Drop`.
     audit_finalized: bool,
+    /// Human-in-the-Loop guardrail state.
+    /// When `true` (default), tool calls require human confirmation
+    /// (via Verifier Committee or direct manual approval).
+    /// When `false`, all tool calls are auto-approved.
+    /// Can only be set via the `--disable-human-in-the-loop` CLI flag at startup.
+    pub hitl_enabled: bool,
 }
 
 /// A session that has been closed or failed to initialize.
@@ -155,7 +161,11 @@ impl Drop for ActiveSession {
 }
 
 impl ActiveSession {
-    pub fn new(client: Box<dyn LlmClient>, ctx: Arc<AppContext>) -> anyhow::Result<Self> {
+    pub fn new(
+        client: Box<dyn LlmClient>,
+        ctx: Arc<AppContext>,
+        hitl_enabled: bool,
+    ) -> anyhow::Result<Self> {
         let trace_id = format!("sess-{}", uuid::Uuid::new_v4().to_string().replace('-', ""));
         let user_id = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
 
@@ -181,6 +191,7 @@ impl ActiveSession {
             total_usage: crate::llm::models::Usage::default(),
             cancel_token: SessionCancel::new(),
             audit_finalized: false,
+            hitl_enabled,
         })
     }
 

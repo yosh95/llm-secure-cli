@@ -30,6 +30,13 @@ struct Args {
     #[clap(long)]
     raw: bool,
 
+    /// Disable Human-in-the-Loop approval.
+    /// When set, all tool calls are auto-approved WITHOUT human confirmation.
+    /// WARNING: This bypasses the final guardrail — use with extreme caution.
+    /// This flag must be explicitly set on every invocation; it is NOT persisted.
+    #[clap(long)]
+    disable_human_in_the_loop: bool,
+
     /// Load a saved session JSON file on startup
     #[clap(long)]
     session: Option<String>,
@@ -114,6 +121,7 @@ fn main() {
             stdout: args.stdout,
             raw: args.raw,
             is_atty,
+            disable_human_in_the_loop: args.disable_human_in_the_loop,
         },
         ctx,
     ) {

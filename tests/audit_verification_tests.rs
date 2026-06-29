@@ -302,7 +302,7 @@ fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSession {
             .clone();
             let mut config = config;
             config.security.verifier_committee = vec!["mock_verifier:verifier-model".to_string()];
-            config.security.verifier_enabled = true;
+
             ctx.config_manager
                 .set_config(config)
                 .expect("Failed to update config");
@@ -327,7 +327,7 @@ fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSession {
         };
 
         let mut session =
-            ActiveSession::new(Box::new(mock_client), ctx).expect("Failed to create session");
+            ActiveSession::new(Box::new(mock_client), ctx, true).expect("Failed to create session");
         session.intent = "test audit verification".to_string();
 
         let result = session.process_and_print(vec![]);
@@ -343,7 +343,7 @@ fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSession {
             .clone();
             let mut config = config;
             config.security.verifier_committee = Vec::new();
-            config.security.verifier_enabled = false;
+
             ctx.config_manager
                 .set_config(config)
                 .expect("Failed to update config");
@@ -364,7 +364,7 @@ fn run_session(ui: TestUi, verifier_response: Option<&str>) -> ActiveSession {
         };
 
         let mut session =
-            ActiveSession::new(Box::new(mock_client), ctx).expect("Failed to create session");
+            ActiveSession::new(Box::new(mock_client), ctx, true).expect("Failed to create session");
         session.intent = "test audit verification".to_string();
 
         let result = session.process_and_print(vec![]);

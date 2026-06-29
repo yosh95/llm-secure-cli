@@ -13,6 +13,9 @@ pub struct ChatArgs {
     pub stdout: bool,
     pub raw: bool,
     pub is_atty: bool,
+    /// When true, all human-in-the-loop approval prompts are skipped
+    /// and tool calls are auto-approved. Set via --disable-human-in-the-loop.
+    pub disable_human_in_the_loop: bool,
 }
 
 /// Start a chat session (interactive or one-shot).
@@ -36,6 +39,7 @@ pub fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow::Resul
         stdout,
         raw,
         is_atty,
+        disable_human_in_the_loop,
     } = args;
     let cm = &ctx.config_manager;
     let _config = match cm.get_config() {
@@ -162,7 +166,8 @@ pub fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow::Resul
             }
         }
 
-        let mut session = match ActiveSession::new(client, ctx.clone()) {
+        let mut session = match ActiveSession::new(client, ctx.clone(), !disable_human_in_the_loop)
+        {
             Ok(s) => s,
             Err(e) => {
                 let msg = format!("Failed to initialize session: {e}");

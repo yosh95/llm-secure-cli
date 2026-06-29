@@ -96,31 +96,6 @@ impl ConfigManager {
         Ok(())
     }
 
-    /// Get the verifier enabled state from SecurityConfig (config.toml).
-    pub fn get_verifier_enabled(&self) -> bool {
-        self.get_config()
-            .ok()
-            .map(|c| c.security.verifier_enabled)
-            .unwrap_or(true)
-    }
-
-    /// Toggle verifier on/off and persist to state.toml.
-    /// DEPRECATED: verifier_enabled now lives in config.toml.
-    /// This writes to state.toml for backward compatibility only.
-    pub fn set_verifier_enabled(&self, enabled: bool) -> anyhow::Result<()> {
-        let write = self
-            .app_state
-            .write()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        // This field is now in config.toml, so log a warning
-        let _ = enabled;
-        tracing::warn!(
-            "set_verifier_enabled() called — verifier_enabled now lives in config.toml.              Set `verifier_enabled` in the [security] section of config.toml.              This call is ignored."
-        );
-        Self::persist_state(&write);
-        Ok(())
-    }
-
     /// Resolve the verifier committee configuration.
     ///
     /// Priority (highest first):
@@ -166,7 +141,7 @@ impl ConfigManager {
             }
         }
 
-        let enabled = self.get_verifier_enabled() && !members.is_empty();
+        let enabled = !members.is_empty();
         (members, enabled)
     }
 

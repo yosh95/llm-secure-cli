@@ -24,11 +24,6 @@ max_output_chars = 50000
 # WARNING: This bypasses all user confirmation — use with extreme caution.
 auto_approve = false
 
-# Master switch for the Verifier Committee.
-# When true (default), tool calls are verified by the configured committee.
-# When false, all tool calls fall through to manual human approval.
-verifier_enabled = true
-
 # =============================================================================
 # PQC (Post-Quantum Cryptography) Settings
 # =============================================================================

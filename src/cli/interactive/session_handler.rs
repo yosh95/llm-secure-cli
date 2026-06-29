@@ -123,17 +123,11 @@ pub fn handle_info(session: &ActiveSession) {
 
     // Validator Info
     let (members, _) = session.ctx.config_manager.get_verifier_committee();
-    let v_enabled = session.ctx.config_manager.get_verifier_enabled();
     let app_state = session.ctx.config_manager.get_state().ok();
     let runtime_members: Vec<String> = app_state.map(|s| s.verifier_committee).unwrap_or_default();
 
     if members.is_empty() {
-        let status = if v_enabled {
-            "NOT SET (Falling back to manual approval)".to_string()
-        } else {
-            "Not Set".to_string()
-        };
-        ui::print_key_value("Verifier", &status);
+        ui::print_key_value("Verifier", "Not Set (manual approval)");
     } else {
         let count = members.len();
         let label = if count == 1 {
@@ -160,14 +154,16 @@ pub fn handle_info(session: &ActiveSession) {
             );
         }
     }
-    let v_status = if v_enabled {
-        "ENABLED".to_string()
-    } else {
-        "DISABLED".to_string()
-    };
-    ui::print_key_value("Verifier Status", &v_status);
 
     // Tools
+    // Human-in-the-Loop status
+    let hitl_status = if session.hitl_enabled {
+        "ENABLED (Verifier Committee + manual approval)".to_string()
+    } else {
+        "DISABLED (--disable-human-in-the-loop)".to_string()
+    };
+    ui::print_key_value("Human-in-the-Loop", &hitl_status);
+
     println!("Tools");
     {
         let registry = session

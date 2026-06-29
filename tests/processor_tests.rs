@@ -158,7 +158,7 @@ fn test_processor_tool_execution_flow() {
         .clone();
         let mut config = config;
         config.security.verifier_committee = vec!["mock:mock-model".to_string()];
-        config.security.verifier_enabled = true;
+
         ctx.config_manager
             .set_config(config)
             .expect("Failed to update config");
@@ -217,7 +217,7 @@ fn test_processor_tool_execution_flow() {
     };
 
     let mut session =
-        ActiveSession::new(Box::new(mock_client), ctx).expect("Failed to create session");
+        ActiveSession::new(Box::new(mock_client), ctx, true).expect("Failed to create session");
     session.intent = "test".to_string();
     session.trace_id = "test-trace".to_string();
 
@@ -279,7 +279,7 @@ fn test_processor_pqc_blocking_in_high_security() {
     };
 
     let mut session =
-        ActiveSession::new(Box::new(mock_client), ctx).expect("Failed to create session");
+        ActiveSession::new(Box::new(mock_client), ctx, true).expect("Failed to create session");
     session.intent = "test-high-security".to_string();
 
     // 3. Execute - This should trigger the PQC Error

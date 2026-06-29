@@ -39,17 +39,32 @@ impl ActiveSession {
             return Ok((args.clone(), true, None));
         }
 
+        // Human-in-the-Loop guardrail.
+        // When HITL is disabled (via --disable-human-in-the-loop CLI flag),
+        // skip ALL verification and auto-approve every tool call.
+        // This is the FINAL GUARDRAIL — disabling it bypasses all safety checks.
+        if !self.hitl_enabled {
+            self.ctx.ui.report_warning(
+                "HITL DISABLED: Auto-approving tool call (--disable-human-in-the-loop was set at startup)"
+            );
+            let audit_ctx = self.build_audit_context();
+            crate::security::audit::AuditParams::builder("verifier_decision", name, config)
+                .args(serde_json::json!({
+                    "verdict": "Allowed",
+                    "reason": "HITL disabled via --disable-human-in-the-loop",
+                    "auto_approved": true,
+                }))
+                .context(&audit_ctx)
+                .log();
+            return Ok((args.clone(), true, None));
+        }
+
         // 2a. Resolve Verifier Committee members
         let (committee_members, verifier_available) =
             self.ctx.config_manager.get_verifier_committee();
 
         if !verifier_available || committee_members.is_empty() {
             // Verifier is off or not configured: fall back to human approval.
-            if self.ctx.config_manager.get_verifier_enabled() {
-                self.ctx.ui.report_warning(
-                    "Verifier is enabled, but no verifier committee members are configured. Falling back to manual approval.",
-                );
-            }
             // Show the tool call — human needs to review
             self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
 
@@ -193,7 +208,7 @@ impl ActiveSession {
             self.ctx.ui.report_warning(&format!(
                 "Verifier {member_label} flagged this tool call as requiring review."
             ));
-            self.ctx.ui.report_info(&format!("Reason: {reason}"));
+            self.ctx.ui.report_warning(&format!("Reason: {reason}"));
         }
 
         let cancel_msg = self.request_human_approval(name, config, verifier_context)?;

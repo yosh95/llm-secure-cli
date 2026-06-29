@@ -110,18 +110,13 @@ pub struct AppState {
 /// When neither runtime members nor config.toml `verifier_committee` are set,
 /// the verifier falls back to manual human approval for all tool calls.
 #[derive(Serialize, Deserialize, Clone)]
+#[derive(Default)]
 pub struct SecurityConfig {
     /// When true, all Y/n and feedback prompts are automatically answered Yes.
     /// Equivalent to the old `LLM_SECURE_AUTO_APPROVE` env var.
     /// WARNING: This bypasses all user confirmation — use with extreme caution.
     #[serde(default)]
     pub auto_approve: bool,
-
-    /// Master switch for the Verifier Committee.
-    /// When true (default), tool calls are verified by the configured committee.
-    /// When false, all tool calls fall through to manual human approval.
-    #[serde(default = "default_verifier_enabled")]
-    pub verifier_enabled: bool,
 
     /// Verifier Committee members (provider:model strings, e.g. "openai:gpt-4o").
     /// Used as a FALLBACK when state.toml has no runtime-configured members
@@ -134,19 +129,6 @@ pub struct SecurityConfig {
     pub verifier_committee: Vec<String>,
 }
 
-fn default_verifier_enabled() -> bool {
-    true
-}
-
-impl Default for SecurityConfig {
-    fn default() -> Self {
-        Self {
-            auto_approve: false,
-            verifier_enabled: true,
-            verifier_committee: Vec::new(),
-        }
-    }
-}
 
 /// Describes a single validation failure in a [`SecurityConfig`].
 #[derive(Debug, Clone, PartialEq, Eq)]
