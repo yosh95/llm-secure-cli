@@ -59,14 +59,17 @@ impl ActiveSession {
             return Ok((args.clone(), true, None));
         }
 
+        // Display the tool call first — before any verifier queries.
+        // This ensures the user sees the proposed action before verifier evaluation begins.
+        self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
+
         // 2a. Resolve Verifier Committee members
         let (committee_members, verifier_available) =
             self.ctx.config_manager.get_verifier_committee();
 
         if !verifier_available || committee_members.is_empty() {
             // Verifier is off or not configured: fall back to human approval.
-            // Show the tool call — human needs to review
-            self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
+            // Tool call already displayed above — no need to print again.
 
             // Audit log: verifier was not available, human will decide
             let audit_ctx = self.build_audit_context();
@@ -166,9 +169,6 @@ impl ActiveSession {
             .context(&audit_ctx)
             .log();
 
-        self.ctx
-            .ui
-            .print_tool_call_direct(name, &serde_json::json!(args));
         self.ctx.ui.report_success(&format!(
             "Tool Call Approved (Auto-Approved): all {member_count} verifier(s) agreed."
         ));
@@ -177,6 +177,9 @@ impl ActiveSession {
 
     /// A verifier flagged the tool call — audit the decision and ask the human
     /// to approve or reject (with optional feedback).
+    ///
+    /// NOTE: The tool call was already displayed before verifier evaluation began,
+    /// so we do NOT re-print it here.
     #[allow(clippy::too_many_arguments)]
     fn flag_to_human(
         &mut self,
@@ -199,7 +202,7 @@ impl ActiveSession {
             .context(&audit_ctx)
             .log();
 
-        self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
+        // Tool call was already displayed above (before verifier evaluation).
         if verdict == "FallbackRequired" {
             self.ctx
                 .ui

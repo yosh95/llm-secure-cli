@@ -109,8 +109,7 @@ pub struct AppState {
 ///
 /// When neither runtime members nor config.toml `verifier_committee` are set,
 /// the verifier falls back to manual human approval for all tool calls.
-#[derive(Serialize, Deserialize, Clone)]
-#[derive(Default)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct SecurityConfig {
     /// When true, all Y/n and feedback prompts are automatically answered Yes.
     /// Equivalent to the old `LLM_SECURE_AUTO_APPROVE` env var.
@@ -128,7 +127,6 @@ pub struct SecurityConfig {
     #[serde(default)]
     pub verifier_committee: Vec<String>,
 }
-
 
 /// Describes a single validation failure in a [`SecurityConfig`].
 #[derive(Debug, Clone, PartialEq, Eq)]
