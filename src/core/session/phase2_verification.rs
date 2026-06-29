@@ -102,11 +102,11 @@ impl ActiveSession {
         let cancel_gen = self.cancel_token.generation();
 
         for (idx, (provider, model)) in committee_members.iter().enumerate() {
-            self.ctx.ui.report_querying(&format!(
-                "Verifier {}/{}: {provider}:{model}",
+            eprintln!(
+                "🧐 Verifier {}/{}: {provider}:{model}",
                 idx + 1,
                 member_count
-            ));
+            );
 
             let outcome = crate::security::verifier::verify_tool_call_full(VerificationParams {
                 ctx_app: self.ctx.clone(),
