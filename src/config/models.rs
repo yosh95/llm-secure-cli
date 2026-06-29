@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use super::defaults;
+
+// ── GeneralConfig ─────────────────────────────────────────────────────────
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GeneralConfig {
     pub system_prompt: Option<String>,
@@ -24,32 +28,41 @@ pub struct GeneralConfig {
     pub max_output_chars: usize,
 }
 
-fn default_request_timeout() -> u64 {
-    1800
+#[inline]
+const fn default_request_timeout() -> u64 {
+    defaults::DEFAULT_REQUEST_TIMEOUT
 }
-fn default_verifier_timeout() -> u64 {
-    60
+#[inline]
+const fn default_verifier_timeout() -> u64 {
+    defaults::DEFAULT_VERIFIER_TIMEOUT
 }
-fn default_python_timeout() -> u64 {
-    3600
+#[inline]
+const fn default_python_timeout() -> u64 {
+    defaults::DEFAULT_PYTHON_TIMEOUT
 }
-fn default_max_audit_log() -> usize {
-    10000
+#[inline]
+const fn default_max_audit_log() -> usize {
+    defaults::DEFAULT_MAX_AUDIT_LOG_LINES
 }
-fn default_max_chat_log() -> usize {
-    5000
+#[inline]
+const fn default_max_chat_log() -> usize {
+    defaults::DEFAULT_MAX_CHAT_LOG_LINES
 }
-fn default_max_chat_archives() -> usize {
-    5
+#[inline]
+const fn default_max_chat_archives() -> usize {
+    defaults::DEFAULT_MAX_CHAT_ARCHIVES
 }
+#[inline]
 fn default_image_save_path() -> String {
-    "~/Pictures/llsc".to_string()
+    defaults::DEFAULT_IMAGE_SAVE_PATH.to_string()
 }
-fn default_max_output_lines() -> usize {
-    5000
+#[inline]
+const fn default_max_output_lines() -> usize {
+    defaults::DEFAULT_MAX_OUTPUT_LINES
 }
-fn default_max_output_chars() -> usize {
-    50000
+#[inline]
+const fn default_max_output_chars() -> usize {
+    defaults::DEFAULT_MAX_OUTPUT_CHARS
 }
 
 impl Default for GeneralConfig {
@@ -69,11 +82,15 @@ impl Default for GeneralConfig {
     }
 }
 
+// ── ProviderConfig ────────────────────────────────────────────────────────
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct ProviderConfig {
     pub api_key: Option<String>,
     pub api_url: Option<String>,
 }
+
+// ── AppState ──────────────────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct AppState {
@@ -109,7 +126,7 @@ pub struct AppState {
 ///
 /// When neither runtime members nor config.toml `verifier_committee` are set,
 /// the verifier falls back to manual human approval for all tool calls.
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SecurityConfig {
     /// When true, all Y/n and feedback prompts are automatically answered Yes.
     /// Equivalent to the old `LLM_SECURE_AUTO_APPROVE` env var.
@@ -126,6 +143,15 @@ pub struct SecurityConfig {
     /// first member to flag the call hands off to human approval immediately.
     #[serde(default)]
     pub verifier_committee: Vec<String>,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            auto_approve: defaults::DEFAULT_AUTO_APPROVE,
+            verifier_committee: Vec::new(),
+        }
+    }
 }
 
 /// Describes a single validation failure in a [`SecurityConfig`].
@@ -187,6 +213,8 @@ impl SecurityConfig {
     }
 }
 
+// ── PqcConfig ─────────────────────────────────────────────────────────────
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PqcConfig {
     /// PQC signature variant (ML-DSA).
@@ -200,12 +228,14 @@ pub struct PqcConfig {
     pub kem_variant: String,
 }
 
+#[inline]
 fn default_pqc_signature_variant() -> String {
-    "ml-dsa-44".to_string()
+    defaults::DEFAULT_SIGNATURE_VARIANT.to_string()
 }
 
+#[inline]
 fn default_pqc_kem_variant() -> String {
-    "ml-kem-512".to_string()
+    defaults::DEFAULT_KEM_VARIANT.to_string()
 }
 
 impl Default for PqcConfig {
@@ -217,7 +247,9 @@ impl Default for PqcConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Default)]
+// ── AppConfig ─────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct AppConfig {
     #[serde(default)]
     pub general: GeneralConfig,
@@ -228,4 +260,124 @@ pub struct AppConfig {
     #[serde(default)]
     #[serde(flatten)]
     pub providers: HashMap<String, ProviderConfig>,
+}
+
+impl Default for AppConfig {
+    /// Creates an `AppConfig` with all fields defaulted.
+    ///
+    /// Built-in providers (`ollama`, `openrouter`, `vllm`, `openai`) are
+    /// pre-populated with their default API URLs from [`defaults`].
+    /// API keys are **never** stored here — they come from env vars / `.env`.
+    fn default() -> Self {
+        let mut providers = HashMap::new();
+        providers.insert(
+            "ollama".to_string(),
+            ProviderConfig {
+                api_key: None,
+                api_url: Some(defaults::DEFAULT_OLLAMA_API_URL.to_string()),
+            },
+        );
+        providers.insert(
+            "openrouter".to_string(),
+            ProviderConfig {
+                api_key: None,
+                api_url: Some(defaults::DEFAULT_OPENROUTER_API_URL.to_string()),
+            },
+        );
+        providers.insert(
+            "vllm".to_string(),
+            ProviderConfig {
+                api_key: None,
+                api_url: Some(defaults::DEFAULT_VLLM_API_URL.to_string()),
+            },
+        );
+        providers.insert(
+            "openai".to_string(),
+            ProviderConfig {
+                api_key: None,
+                api_url: Some(defaults::DEFAULT_OPENAI_API_URL.to_string()),
+            },
+        );
+
+        Self {
+            general: GeneralConfig::default(),
+            pqc: PqcConfig::default(),
+            security: SecurityConfig::default(),
+            providers,
+        }
+    }
+}
+
+// ── CliOverrides ──────────────────────────────────────────────────────────
+// This struct collects all CLI-provided overrides. The ConfigManager
+// applies these on top of the file-based config (CLI args > config.toml > defaults).
+
+/// Values parsed from the command line that override the file-based config.
+#[derive(Clone, Debug, Default)]
+pub struct CliOverrides {
+    // General
+    pub request_timeout: Option<u64>,
+    pub verifier_timeout: Option<u64>,
+    pub python_timeout: Option<u64>,
+    pub image_save_path: Option<String>,
+    pub max_audit_log_lines: Option<usize>,
+    pub max_chat_log_lines: Option<usize>,
+    pub max_chat_archives: Option<usize>,
+    pub max_output_lines: Option<usize>,
+    pub max_output_chars: Option<usize>,
+
+    // Security
+    pub auto_approve: Option<bool>,
+
+    // PQC
+    pub signature_variant: Option<String>,
+    pub kem_variant: Option<String>,
+}
+
+impl CliOverrides {
+    /// Apply these overrides to an existing `AppConfig`, producing a new one.
+    #[must_use]
+    pub fn apply_to(self, config: AppConfig) -> AppConfig {
+        AppConfig {
+            general: GeneralConfig {
+                request_timeout: self
+                    .request_timeout
+                    .unwrap_or(config.general.request_timeout),
+                verifier_timeout: self
+                    .verifier_timeout
+                    .unwrap_or(config.general.verifier_timeout),
+                python_timeout: self.python_timeout.unwrap_or(config.general.python_timeout),
+                image_save_path: self
+                    .image_save_path
+                    .unwrap_or(config.general.image_save_path),
+                max_audit_log_lines: self
+                    .max_audit_log_lines
+                    .unwrap_or(config.general.max_audit_log_lines),
+                max_chat_log_lines: self
+                    .max_chat_log_lines
+                    .unwrap_or(config.general.max_chat_log_lines),
+                max_chat_archives: self
+                    .max_chat_archives
+                    .unwrap_or(config.general.max_chat_archives),
+                max_output_lines: self
+                    .max_output_lines
+                    .unwrap_or(config.general.max_output_lines),
+                max_output_chars: self
+                    .max_output_chars
+                    .unwrap_or(config.general.max_output_chars),
+                ..config.general
+            },
+            pqc: PqcConfig {
+                signature_variant: self
+                    .signature_variant
+                    .unwrap_or(config.pqc.signature_variant),
+                kem_variant: self.kem_variant.unwrap_or(config.pqc.kem_variant),
+            },
+            security: SecurityConfig {
+                auto_approve: self.auto_approve.unwrap_or(config.security.auto_approve),
+                ..config.security
+            },
+            ..config
+        }
+    }
 }

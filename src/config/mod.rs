@@ -1,11 +1,10 @@
 pub mod cache;
-pub mod init;
+pub mod defaults;
 pub mod models;
 pub mod state;
 
-use crate::cli::ui;
-use crate::config::models::{AppConfig, AppState};
-use crate::consts::{config_file_path, get_base_dir};
+use crate::config::models::{AppConfig, AppState, CliOverrides};
+use crate::consts::get_base_dir;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -15,12 +14,9 @@ use std::sync::{Arc, OnceLock, RwLock};
 /// Thread-safe configuration manager.
 ///
 /// **`AppConfig`** is stored in a `RwLock` because it can be mutated at runtime
-/// (e.g., toggling Verifier via `/verify on|off`).  The previous
-/// double-check locking pattern — acquire read lock, check, drop, acquire write
-/// lock, check again — was prone to TOCTOU races.  The current implementation
-/// eliminates that pattern by always acquiring the write lock for the first
-/// initialization path and using a separate `OnceLock` flag to make the
-/// initialization path atomic.
+/// (e.g., toggling Verifier via `/verify on|off`).  All configuration comes
+/// from compile-time defaults (in [`defaults`]) and CLI argument overrides —
+/// there is **no `config.toml` file**.
 ///
 /// **`AppState`** is stored in a `RwLock` because it is mutable (*`update_state`*,
 /// …).  The lock is held only for the brief clone-or-swap, so
@@ -28,13 +24,14 @@ use std::sync::{Arc, OnceLock, RwLock};
 ///
 /// State management methods live in [`state`]; model-cache methods in [`cache`].
 pub struct ConfigManager {
-    /// Stores a `Some(error)` when the initial load from disk fails.
-    /// `None` means the config was loaded successfully (or hasn't been
-    /// attempted yet — the `OnceLock` itself acts as the "initialized" flag).
+    /// Stores a `Some(error)` when initialisation fails.
+    /// `None` means the config was loaded successfully.
     config_init_error: OnceLock<Option<anyhow::Error>>,
     app_config: RwLock<Arc<AppConfig>>,
     app_state: RwLock<AppState>,
     env_cache: OnceLock<HashMap<String, String>>,
+    /// CLI-provided overrides applied on top of the default config.
+    cli_overrides: OnceLock<CliOverrides>,
 }
 
 impl ConfigManager {
@@ -43,9 +40,16 @@ impl ConfigManager {
         Self {
             config_init_error: OnceLock::new(),
             app_config: RwLock::new(Arc::new(AppConfig::default())),
-            app_state: RwLock::new(AppState::default()), // populated lazily in get_state()
+            app_state: RwLock::new(AppState::default()),
             env_cache: OnceLock::new(),
+            cli_overrides: OnceLock::new(),
         }
+    }
+
+    /// Store CLI argument overrides before the config is loaded.
+    /// Must be called before the first `get_config()` invocation.
+    pub fn set_cli_overrides(&self, overrides: CliOverrides) {
+        let _ = self.cli_overrides.set(overrides);
     }
 }
 
@@ -88,33 +92,28 @@ impl ConfigManager {
     }
 
     pub fn get_config(&self) -> anyhow::Result<Arc<AppConfig>> {
-        // The `OnceLock<Option<anyhow::Error>>` acts as a one-shot flag:
-        //   - `None`    = initialized successfully (or not yet — see `get_or_init`).
-        //   - `Some(e)` = initialization failed; return the same error on every call.
-        //
-        // Because `get_or_init` runs the closure at most once, the *load-from-disk*
-        // logic is guaranteed to execute exactly once.  Afterwards the `RwLock` may
-        // be overwritten by `set_config()` (e.g. `/verify on`), but the init error
-        // flag stays forever — a persistent disk-load failure cannot be recovered
-        // from without restarting the process.
         let init_error: &Option<anyhow::Error> = self.config_init_error.get_or_init(|| {
-            match Self::load_config_from_disk() {
-                Ok(config) => {
-                    let arc = Arc::new(config);
-                    if let Ok(mut guard) = self.app_config.write() {
-                        *guard = Arc::clone(&arc);
-                    } else {
-                        tracing::error!("Config RwLock poisoned during initialization");
-                    }
-                    None // success
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, "Failed to load configuration from disk");
-                    // Keep the default (empty) AppConfig in the RwLock so that
-                    // basic CLI commands (e.g. `llsc models`) can still work.
-                    Some(e)
-                }
+            // Start with compiled-in defaults
+            let mut config = AppConfig::default();
+
+            // Apply CLI overrides if provided
+            if let Some(overrides) = self.cli_overrides.get().cloned() {
+                config = overrides.apply_to(config);
             }
+
+            // Sync auto_approve flag to prompt module
+            crate::cli::ui::prompt::AUTO_APPROVE.store(
+                config.security.auto_approve,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+
+            let arc = Arc::new(config);
+            if let Ok(mut guard) = self.app_config.write() {
+                *guard = Arc::clone(&arc);
+            } else {
+                tracing::error!("Config RwLock poisoned during initialization");
+            }
+            None // success
         });
 
         if let Some(e) = init_error {
@@ -126,50 +125,6 @@ impl ConfigManager {
             .read()
             .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         Ok(Arc::clone(&read))
-    }
-
-    /// Load and validate the config from disk.
-    fn load_config_from_disk() -> anyhow::Result<AppConfig> {
-        // 1. Load defaults from embedded defaults.toml
-        let defaults_toml = include_str!("defaults.toml");
-        let mut config_value: serde_json::Value = toml::from_str(defaults_toml)
-            .map_err(|e| anyhow::anyhow!("Embedded defaults.toml must be valid: {e}"))?;
-
-        // 2. Load user config from files and merge them
-        let config_path = config_file_path();
-
-        if config_path.exists()
-            && let Ok(content) = fs::read_to_string(&config_path)
-        {
-            match toml::from_str::<serde_json::Value>(&content) {
-                Ok(user_value) => merge_json(&mut config_value, user_value),
-                Err(e) => ui::report_warning(&format!(
-                    "Failed to parse config file at {config_path:?}: {e}"
-                )),
-            }
-        }
-
-        // 3. Final deserialization into AppConfig
-        let final_config_struct: AppConfig = serde_json::from_value(config_value).map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to deserialize merged configuration: {}\n                     Please check your {}/config.toml for schema errors.",
-                e,
-                get_base_dir().to_string_lossy()
-            )
-        })?;
-
-        // 4. Validate critical security settings
-        if let Err(e) = validate_security_config(&final_config_struct.security) {
-            return Err(anyhow::anyhow!("Invalid security configuration: {e}"));
-        }
-
-        // 5. Sync auto_approve flag to prompt module
-        crate::cli::ui::prompt::AUTO_APPROVE.store(
-            final_config_struct.security.auto_approve,
-            std::sync::atomic::Ordering::Relaxed,
-        );
-
-        Ok(final_config_struct)
     }
 
     pub fn get_api_key(&self, provider: &str) -> Option<String> {
@@ -185,7 +140,7 @@ impl ConfigManager {
             }
         }
 
-        // 2. Fallback to config
+        // 2. Fallback to config (default providers have no api_key set)
         if let Ok(config) = self.get_config() {
             config
                 .providers
@@ -203,7 +158,6 @@ impl ConfigManager {
         };
         let mut active = Vec::new();
 
-        // Check all providers defined in config
         for provider_name in config.providers.keys() {
             if self.get_api_key(provider_name).is_some() {
                 active.push(provider_name.clone());
@@ -233,7 +187,6 @@ impl ConfigManager {
             );
         }
 
-        // Global system prompt as default
         if let Some(prompt) = &config.general.system_prompt {
             result.insert(
                 "system_prompt".to_string(),
@@ -241,7 +194,6 @@ impl ConfigManager {
             );
         }
 
-        // Ensure "model" key is present
         if !result.contains_key("model") {
             result.insert(
                 "model".to_string(),
@@ -257,13 +209,10 @@ impl ConfigManager {
     /// This is used by interactive commands (e.g., `/verify on|off`) to toggle
     /// settings at runtime.  The write lock is held only for the brief swap.
     pub fn set_config(&self, config: AppConfig) -> anyhow::Result<()> {
-        // Ensure config is marked as initialized so future get_config() calls
-        // don't try to reload from disk.
         if self.config_init_error.set(None).is_err() {
             tracing::warn!("config_init_error already set");
         }
 
-        // Sync auto_approve flag to prompt module
         crate::cli::ui::prompt::AUTO_APPROVE.store(
             config.security.auto_approve,
             std::sync::atomic::Ordering::Relaxed,
@@ -275,33 +224,5 @@ impl ConfigManager {
             .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         *write = Arc::new(config);
         Ok(())
-    }
-}
-
-/// Validate critical security configuration settings at load time.
-/// Delegates to [`crate::config::models::SecurityConfig::validate_or_err`].
-fn validate_security_config(
-    security: &crate::config::models::SecurityConfig,
-) -> Result<(), String> {
-    security.validate_or_err()
-}
-
-fn merge_json(base: &mut serde_json::Value, over: serde_json::Value) {
-    match (base, over) {
-        (serde_json::Value::Object(base_map), serde_json::Value::Object(over_map)) => {
-            for (k, v) in over_map {
-                merge_json(base_map.entry(k).or_insert(serde_json::Value::Null), v);
-            }
-        }
-        (base, serde_json::Value::Array(mut over_arr)) => {
-            // Drop empty objects produced by all-commented [[section]] entries in TOML.
-            over_arr.retain(|v| !matches!(v, serde_json::Value::Object(m) if m.is_empty()));
-            if !over_arr.is_empty() {
-                *base = serde_json::Value::Array(over_arr);
-            }
-        }
-        (base, over) => {
-            *base = over;
-        }
     }
 }

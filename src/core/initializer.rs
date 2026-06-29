@@ -82,12 +82,7 @@ pub fn initialize_app(ui: Arc<dyn UserInterface>) -> anyhow::Result<Arc<AppConte
     // 1. Setup permissions and directories
     crate::security::permissions::setup_permissions();
 
-    // 2. Ensure configuration exists
-    if !crate::consts::config_file_path().exists() {
-        crate::config::init::init_config();
-    }
-
-    // 3. Identity Key Setup
+    // 2. Identity Key Setup
     ensure_identity(&ctx, is_atty)?;
 
     // 4. Register Tools
