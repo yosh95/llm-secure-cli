@@ -208,10 +208,8 @@ impl ActiveSession {
                 .ui
                 .report_warning(&format!("Verifier unavailable ({member_label}): {reason}"));
         } else {
-            self.ctx.ui.report_warning(&format!(
-                "Verifier {member_label} flagged this tool call as requiring review."
-            ));
-            self.ctx.ui.report_warning(&format!("Reason: {reason}"));
+            eprintln!("🚩 Verifier {member_label} flagged this tool call as requiring review.");
+            eprintln!("  👉 {reason}");
         }
 
         let cancel_msg = self.request_human_approval(name, config, verifier_context)?;
