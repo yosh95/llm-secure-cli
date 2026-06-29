@@ -54,7 +54,7 @@ pub fn run_rankings_interactive(session: &ActiveSession) {
 
 /// Common implementation: fetch from the rankings-daily API and display.
 ///
-/// `top_n` controls how many models to show (default: 15, capped at 50).
+/// `top_n` controls how many models to show (default: 20, capped at 50).
 fn fetch_and_display_rankings(api_key: &str, top_n: Option<usize>) {
     let mut headers = std::collections::HashMap::new();
     headers.insert("Authorization".to_string(), format!("Bearer {api_key}"));
@@ -63,7 +63,7 @@ fn fetch_and_display_rankings(api_key: &str, top_n: Option<usize>) {
 
     match fetch_rankings(&headers) {
         Ok(response) => {
-            display_rankings(&response, top_n.unwrap_or(15));
+            display_rankings(&response, top_n.unwrap_or(20));
         }
         Err(e) => {
             ui::report_error(&format!("Failed to fetch rankings: {e}"));
@@ -226,45 +226,6 @@ fn display_rankings(response: &Value, top_n: usize) {
         "Total: {} tokens across all models",
         format_tokens(grand_total)
     );
-
-    // ============ Provider Breakdown ============
-    let mut provider_tokens: std::collections::HashMap<&str, u64> =
-        std::collections::HashMap::new();
-    for entry in models.iter().take(display_count) {
-        let slug = entry
-            .get("model_permaslug")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
-        let provider = slug.split('/').next().unwrap_or("unknown");
-        let tokens_str = entry
-            .get("total_tokens")
-            .and_then(|v| v.as_str())
-            .unwrap_or("0");
-        let tokens: u64 = tokens_str.parse().unwrap_or(0);
-        *provider_tokens.entry(provider).or_insert(0) += tokens;
-    }
-
-    println!();
-    println!("Provider Breakdown");
-    println!();
-
-    // Collect into owned Vec to simplify type handling
-    let mut sorted_providers: Vec<(&str, u64)> = provider_tokens.into_iter().collect();
-    sorted_providers.sort_by_key(|b| std::cmp::Reverse(b.1));
-
-    for (provider, token_count) in &sorted_providers {
-        let share = if total_tokens_all > 0 {
-            (*token_count as f64 / total_tokens_all as f64) * 100.0
-        } else {
-            0.0
-        };
-        println!(
-            "  {:<20} {:>16} {:>6.1}%",
-            provider,
-            format_tokens(*token_count),
-            share,
-        );
-    }
 
     // ============ Trend note ============
     println!();
