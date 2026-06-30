@@ -76,6 +76,13 @@ pub fn get_user_input(prompt: &str) -> Option<String> {
     use rustyline::DefaultEditor;
     use rustyline::error::ReadlineError;
 
+    // Save terminal state before creating a nested rustyline editor.
+    // The main loop's rustyline may have left the terminal in raw mode;
+    // we need to restore cooked mode so the new editor starts cleanly,
+    // and restore the original settings afterwards so the main loop
+    // can continue uninterrupted.
+    let _term_guard = crate::utils::TerminalGuard::new();
+
     let mut rl = match DefaultEditor::new() {
         Ok(r) => r,
         Err(e) => {

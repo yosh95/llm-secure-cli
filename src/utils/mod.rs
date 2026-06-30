@@ -32,6 +32,45 @@ pub fn format_number<T: std::fmt::Display>(n: T) -> String {
     result.chars().rev().collect()
 }
 
+/// Save the current terminal settings to a string (via `stty -g`).
+/// Returns `None` if not on Unix or if `stty` is unavailable.
+///
+/// The saved string can be passed to [`restore_terminal_settings`] to
+/// atomically restore the terminal to the saved state.
+#[must_use]
+pub fn save_terminal_settings() -> Option<String> {
+    #[cfg(unix)]
+    {
+        let output = std::process::Command::new("stty")
+            .args(["-g"])
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()?;
+        if output.status.success() {
+            let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !s.is_empty() {
+                return Some(s);
+            }
+        }
+    }
+    None
+}
+
+/// Restore terminal settings previously saved via [`save_terminal_settings`].
+/// If `settings` is `None`, falls back to `stty sane` + `icanon` + `isig`.
+pub fn restore_terminal_settings(settings: Option<&str>) {
+    #[cfg(unix)]
+    {
+        if let Some(s) = settings
+            && !s.is_empty()
+        {
+            let _ = std::process::Command::new("stty").arg(s).status();
+        } else {
+            restore_terminal();
+        }
+    }
+}
+
 /// Restore the terminal to cooked mode so that Ctrl+C (SIGINT) works correctly.
 ///
 /// rustyline leaves the terminal in raw mode on some code paths (e.g. on
@@ -53,9 +92,68 @@ pub fn restore_terminal() {
 /// Call this before any blocking operation (tool execution, HTTP request)
 /// that should be responsive to Ctrl+C.  This is a safety net in case
 /// rustyline or another component left the terminal in raw mode.
+///
+/// Unlike [`restore_terminal`], this only sets `isig` without changing
+/// other terminal flags — use it when you want to remain in raw-like mode
+/// but still receive SIGINT on Ctrl+C.
 pub fn ensure_isig_enabled() {
     #[cfg(unix)]
     {
         let _ = std::process::Command::new("stty").args(["isig"]).status();
+    }
+}
+
+/// RAII guard that saves the terminal state on creation and restores it
+/// on drop.  Use this around any blocking operation that might temporarily
+/// modify the terminal (subprocess execution, HTTP requests, etc.).
+///
+/// # Example
+///
+/// ```ignore
+/// let _guard = crate::utils::TerminalGuard::new();
+/// // ... run tool or HTTP request ...
+/// drop(_guard); // terminal is restored here (also happens automatically)
+/// ```
+pub struct TerminalGuard {
+    saved_settings: Option<String>,
+}
+
+impl TerminalGuard {
+    /// Save the current terminal settings and switch to cooked mode
+    /// with ISIG enabled (so Ctrl+C generates SIGINT).
+    #[must_use]
+    pub fn new() -> Self {
+        let saved = save_terminal_settings();
+        // Ensure we're in a state where Ctrl+C works.
+        #[cfg(unix)]
+        {
+            let _ = std::process::Command::new("stty").args(["sane"]).status();
+            let _ = std::process::Command::new("stty")
+                .args(["icanon", "isig"])
+                .status();
+        }
+        Self {
+            saved_settings: saved,
+        }
+    }
+
+    /// Explicitly restore the terminal now (same as dropping the guard).
+    /// Calling this multiple times is safe — the second call is a no-op.
+    pub fn restore(&mut self) {
+        if let Some(ref s) = self.saved_settings.take() {
+            restore_terminal_settings(Some(s));
+        }
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        self.restore();
+    }
+}
+
+impl Default for TerminalGuard {
+    fn default() -> Self {
+        Self::new()
     }
 }

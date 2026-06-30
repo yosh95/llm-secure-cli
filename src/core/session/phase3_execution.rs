@@ -31,8 +31,11 @@ impl ActiveSession {
 
         let is_stdout = self.client.get_state().stdout;
 
-        // Ensure terminal ISIG flag is enabled so Ctrl+C works during tool execution.
-        crate::utils::ensure_isig_enabled();
+        // Save terminal state before tool execution and restore on return.
+        // This ensures that even if the tool or subprocess corrupts the terminal,
+        // the settings are fully restored before we return to rustyline.
+        let _term_guard = crate::utils::TerminalGuard::new();
+
         let result = self.execute_tool(name, &args_map);
 
         let audit_ctx = serde_json::json!({

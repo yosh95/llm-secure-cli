@@ -48,14 +48,74 @@ impl PythonProcessGuard {
 
 impl Drop for PythonProcessGuard {
     fn drop(&mut self) {
-        // `kill()` is safe even if the child already exited (returns `Ok(())`).
-        // `wait()` reaps the zombie; if already reaped, returns `Err` (ignored).
         if let Some(ref mut child) = self.child {
             let _ = child.kill();
-            let _ = child.wait();
+            // Poll with try_wait() for up to 5 seconds.  This avoids
+            // blocking the main thread indefinitely if the child is
+            // stuck (e.g. a grandchild holding a pipe open).
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                if let Some(_status) = child.try_wait().unwrap_or(None) {
+                    break; // child reaped
+                }
+                if Instant::now() >= deadline {
+                    break; // give up — init process will reap eventually
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
         }
         let _ = std::fs::remove_file(&self.tmp_path);
     }
+}
+
+/// Read from a pipe line-by-line, forwarding to a terminal handle while
+/// also accumulating into a shared buffer.  The terminal lock is acquired
+/// per-line (not held across the entire read), so the main thread can also
+/// print to the terminal without deadlocking.
+fn read_pipe_to_terminal_and_buffer<R: std::io::Read + Send + 'static>(
+    reader: R,
+    buffer: Arc<Mutex<String>>,
+    use_stdout: bool,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        let mut buf_reader = BufReader::new(reader);
+        let mut line = String::new();
+        if use_stdout {
+            let term = std::io::stdout();
+            loop {
+                line.clear();
+                match buf_reader.read_line(&mut line) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {
+                        let mut handle = term.lock();
+                        let _ = handle.write_all(line.as_bytes());
+                        let _ = handle.flush();
+                        // Lock released here (handle dropped)
+                        if let Ok(mut g) = buffer.lock() {
+                            g.push_str(&line);
+                        }
+                    }
+                }
+            }
+        } else {
+            let term = std::io::stderr();
+            loop {
+                line.clear();
+                match buf_reader.read_line(&mut line) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {
+                        let mut handle = term.lock();
+                        let _ = handle.write_all(line.as_bytes());
+                        let _ = handle.flush();
+                        // Lock released here (handle dropped)
+                        if let Ok(mut g) = buffer.lock() {
+                            g.push_str(&line);
+                        }
+                    }
+                }
+            }
+        }
+    })
 }
 
 /// Take a snapshot of a shared output buffer, recovering from lock poisoning.
@@ -148,6 +208,9 @@ pub fn execute_python(
     let tmp_path = tmp_file.path().to_path_buf();
     let timeout_secs = config.general.python_timeout;
 
+    // Save and restore terminal state around the entire subprocess lifecycle.
+    let _term_guard = crate::utils::TerminalGuard::new();
+
     // Spawn Python in a new process group so that Ctrl+C (SIGINT from the
     // terminal) hits llsc only, not Python directly.  llsc remains in control
     // and can clean up via `kill()` + `wait()`.  On Windows `process_group(0)`
@@ -211,49 +274,11 @@ pub fn execute_python(
     let stdout_buf = Arc::new(Mutex::new(String::new()));
     let stderr_buf = Arc::new(Mutex::new(String::new()));
 
-    let so = stdout_buf.clone();
-    let h_out = std::thread::spawn(move || {
-        let mut reader = BufReader::new(stdout);
-        let mut line = String::new();
-        let mut term_stdout = std::io::stdout().lock();
-        loop {
-            line.clear();
-            match reader.read_line(&mut line) {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {
-                    let _ = term_stdout.write_all(line.as_bytes());
-                    let _ = term_stdout.flush();
-                    // Also accumulate in the LLM buffer
-                    if let Ok(mut g) = so.lock() {
-                        g.push_str(&line);
-                    }
-                }
-            }
-        }
-    });
-    let se = stderr_buf.clone();
-    let h_err = std::thread::spawn(move || {
-        let mut reader = BufReader::new(stderr);
-        let mut line = String::new();
-        let mut term_stderr = std::io::stderr().lock();
-        loop {
-            line.clear();
-            match reader.read_line(&mut line) {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {
-                    let _ = term_stderr.write_all(line.as_bytes());
-                    let _ = term_stderr.flush();
-                    // Also accumulate in the LLM buffer
-                    if let Ok(mut g) = se.lock() {
-                        g.push_str(&line);
-                    }
-                }
-            }
-        }
-    });
-
-    // Ensure terminal ISIG is enabled so Ctrl+C generates SIGINT.
-    crate::utils::ensure_isig_enabled();
+    // Reader threads: acquire terminal lock per-line, not for the entire
+    // lifetime of the thread.  This prevents deadlock when the main thread
+    // calls println!() while a reader thread holds stdout().lock().
+    let h_out = read_pipe_to_terminal_and_buffer(stdout, stdout_buf.clone(), true);
+    let h_err = read_pipe_to_terminal_and_buffer(stderr, stderr_buf.clone(), false);
 
     let mut guard = PythonProcessGuard::new(child, tmp_path);
 

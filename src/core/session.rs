@@ -63,15 +63,22 @@ pub fn cancelled_since(generation: u64) -> bool {
 /// On cancellation the helper thread is detached (not joined): the underlying
 /// work — a `ureq` HTTP request or a subprocess — is bounded by its own
 /// timeouts, so the abandoned thread terminates on its own shortly after.
+///
+/// # Terminal safety
+///
+/// This function saves and restores the terminal state around the blocking
+/// operation, so that even if the HTTP request or subprocess corrupts the
+/// terminal (e.g. leaves it in raw mode), the settings are restored to
+/// their pre-call state upon return.
 pub fn run_cancellable<F, T>(f: F) -> anyhow::Result<T>
 where
     F: FnOnce() -> anyhow::Result<T> + Send + 'static,
     T: Send + 'static,
 {
-    // Ensure the terminal ISIG flag is enabled so Ctrl+C generates SIGINT
-    // during blocking operations (HTTP requests).  rustyline may have left
-    // the terminal in raw mode with ISIG disabled.
-    crate::utils::ensure_isig_enabled();
+    // Save terminal state and switch to cooked mode with ISIG enabled
+    // so Ctrl+C generates SIGINT during blocking operations.
+    // rustyline may have left the terminal in raw mode with ISIG disabled.
+    let _term_guard = crate::utils::TerminalGuard::new();
 
     let start = cancel_generation();
     let (tx, rx) = std::sync::mpsc::channel();

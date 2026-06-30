@@ -375,6 +375,9 @@ impl ActiveSession {
 
                     if let Err(e) = self.process_and_print(data) {
                         ui::report_error(&format!("Error: {e}"));
+                        // Restore terminal after error to ensure rustyline
+                        // can read input correctly on the next iteration.
+                        crate::utils::restore_terminal();
                     }
                 }
                 Err(ReadlineError::Interrupted) => {
