@@ -332,6 +332,15 @@ pub fn print_tool_result(result: &str) {
     finish_tool_result(out);
 }
 
+/// Print a horizontal rule spanning the full terminal width.
+pub fn print_rule() {
+    let term = console::Term::stdout();
+    let (_, width) = term.size();
+    let width = (width as usize).clamp(10, 200);
+    let rule = "─".repeat(width);
+    println!("{rule}");
+}
+
 fn push_line(buf: &mut String, line: &str) {
     buf.push_str(line);
     buf.push('\n');

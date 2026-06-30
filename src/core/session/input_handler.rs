@@ -268,6 +268,7 @@ impl ActiveSession {
                 *cp = self.client.get_state().provider.clone();
             }
 
+            ui::print_rule();
             let readline = if let Some(initial) = next_initial_text.take() {
                 rl.readline_with_initial("> ", (&initial, ""))
             } else {
@@ -309,6 +310,7 @@ impl ActiveSession {
                         continue;
                     }
 
+                    ui::print_rule();
                     match crate::cli::interactive::dispatcher::handle_command(self, &final_trimmed)
                     {
                         crate::cli::interactive::dispatcher::CommandResult::Exit => {

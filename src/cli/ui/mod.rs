@@ -9,7 +9,7 @@ pub mod prompt;
 pub mod report;
 
 pub use display::{
-    format_tool_call, print_block, print_key_value, print_panel, print_tool_call,
+    format_tool_call, print_block, print_key_value, print_panel, print_rule, print_tool_call,
     print_tool_call_direct, print_tool_result,
 };
 pub use prompt::{
@@ -21,6 +21,7 @@ pub use report::{report_error, report_info, report_querying, report_success, rep
 /// Abstract user interface trait — enables testing with mock implementations.
 pub trait UserInterface: Send + Sync {
     fn print_block(&self, content: &str, title: Option<&str>);
+    fn print_rule(&self);
     fn print_tool_call(&self, name: &str, args: &serde_json::Value);
     fn print_tool_call_direct(&self, name: &str, args: &serde_json::Value);
     fn print_tool_result(&self, result: &str);
@@ -39,6 +40,9 @@ pub struct CliUi;
 impl UserInterface for CliUi {
     fn print_block(&self, content: &str, title: Option<&str>) {
         display::print_block(content, title);
+    }
+    fn print_rule(&self) {
+        display::print_rule();
     }
     fn print_tool_call(&self, name: &str, args: &serde_json::Value) {
         display::print_tool_call(name, args);

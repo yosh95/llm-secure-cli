@@ -15,6 +15,7 @@ struct MockUi;
 
 impl UserInterface for MockUi {
     fn print_block(&self, _content: &str, _title: Option<&str>) {}
+    fn print_rule(&self) {}
     fn print_tool_call(&self, _name: &str, _args: &serde_json::Value) {}
     fn print_tool_call_direct(&self, _name: &str, _args: &serde_json::Value) {}
     fn print_tool_result(&self, _result: &str) {}

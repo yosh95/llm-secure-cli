@@ -345,6 +345,7 @@ impl MockUi {
 
 impl UserInterface for MockUi {
     fn print_block(&self, _c: &str, _t: Option<&str>) {}
+    fn print_rule(&self) {}
     fn print_tool_call(&self, _n: &str, _a: &Value) {}
     fn print_tool_call_direct(&self, _n: &str, _a: &Value) {}
     fn print_tool_result(&self, _r: &str) {}

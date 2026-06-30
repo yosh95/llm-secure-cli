@@ -8,7 +8,7 @@ pub fn report_info(message: &str) {
 
 /// Report an LLM/verifier query in progress.
 pub fn report_querying(message: &str) {
-    eprintln!("🤖 {}", message);
+    eprintln!("✨ {}", message);
 }
 
 pub fn report_warning(message: &str) {
