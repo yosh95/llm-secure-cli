@@ -49,7 +49,7 @@ impl ActiveSession {
         // This is the FINAL GUARDRAIL — disabling it bypasses all safety checks.
         if !self.hitl_enabled {
             self.ctx.ui.report_warning(
-                "HITL DISABLED: Auto-approving tool call (--disable-human-in-the-loop was set at startup)"
+                "HITL OFF: Auto-approving tool call (--disable-human-in-the-loop was set at startup)"
             );
             let audit_ctx = self.build_audit_context();
             crate::security::audit::AuditParams::builder("verifier_decision", name, config)
