@@ -190,11 +190,11 @@ pub fn handle_verifier_cmd(session: &mut ActiveSession, args: &str) {
         println!("Verifier Committee Members");
         for (i, (p, m)) in members.iter().enumerate() {
             let pm_str = format!("{p}:{m}");
-            // Mark if this member was set via state.toml (runtime) or config.toml (fallback)
+            // Mark if this member was set via state.toml (runtime) or compile-time default (fallback)
             let source = if runtime_members.contains(&pm_str) {
                 " (state.toml)".to_string()
             } else {
-                " (config.toml)".to_string()
+                " (fallback)".to_string()
             };
             println!("  {}. {}  {}", i + 1, pm_str, source);
         }

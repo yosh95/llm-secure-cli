@@ -117,7 +117,7 @@ flowchart TB
     export BRAVE_API_KEY="your-brave-api-key"
 
     # Generic provider name support
-    # ANYNAME_API_KEY can be used if you define [ANYNAME] in config.toml
+    # ANYNAME_API_KEY can be used (e.g., MYCUSTOM_API_KEY for provider 'mycustom')
     ```
 > **Note:** This CLI intentionally omits a dedicated MCP (Model Context Protocol) client.
 > The `execute_python` tool allows the LLM to communicate with any MCP server directly
@@ -127,15 +127,9 @@ flowchart TB
 
 ### 3. Chat: Type `llsc` to start an interactive session.
 
-1. **Automatic Initialization**: On the first run, `~/.llsc/config.toml` is automatically created.
-2. **Model Setup**: By default, no model is selected. Use `/model <model_name>` (e.g., `/model llama3`) to set one before your first request.
-5. **Configure (Optional)**: Ollama is the default provider. To use OpenRouter or others, edit the configuration file:
-
-    ```bash
-    # Edit ~/.llsc/config.toml
-    ```
-
-6. **Help**: Type `/help` inside the chat to see all commands.
+1. **Model Setup**: By default, no model is selected. Use `/model <model_name>` (e.g., `/model llama3`) to set one before your first request.
+2. **Configure (Optional)**: Ollama is the default provider. To use OpenRouter or others, pass `--provider` on the command line or use `/provider` inside the chat.
+3. **Help**: Type `/help` inside the chat to see all commands.
 
 ### Docker Isolation (Optional)
 Run the agent in a completely isolated container to protect your host system.
@@ -192,11 +186,11 @@ As a tool designed with **CISSP/CISA/CCSP** principles in mind, `llm-secure-cli`
 ### 1. Access Control (AI-native ABAC & Verifier Committee)
 `llm-secure-cli` implements a modern **Attribute-Based Access Control (ABAC)**, moving away from fragile, platform-dependent static rules.
 - **AI-native Policy Engine (Verifier Committee)**: Replaces complex regex blocklists with a hardcoded **Security Constitution**. The system automatically gathers context (OS, User, Directory, Git status) and uses N independent LLM verifiers to judge risks semantically using structured verdicts (ALLOW/REVIEW). This avoids the quagmire of platform-dependent static rules.
-- **Configurable Voting Policy**: The Verifier Committee supports two voting policies configured via `committee_policy` in config.toml:
+- **Configurable Voting Policy**: The Verifier Committee supports two voting policies configured via `committee_policy` in the state file (`~/.llsc/state.toml`):
   - `"majority"` (default): Majority vote decides. Reduces unnecessary human review while maintaining strong security.
   - `"any-flag"` (conservative): If ANY member flags a call as requiring review, human approval is mandatory. Only if ALL members approve is the call auto-approved.
 - **Path Guardrails (Verifier-based)**: Path validation is handled entirely by the Verifier Committee. The static path whitelist has been removed — the verifier LLM uses its inherent knowledge of sensitive paths (like `C:\Windows` or `/etc`) together with the user's intent context to determine whether a file access is safe.
-- **PQC with Configurable Variants**: PQC signature (ML-DSA) and KEM (ML-KEM) variants are configurable via `[pqc]` section in config.toml, defaulting to ML-DSA-44 / ML-KEM-512 (NIST Level 2/1) for performance. Can be upgraded to ML-DSA-87 / ML-KEM-1024 (NIST Level 5) for maximum security.
+- **PQC with Configurable Variants**: PQC signature (ML-DSA) and KEM (ML-KEM) variants are configurable via `--signature-variant` and `--kem-variant` CLI flags, defaulting to ML-DSA-44 / ML-KEM-512 (NIST Level 2/1) for performance. Can be upgraded to ML-DSA-87 / ML-KEM-1024 (NIST Level 5) for maximum security.
 - **Security Verification (Verifier Committee)**: Every tool call is verified by the Verifier Committee. This acts as a **Semantic Firewall**, ensuring the proposed tool call aligns with the user's intent, respects the Security Constitution (no destructive ops, no sensitive path access, no secret exfiltration), and providing corrected arguments if small discrepancies are detected.
 - **Minimalist Fast-fail**: A lightweight syntactic check blocks only control characters and NULL bytes in **nanoseconds**, while the heavy lifting of security judgment is shifted to the Verifier Committee.
 - **Verifier Fallback**: When the verifier is unavailable (network error, API failure), the system always asks for human approval.
@@ -286,41 +280,35 @@ Brave Search API key can be obtained from [https://api.search.brave.com/](https:
 
 ## Configuration Reference
 
-The primary security configuration is in `src/config/defaults.toml` (overridden by `~/.llsc/config.toml`). Runtime-persisted data (verifier committee members) is stored in `~/.llsc/state.toml`.
+All configuration values are defined as compile-time defaults in `src/config/defaults.rs` and can be overridden via CLI flags at runtime. There is **no `config.toml` file**.
 
-```toml
-# ~/.llsc/config.toml
+Runtime-persisted data (verifier committee members, last selected model) is stored in `~/.llsc/state.toml`.
 
-[general]
-request_timeout = 300          # seconds (default Rust struct: 1800)
-python_timeout = 300          # seconds (default Rust struct: 3600)
-image_save_path = "~/Pictures/llsc"
-max_audit_log_lines = 10000
-max_chat_log_lines = 5000
-max_chat_archives = 5
-max_output_lines = 5000
-max_output_chars = 50000
+### CLI Flags Reference
 
-[security]
-auto_approve = false           # Dangerous: bypasses all user confirmation
-verifier_enabled = true        # Master switch for Verifier Committee
+| Flag | Default | Description |
+|---|---|---|
+| `--request-timeout` | `300` | Request timeout in seconds for LLM API calls |
+| `--verifier-timeout` | `60` | Verifier timeout in seconds |
+| `--python-timeout` | `300` | Python execution timeout in seconds |
+| `--image-save-path` | `~/Pictures/llsc` | Path for saving generated images |
+| `--max-audit-log-lines` | `10000` | Maximum number of audit log lines |
+| `--max-chat-log-lines` | `5000` | Maximum number of chat log lines |
+| `--max-chat-archives` | `5` | Maximum number of chat archive files |
+| `--max-output-lines` | `5000` | Maximum number of output lines per response |
+| `--max-output-chars` | `50000` | Maximum number of output characters per response |
+| `--auto-approve` | `false` | Auto-approve all tool calls (bypasses human confirmation) |
+| `--signature-variant` | `ml-dsa-44` | PQC signature variant (`ml-dsa-44`, `ml-dsa-65`, or `ml-dsa-87`) |
+| `--kem-variant` | `ml-kem-512` | PQC KEM variant (`ml-kem-512`, `ml-kem-768`, or `ml-kem-1024`) |
+| `--ollama-url` | `http://localhost:11434/v1` | Ollama API base URL |
+| `--openrouter-url` | `https://openrouter.ai/api/v1` | OpenRouter API base URL |
+| `--vllm-url` | `http://localhost:8000/v1` | vLLM API base URL |
+| `--openai-url` | `https://api.openai.com/v1` | OpenAI API base URL |
 
-# Verifier Committee members (fallback when state.toml is empty):
-# verifier_committee = ["ollama:gemma4:e2b", "openai:gpt-4o-mini"]
+> **Tip**: Run `llsc --help` to see all available flags with current defaults.
 
-# Voting policy: "majority" (default) or "any-flag"
-# committee_policy = "majority"
-
-[pqc]
-# Signature variant: "ml-dsa-44" (default), "ml-dsa-65", or "ml-dsa-87"
-# signature_variant = "ml-dsa-44"
-
-# KEM variant: "ml-kem-512" (default), "ml-kem-768", or "ml-kem-1024"
-# kem_variant = "ml-kem-512"
-```
-
-### Verifier Committee Configuration
-The Verifier Committee uses N independent LLM verifiers. Configure verifier members via the `/verifier` interactive command or directly in `state.toml`:
+### State File (`~/.llsc/state.toml`)
+Runtime-persisted data (verifier committee members, last selected model) is stored in `state.toml`:
 
 ```toml
 # ~/.llsc/state.toml
@@ -328,7 +316,10 @@ verifier_committee = ["ollama:gemma4:e2b", "openai:gpt-4o-mini", "openrouter:ant
 last_model = "openai:gpt-4o"
 ```
 
-**Note**: The `verifier_committee` list in config.toml serves as a **fallback** when state.toml has no runtime-configured members. Use `/verifier add|delete` to manage members at runtime — these are persisted to state.toml.
+Verifier committee members can be managed at runtime via:
+- `/verifier add <provider:model>` — add a member
+- `/verifier delete <provider:model>` — remove a member
+- `/verifier list` — list current members
 
 ---
 

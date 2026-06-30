@@ -146,7 +146,7 @@ pub fn handle_info(session: &ActiveSession) {
             let source_marker = if runtime_set.contains(pm_str.as_str()) {
                 " (state.toml)".to_string()
             } else {
-                " (config.toml)".to_string()
+                " (fallback)".to_string()
             };
             ui::print_key_value(
                 &format!("  Member {}", i + 1),

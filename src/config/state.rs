@@ -100,7 +100,7 @@ impl ConfigManager {
     ///
     /// Priority (highest first):
     ///   1. Runtime-managed `state.verifier_committee` (via `/verifier add|delete`)
-    ///   2. Static `security.verifier_committee` from config.toml (fallback)
+    ///   2. Static `security.verifier_committee` from compile-time defaults (fallback)
     ///   3. Legacy `state.verifier_committee_members` (backward compat, removed field)
     ///
     /// Returns a tuple of:
@@ -124,7 +124,7 @@ impl ConfigManager {
             }
         }
 
-        // Fallback: config.toml (only if state list is empty)
+        // Fallback: compile-time default verifier_committee (only if state list is empty)
         if members.is_empty()
             && let Ok(config) = self.get_config()
         {

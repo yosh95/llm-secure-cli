@@ -99,7 +99,7 @@ pub struct AppState {
     pub last_model: Option<String>,
     /// Verifier committee members (provider:model strings).
     /// Managed at runtime via `/verifier add|delete` commands.
-    /// On startup, falls back to `security.verifier_committee` in config.toml
+    /// On startup, falls back to `security.verifier_committee` (compile-time default)
     /// if this list is empty.
     #[serde(default)]
     pub verifier_committee: Vec<String>,
@@ -119,12 +119,12 @@ pub struct AppState {
 ///   `/verifier delete <provider:model>` — removes a member
 ///   `/verifier list`                    — lists current members
 ///
-/// The `security.verifier_committee` in config.toml serves as a **fallback**
+/// The `security.verifier_committee` field serves as a **fallback**
 /// when state.toml has no runtime-configured members.
 ///
 /// # Default
 ///
-/// When neither runtime members nor config.toml `verifier_committee` are set,
+/// When neither runtime members nor the fallback `verifier_committee` are set,
 /// the verifier falls back to manual human approval for all tool calls.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SecurityConfig {
@@ -310,7 +310,7 @@ impl Default for AppConfig {
 
 // ── CliOverrides ──────────────────────────────────────────────────────────
 // This struct collects all CLI-provided overrides. The ConfigManager
-// applies these on top of the file-based config (CLI args > config.toml > defaults).
+// applies these on top of the defaults (CLI args > defaults).
 
 /// Values parsed from the command line that override the file-based config.
 #[derive(Clone, Debug, Default)]

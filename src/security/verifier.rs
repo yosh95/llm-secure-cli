@@ -85,7 +85,7 @@ pub fn verify_tool_call_full(params: VerificationParams<'_>) -> VerificationOutc
         Some(p) if !p.is_empty() => p.clone(),
         _ => {
             return VerificationOutcome::FallbackRequired(
-                "Verifier not configured. Use /verifier add <provider:model> to add committee members, or set verifier_committee in config.toml."
+                "Verifier not configured. Use /verifier add <provider:model> to add committee members, or use /verifier add at runtime."
                     .to_string(),
             );
         }
@@ -94,7 +94,7 @@ pub fn verify_tool_call_full(params: VerificationParams<'_>) -> VerificationOutc
         Some(m) if !m.is_empty() => m.clone(),
         _ => {
             return VerificationOutcome::FallbackRequired(
-                "Verifier not configured. Use /verifier add <provider:model> to add committee members, or set verifier_committee in config.toml."
+                "Verifier not configured. Use /verifier add <provider:model> to add committee members, or use /verifier add at runtime."
                     .to_string(),
             );
         }

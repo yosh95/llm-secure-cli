@@ -21,7 +21,7 @@ pub fn run_rankings(config_manager: &ConfigManager, provider: &str) {
         key
     } else {
         ui::report_error(
-            "OpenRouter API key is not configured. Set OPENROUTER_API_KEY in your environment or add it to config.toml under [providers.openrouter].",
+            "OpenRouter API key is not configured. Set the OPENROUTER_API_KEY environment variable (or use --openrouter-url to set the API URL).",
         );
         return;
     };
@@ -44,7 +44,7 @@ pub fn run_rankings_interactive(session: &ActiveSession) {
         key
     } else {
         ui::report_error(
-            "OpenRouter API key is not configured. Set OPENROUTER_API_KEY in your environment or add it to config.toml under [providers.openrouter].",
+            "OpenRouter API key is not configured. Set the OPENROUTER_API_KEY environment variable (or use --openrouter-url to set the API URL).",
         );
         return;
     };

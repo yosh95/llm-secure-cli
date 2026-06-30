@@ -14,7 +14,7 @@
 `llm-secure-cli` implements a **Triple-Lock** security framework across three
 dimensions — Space, Behavior, and Time — designed for autonomous LLM agents.
 The Verifier Committee handles all risk judgment — PQC variants are configurable
-via the `[pqc]` section in config.toml.
+via `--signature-variant` and `--kem-variant` CLI flags.
 
 ```
  Agent Tool Request
@@ -144,19 +144,19 @@ LLM members operating under a configurable voting policy.
 | Feature | Implementation |
 |---|---|
 | Trigger | Every tool call (configurable via `verifier_enabled`) |
-| Policy | `"majority"` (default) or `"any-flag"` — set via `committee_policy` in config.toml |
+| Policy | `"majority"` (default) or `"any-flag"` — set via `committee_policy` in state.toml |
 | Isolation | Verifiers are stateless and have no tool access (function calling OFF) |
 | Members | Runtime-managed via `/verifier add|delete` → persisted in state.toml |
-|  | Fallback: `security.verifier_committee` in config.toml |
+|  | Fallback: `security.verifier_committee` (compile-time default) |
 | Verdict | Structured ALLOW/REVIEW/MODIFY with reason |
 | Fallback | When any verifier is unavailable → always require human approval |
 
 Implementation: `src/security/verifier.rs`.
-Enable via `config.toml`: `verifier_enabled = true`.
+The verifier is enabled by default (configurable at compile-time in `defaults.rs`).
 
 ### Committee Voting Policy
 
-Configured via `committee_policy` in the `[security]` section of config.toml:
+Configured via `committee_policy` in `~/.llsc/state.toml`:
 
 | Policy | Description | Best For |
 |--------|-------------|----------|
@@ -219,16 +219,12 @@ Implementation: Rust-native `fips203`/`fips204` crates (ML-KEM/ML-DSA) — FIPS-
 
 ### Configurable PQC Variants
 
-PQC variants are configurable via the `[pqc]` section in `~/.llsc/config.toml`:
+PQC variants are configurable via CLI flags:
 
-```toml
-[pqc]
-# Signature variant: "ml-dsa-44" (default, Level 2), "ml-dsa-65" (Level 3), or "ml-dsa-87" (Level 5)
-signature_variant = "ml-dsa-44"
-
-# KEM variant: "ml-kem-512" (default, Level 1), "ml-kem-768" (Level 3), or "ml-kem-1024" (Level 5)
-kem_variant = "ml-kem-512"
-```
+| Flag | Default | Variants |
+|---|---|---|
+| `--signature-variant` | `ml-dsa-44` | `ml-dsa-44` (Level 2), `ml-dsa-65` (Level 3), `ml-dsa-87` (Level 5) |
+| `--kem-variant` | `ml-kem-512` | `ml-kem-512` (Level 1), `ml-kem-768` (Level 3), `ml-kem-1024` (Level 5) |
 
 The default configuration uses the lowest variants (ML-DSA-44 / ML-KEM-512) for
 performance. Upgrade to higher variants for increased security assurance.
@@ -295,43 +291,32 @@ Measured using the Rust implementation on reference hardware.
 Latency varies based on the provider and network conditions. We recommend lightweight "verifier" models to minimize the "Security Speed Bump."
 
 The default verifier configuration uses members configured via `/verifier add` or
-the `verifier_committee` fallback in config.toml.
+the `verifier_committee` fallback (compile-time default in `defaults.rs`).
 
 ---
 
 ## Configuration Reference
 
-The primary security configuration is in `src/config/defaults.toml`
-(overridden by `~/.llsc/config.toml`):
+All configuration values are defined as compile-time defaults in `src/config/defaults.rs` and can be overridden via CLI flags. There is **no `config.toml`** file.
 
-```toml
-[general]
-request_timeout = 300
-python_timeout = 300
-image_save_path = "~/Pictures/llsc"
-max_audit_log_lines = 10000
-max_chat_log_lines = 5000
-max_chat_archives = 5
-max_output_lines = 5000
-max_output_chars = 50000
+| Flag | Default | Description |
+|---|---|---|
+| `--request-timeout` | `300` | Request timeout in seconds for LLM API calls |
+| `--python-timeout` | `300` | Python execution timeout in seconds |
+| `--image-save-path` | `~/Pictures/llsc` | Path for saving generated images |
+| `--max-audit-log-lines` | `10000` | Maximum number of audit log lines |
+| `--max-chat-log-lines` | `5000` | Maximum number of chat log lines |
+| `--max-output-lines` | `5000` | Maximum number of output lines |
+| `--max-output-chars` | `50000` | Maximum number of output characters |
+| `--auto-approve` | `false` | Auto-approve all tool calls |
+| `--signature-variant` | `ml-dsa-44` | PQC signature variant |
+| `--kem-variant` | `ml-kem-512` | PQC KEM variant |
+| `--ollama-url` | `http://localhost:11434/v1` | Ollama API base URL |
+| `--openrouter-url` | `https://openrouter.ai/api/v1` | OpenRouter API base URL |
+| `--vllm-url` | `http://localhost:8000/v1` | vLLM API base URL |
+| `--openai-url` | `https://api.openai.com/v1` | OpenAI API base URL |
 
-[security]
-auto_approve = false
-verifier_enabled = true
-
-# Verifier Committee members (fallback when state.toml has no runtime members):
-# verifier_committee = ["ollama:gemma4:e2b", "openai:gpt-4o-mini"]
-
-# Voting policy: "majority" (default) or "any-flag"
-# committee_policy = "majority"
-
-[pqc]
-# Signature variant: "ml-dsa-44" (default, Level 2), "ml-dsa-65", "ml-dsa-87"
-# signature_variant = "ml-dsa-44"
-
-# KEM variant: "ml-kem-512" (default, Level 1), "ml-kem-768", "ml-kem-1024"
-# kem_variant = "ml-kem-512"
-```
+See `llsc --help` for a complete list of available flags.
 
 ---
 
@@ -371,7 +356,7 @@ use a different provisional identifier is not guaranteed. `llsc` pins the
 ### 4. Hardcoded security_level
 The `security_level` field in `SecurityContext` is always set to `"high"` in
 the code (`src/security/policy.rs`). Unlike what earlier documentation suggested,
-this value is not configurable via config.toml. The actual PQC variant selection
+this value is not configurable via CLI flags. The actual PQC variant selection
 is controlled independently via the `[pqc]` section.
 
 ---

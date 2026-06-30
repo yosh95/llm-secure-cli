@@ -44,10 +44,8 @@ pub fn key_dir() -> PathBuf {
     get_base_dir().join("keys")
 }
 
-#[must_use]
-pub fn config_file_path() -> PathBuf {
-    config_dir().join("config.toml")
-}
+// NOTE: config_file_path() was removed because config.toml is no longer used.
+// All configuration comes from compile-time defaults (defaults.rs) and CLI flags.
 #[must_use]
 pub fn state_file_path() -> PathBuf {
     config_dir().join("state.toml")
