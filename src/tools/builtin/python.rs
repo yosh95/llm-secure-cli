@@ -6,17 +6,86 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// RAII guard that ensures the subprocess is killed and the temp file
-/// is cleaned up when dropped (including on Ctrl+C / early return).
+/// RAII guard that ensures the temp file is cleaned up when dropped.
+///
+/// Unlike the previous implementation, this does NOT kill the child process.
+/// The child is waited on (reaped) to prevent zombies, but is allowed to
+/// continue running in the background.  This is important for use cases
+/// such as CTF challenges where the Python code starts a long-lived
+/// background server that must outlive the execute_python tool call.
+///
+/// When the entire Rust CLI process exits, the OS will clean up any
+/// remaining child processes (typically via process-group signalling or
+/// container teardown).
 struct PythonProcessGuard {
-    child: Option<std::process::Child>,
+    child: Option<ChildHandle>,
     tmp_path: std::path::PathBuf,
+}
+
+/// A wrapper around `std::process::Child` that does NOT kill the child
+/// on drop.  It only reaps (waits for) the child to prevent zombie
+/// processes, allowing background processes started by the Python code
+/// to survive beyond the tool call.
+struct ChildHandle {
+    inner: Option<std::process::Child>,
+}
+
+impl ChildHandle {
+    fn new(child: std::process::Child) -> Self {
+        Self { inner: Some(child) }
+    }
+
+    /// Try to reap the child if it has already exited (non-blocking).
+    fn try_reap(&mut self) -> Option<std::process::ExitStatus> {
+        if let Some(ref mut c) = self.inner {
+            match c.try_wait() {
+                Ok(Some(status)) => {
+                    self.inner = None;
+                    Some(status)
+                }
+                Ok(None) => None,
+                Err(_) => {
+                    self.inner = None;
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Detach the child process: relinquish management entirely.
+    /// The child becomes an orphan (adopted by init on Unix) and continues
+    /// running independently.  No kill, no wait — we simply forget about it.
+    fn detach(&mut self) {
+        if let Some(child) = self.inner.take() {
+            // `std::mem::forget` prevents the Child's Drop from running.
+            // std::process::Child's Drop would kill the process, which we
+            // explicitly do NOT want.  The OS will clean up the orphaned
+            // process eventually (when it exits natively, or when this
+            // parent process exits and the process group is cleaned up).
+            std::mem::forget(child);
+        }
+    }
+}
+
+impl Drop for ChildHandle {
+    fn drop(&mut self) {
+        // If the child has already exited (inner set to None by try_reap),
+        // there's nothing to do.
+        // If the child is still running, we detach it — do NOT kill or
+        // wait (which would block indefinitely).  The OS will clean up
+        // the orphaned process when it exits natively.
+        if let Some(child) = self.inner.take() {
+            std::mem::forget(child);
+        }
+    }
 }
 
 impl PythonProcessGuard {
     fn new(child: std::process::Child, tmp_path: std::path::PathBuf) -> Self {
         Self {
-            child: Some(child),
+            child: Some(ChildHandle::new(child)),
             tmp_path,
         }
     }
@@ -24,9 +93,10 @@ impl PythonProcessGuard {
 
 impl Drop for PythonProcessGuard {
     fn drop(&mut self) {
-        if let Some(ref mut child) = self.child {
-            let _ = child.kill();
-            let _ = child.wait();
+        // Do NOT kill the child process — just reap it if it has already
+        // exited, or detach it so it can continue running in the background.
+        if let Some(ref mut handle) = self.child {
+            handle.try_reap();
         }
         let _ = std::fs::remove_file(&self.tmp_path);
     }
@@ -211,22 +281,23 @@ pub fn execute_python(
     // Poll the child for completion while staying responsive to Ctrl+C and
     // enforcing the timeout.  The guard kills the child on early return.
     let status = loop {
-        if let Some(c) = guard.child.as_mut() {
-            match c.try_wait() {
-                Ok(Some(status)) => break status,
-                Ok(None) => {}
-                Err(e) => return Err(anyhow::anyhow!("Execution error: {e}")),
-            }
+        // Try to reap the child if it has already exited.
+        if let Some(ref mut handle) = guard.child
+            && let Some(status) = handle.try_reap()
+        {
+            break status;
         }
 
         if crate::core::session::cancelled_since(cancel_gen) {
-            // Kill the child process immediately (don't wait for Drop).
-            if let Some(ref mut c) = guard.child {
-                let _ = c.kill();
-                let _ = c.wait();
+            // Note: we do NOT kill the child process.  The Python code may
+            // have started long-lived background processes (e.g. a CTF
+            // challenge server) that should continue running even after
+            // the tool call is interrupted.
+            //
+            // Explicitly detach so no kill/wait happens on drop.
+            if let Some(ref mut handle) = guard.child {
+                handle.detach();
             }
-            // Let the guard know the child is already dead so Drop won't
-            // try to kill it again (which would be a no-op but harmless).
             guard.child = None;
 
             // Wait for reader threads to drain the pipes with a short timeout.
@@ -243,10 +314,14 @@ pub fn execute_python(
         }
 
         if start.elapsed() >= timeout {
-            // Kill the child process immediately on timeout.
-            if let Some(ref mut c) = guard.child {
-                let _ = c.kill();
-                let _ = c.wait();
+            // Note: we do NOT kill the child process on timeout.  The Python
+            // code may have started long-lived background processes (e.g. a
+            // CTF challenge server) that should continue running even after
+            // the tool call times out.
+            //
+            // Explicitly detach so no kill/wait happens on drop.
+            if let Some(ref mut handle) = guard.child {
+                handle.detach();
             }
             guard.child = None;
 
