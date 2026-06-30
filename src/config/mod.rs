@@ -101,12 +101,6 @@ impl ConfigManager {
                 config = overrides.apply_to(config);
             }
 
-            // Sync auto_approve flag to prompt module
-            crate::cli::ui::prompt::AUTO_APPROVE.store(
-                config.security.auto_approve,
-                std::sync::atomic::Ordering::Relaxed,
-            );
-
             let arc = Arc::new(config);
             if let Ok(mut guard) = self.app_config.write() {
                 *guard = Arc::clone(&arc);
@@ -212,11 +206,6 @@ impl ConfigManager {
         if self.config_init_error.set(None).is_err() {
             tracing::warn!("config_init_error already set");
         }
-
-        crate::cli::ui::prompt::AUTO_APPROVE.store(
-            config.security.auto_approve,
-            std::sync::atomic::Ordering::Relaxed,
-        );
 
         let mut write = self
             .app_config

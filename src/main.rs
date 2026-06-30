@@ -84,10 +84,6 @@ struct Args {
     max_output_chars: usize,
 
     // ── Security overrides ──
-    /// Auto-approve all tool calls (bypasses human confirmation)
-    #[clap(long, default_value_t = defaults::DEFAULT_AUTO_APPROVE)]
-    auto_approve: bool,
-
     // ── PQC overrides ──
     /// PQC signature variant (ml-dsa-44, ml-dsa-65, or ml-dsa-87)
     #[clap(long, default_value_t = String::from(defaults::DEFAULT_SIGNATURE_VARIANT))]
@@ -198,7 +194,6 @@ fn main() {
         max_chat_archives: Some(args.max_chat_archives),
         max_output_lines: Some(args.max_output_lines),
         max_output_chars: Some(args.max_output_chars),
-        auto_approve: Some(args.auto_approve),
         signature_variant: Some(args.signature_variant.clone()),
         kem_variant: Some(args.kem_variant.clone()),
     };

@@ -42,11 +42,6 @@ pub const DEFAULT_MAX_OUTPUT_LINES: usize = 5_000;
 /// Default maximum number of output characters per response.
 pub const DEFAULT_MAX_OUTPUT_CHARS: usize = 50_000;
 
-// ── Security ──────────────────────────────────────────────────────────────
-
-/// Whether tool calls are auto-approved without user confirmation.
-pub const DEFAULT_AUTO_APPROVE: bool = false;
-
 // ── PQC (Post-Quantum Cryptography) ───────────────────────────────────────
 
 /// Default ML-DSA signature variant.

@@ -39,6 +39,10 @@ impl ActiveSession {
             return Ok((args.clone(), true, None));
         }
 
+        // Display the tool call first — before any verifier queries.
+        // This ensures the user sees the proposed action regardless of HITL state.
+        self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
+
         // Human-in-the-Loop guardrail.
         // When HITL is disabled (via --disable-human-in-the-loop CLI flag),
         // skip ALL verification and auto-approve every tool call.
@@ -58,10 +62,6 @@ impl ActiveSession {
                 .log();
             return Ok((args.clone(), true, None));
         }
-
-        // Display the tool call first — before any verifier queries.
-        // This ensures the user sees the proposed action before verifier evaluation begins.
-        self.ctx.ui.print_tool_call(name, &serde_json::json!(args));
 
         // 2a. Resolve Verifier Committee members
         let (committee_members, verifier_available) =

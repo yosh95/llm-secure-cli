@@ -126,14 +126,8 @@ pub struct AppState {
 ///
 /// When neither runtime members nor the fallback `verifier_committee` are set,
 /// the verifier falls back to manual human approval for all tool calls.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct SecurityConfig {
-    /// When true, all Y/n and feedback prompts are automatically answered Yes.
-    /// Equivalent to the old `LLM_SECURE_AUTO_APPROVE` env var.
-    /// WARNING: This bypasses all user confirmation — use with extreme caution.
-    #[serde(default)]
-    pub auto_approve: bool,
-
     /// Verifier Committee members (provider:model strings, e.g. "openai:gpt-4o").
     /// Used as a FALLBACK when state.toml has no runtime-configured members
     /// (managed via `/verifier add|delete`).
@@ -143,15 +137,6 @@ pub struct SecurityConfig {
     /// first member to flag the call hands off to human approval immediately.
     #[serde(default)]
     pub verifier_committee: Vec<String>,
-}
-
-impl Default for SecurityConfig {
-    fn default() -> Self {
-        Self {
-            auto_approve: defaults::DEFAULT_AUTO_APPROVE,
-            verifier_committee: Vec::new(),
-        }
-    }
 }
 
 /// Describes a single validation failure in a [`SecurityConfig`].
@@ -326,9 +311,6 @@ pub struct CliOverrides {
     pub max_output_lines: Option<usize>,
     pub max_output_chars: Option<usize>,
 
-    // Security
-    pub auto_approve: Option<bool>,
-
     // PQC
     pub signature_variant: Option<String>,
     pub kem_variant: Option<String>,
@@ -373,10 +355,7 @@ impl CliOverrides {
                     .unwrap_or(config.pqc.signature_variant),
                 kem_variant: self.kem_variant.unwrap_or(config.pqc.kem_variant),
             },
-            security: SecurityConfig {
-                auto_approve: self.auto_approve.unwrap_or(config.security.auto_approve),
-                ..config.security
-            },
+            security: SecurityConfig { ..config.security },
             ..config
         }
     }

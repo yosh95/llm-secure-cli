@@ -16,23 +16,8 @@ pub enum PromptMode {
     YesNoOnly,
 }
 
-/// Global auto-approve flag.
-/// Set from the `auto_approve` field (defaults.rs or `--auto-approve` CLI flag).
-/// When true, all confirmation prompts are automatically answered Yes.
-/// WARNING: This bypasses user confirmation — use with extreme caution.
-pub static AUTO_APPROVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
 /// Ask the user a Yes/No confirmation question with configurable prompt mode.
 fn ask_confirm_with_mode(prompt: &str, mode: PromptMode) -> Option<ConfirmResult> {
-    // If auto_approve is set (from defaults or --auto-approve CLI flag), automatically
-    // return Yes without prompting the user.
-    if AUTO_APPROVE.load(std::sync::atomic::Ordering::Relaxed) {
-        crate::cli::ui::report::report_warning(
-            "auto_approve is enabled (via --auto-approve) — automatically approving without user confirmation.",
-        );
-        return Some(ConfirmResult::Yes);
-    }
-
     let suffix = match mode {
         PromptMode::WithFeedback => " [Y/n or feedback] ",
         PromptMode::YesNoOnly => " [Y/n] ",
