@@ -6,97 +6,53 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// RAII guard that ensures the temp file is cleaned up when dropped.
+/// RAII guard that ensures the temp file is cleaned up when dropped,
+/// **and** that the Python process is killed + reaped so it doesn't leak.
 ///
-/// Unlike the previous implementation, this does NOT kill the child process.
-/// The child is waited on (reaped) to prevent zombies, but is allowed to
-/// continue running in the background.  This is important for use cases
-/// such as CTF challenges where the Python code starts a long-lived
-/// background server that must outlive the execute_python tool call.
+/// # Process lifecycle
 ///
-/// When the entire Rust CLI process exits, the OS will clean up any
-/// remaining child processes (typically via process-group signalling or
-/// container teardown).
+/// 1. Python is spawned in a **new process group** (Unix only, via
+///    `process_group(0)`).  This ensures Ctrl+C (SIGINT from the terminal)
+///    hits only llsc, not Python directly — we want llsc to stay in control.
+///
+/// 2. On **normal exit**: `try_reap()` (called from the poll loop) reaps the
+///    zombie.  The subsequent `Drop` calls `kill()` (no-op for exited process)
+///    and `wait()` (returns `Err` for already-reaped child, ignored by `let _`).
+///
+/// 3. On **timeout / Ctrl+C / Drop**: `child.kill()` sends SIGKILL (Unix) or
+///    TerminateProcess (Windows), then `child.wait()` reaps.  Python is gone.
+///
+/// 4. **Grandchild processes** (e.g. `subprocess.run()` inside the Python
+///    code) become orphans — that is acceptable.  If the LLM wants a process
+///    to survive beyond the tool-call, it must use `start_new_session=True`
+///    (which places the grandchild in a separate session / process group,
+///    immune to our `kill()`).
 struct PythonProcessGuard {
-    child: Option<ChildHandle>,
+    child: Option<std::process::Child>,
     tmp_path: std::path::PathBuf,
-}
-
-/// A wrapper around `std::process::Child` that does NOT kill the child
-/// on drop.  It only reaps (waits for) the child to prevent zombie
-/// processes, allowing background processes started by the Python code
-/// to survive beyond the tool call.
-struct ChildHandle {
-    inner: Option<std::process::Child>,
-}
-
-impl ChildHandle {
-    fn new(child: std::process::Child) -> Self {
-        Self { inner: Some(child) }
-    }
-
-    /// Try to reap the child if it has already exited (non-blocking).
-    fn try_reap(&mut self) -> Option<std::process::ExitStatus> {
-        if let Some(ref mut c) = self.inner {
-            match c.try_wait() {
-                Ok(Some(status)) => {
-                    self.inner = None;
-                    Some(status)
-                }
-                Ok(None) => None,
-                Err(_) => {
-                    self.inner = None;
-                    None
-                }
-            }
-        } else {
-            None
-        }
-    }
-
-    /// Detach the child process: relinquish management entirely.
-    /// The child becomes an orphan (adopted by init on Unix) and continues
-    /// running independently.  No kill, no wait — we simply forget about it.
-    fn detach(&mut self) {
-        if let Some(child) = self.inner.take() {
-            // `std::mem::forget` prevents the Child's Drop from running.
-            // std::process::Child's Drop would kill the process, which we
-            // explicitly do NOT want.  The OS will clean up the orphaned
-            // process eventually (when it exits natively, or when this
-            // parent process exits and the process group is cleaned up).
-            std::mem::forget(child);
-        }
-    }
-}
-
-impl Drop for ChildHandle {
-    fn drop(&mut self) {
-        // If the child has already exited (inner set to None by try_reap),
-        // there's nothing to do.
-        // If the child is still running, we detach it — do NOT kill or
-        // wait (which would block indefinitely).  The OS will clean up
-        // the orphaned process when it exits natively.
-        if let Some(child) = self.inner.take() {
-            std::mem::forget(child);
-        }
-    }
 }
 
 impl PythonProcessGuard {
     fn new(child: std::process::Child, tmp_path: std::path::PathBuf) -> Self {
         Self {
-            child: Some(ChildHandle::new(child)),
+            child: Some(child),
             tmp_path,
         }
+    }
+
+    /// Try to reap the child if it has already exited (non-blocking).
+    fn try_reap(&mut self) -> Option<std::process::ExitStatus> {
+        self.child.as_mut()?.try_wait().ok().flatten()
     }
 }
 
 impl Drop for PythonProcessGuard {
     fn drop(&mut self) {
-        // Do NOT kill the child process — just reap it if it has already
-        // exited, or detach it so it can continue running in the background.
-        if let Some(ref mut handle) = self.child {
-            handle.try_reap();
+        // `kill()` is safe even if the child already exited (returns `Ok(())`).
+        // `wait()` reaps the zombie; if already reaped, returns `Err` (ignored).
+        if let Some(ref mut child) = self.child {
+            let _ = child.kill();
+            let _ = child.wait();
         }
         let _ = std::fs::remove_file(&self.tmp_path);
     }
@@ -192,21 +148,52 @@ pub fn execute_python(
     let tmp_path = tmp_file.path().to_path_buf();
     let timeout_secs = config.general.python_timeout;
 
-    let mut child = match Command::new(&python_bin)
-        .arg("-u")
-        .arg(&tmp_path)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-    {
-        Ok(child) => child,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let _ = std::fs::remove_file(&tmp_path);
-            return Err(anyhow::anyhow!("{} not found in system PATH.", python_bin));
+    // Spawn Python in a new process group so that Ctrl+C (SIGINT from the
+    // terminal) hits llsc only, not Python directly.  llsc remains in control
+    // and can clean up via `kill()` + `wait()`.  On Windows `process_group(0)`
+    // is not available (it's a Unix-only extension method) and is simply not
+    // called — the `#[cfg]` gates ensure that.
+    #[cfg(unix)]
+    let mut child = {
+        use std::os::unix::process::CommandExt;
+        match Command::new(&python_bin)
+            .arg("-u")
+            .arg(&tmp_path)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .process_group(0)
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err(anyhow::anyhow!("{} not found in system PATH.", python_bin));
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err(anyhow::anyhow!("Failed to start {python_bin}: {e}"));
+            }
         }
-        Err(e) => {
-            let _ = std::fs::remove_file(&tmp_path);
-            return Err(anyhow::anyhow!("Failed to start {python_bin}: {e}"));
+    };
+
+    #[cfg(not(unix))]
+    let mut child = {
+        match Command::new(&python_bin)
+            .arg("-u")
+            .arg(&tmp_path)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err(anyhow::anyhow!("{} not found in system PATH.", python_bin));
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err(anyhow::anyhow!("Failed to start {python_bin}: {e}"));
+            }
         }
     };
 
@@ -279,28 +266,17 @@ pub fn execute_python(
     let cancel_gen = crate::core::session::cancel_generation();
 
     // Poll the child for completion while staying responsive to Ctrl+C and
-    // enforcing the timeout.  The guard kills the child on early return.
+    // enforcing the timeout.  On early return, `guard` is dropped which
+    // triggers `kill()` + `wait()` on the child.
     let status = loop {
         // Try to reap the child if it has already exited.
-        if let Some(ref mut handle) = guard.child
-            && let Some(status) = handle.try_reap()
-        {
+        if let Some(status) = guard.try_reap() {
             break status;
         }
 
         if crate::core::session::cancelled_since(cancel_gen) {
-            // Note: we do NOT kill the child process.  The Python code may
-            // have started long-lived background processes (e.g. a CTF
-            // challenge server) that should continue running even after
-            // the tool call is interrupted.
-            //
-            // Explicitly detach so no kill/wait happens on drop.
-            if let Some(ref mut handle) = guard.child {
-                handle.detach();
-            }
-            guard.child = None;
-
-            // Wait for reader threads to drain the pipes with a short timeout.
+            // Drop guard here so kill+wait happens before we return.
+            drop(guard);
             let _ = h_out.join();
             let _ = h_err.join();
 
@@ -314,18 +290,8 @@ pub fn execute_python(
         }
 
         if start.elapsed() >= timeout {
-            // Note: we do NOT kill the child process on timeout.  The Python
-            // code may have started long-lived background processes (e.g. a
-            // CTF challenge server) that should continue running even after
-            // the tool call times out.
-            //
-            // Explicitly detach so no kill/wait happens on drop.
-            if let Some(ref mut handle) = guard.child {
-                handle.detach();
-            }
-            guard.child = None;
-
-            // Wait for reader threads to drain the pipes.
+            // Drop guard here so kill+wait happens before we return.
+            drop(guard);
             let _ = h_out.join();
             let _ = h_err.join();
 
