@@ -58,10 +58,10 @@ pub fn save_terminal_settings() -> Option<String> {
 
 /// Restore terminal settings previously saved via [`save_terminal_settings`].
 /// If `settings` is `None`, falls back to `stty sane` + `icanon` + `isig`.
-pub fn restore_terminal_settings(settings: Option<&str>) {
+pub fn restore_terminal_settings(_settings: Option<&str>) {
     #[cfg(unix)]
     {
-        if let Some(s) = settings
+        if let Some(s) = _settings
             && !s.is_empty()
         {
             let _ = std::process::Command::new("stty").arg(s).status();
