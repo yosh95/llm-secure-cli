@@ -25,7 +25,7 @@ pub fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
     // No args or -u: show all models grouped by provider, sorted
     if args_trimmed.is_empty() || args_trimmed == "-u" || args_trimmed == "--update" {
         println!("Available Models (provider:model)");
-        let models_map = session.ctx.config_manager.get_cached_models();
+        let models_map = session.ctx.config_manager.get_cached_models_sync();
 
         // Collect all provider:model pairs and sort them
         let mut all_entries: Vec<(String, String, bool)> = Vec::new();
@@ -87,7 +87,7 @@ pub fn handle_model_cmd(session: &mut ActiveSession, args: &str) {
     }
 
     // With argument: parse "provider:model" or just "model" (use current provider)
-    let models_map = session.ctx.config_manager.get_cached_models();
+    let models_map = session.ctx.config_manager.get_cached_models_sync();
 
     let resolved_provider: String;
     let resolved_model: String;

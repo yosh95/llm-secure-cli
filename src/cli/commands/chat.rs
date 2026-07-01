@@ -101,33 +101,11 @@ pub fn start_chat_session(args: ChatArgs, ctx: Arc<AppContext>) -> anyhow::Resul
 
     let stdout = stdout || !is_atty;
 
-    // Spawn a background thread to refresh the models cache if it doesn't exist
-    // or is older than 24 hours
-    {
-        let ctx_bg = ctx.clone();
-        std::thread::spawn(move || {
-            let c_path = crate::consts::models_cache_path();
-            let should_refresh = if c_path.exists() {
-                match std::fs::metadata(&c_path) {
-                    Ok(meta) => match meta.modified() {
-                        Ok(mtime) => {
-                            let age = std::time::SystemTime::now()
-                                .duration_since(mtime)
-                                .unwrap_or(std::time::Duration::ZERO);
-                            age.as_secs() > 24 * 3600
-                        }
-                        Err(_) => true,
-                    },
-                    Err(_) => true,
-                }
-            } else {
-                true
-            };
-            if should_refresh {
-                tracing::info!("Background refresh of models cache...");
-                ctx_bg.config_manager.update_models_cache();
-            }
-        });
+    // Check if models cache exists; warn if missing so the user knows to run /m -u
+    if !crate::consts::models_cache_path().exists() {
+        ctx.ui.report_warning(
+            "No models cache found. Run `/m -u` (or `/model --update`) to fetch available models from providers."
+        );
     }
 
     let client = {
